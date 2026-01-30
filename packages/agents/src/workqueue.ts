@@ -641,6 +641,112 @@ function buildProgressBar(percent: number): string {
 }
 
 // ==========================================
+// Research Work Item Creation
+// ==========================================
+
+/**
+ * Research task configuration for Work Queue creation
+ */
+export interface ResearchTaskConfig {
+  /** Research query (becomes the task title) */
+  query: string;
+  /** Research depth level */
+  depth: "light" | "standard" | "deep";
+  /** Optional focus area */
+  focus?: string;
+  /** Priority override (default: P1 for deep, P2 for others) */
+  priority?: "P0" | "P1" | "P2" | "P3";
+}
+
+/**
+ * Create a new Work Queue item for a research task
+ * Returns the page ID and URL for the created item
+ */
+export async function createResearchWorkItem(
+  config: ResearchTaskConfig
+): Promise<{ pageId: string; url: string }> {
+  const notion = getNotionClient();
+
+  // Build title from query (truncated)
+  const title = config.query.length > 80
+    ? config.query.substring(0, 77) + "..."
+    : config.query;
+
+  // Depth descriptions for notes
+  const depthDescriptions = {
+    light: "Quick overview (~2k tokens, 2-3 sources)",
+    standard: "Thorough analysis (~8k tokens, 5-8 sources)",
+    deep: "Academic rigor (~25k tokens, 10+ sources, Chicago citations)",
+  };
+
+  // Default priority based on depth
+  const priority = config.priority || (config.depth === "deep" ? "P1" : "P2");
+
+  // Build notes with research context
+  const notes = [
+    `Research Depth: ${config.depth} — ${depthDescriptions[config.depth]}`,
+    config.focus ? `Focus: ${config.focus}` : null,
+    `Queued via Telegram Agent System`,
+  ].filter(Boolean).join("\n");
+
+  const response = await notion.pages.create({
+    parent: { database_id: WORK_QUEUE_DB_ID },
+    properties: {
+      // Title
+      Task: {
+        title: [{ text: { content: `Research: ${title}` } }],
+      },
+      // Type - always Research for research agents
+      Type: {
+        select: { name: "Research" },
+      },
+      // Status - starts as Captured, will be set to Active when agent starts
+      Status: {
+        select: { name: "Captured" },
+      },
+      // Priority
+      Priority: {
+        select: { name: priority },
+      },
+      // Pillar - research usually goes to The Grove
+      Pillar: {
+        select: { name: "The Grove" },
+      },
+      // Queued date
+      Queued: {
+        date: { start: formatDate() },
+      },
+      // Notes with research context
+      Notes: {
+        rich_text: [{ text: { content: notes } }],
+      },
+    },
+  });
+
+  const pageId = response.id;
+  const url = getNotionPageUrl(pageId);
+
+  // Add initial comment
+  await notion.comments.create({
+    parent: { page_id: pageId },
+    rich_text: [
+      {
+        text: {
+          content: `[RESEARCH TASK CREATED - ${formatDate()}]
+
+Query: "${config.query}"
+Depth: ${config.depth}
+${config.focus ? `Focus: ${config.focus}\n` : ""}
+Research agent will be assigned automatically.`,
+        },
+      },
+    ],
+  });
+
+  return { pageId, url };
+}
+
+// ==========================================
 // Singleton Updater Instance
 // ==========================================
 

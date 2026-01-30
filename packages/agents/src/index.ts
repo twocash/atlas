@@ -74,6 +74,8 @@ export {
   syncAgentCancelled,
   wireAgentToWorkQueue,
   getNotionPageUrl,
+  createResearchWorkItem,
+  type ResearchTaskConfig,
 } from "./workqueue";
 
 // Specialist Agents

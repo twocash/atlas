@@ -13,6 +13,8 @@ import {
   AgentRegistry,
   runResearchAgent,
   wireAgentToWorkQueue,
+  createResearchWorkItem,
+  getNotionPageUrl,
   type Agent,
   type AgentEvent,
   type ResearchConfig,
@@ -31,11 +33,6 @@ const registry = new AgentRegistry();
 const notificationContexts: Map<string, { chatId: number; bot: Context["api"] }> =
   new Map();
 
-// ==========================================
-// Test Work Queue Item ID
-// ==========================================
-
-const TEST_WORK_ITEM_ID = "2f8780a7-8eef-81cb-9aeb-ec26c5e039bc";
 
 // ==========================================
 // Agent Command Router
@@ -144,30 +141,37 @@ async function handleResearchCommand(
     deep: "Academic rigor (~25k tokens, 10+ sources, Chicago citations)",
   };
 
-  // Acknowledge
-  await ctx.reply(
-    `🔬 Starting research agent...\n\n` +
-      `Query: "${config.query}"\n` +
-      `Depth: ${depth} — ${depthDescriptions[depth]}\n` +
-      `${focus ? `Focus: ${focus}\n` : ""}` +
-      `\nWatch Notion for real-time updates.`
-  );
-
   // Store context for notifications
   const chatId = ctx.chat?.id;
   if (!chatId) return;
 
   try {
+    // Create a new Work Queue item for this research
+    const { pageId: workItemId, url: notionUrl } = await createResearchWorkItem({
+      query: config.query,
+      depth,
+      focus,
+    });
+
+    // Acknowledge with Notion link
+    await ctx.reply(
+      `🔬 Starting research agent...\n\n` +
+        `Query: "${config.query}"\n` +
+        `Depth: ${depth} — ${depthDescriptions[depth]}\n` +
+        `${focus ? `Focus: ${focus}\n` : ""}` +
+        `\n📝 Notion: ${notionUrl}`
+    );
+
     // Spawn and run the research agent
     const { agent, result } = await runResearchAgentWithNotifications(
       config,
       chatId,
       ctx.api,
-      TEST_WORK_ITEM_ID // Use test work item
+      workItemId
     );
 
-    // Send completion notification
-    await sendCompletionNotification(ctx, agent, result);
+    // Send completion notification with Notion link
+    await sendCompletionNotification(ctx, agent, result, notionUrl);
   } catch (error) {
     const errorMessage =
       error instanceof Error ? error.message : "Unknown error";
@@ -271,7 +275,8 @@ async function runResearchAgentWithNotifications(
 async function sendCompletionNotification(
   ctx: Context,
   agent: Agent,
-  result: any
+  result: any,
+  notionUrl?: string
 ): Promise<void> {
   if (result.success) {
     const researchResult = result.output as ResearchResult | undefined;
@@ -312,14 +317,21 @@ async function sendCompletionNotification(
       }
     }
 
+    // Always include Notion link for easy access
+    if (notionUrl) {
+      message += `\n\n📝 Full results: ${notionUrl}`;
+    }
+
     await ctx.reply(message);
   } else {
-    await ctx.reply(
-      `❌ Research failed\n\n` +
-        `Agent: ${agent.id}\n` +
-        `Error: ${result.summary || agent.error || "Unknown error"}\n\n` +
-        `Check Notion Work Queue for details.`
-    );
+    let errorMessage = `❌ Research failed\n\n` +
+      `Error: ${result.summary || agent.error || "Unknown error"}`;
+
+    if (notionUrl) {
+      errorMessage += `\n\n📝 Details: ${notionUrl}`;
+    }
+
+    await ctx.reply(errorMessage);
   }
 }
 
@@ -408,15 +420,6 @@ async function handleCancelCommand(
  * Handle /agent test - runs the integration test
  */
 async function handleTestCommand(ctx: Context): Promise<void> {
-  await ctx.reply(
-    `🧪 Running integration test...\n\n` +
-      `This will:\n` +
-      `1. Spawn a Research Agent\n` +
-      `2. Update Work Queue item in real-time\n` +
-      `3. Report back when complete\n\n` +
-      `Watch Notion: Work Queue 2.0 → "Test: Research Agent Integration"`
-  );
-
   // Run the test query
   const config: ResearchConfig = {
     query: "What are the top 3 AI coding assistants and their pricing?",
@@ -428,14 +431,30 @@ async function handleTestCommand(ctx: Context): Promise<void> {
   if (!chatId) return;
 
   try {
+    // Create a new Work Queue item for the test
+    const { pageId: workItemId, url: notionUrl } = await createResearchWorkItem({
+      query: config.query,
+      depth: config.depth,
+      focus: config.focus,
+    });
+
+    await ctx.reply(
+      `🧪 Running integration test...\n\n` +
+        `This will:\n` +
+        `1. Spawn a Research Agent\n` +
+        `2. Update Work Queue item in real-time\n` +
+        `3. Report back when complete\n\n` +
+        `📝 Notion: ${notionUrl}`
+    );
+
     const { agent, result } = await runResearchAgentWithNotifications(
       config,
       chatId,
       ctx.api,
-      TEST_WORK_ITEM_ID
+      workItemId
     );
 
-    await sendCompletionNotification(ctx, agent, result);
+    await sendCompletionNotification(ctx, agent, result, notionUrl);
   } catch (error) {
     const errorMessage =
       error instanceof Error ? error.message : "Unknown error";
