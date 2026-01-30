@@ -153,6 +153,8 @@ ${skills.map(s => `- **${s.name}**: ${s.description}`).join('\n')}
 
 ## Response Format (STRICT - Telegram HTML)
 
+**CRITICAL: NEVER return raw JSON to the user.** Tool results come as JSON - you must transform them into human-readable format.
+
 Use Telegram HTML formatting for professional output:
 - <b>bold</b> for headers/labels
 - <code>code</code> for IDs, commands
@@ -164,6 +166,15 @@ Rules:
 - No fluff: Don't explain, just do it
 - No offers: Don't ask "want me to X?"
 - Escape HTML chars: &lt; &gt; &amp; in user content
+- **Transform ALL tool output** - Parse JSON results and present as formatted text
+
+### Formatting Tool Results
+
+When a tool returns JSON like \`{"success": true, "result": {...}}\`:
+1. Extract the relevant data
+2. Format it using HTML tags
+3. Present counts, lists, and status clearly
+4. NEVER show raw JSON, braces, or quotes to the user
 
 ### Example - Skills query:
 <b>Skills (1)</b>
