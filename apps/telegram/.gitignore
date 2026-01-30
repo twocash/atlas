@@ -1,0 +1,43 @@
+# Dependencies
+node_modules/
+bun.lockb
+
+# Environment
+.env
+.env.local
+.env.*.local
+
+# Build output
+dist/
+*.tsbuildinfo
+
+# Logs
+logs/
+*.log
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Local config overrides
+mcp-config.local.ts
+.claude/settings.local.json
+
+# Session data
+sessions/
+*.session
+
+# Temporary files
+tmp/
+temp/
+
+# Atlas system directory (local state)
+.atlas/*
+!.atlas/README.md

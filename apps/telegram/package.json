@@ -1,0 +1,41 @@
+{
+  "name": "@atlas/telegram",
+  "version": "0.1.0",
+  "description": "Real-time clarification layer for Atlas via Telegram",
+  "main": "src/index.ts",
+  "type": "module",
+  "scripts": {
+    "start": "bun run src/index.ts",
+    "dev": "bun --watch run src/index.ts",
+    "typecheck": "tsc --noEmit",
+    "lint": "eslint src/",
+    "test": "bun test",
+    "test:notion": "bun run src/test-notion.ts",
+    "test:claude": "bun run src/test-claude.ts"
+  },
+  "dependencies": {
+    "@anthropic-ai/sdk": "^0.39.0",
+    "@notionhq/client": "^2.2.14",
+    "dotenv": "^16.3.1",
+    "grammy": "^1.21.1",
+    "openai": "^4.104.0"
+  },
+  "devDependencies": {
+    "@types/bun": "latest",
+    "@types/node": "^20.10.6",
+    "typescript": "^5.3.3"
+  },
+  "author": "Jim Calhoun",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/jcalhoun/atlas-telegram"
+  },
+  "keywords": [
+    "atlas",
+    "telegram",
+    "claude",
+    "notion",
+    "productivity"
+  ]
+}
