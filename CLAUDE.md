@@ -246,4 +246,17 @@ C:\github\atlas\start-telegram.ps1
 
 ---
 
+## Development Standards
+
+**Before shipping any feature, read:** `docs/SOP.md`
+
+Key rules:
+- **SOP-001:** Every new command MUST update `/help` system
+- **SOP-002:** Command naming conventions (lowercase, spaces for subcommands)
+- **SOP-003:** Feature shipping checklist
+
+Help command source: `apps/telegram/src/commands/help.ts`
+
+---
+
 *ATLAS v4.0 - Triage, organize, execute, learn*
