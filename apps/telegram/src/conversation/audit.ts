@@ -12,9 +12,9 @@ import type { Pillar, RequestType, FeedStatus, WQStatus } from './types';
 // Initialize Notion client
 const notion = new Client({ auth: process.env.NOTION_API_KEY });
 
-// Data Source IDs (not database IDs)
-const FEED_DATA_SOURCE = 'a7493abb-804a-4759-b6ac-aeca62ae23b8';
-const WORK_QUEUE_DATA_SOURCE = '6a8d9c43-b084-47b5-bc83-bc363640f2cd';
+// Notion Database IDs (from CLAUDE.md)
+const FEED_DATABASE_ID = '3e8867d58aa5495780c2860dada8c993';
+const WORK_QUEUE_DATABASE_ID = '3d679030-b76b-43bd-92d8-1ac51abb4a28';
 
 export interface AuditEntry {
   // Core
@@ -67,7 +67,7 @@ async function createFeedEntry(entry: AuditEntry): Promise<{ id: string; url: st
 
   try {
     const response = await notion.pages.create({
-      parent: { database_id: FEED_DATA_SOURCE },
+      parent: { database_id: FEED_DATABASE_ID },
       properties: {
         'Entry': {
           title: [{ text: { content: entry.entry.substring(0, 100) } }],
@@ -146,7 +146,7 @@ async function createWorkQueueEntry(
 
   try {
     const response = await notion.pages.create({
-      parent: { database_id: WORK_QUEUE_DATA_SOURCE },
+      parent: { database_id: WORK_QUEUE_DATABASE_ID },
       properties: {
         'Task': {
           title: [{ text: { content: entry.entry.substring(0, 100) } }],

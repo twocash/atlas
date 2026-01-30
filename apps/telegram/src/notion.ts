@@ -25,10 +25,10 @@ import type {
 } from "./types";
 import { logger } from "./logger";
 
-// Database IDs (lazy loaded)
+// Database IDs (lazy loaded) - from CLAUDE.md
 const getDatabaseIds = () => ({
-  inbox: process.env.NOTION_INBOX_DB || "04c04ac3-b974-4b7a-9651-e024ee484630",
-  workQueue: process.env.NOTION_WORK_QUEUE_DB || "6a8d9c43-b084-47b5-bc83-bc363640f2cd",
+  inbox: process.env.NOTION_INBOX_DB || "f6f638c9-6aee-42a7-8137-df5b6a560f50",
+  workQueue: process.env.NOTION_WORK_QUEUE_DB || "3d679030-b76b-43bd-92d8-1ac51abb4a28",
 });
 
 // Lazy-initialized Notion client

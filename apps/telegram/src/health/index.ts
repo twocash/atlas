@@ -289,46 +289,68 @@ async function checkVoiceConfigs(): Promise<HealthCheckResult[]> {
 }
 
 /**
- * Check Notion database access
+ * Check Notion database access - THIS IS CRITICAL, RUN FIRST
+ * Uses the SAME tool functions that the bot uses, not separate queries
  */
 async function checkNotionDatabases(): Promise<HealthCheckResult[]> {
   const results: HealthCheckResult[] = [];
-  const apiKey = process.env.NOTION_API_KEY;
 
-  if (!apiKey) {
-    return [{
-      name: 'notion:databases',
+  // Import and call the actual tool functions to test the real code paths
+  const { executeCoreTools } = await import('../conversation/tools/core');
+
+  // Test get_status_summary - this queries Inbox and Work Queue
+  console.log('[HEALTH] Testing get_status_summary (same route as tools)...');
+  const statusResult = await executeCoreTools('get_status_summary', {});
+
+  if (statusResult?.success) {
+    results.push({
+      name: 'notion:get_status_summary',
+      status: 'pass',
+      message: 'Status summary tool works (Inbox + Work Queue accessible)',
+      details: statusResult.result,
+    });
+  } else {
+    results.push({
+      name: 'notion:get_status_summary',
       status: 'fail',
-      message: 'Cannot check databases - no API key',
-    }];
+      message: `Status summary failed: ${statusResult?.error || 'unknown error'}`,
+    });
   }
 
-  const notion = new Client({ auth: apiKey });
+  // Test work_queue_list - queries Work Queue with filters
+  console.log('[HEALTH] Testing work_queue_list (same route as tools)...');
+  const wqResult = await executeCoreTools('work_queue_list', { limit: 1 });
 
-  const databases = [
-    { id: 'a7493abb-804a-4759-b6ac-aeca62ae23b8', name: 'Feed 2.0' },
-    { id: '6a8d9c43-b084-47b5-bc83-bc363640f2cd', name: 'Work Queue 2.0' },
-  ];
+  if (wqResult?.success) {
+    results.push({
+      name: 'notion:work_queue_list',
+      status: 'pass',
+      message: 'Work Queue list tool works',
+    });
+  } else {
+    results.push({
+      name: 'notion:work_queue_list',
+      status: 'fail',
+      message: `Work Queue list failed: ${wqResult?.error || 'unknown error'}`,
+    });
+  }
 
-  for (const db of databases) {
-    try {
-      const response = await notion.databases.query({
-        database_id: db.id,
-        page_size: 1,
-      });
-      results.push({
-        name: `notion:${db.name}`,
-        status: 'pass',
-        message: `${db.name} accessible`,
-        details: { hasResults: response.results.length > 0 },
-      });
-    } catch (error: any) {
-      results.push({
-        name: `notion:${db.name}`,
-        status: 'fail',
-        message: `${db.name} inaccessible: ${error.code || error.message}`,
-      });
-    }
+  // Test inbox_list - queries Inbox with filters
+  console.log('[HEALTH] Testing inbox_list (same route as tools)...');
+  const inboxResult = await executeCoreTools('inbox_list', { limit: 1 });
+
+  if (inboxResult?.success) {
+    results.push({
+      name: 'notion:inbox_list',
+      status: 'pass',
+      message: 'Inbox list tool works',
+    });
+  } else {
+    results.push({
+      name: 'notion:inbox_list',
+      status: 'fail',
+      message: `Inbox list failed: ${inboxResult?.error || 'unknown error'}`,
+    });
   }
 
   return results;
@@ -340,13 +362,13 @@ async function checkNotionDatabases(): Promise<HealthCheckResult[]> {
 export async function runHealthChecks(): Promise<HealthReport> {
   const checks: HealthCheckResult[] = [];
 
-  // Run all checks
+  // Run all checks - DATABASE ACCESS FIRST (most critical)
   checks.push(...await checkEnvVars());
   checks.push(await checkNotion());
+  checks.push(...await checkNotionDatabases()); // Databases BEFORE Claude - if these fail, bot is broken
   checks.push(...await checkClaude());
   checks.push(...await checkDataFiles());
   checks.push(...await checkVoiceConfigs());
-  checks.push(...await checkNotionDatabases());
 
   // Determine overall status
   const failCount = checks.filter(c => c.status === 'fail').length;
@@ -359,6 +381,8 @@ export async function runHealthChecks(): Promise<HealthReport> {
   const criticalChecks = [
     'env:TELEGRAM_BOT_TOKEN',
     'env:ANTHROPIC_API_KEY',
+    'notion:Inbox 2.0',      // Database access is critical
+    'notion:Work Queue 2.0', // Database access is critical
     'claude:sonnet',
   ];
 

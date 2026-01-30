@@ -135,6 +135,7 @@ export async function handleConversation(ctx: Context): Promise<void> {
   const messages: Anthropic.MessageParam[] = buildMessages(conversation, userContent);
 
   let totalTokens = 0;
+  const toolsUsed: string[] = [];  // Track tools for conversation history
 
   try {
     // Call Claude with tools
@@ -165,6 +166,11 @@ export async function handleConversation(ctx: Context): Promise<void> {
 
       for (const toolUse of toolUseBlocks) {
         logger.info('Executing tool', { tool: toolUse.name, input: toolUse.input });
+
+        // Track tool usage for conversation history
+        if (!toolsUsed.includes(toolUse.name)) {
+          toolsUsed.push(toolUse.name);
+        }
 
         // Keep typing indicator active
         await ctx.replyWithChatAction('typing');
@@ -208,6 +214,12 @@ export async function handleConversation(ctx: Context): Promise<void> {
     );
     const responseText = textContent?.text.trim() || "Done.";
 
+    // Build version with tool context for conversation history
+    // This helps maintain context across turns when tools were used
+    const historyResponse = toolsUsed.length > 0
+      ? `${responseText}\n\n[Actions taken: ${toolsUsed.join(', ')}]`
+      : responseText;
+
     // Classify the message for audit
     const classification = await classifyMessage(messageText);
 
@@ -230,28 +242,30 @@ export async function handleConversation(ctx: Context): Promise<void> {
 
     const auditResult = await createAuditTrail(auditEntry);
 
-    // Update conversation history
+    // Update conversation history (with tool context for continuity)
     await updateConversation(
       userId,
       messageText,
-      responseText,
+      historyResponse,
       auditResult ? {
         pillar: classification.pillar,
         requestType: classification.requestType,
         feedId: auditResult.feedId,
         workQueueId: auditResult.workQueueId,
-      } : undefined
+        toolsUsed: toolsUsed.length > 0 ? toolsUsed : undefined,
+      } : (toolsUsed.length > 0 ? { toolsUsed } : undefined)
     );
 
     // Send response (handle long messages)
+    // Use HTML parse mode for professional formatting
     if (responseText.length > 4000) {
       // Split into chunks for Telegram's message limit
       const chunks = splitMessage(responseText, 4000);
       for (const chunk of chunks) {
-        await ctx.reply(chunk);
+        await ctx.reply(chunk, { parse_mode: 'HTML' });
       }
     } else {
-      await ctx.reply(responseText);
+      await ctx.reply(responseText, { parse_mode: 'HTML' });
     }
 
     // Record usage for stats

@@ -113,6 +113,29 @@ export const SELF_MOD_TOOLS: Anthropic.Tool[] = [
       required: [],
     },
   },
+  {
+    name: 'list_skills',
+    description: 'REQUIRED when Jim asks "what skills", "what can you do", "your capabilities", or similar. Lists installed skills from data/skills/. Do NOT hallucinate skills - always call this tool first.',
+    input_schema: {
+      type: 'object' as const,
+      properties: {},
+      required: [],
+    },
+  },
+  {
+    name: 'read_skill',
+    description: 'Read the full instructions for a specific skill. Use before executing a skill workflow.',
+    input_schema: {
+      type: 'object' as const,
+      properties: {
+        name: {
+          type: 'string',
+          description: 'Skill name (e.g., "research-prompt-builder")',
+        },
+      },
+      required: ['name'],
+    },
+  },
 ];
 
 /**
@@ -133,6 +156,10 @@ export async function executeSelfModTools(
       return await executeCreateSkill(input);
     case 'read_soul':
       return await executeReadSoul();
+    case 'list_skills':
+      return await executeListSkills();
+    case 'read_skill':
+      return await executeReadSkill(input);
     default:
       return null;
   }
@@ -368,5 +395,98 @@ async function executeReadSoul(): Promise<{ success: boolean; result: unknown; e
   } catch (error) {
     logger.error('Read soul failed', { error });
     return { success: false, result: null, error: String(error) };
+  }
+}
+
+async function executeListSkills(): Promise<{ success: boolean; result: unknown; error?: string }> {
+  const skillsDir = join(DATA_DIR, 'skills');
+
+  try {
+    const { readdir } = await import('fs/promises');
+    const entries = await readdir(skillsDir, { withFileTypes: true });
+
+    const skills: Array<{
+      name: string;
+      description: string;
+      trigger: string;
+      path: string;
+    }> = [];
+
+    for (const entry of entries) {
+      if (entry.isDirectory()) {
+        const skillPath = join(skillsDir, entry.name, 'SKILL.md');
+        try {
+          const content = await readFile(skillPath, 'utf-8');
+
+          // Parse frontmatter
+          const match = content.match(/^---\n([\s\S]*?)\n---/);
+          if (match) {
+            const frontmatter = match[1];
+            const nameMatch = frontmatter.match(/name:\s*(.+)/);
+            const descMatch = frontmatter.match(/description:\s*(.+)/);
+            const triggerMatch = frontmatter.match(/trigger:\s*(.+)/);
+
+            skills.push({
+              name: nameMatch?.[1]?.trim() || entry.name,
+              description: descMatch?.[1]?.trim() || 'No description',
+              trigger: triggerMatch?.[1]?.trim() || '',
+              path: `skills/${entry.name}/SKILL.md`,
+            });
+          }
+        } catch {
+          // Skill without SKILL.md, skip
+        }
+      }
+    }
+
+    if (skills.length === 0) {
+      return {
+        success: true,
+        result: {
+          skills: [],
+          message: 'No skills installed yet. Use create_skill to make one.',
+        },
+      };
+    }
+
+    return {
+      success: true,
+      result: {
+        skills,
+        count: skills.length,
+        message: `Found ${skills.length} skill(s). Use read_skill to see full instructions.`,
+      },
+    };
+  } catch (error) {
+    logger.error('List skills failed', { error });
+    return { success: false, result: null, error: String(error) };
+  }
+}
+
+async function executeReadSkill(
+  input: Record<string, unknown>
+): Promise<{ success: boolean; result: unknown; error?: string }> {
+  const name = input.name as string;
+  const skillPath = join(DATA_DIR, 'skills', name, 'SKILL.md');
+
+  try {
+    const content = await readFile(skillPath, 'utf-8');
+
+    // Parse out the instructions section
+    const instructionsMatch = content.match(/## Instructions\n\n([\s\S]*?)(?:\n##|$)/);
+    const instructions = instructionsMatch?.[1]?.trim() || content;
+
+    return {
+      success: true,
+      result: {
+        name,
+        content,
+        instructions,
+        path: `skills/${name}/SKILL.md`,
+      },
+    };
+  } catch (error) {
+    logger.error('Read skill failed', { error, name });
+    return { success: false, result: null, error: `Skill not found: ${name}` };
   }
 }

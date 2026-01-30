@@ -129,10 +129,10 @@ async function executeDispatchResearch(
     // Create work queue item for research
     const { Client } = await import('@notionhq/client');
     const notion = new Client({ auth: process.env.NOTION_API_KEY });
-    const WORK_QUEUE_DATA_SOURCE = '6a8d9c43-b084-47b5-bc83-bc363640f2cd';
+    const WORK_QUEUE_DATABASE_ID = '3d679030-b76b-43bd-92d8-1ac51abb4a28';
 
     const response = await notion.pages.create({
-      parent: { database_id: WORK_QUEUE_DATA_SOURCE },
+      parent: { database_id: WORK_QUEUE_DATABASE_ID },
       properties: {
         'Task': { title: [{ text: { content: `Research: ${researchQuery}` } }] },
         'Type': { select: { name: 'Research' } },
@@ -209,7 +209,7 @@ async function executeDispatchDraft(
   const { Client } = await import('@notionhq/client');
   const notion = new Client({ auth: process.env.NOTION_API_KEY });
 
-  const WORK_QUEUE_DATA_SOURCE = '6a8d9c43-b084-47b5-bc83-bc363640f2cd';
+  const WORK_QUEUE_DATABASE_ID = '3d679030-b76b-43bd-92d8-1ac51abb4a28';
 
   try {
     const taskTitle = `Draft: ${topic} (${format})`;
@@ -222,7 +222,7 @@ async function executeDispatchDraft(
     ].filter(Boolean).join('\n');
 
     const response = await notion.pages.create({
-      parent: { database_id: WORK_QUEUE_DATA_SOURCE },
+      parent: { database_id: WORK_QUEUE_DATABASE_ID },
       properties: {
         'Task': { title: [{ text: { content: taskTitle } }] },
         'Type': { select: { name: 'Draft' } },

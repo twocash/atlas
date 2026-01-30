@@ -21,6 +21,7 @@ export interface ConversationMessage {
     requestType?: string;
     feedId?: string;
     workQueueId?: string;
+    toolsUsed?: string[];  // Track which tools were invoked
   };
 }
 

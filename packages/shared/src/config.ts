@@ -17,16 +17,16 @@ export function formatAtlasName(source?: 'telegram' | 'cli'): string {
   return base;
 }
 
-// Notion Database IDs (DATA SOURCE IDs for API calls)
+// Notion Database IDs (from CLAUDE.md)
 export const ATLAS_DBS = {
-  // Active databases (DATA SOURCE IDs)
-  FEED_2: 'a7493abb-804a-4759-b6ac-aeca62ae23b8',
-  WORK_QUEUE_2: '6a8d9c43-b084-47b5-bc83-bc363640f2cd',
-  INBOX: '4ae9001e-ce13-4211-aeed-d8085ada5abe',  // Supplanted by Telegram
+  // Active databases
+  FEED: '3e8867d58aa5495780c2860dada8c993',
+  WORK_QUEUE: '3d679030-b76b-43bd-92d8-1ac51abb4a28',
+  INBOX: 'f6f638c9-6aee-42a7-8137-df5b6a560f50',
 
-  // Archived (reference only - DO NOT USE)
-  FEED_1_ARCHIVED: '3baa11e8-6dac-437c-9d56-f10a6404b215',
-  WORK_QUEUE_1_ARCHIVED: '27e24f4f-80bf-4afb-9409-d1a62e8fd1f5',
+  // Legacy (reference only - DO NOT USE)
+  INBOX_1_LEGACY: 'c298b60934d248beb2c50942436b8bfe',
+  MEMORY: '2eb780a78eef81fc8694e59d126fe159',
 } as const;
 
 // The Four Pillars

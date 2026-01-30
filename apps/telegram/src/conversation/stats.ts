@@ -14,9 +14,9 @@ const notion = new Client({ auth: process.env.NOTION_API_KEY });
 const DATA_DIR = join(__dirname, '../../data');
 const STATS_FILE = join(DATA_DIR, 'stats.json');
 
-// Data Source IDs
-const FEED_DATA_SOURCE = 'a7493abb-804a-4759-b6ac-aeca62ae23b8';
-const WORK_QUEUE_DATA_SOURCE = '6a8d9c43-b084-47b5-bc83-bc363640f2cd';
+// Notion Database IDs (from CLAUDE.md)
+const FEED_DATABASE_ID = '3e8867d58aa5495780c2860dada8c993';
+const WORK_QUEUE_DATABASE_ID = '3d679030-b76b-43bd-92d8-1ac51abb4a28';
 
 // Cost per 1M tokens (approximate)
 const TOKEN_COSTS = {
@@ -199,7 +199,7 @@ export async function getWorkQueueStats(): Promise<{
   try {
     // Get active items
     const activeResults = await notion.databases.query({
-      database_id: WORK_QUEUE_DATA_SOURCE,
+      database_id: WORK_QUEUE_DATABASE_ID,
       filter: {
         or: [
           { property: 'Status', select: { equals: 'Active' } },
@@ -241,7 +241,7 @@ export async function getWorkQueueStats(): Promise<{
     weekAgo.setDate(weekAgo.getDate() - 7);
 
     const completedResults = await notion.databases.query({
-      database_id: WORK_QUEUE_DATA_SOURCE,
+      database_id: WORK_QUEUE_DATABASE_ID,
       filter: {
         and: [
           { property: 'Status', select: { equals: 'Done' } },
@@ -343,7 +343,7 @@ export async function detectPatterns(): Promise<Array<{
     weekAgo.setDate(weekAgo.getDate() - 30); // Look at last 30 days
 
     const results = await notion.databases.query({
-      database_id: FEED_DATA_SOURCE,
+      database_id: FEED_DATABASE_ID,
       filter: {
         property: 'Date',
         date: { on_or_after: weekAgo.toISOString().split('T')[0] },
