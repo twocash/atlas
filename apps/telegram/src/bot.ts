@@ -12,7 +12,11 @@ import { audit } from "./audit";
 import { routeMessage, routeCallback, cleanupAll, clearUserSession } from "./handlers";
 import { getModelOverride, setModelOverride, MODEL_SHORTCUTS, getModelDisplayName, clearSession } from "./session";
 import { handleAgentCommand } from "./agent-handler";
+import { initBriefings, type BriefingSystem } from "./briefing";
 import type { AtlasContext } from "./types";
+
+// Global briefing system instance
+let briefingSystem: BriefingSystem | null = null;
 
 // Environment configuration
 const TELEGRAM_BOT_TOKEN = process.env.TELEGRAM_BOT_TOKEN!;
@@ -68,6 +72,7 @@ export function createBot(): Bot<AtlasContext> {
       "/status - Bot health\n" +
       "/model - Set AI model\n" +
       "/agent - Spawn specialist agents\n" +
+      "/briefing - Daily briefings (7am/12:30pm/6pm ET)\n" +
       "/new - Clear session"
     );
   });
@@ -142,6 +147,46 @@ export function createBot(): Bot<AtlasContext> {
     }
   });
 
+  // Briefing command - manual briefing control
+  bot.command("briefing", async (ctx) => {
+    const args = ctx.message?.text?.split(" ").slice(1).join(" ").toLowerCase().trim();
+
+    if (!briefingSystem) {
+      await ctx.reply("Briefing system not initialized.");
+      return;
+    }
+
+    if (args === "now") {
+      await ctx.replyWithChatAction("typing");
+      try {
+        await briefingSystem.sendNow();
+      } catch (error) {
+        logger.error("Failed to send manual briefing", { error });
+        await ctx.reply("Failed to send briefing. Check logs.");
+      }
+    } else if (args === "status") {
+      const status = briefingSystem.getStatus();
+      const nextTime = status.nextBriefing
+        ? status.nextBriefing.toLocaleString("en-US", { timeZone: "America/New_York" })
+        : "Unknown";
+
+      await ctx.reply(
+        `📊 Briefing Status\n\n` +
+        `Running: ${status.isRunning ? "Yes" : "No"}\n` +
+        `Next briefing: ${nextTime} ET\n` +
+        `Briefings sent: ${status.briefingsSent}\n` +
+        `Last sent: ${status.lastSent ? status.lastSent.toLocaleString() : "Never"}`
+      );
+    } else {
+      await ctx.reply(
+        `📋 Briefing Commands\n\n` +
+        `/briefing now    — Send briefing immediately\n` +
+        `/briefing status — Show scheduler status\n\n` +
+        `Scheduled: 7am, 12:30pm, 6pm ET`
+      );
+    }
+  });
+
   // ==========================================
   // Generic handlers (AFTER commands)
   // ==========================================
@@ -190,11 +235,18 @@ export async function startBot(bot: Bot<AtlasContext>): Promise<void> {
   // Delete webhook to ensure we're using polling
   await bot.api.deleteWebhook();
 
+  // Initialize briefing system (send to first allowed user)
+  const primaryUserId = parseInt(process.env.TELEGRAM_ALLOWED_USERS!.split(",")[0].trim(), 10);
+  briefingSystem = initBriefings(bot.api, primaryUserId);
+  briefingSystem.start();
+  logger.info("Briefing system initialized", { userId: primaryUserId });
+
   // Start polling
   await bot.start({
     onStart: (botInfo) => {
       logger.info(`Bot started as @${botInfo.username}`);
-      console.log(`\n🤖 Atlas Bot is running as @${botInfo.username}\n`);
+      console.log(`\n🤖 Atlas Bot is running as @${botInfo.username}`);
+      console.log(`📋 Briefings scheduled: 7am, 12:30pm, 6pm ET\n`);
     },
   });
 }
