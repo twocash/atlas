@@ -10,6 +10,8 @@
     "typecheck": "tsc --noEmit",
     "lint": "eslint src/",
     "test": "bun test",
+    "test:e2e": "bun run src/health/test-runner.ts",
+    "health": "bun run src/health/test-runner.ts",
     "test:notion": "bun run src/test-notion.ts",
     "test:claude": "bun run src/test-claude.ts"
   },

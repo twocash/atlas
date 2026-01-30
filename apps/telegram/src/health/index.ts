@@ -1,0 +1,472 @@
+/**
+ * Atlas Telegram Bot - Health Checks
+ *
+ * Validates all services and configuration before startup.
+ * Fails fast if critical dependencies are missing.
+ */
+
+import { Client } from '@notionhq/client';
+import Anthropic from '@anthropic-ai/sdk';
+import { readFile, access } from 'fs/promises';
+import { join } from 'path';
+import { constants } from 'fs';
+
+const DATA_DIR = join(__dirname, '../../data');
+const CONFIG_DIR = join(__dirname, '../../config');
+
+export interface HealthCheckResult {
+  name: string;
+  status: 'pass' | 'fail' | 'warn';
+  message: string;
+  details?: unknown;
+}
+
+export interface HealthReport {
+  overall: 'healthy' | 'degraded' | 'critical';
+  timestamp: string;
+  checks: HealthCheckResult[];
+  canStart: boolean;
+}
+
+/**
+ * Check if a file exists
+ */
+async function fileExists(path: string): Promise<boolean> {
+  try {
+    await access(path, constants.R_OK);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * Check environment variables
+ */
+async function checkEnvVars(): Promise<HealthCheckResult[]> {
+  const results: HealthCheckResult[] = [];
+
+  // Required vars
+  const required = [
+    'TELEGRAM_BOT_TOKEN',
+    'TELEGRAM_ALLOWED_USERS',
+    'NOTION_API_KEY',
+    'ANTHROPIC_API_KEY',
+  ];
+
+  for (const varName of required) {
+    const value = process.env[varName];
+    if (!value) {
+      results.push({
+        name: `env:${varName}`,
+        status: 'fail',
+        message: `Missing required environment variable: ${varName}`,
+      });
+    } else if (value.length < 10) {
+      results.push({
+        name: `env:${varName}`,
+        status: 'warn',
+        message: `${varName} seems too short - may be invalid`,
+      });
+    } else {
+      results.push({
+        name: `env:${varName}`,
+        status: 'pass',
+        message: `${varName} is set (${value.length} chars)`,
+      });
+    }
+  }
+
+  // Optional vars
+  const optional = ['ATLAS_NODE_NAME', 'ATLAS_CONVERSATIONAL_UX', 'CLAUDE_WORKING_DIR'];
+  for (const varName of optional) {
+    const value = process.env[varName];
+    results.push({
+      name: `env:${varName}`,
+      status: value ? 'pass' : 'warn',
+      message: value ? `${varName} = ${value}` : `${varName} not set (optional)`,
+    });
+  }
+
+  return results;
+}
+
+/**
+ * Check Notion connectivity
+ */
+async function checkNotion(): Promise<HealthCheckResult> {
+  const apiKey = process.env.NOTION_API_KEY;
+  if (!apiKey) {
+    return {
+      name: 'notion:connection',
+      status: 'fail',
+      message: 'NOTION_API_KEY not set',
+    };
+  }
+
+  try {
+    const notion = new Client({ auth: apiKey });
+    const user = await notion.users.me({});
+
+    return {
+      name: 'notion:connection',
+      status: 'pass',
+      message: `Connected as ${user.name || user.id}`,
+      details: { userId: user.id, type: user.type },
+    };
+  } catch (error: any) {
+    return {
+      name: 'notion:connection',
+      status: 'fail',
+      message: `Notion connection failed: ${error.code || error.message}`,
+      details: { error: error.code, status: error.status },
+    };
+  }
+}
+
+/**
+ * Check Claude API connectivity
+ */
+async function checkClaude(): Promise<HealthCheckResult[]> {
+  const results: HealthCheckResult[] = [];
+  const apiKey = process.env.ANTHROPIC_API_KEY;
+
+  if (!apiKey) {
+    return [{
+      name: 'claude:connection',
+      status: 'fail',
+      message: 'ANTHROPIC_API_KEY not set',
+    }];
+  }
+
+  const anthropic = new Anthropic({ apiKey });
+
+  // Test Sonnet (primary model)
+  try {
+    const response = await anthropic.messages.create({
+      model: 'claude-sonnet-4-20250514',
+      max_tokens: 10,
+      messages: [{ role: 'user', content: 'Say "ok"' }],
+    });
+    results.push({
+      name: 'claude:sonnet',
+      status: 'pass',
+      message: 'Claude Sonnet 4 connected',
+      details: { model: 'claude-sonnet-4-20250514' },
+    });
+  } catch (error: any) {
+    results.push({
+      name: 'claude:sonnet',
+      status: 'fail',
+      message: `Claude Sonnet failed: ${error.error?.message || error.message}`,
+      details: { error: error.error?.type },
+    });
+  }
+
+  // Test Haiku (classification model) - use correct model ID
+  try {
+    const response = await anthropic.messages.create({
+      model: 'claude-3-5-haiku-20241022',
+      max_tokens: 10,
+      messages: [{ role: 'user', content: 'Say "ok"' }],
+    });
+    results.push({
+      name: 'claude:haiku',
+      status: 'pass',
+      message: 'Claude Haiku connected',
+      details: { model: 'claude-3-5-haiku-20241022' },
+    });
+  } catch (error: any) {
+    results.push({
+      name: 'claude:haiku',
+      status: 'warn',
+      message: `Claude Haiku failed (will use Sonnet): ${error.error?.message || error.message}`,
+      details: { error: error.error?.type },
+    });
+  }
+
+  return results;
+}
+
+/**
+ * Check data files exist
+ */
+async function checkDataFiles(): Promise<HealthCheckResult[]> {
+  const results: HealthCheckResult[] = [];
+
+  const requiredFiles = [
+    { path: join(DATA_DIR, 'SOUL.md'), name: 'SOUL.md' },
+    { path: join(DATA_DIR, 'USER.md'), name: 'USER.md' },
+    { path: join(DATA_DIR, 'MEMORY.md'), name: 'MEMORY.md' },
+  ];
+
+  for (const file of requiredFiles) {
+    const exists = await fileExists(file.path);
+    if (exists) {
+      try {
+        const content = await readFile(file.path, 'utf-8');
+        results.push({
+          name: `data:${file.name}`,
+          status: 'pass',
+          message: `${file.name} exists (${content.length} bytes)`,
+        });
+      } catch (error) {
+        results.push({
+          name: `data:${file.name}`,
+          status: 'warn',
+          message: `${file.name} exists but unreadable`,
+        });
+      }
+    } else {
+      results.push({
+        name: `data:${file.name}`,
+        status: 'fail',
+        message: `${file.name} missing`,
+      });
+    }
+  }
+
+  // Check directories
+  const requiredDirs = ['conversations', 'skills', 'memory', 'temp', 'exports'];
+  for (const dir of requiredDirs) {
+    const exists = await fileExists(join(DATA_DIR, dir));
+    results.push({
+      name: `data:${dir}/`,
+      status: exists ? 'pass' : 'warn',
+      message: exists ? `${dir}/ exists` : `${dir}/ missing (will be created)`,
+    });
+  }
+
+  return results;
+}
+
+/**
+ * Check voice config files
+ */
+async function checkVoiceConfigs(): Promise<HealthCheckResult[]> {
+  const results: HealthCheckResult[] = [];
+
+  const voiceFiles = ['grove.md', 'consulting.md', 'linkedin.md', 'personal.md'];
+  const voiceDir = join(CONFIG_DIR, 'voice');
+
+  for (const file of voiceFiles) {
+    const path = join(voiceDir, file);
+    const exists = await fileExists(path);
+    results.push({
+      name: `voice:${file}`,
+      status: exists ? 'pass' : 'warn',
+      message: exists ? `${file} loaded` : `${file} missing (optional)`,
+    });
+  }
+
+  // Check editorial memory symlink
+  const editorialPath = join(voiceDir, 'editorial_memory.md');
+  const exists = await fileExists(editorialPath);
+  if (exists) {
+    try {
+      const content = await readFile(editorialPath, 'utf-8');
+      results.push({
+        name: 'voice:editorial_memory.md',
+        status: 'pass',
+        message: `editorial_memory.md linked (${content.length} bytes)`,
+      });
+    } catch {
+      results.push({
+        name: 'voice:editorial_memory.md',
+        status: 'warn',
+        message: 'editorial_memory.md symlink broken',
+      });
+    }
+  } else {
+    results.push({
+      name: 'voice:editorial_memory.md',
+      status: 'warn',
+      message: 'editorial_memory.md not linked (optional)',
+    });
+  }
+
+  return results;
+}
+
+/**
+ * Check Notion database access
+ */
+async function checkNotionDatabases(): Promise<HealthCheckResult[]> {
+  const results: HealthCheckResult[] = [];
+  const apiKey = process.env.NOTION_API_KEY;
+
+  if (!apiKey) {
+    return [{
+      name: 'notion:databases',
+      status: 'fail',
+      message: 'Cannot check databases - no API key',
+    }];
+  }
+
+  const notion = new Client({ auth: apiKey });
+
+  const databases = [
+    { id: 'a7493abb-804a-4759-b6ac-aeca62ae23b8', name: 'Feed 2.0' },
+    { id: '6a8d9c43-b084-47b5-bc83-bc363640f2cd', name: 'Work Queue 2.0' },
+  ];
+
+  for (const db of databases) {
+    try {
+      const response = await notion.databases.query({
+        database_id: db.id,
+        page_size: 1,
+      });
+      results.push({
+        name: `notion:${db.name}`,
+        status: 'pass',
+        message: `${db.name} accessible`,
+        details: { hasResults: response.results.length > 0 },
+      });
+    } catch (error: any) {
+      results.push({
+        name: `notion:${db.name}`,
+        status: 'fail',
+        message: `${db.name} inaccessible: ${error.code || error.message}`,
+      });
+    }
+  }
+
+  return results;
+}
+
+/**
+ * Run all health checks
+ */
+export async function runHealthChecks(): Promise<HealthReport> {
+  const checks: HealthCheckResult[] = [];
+
+  // Run all checks
+  checks.push(...await checkEnvVars());
+  checks.push(await checkNotion());
+  checks.push(...await checkClaude());
+  checks.push(...await checkDataFiles());
+  checks.push(...await checkVoiceConfigs());
+  checks.push(...await checkNotionDatabases());
+
+  // Determine overall status
+  const failCount = checks.filter(c => c.status === 'fail').length;
+  const warnCount = checks.filter(c => c.status === 'warn').length;
+
+  let overall: 'healthy' | 'degraded' | 'critical';
+  let canStart = true;
+
+  // Critical failures that prevent startup
+  const criticalChecks = [
+    'env:TELEGRAM_BOT_TOKEN',
+    'env:ANTHROPIC_API_KEY',
+    'claude:sonnet',
+  ];
+
+  const criticalFails = checks.filter(
+    c => criticalChecks.includes(c.name) && c.status === 'fail'
+  );
+
+  if (criticalFails.length > 0) {
+    overall = 'critical';
+    canStart = false;
+  } else if (failCount > 0) {
+    overall = 'degraded';
+    canStart = true; // Can start but with reduced functionality
+  } else if (warnCount > 0) {
+    overall = 'degraded';
+    canStart = true;
+  } else {
+    overall = 'healthy';
+    canStart = true;
+  }
+
+  return {
+    overall,
+    timestamp: new Date().toISOString(),
+    checks,
+    canStart,
+  };
+}
+
+/**
+ * Format health report for console output
+ */
+export function formatHealthReport(report: HealthReport): string {
+  const lines: string[] = [];
+
+  lines.push('');
+  lines.push('═══════════════════════════════════════════════════════════');
+  lines.push('                    ATLAS HEALTH CHECK                      ');
+  lines.push('═══════════════════════════════════════════════════════════');
+  lines.push('');
+
+  const statusIcon = {
+    pass: '✓',
+    fail: '✗',
+    warn: '⚠',
+  };
+
+  const statusColor = {
+    pass: '\x1b[32m', // green
+    fail: '\x1b[31m', // red
+    warn: '\x1b[33m', // yellow
+  };
+
+  const reset = '\x1b[0m';
+
+  // Group by category
+  const categories: Record<string, HealthCheckResult[]> = {};
+  for (const check of report.checks) {
+    const category = check.name.split(':')[0];
+    if (!categories[category]) categories[category] = [];
+    categories[category].push(check);
+  }
+
+  for (const [category, checks] of Object.entries(categories)) {
+    lines.push(`  ${category.toUpperCase()}`);
+    lines.push(`  ${'─'.repeat(50)}`);
+
+    for (const check of checks) {
+      const icon = statusIcon[check.status];
+      const color = statusColor[check.status];
+      const name = check.name.split(':')[1];
+      lines.push(`  ${color}${icon}${reset} ${name.padEnd(25)} ${check.message}`);
+    }
+    lines.push('');
+  }
+
+  // Summary
+  const passCount = report.checks.filter(c => c.status === 'pass').length;
+  const failCount = report.checks.filter(c => c.status === 'fail').length;
+  const warnCount = report.checks.filter(c => c.status === 'warn').length;
+
+  lines.push('═══════════════════════════════════════════════════════════');
+
+  const overallColor = report.overall === 'healthy' ? '\x1b[32m' :
+                       report.overall === 'degraded' ? '\x1b[33m' : '\x1b[31m';
+
+  lines.push(`  Status: ${overallColor}${report.overall.toUpperCase()}${reset}`);
+  lines.push(`  Passed: ${passCount}  Warnings: ${warnCount}  Failed: ${failCount}`);
+  lines.push(`  Can Start: ${report.canStart ? 'YES' : 'NO'}`);
+  lines.push('═══════════════════════════════════════════════════════════');
+  lines.push('');
+
+  return lines.join('\n');
+}
+
+/**
+ * Run health check and exit if critical
+ */
+export async function healthCheckOrDie(): Promise<void> {
+  const report = await runHealthChecks();
+  console.log(formatHealthReport(report));
+
+  if (!report.canStart) {
+    console.error('\n❌ Critical health check failures. Cannot start.\n');
+    process.exit(1);
+  }
+
+  if (report.overall === 'degraded') {
+    console.warn('\n⚠️  Starting with degraded functionality.\n');
+  }
+}

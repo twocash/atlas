@@ -41,3 +41,10 @@ temp/
 # Atlas system directory (local state)
 .atlas/*
 !.atlas/README.md
+
+# User data (generated at runtime)
+data/conversations/
+data/stats.json
+data/temp/
+data/exports/
+

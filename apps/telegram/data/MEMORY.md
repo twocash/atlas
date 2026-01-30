@@ -16,3 +16,8 @@
 ---
 
 *Last updated: 2026-01-30*
+
+
+## Patterns
+
+Testing session 2026-01-30: Multiple infrastructure bugs discovered during initial testing phase.

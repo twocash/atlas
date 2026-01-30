@@ -11,23 +11,13 @@ dotenv.config({ override: true });
 import { createBot, startBot } from "./bot";
 import { logger } from "./logger";
 import { initAtlasSystem, updateHeartbeat, logUpdate } from "./atlas-system";
+import { healthCheckOrDie } from "./health";
 
 async function main() {
   logger.info("Starting Atlas Telegram Bot...");
 
-  // Validate required environment variables
-  const requiredEnvVars = [
-    "TELEGRAM_BOT_TOKEN",
-    "TELEGRAM_ALLOWED_USERS",
-    "NOTION_API_KEY",
-    "ANTHROPIC_API_KEY",
-  ];
-
-  const missing = requiredEnvVars.filter((v) => !process.env[v]);
-  if (missing.length > 0) {
-    logger.error(`Missing required environment variables: ${missing.join(", ")}`);
-    process.exit(1);
-  }
+  // Run health checks (exits if critical failures)
+  await healthCheckOrDie();
 
   // Initialize Atlas system directory
   initAtlasSystem();

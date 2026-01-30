@@ -131,19 +131,26 @@ export function buildMessages(
 ): Array<{ role: 'user' | 'assistant'; content: string }> {
   const messages: Array<{ role: 'user' | 'assistant'; content: string }> = [];
 
-  // Add history
+  // Add history (filter out empty messages)
   for (const msg of conversation.messages) {
+    // Skip empty messages - Claude API rejects them
+    if (!msg.content || msg.content.trim().length === 0) {
+      continue;
+    }
     messages.push({
       role: msg.role,
       content: msg.content,
     });
   }
 
-  // Add current message
-  messages.push({
-    role: 'user',
-    content: currentMessage,
-  });
+  // Add current message (only if non-empty)
+  const trimmedCurrent = currentMessage?.trim() || '';
+  if (trimmedCurrent.length > 0) {
+    messages.push({
+      role: 'user',
+      content: trimmedCurrent,
+    });
+  }
 
   return messages;
 }
