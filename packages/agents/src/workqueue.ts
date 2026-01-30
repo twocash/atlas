@@ -109,17 +109,23 @@ export class NotionWorkQueueUpdater implements WorkQueueUpdater {
   }
 
   /**
-   * Set output/result on completion
+   * Set output URL on completion (Output field is URL type)
+   * If output is not a URL, appends to Notes instead
    */
   async setOutput(itemId: string, output: string): Promise<void> {
-    await getNotionClient().pages.update({
-      page_id: itemId,
-      properties: {
-        Output: {
-          rich_text: [{ text: { content: truncateText(output, 2000) } }],
+    const isUrl = output.startsWith("http://") || output.startsWith("https://");
+
+    if (isUrl) {
+      await getNotionClient().pages.update({
+        page_id: itemId,
+        properties: {
+          Output: { url: output },
         },
-      },
-    });
+      });
+    } else {
+      // Not a URL - append to Notes instead
+      await this.updateStatus(itemId, "Done", `Output: ${output}`);
+    }
   }
 }
 
@@ -214,7 +220,7 @@ export async function syncAgentProgress(
 
 /**
  * Sync agent completion to Work Queue
- * Sets status to "Done", populates Output, sets Completed date
+ * Sets status to "Done", writes results to page body as markdown
  */
 export async function syncAgentComplete(
   workItemId: string,
@@ -223,62 +229,195 @@ export async function syncAgentComplete(
 ): Promise<void> {
   const notion = getNotionClient();
 
-  // Build output summary
-  const outputParts: string[] = [];
+  // Build notes summary
+  const notesParts: string[] = [];
 
   if (result.summary) {
-    outputParts.push(result.summary);
-  }
-
-  if (result.artifacts && result.artifacts.length > 0) {
-    outputParts.push(`\nArtifacts:\n${result.artifacts.map((a) => `• ${a}`).join("\n")}`);
+    notesParts.push(result.summary.substring(0, 200));
   }
 
   if (result.metrics) {
     const duration = Math.round(result.metrics.durationMs / 1000);
-    outputParts.push(`\nCompleted in ${duration}s`);
-    if (result.metrics.tokensUsed) {
-      outputParts.push(`Tokens: ${result.metrics.tokensUsed}`);
-    }
+    notesParts.push(`${duration}s`);
   }
 
-  const output = outputParts.join("\n") || "Task completed successfully";
+  const notesUpdate = notesParts.join(" | ") || "Task completed";
+
+  // Check if we have a URL artifact for the Output field
+  const outputUrl = result.artifacts?.find(
+    (a) => a.startsWith("http://") || a.startsWith("https://")
+  );
+
+  // Build properties update
+  const properties: Record<string, unknown> = {
+    Status: { select: { name: "Done" } },
+    Completed: { date: { start: formatDate(agent.completedAt || new Date()) } },
+    Notes: { rich_text: [{ text: { content: truncateText(notesUpdate, 2000) } }] },
+  };
+
+  // Only set Output if we have a valid URL
+  if (outputUrl) {
+    properties.Output = { url: outputUrl };
+  }
 
   await notion.pages.update({
     page_id: workItemId,
-    properties: {
-      Status: {
-        select: { name: "Done" },
-      },
-      Output: {
-        rich_text: [{ text: { content: truncateText(output, 2000) } }],
-      },
-      Completed: {
-        date: { start: formatDate(agent.completedAt || new Date()) },
-      },
+    properties,
+  });
+
+  // Write research results to page body as markdown blocks
+  await appendResearchResultsToPage(workItemId, agent, result);
+}
+
+/**
+ * Append research results to Notion page body as formatted blocks
+ */
+async function appendResearchResultsToPage(
+  pageId: string,
+  agent: Agent,
+  result: AgentResult
+): Promise<void> {
+  const notion = getNotionClient();
+
+  // Build blocks for the page content
+  const blocks: Array<{
+    object: "block";
+    type: string;
+    [key: string]: unknown;
+  }> = [];
+
+  // Header with timestamp
+  blocks.push({
+    object: "block",
+    type: "heading_2",
+    heading_2: {
+      rich_text: [{ type: "text", text: { content: `Research Results` } }],
     },
   });
 
-  // Add completion comment
-  await notion.comments.create({
-    parent: { page_id: workItemId },
-    rich_text: [
-      {
-        text: {
-          content: `[AGENT COMPLETED - ${formatDate()}]
-
-Agent ID: ${agent.id}
-Result: ${result.success ? "SUCCESS" : "COMPLETED WITH ISSUES"}
-
-${result.summary || "Task finished."}${
-            result.artifacts && result.artifacts.length > 0
-              ? `\n\nArtifacts produced:\n${result.artifacts.map((a) => `• ${a}`).join("\n")}`
-              : ""
-          }`,
-        },
-      },
-    ],
+  // Metadata callout
+  const metaText = `Agent: ${agent.type} | Completed: ${formatDate(agent.completedAt || new Date())}${result.metrics ? ` | ${Math.round(result.metrics.durationMs / 1000)}s` : ""}`;
+  blocks.push({
+    object: "block",
+    type: "callout",
+    callout: {
+      rich_text: [{ type: "text", text: { content: metaText } }],
+      icon: { type: "emoji", emoji: "🤖" },
+    },
   });
+
+  // Summary section
+  if (result.summary) {
+    blocks.push({
+      object: "block",
+      type: "heading_3",
+      heading_3: {
+        rich_text: [{ type: "text", text: { content: "Summary" } }],
+      },
+    });
+
+    // Split summary into paragraphs
+    const summaryParagraphs = result.summary.split("\n\n").filter(Boolean);
+    for (const para of summaryParagraphs.slice(0, 5)) {
+      blocks.push({
+        object: "block",
+        type: "paragraph",
+        paragraph: {
+          rich_text: [{ type: "text", text: { content: truncateText(para, 2000) } }],
+        },
+      });
+    }
+  }
+
+  // Findings section (for research results)
+  const researchOutput = result.output as {
+    findings?: Array<{ claim: string; source: string; url: string }>;
+    sources?: string[];
+  } | undefined;
+
+  if (researchOutput?.findings && researchOutput.findings.length > 0) {
+    blocks.push({
+      object: "block",
+      type: "heading_3",
+      heading_3: {
+        rich_text: [{ type: "text", text: { content: "Key Findings" } }],
+      },
+    });
+
+    for (const finding of researchOutput.findings.slice(0, 10)) {
+      // Each finding as a bulleted list item with source link
+      const findingText = finding.url
+        ? `${finding.claim}`
+        : finding.claim;
+
+      blocks.push({
+        object: "block",
+        type: "bulleted_list_item",
+        bulleted_list_item: {
+          rich_text: [
+            { type: "text", text: { content: findingText } },
+            ...(finding.source
+              ? [
+                  { type: "text", text: { content: " — " } },
+                  {
+                    type: "text",
+                    text: {
+                      content: finding.source,
+                      link: finding.url ? { url: finding.url } : null,
+                    },
+                    annotations: { italic: true },
+                  },
+                ]
+              : []),
+          ],
+        },
+      });
+    }
+  }
+
+  // Sources section
+  if (researchOutput?.sources && researchOutput.sources.length > 0) {
+    blocks.push({
+      object: "block",
+      type: "heading_3",
+      heading_3: {
+        rich_text: [{ type: "text", text: { content: "Sources" } }],
+      },
+    });
+
+    for (const source of researchOutput.sources.slice(0, 10)) {
+      blocks.push({
+        object: "block",
+        type: "bulleted_list_item",
+        bulleted_list_item: {
+          rich_text: [
+            {
+              type: "text",
+              text: { content: source, link: { url: source } },
+            },
+          ],
+        },
+      });
+    }
+  }
+
+  // Divider at end
+  blocks.push({
+    object: "block",
+    type: "divider",
+    divider: {},
+  });
+
+  // Append blocks to page
+  try {
+    await notion.blocks.children.append({
+      block_id: pageId,
+      children: blocks as any,
+    });
+  } catch (error) {
+    console.error("[WorkQueue] Failed to append blocks to page:", error);
+    // Don't throw - page properties were already updated
+  }
 }
 
 /**

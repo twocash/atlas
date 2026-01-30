@@ -4,6 +4,11 @@
  * Autonomous agent for web research tasks.
  * Uses Gemini 2.0 Flash with Google Search grounding for
  * live web research with proper source citations.
+ *
+ * Research Depths:
+ * - light: Quick overview (1-2k tokens, 2-3 sources)
+ * - standard: Thorough analysis (5-8k tokens, 5-8 sources)
+ * - deep: Academic rigor (15-25k tokens, 10+ sources, Chicago citations)
  */
 
 import type { AgentRegistry } from "../registry";
@@ -14,19 +19,24 @@ import type { Agent, AgentResult, AgentMetrics } from "../types";
 // ==========================================
 
 /**
+ * Research depth levels
+ */
+export type ResearchDepth = "light" | "standard" | "deep";
+
+/**
  * Configuration for a research task
  */
 export interface ResearchConfig {
   /** The research query/question */
   query: string;
 
-  /** Research depth - affects number of sources */
-  depth?: "quick" | "thorough";
+  /** Research depth - affects rigor, sources, and token budget */
+  depth?: ResearchDepth;
 
   /** Focus area to narrow research */
   focus?: string;
 
-  /** Maximum sources to include */
+  /** Maximum sources to include (overrides depth default) */
   maxSources?: number;
 }
 
@@ -42,6 +52,12 @@ export interface ResearchFinding {
 
   /** URL of the source */
   url: string;
+
+  /** Author if known (for deep research) */
+  author?: string;
+
+  /** Publication date if known */
+  date?: string;
 
   /** Relevance score (0-100) */
   relevance?: number;
@@ -67,19 +83,46 @@ export interface ResearchResult {
   focus?: string;
 
   /** Research depth used */
-  depth: "quick" | "thorough";
+  depth: ResearchDepth;
+
+  /** Chicago-style bibliography (deep research only) */
+  bibliography?: string[];
 }
 
 // ==========================================
-// Research Agent Configuration
+// Research Depth Configuration
 // ==========================================
 
-const RESEARCH_DEFAULTS = {
-  depth: "quick" as const,
-  maxSourcesQuick: 3,
-  maxSourcesThorough: 8,
-  model: "gemini-2.0-flash",
-  maxTokens: 8192,
+interface DepthConfig {
+  maxTokens: number;
+  targetSources: number;
+  minSources: number;
+  description: string;
+  citationStyle: "inline" | "chicago";
+}
+
+const DEPTH_CONFIG: Record<ResearchDepth, DepthConfig> = {
+  light: {
+    maxTokens: 2048,
+    targetSources: 3,
+    minSources: 2,
+    description: "Quick overview with key facts",
+    citationStyle: "inline",
+  },
+  standard: {
+    maxTokens: 8192,
+    targetSources: 6,
+    minSources: 4,
+    description: "Thorough analysis with multiple perspectives",
+    citationStyle: "inline",
+  },
+  deep: {
+    maxTokens: 25000,
+    targetSources: 12,
+    minSources: 8,
+    description: "Academic-grade research with rigorous citations",
+    citationStyle: "chicago",
+  },
 };
 
 // ==========================================
@@ -87,7 +130,7 @@ const RESEARCH_DEFAULTS = {
 // ==========================================
 
 interface GeminiClient {
-  generateContent: (prompt: string) => Promise<GeminiResponse>;
+  generateContent: (prompt: string, maxTokens: number) => Promise<GeminiResponse>;
 }
 
 interface GeminiResponse {
@@ -105,19 +148,20 @@ async function getGeminiClient(): Promise<GeminiClient> {
       throw new Error("GEMINI_API_KEY environment variable is required");
     }
 
-    // Dynamic import for Google Generative AI SDK
     const { GoogleGenerativeAI } = await import("@google/generative-ai");
-
     const genAI = new GoogleGenerativeAI(apiKey);
 
-    // Get model with Google Search grounding enabled
-    const model = genAI.getGenerativeModel({
-      model: "gemini-2.0-flash",
-      tools: [{ googleSearch: {} }],
-    });
-
     _geminiClient = {
-      generateContent: async (prompt: string): Promise<GeminiResponse> => {
+      generateContent: async (prompt: string, maxTokens: number): Promise<GeminiResponse> => {
+        // Get model with Google Search grounding enabled
+        const model = genAI.getGenerativeModel({
+          model: "gemini-2.0-flash",
+          tools: [{ googleSearch: {} }],
+          generationConfig: {
+            maxOutputTokens: maxTokens,
+          },
+        });
+
         const result = await model.generateContent(prompt);
         const response = result.response;
 
@@ -148,26 +192,25 @@ async function getGeminiClient(): Promise<GeminiClient> {
 }
 
 // ==========================================
-// System Prompts
+// System Prompts by Depth
 // ==========================================
 
 function buildResearchPrompt(config: ResearchConfig): string {
-  const maxSources =
-    config.depth === "thorough"
-      ? RESEARCH_DEFAULTS.maxSourcesThorough
-      : RESEARCH_DEFAULTS.maxSourcesQuick;
+  const depth = config.depth || "standard";
+  const depthCfg = DEPTH_CONFIG[depth];
 
-  return `You are Atlas Research Agent, an autonomous research assistant with access to Google Search.
+  const basePrompt = `You are Atlas Research Agent, an autonomous research assistant with access to Google Search.
 
 ## Research Task
 Query: "${config.query}"
 ${config.focus ? `Focus Area: ${config.focus}` : ""}
-Depth: ${config.depth || "quick"} (target ${maxSources} sources)
+Depth: ${depth} — ${depthCfg.description}
+Target Sources: ${config.maxSources || depthCfg.targetSources}+
 
 ## Instructions
 
 Use Google Search to find current, authoritative information about this topic.
-Analyze multiple sources and synthesize findings into a coherent response.
+${getDepthInstructions(depth)}
 
 ## Output Format
 
@@ -175,29 +218,95 @@ Provide your response in this exact JSON format:
 
 \`\`\`json
 {
-  "summary": "A 2-4 paragraph executive summary of key findings",
+  "summary": "${getSummaryGuidance(depth)}",
   "findings": [
     {
       "claim": "Specific fact or insight discovered",
       "source": "Name of the source",
-      "url": "https://source-url.com",
-      "relevance": 95
+      "url": "https://source-url.com"${depth === "deep" ? ',\n      "author": "Author Name if available",\n      "date": "Publication date if available"' : ""}
     }
   ],
-  "sources": ["https://url1.com", "https://url2.com"]
+  "sources": ["https://url1.com", "https://url2.com"]${depth === "deep" ? ',\n  "bibliography": ["Chicago-style citation 1", "Chicago-style citation 2"]' : ""}
 }
 \`\`\`
 
-## Guidelines
-
-- Use Google Search to find recent, authoritative sources
-- Cross-reference claims across multiple sources when possible
-- Include specific data points, quotes, or statistics
-- Be objective - present findings without bias
-- If information conflicts, note the discrepancy
-${config.focus ? `- Focus specifically on: ${config.focus}` : ""}
+${getQualityGuidelines(depth)}
 
 Begin your research now.`;
+
+  return basePrompt;
+}
+
+function getDepthInstructions(depth: ResearchDepth): string {
+  switch (depth) {
+    case "light":
+      return `This is a QUICK research task. Focus on:
+- Getting the key facts fast
+- 2-3 authoritative sources maximum
+- Brief, actionable summary
+- Skip deep analysis — surface-level overview only`;
+
+    case "standard":
+      return `This is a STANDARD research task. Focus on:
+- Comprehensive coverage of the topic
+- Multiple perspectives from 5-8 sources
+- Analyze and synthesize information
+- Cross-reference claims across sources
+- Note any conflicting information`;
+
+    case "deep":
+      return `This is a DEEP RESEARCH task requiring ACADEMIC RIGOR. You must:
+- Conduct exhaustive research from 10+ authoritative sources
+- Prioritize peer-reviewed, academic, and primary sources
+- Cross-reference ALL claims across multiple sources
+- Note methodology, sample sizes, and limitations where relevant
+- Identify consensus views vs. minority positions
+- Flag any conflicting evidence or ongoing debates
+- Provide full Chicago-style citations for EVERY source
+- Include author names, publication dates, and access dates
+- Distinguish between primary and secondary sources`;
+  }
+}
+
+function getSummaryGuidance(depth: ResearchDepth): string {
+  switch (depth) {
+    case "light":
+      return "2-3 sentence executive summary with key takeaways";
+    case "standard":
+      return "2-4 paragraph summary covering main findings, key insights, and implications";
+    case "deep":
+      return "Comprehensive 4-6 paragraph academic summary including: research context, methodology overview, key findings with evidence strength, limitations, areas of consensus/debate, and implications for further research";
+  }
+}
+
+function getQualityGuidelines(depth: ResearchDepth): string {
+  switch (depth) {
+    case "light":
+      return `## Guidelines
+- Speed over depth — get the essentials
+- Prefer recent, well-known sources
+- One source per major claim is acceptable`;
+
+    case "standard":
+      return `## Guidelines
+- Balance depth with practicality
+- Cross-reference important claims
+- Include specific data points and statistics
+- Note publication dates for time-sensitive info
+- Be objective — present multiple viewpoints`;
+
+    case "deep":
+      return `## Quality Standards (REQUIRED)
+- EVERY factual claim must cite a source
+- Prefer: peer-reviewed > government/institutional > reputable journalism > other
+- Note the TYPE of source (study, report, news article, etc.)
+- Include sample sizes and methodologies for research studies
+- Flag limitations: small samples, self-reported data, potential conflicts
+- Chicago citations MUST include: Author(s), "Title," Publication, Date, URL, Accessed Date
+- Example citation: Smith, John. "AI Coding Assistants in 2025." Tech Review, January 15, 2025. https://example.com/article. Accessed January 30, 2026.
+- If a source lacks author, use organization name
+- Distinguish opinion/editorial from factual reporting`;
+  }
 }
 
 // ==========================================
@@ -215,24 +324,25 @@ export async function executeResearch(
   const startTime = Date.now();
   let apiCalls = 0;
 
-  const depth = config.depth || RESEARCH_DEFAULTS.depth;
+  const depth = config.depth || "standard";
+  const depthCfg = DEPTH_CONFIG[depth];
 
   try {
     // Report starting
-    await registry.updateProgress(agent.id, 10, "Initializing research");
+    await registry.updateProgress(agent.id, 5, `Starting ${depth} research`);
 
     // Get Gemini client with grounding
     const gemini = await getGeminiClient();
-    await registry.updateProgress(agent.id, 20, "Searching with Google");
+    await registry.updateProgress(agent.id, 15, "Searching with Google");
 
     // Build prompt and execute
-    const prompt = buildResearchPrompt({ ...config, depth });
+    const prompt = buildResearchPrompt(config);
 
-    await registry.updateProgress(agent.id, 40, "Analyzing sources");
-    const response = await gemini.generateContent(prompt);
+    await registry.updateProgress(agent.id, 30, `Analyzing sources (${depth})`);
+    const response = await gemini.generateContent(prompt, depthCfg.maxTokens);
     apiCalls++;
 
-    await registry.updateProgress(agent.id, 80, "Synthesizing findings");
+    await registry.updateProgress(agent.id, 75, "Synthesizing findings");
 
     // Parse research result from response
     const researchResult = parseResearchResponse(
@@ -241,6 +351,13 @@ export async function executeResearch(
       config,
       depth
     );
+
+    // Validate source count for deep research
+    if (depth === "deep" && researchResult.sources.length < depthCfg.minSources) {
+      console.warn(
+        `[Research Agent] Deep research returned only ${researchResult.sources.length} sources (min: ${depthCfg.minSources})`
+      );
+    }
 
     await registry.updateProgress(agent.id, 95, "Finalizing report");
 
@@ -287,7 +404,7 @@ function parseResearchResponse(
   text: string,
   citations: Array<{ url: string; title: string }>,
   config: ResearchConfig,
-  depth: "quick" | "thorough"
+  depth: ResearchDepth
 ): ResearchResult {
   // Try to extract JSON from the response
   const jsonMatch = text.match(/```json\s*([\s\S]*?)\s*```/);
@@ -327,6 +444,7 @@ function parseResearchResponse(
         query: config.query,
         focus: config.focus,
         depth,
+        bibliography: parsed.bibliography,
       };
     } catch {
       // JSON parsing failed, fall through to text extraction
@@ -349,6 +467,7 @@ function parseResearchResponse(
         query: config.query,
         focus: config.focus,
         depth,
+        bibliography: parsed.bibliography,
       };
     }
   } catch {
@@ -380,14 +499,24 @@ function parseResearchResponse(
  *
  * @example
  * ```typescript
+ * // Light research - quick facts
  * const result = await runResearchAgent(registry, {
- *   query: "What are the pricing models for AI coding assistants?",
- *   depth: "thorough",
+ *   query: "What is the current price of Bitcoin?",
+ *   depth: "light"
+ * });
+ *
+ * // Standard research - thorough analysis
+ * const result = await runResearchAgent(registry, {
+ *   query: "Compare AI coding assistants",
+ *   depth: "standard",
  *   focus: "pricing"
  * });
  *
- * console.log(result.summary);
- * result.findings.forEach(f => console.log(`- ${f.claim} [${f.source}]`));
+ * // Deep research - academic rigor
+ * const result = await runResearchAgent(registry, {
+ *   query: "Impact of AI on software development productivity",
+ *   depth: "deep"
+ * });
  * ```
  */
 export async function runResearchAgent(
@@ -395,12 +524,14 @@ export async function runResearchAgent(
   config: ResearchConfig,
   workItemId?: string
 ): Promise<{ agent: Agent; result: AgentResult }> {
+  const depth = config.depth || "standard";
+
   // Spawn the agent
   const agent = await registry.spawn({
     type: "research",
-    name: `Research: ${config.query.substring(0, 50)}`,
+    name: `Research (${depth}): ${config.query.substring(0, 40)}`,
     instructions: JSON.stringify(config),
-    priority: "P2",
+    priority: depth === "deep" ? "P1" : "P2",
     workItemId,
   });
 
@@ -451,4 +582,5 @@ export async function runResearchAgent(
 // Exports
 // ==========================================
 
-export type { ResearchConfig, ResearchFinding, ResearchResult };
+export { DEPTH_CONFIG };
+export type { ResearchConfig, ResearchFinding, ResearchResult, ResearchDepth };

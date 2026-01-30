@@ -1,0 +1,13 @@
+{
+  "permissions": {
+    "allow": [
+      "mcp__plugin_Notion_notion__notion-fetch",
+      "Bash(bun install)",
+      "Bash(tasklist:*)",
+      "mcp__plugin_Notion_notion__notion-create-pages",
+      "Bash(git add:*)",
+      "Bash(git commit:*)",
+      "Bash(git push)"
+    ]
+  }
+}

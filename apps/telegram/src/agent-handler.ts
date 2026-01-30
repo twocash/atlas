@@ -17,6 +17,7 @@ import {
   type AgentEvent,
   type ResearchConfig,
   type ResearchResult,
+  type ResearchDepth,
 } from "../../../packages/agents/src";
 
 // ==========================================
@@ -44,7 +45,7 @@ const TEST_WORK_ITEM_ID = "2f8780a7-8eef-81cb-9aeb-ec26c5e039bc";
  * Handle /agent commands
  *
  * Syntax:
- *   /agent research "query" [--thorough] [--focus "area"]
+ *   /agent research "query" [--light|--standard|--deep] [--focus "area"]
  *   /agent status
  *   /agent cancel <id>
  */
@@ -104,32 +105,50 @@ async function handleResearchCommand(
     await ctx.reply(
       'Usage: /agent research "your query here"\n\n' +
         "Options:\n" +
-        '  --thorough     More sources (5-8 vs 2-3)\n' +
+        "  --light        Quick overview (2-3 sources, ~2k tokens)\n" +
+        "  --standard     Thorough analysis (5-8 sources, ~8k tokens) [default]\n" +
+        "  --deep         Academic rigor (10+ sources, ~25k tokens, Chicago citations)\n" +
         '  --focus "area" Narrow focus\n\n' +
-        'Example:\n/agent research "AI coding assistant pricing" --thorough'
+        'Example:\n/agent research "AI coding assistant pricing" --deep'
     );
     return;
   }
 
   const query = queryMatch[1] || queryMatch[2] || queryMatch[0];
 
-  // Parse options
-  const thorough = argsText.includes("--thorough");
+  // Parse depth option
+  let depth: ResearchDepth = "standard"; // default
+  if (argsText.includes("--light")) {
+    depth = "light";
+  } else if (argsText.includes("--deep")) {
+    depth = "deep";
+  } else if (argsText.includes("--standard")) {
+    depth = "standard";
+  }
+
+  // Parse focus option
   const focusMatch = argsText.match(/--focus\s+["']?([^"'\s]+)["']?/);
   const focus = focusMatch ? focusMatch[1] : undefined;
 
   // Build config
   const config: ResearchConfig = {
     query: query.trim(),
-    depth: thorough ? "thorough" : "quick",
+    depth,
     focus,
+  };
+
+  // Depth descriptions for user feedback
+  const depthDescriptions: Record<ResearchDepth, string> = {
+    light: "Quick overview (~2k tokens, 2-3 sources)",
+    standard: "Thorough analysis (~8k tokens, 5-8 sources)",
+    deep: "Academic rigor (~25k tokens, 10+ sources, Chicago citations)",
   };
 
   // Acknowledge
   await ctx.reply(
     `🔬 Starting research agent...\n\n` +
       `Query: "${config.query}"\n` +
-      `Depth: ${config.depth}\n` +
+      `Depth: ${depth} — ${depthDescriptions[depth]}\n` +
       `${focus ? `Focus: ${focus}\n` : ""}` +
       `\nWatch Notion for real-time updates.`
   );
@@ -280,6 +299,11 @@ async function sendCompletionNotification(
       message += `📚 Sources: ${researchResult.sources.length} found\n`;
     }
 
+    // Show bibliography count for deep research
+    if (researchResult?.bibliography && researchResult.bibliography.length > 0) {
+      message += `📖 Bibliography: ${researchResult.bibliography.length} citations (Chicago style)\n`;
+    }
+
     if (result.metrics) {
       const duration = Math.round(result.metrics.durationMs / 1000);
       message += `\n⏱ Completed in ${duration}s`;
@@ -396,7 +420,7 @@ async function handleTestCommand(ctx: Context): Promise<void> {
   // Run the test query
   const config: ResearchConfig = {
     query: "What are the top 3 AI coding assistants and their pricing?",
-    depth: "quick",
+    depth: "light",
     focus: "pricing",
   };
 
@@ -432,15 +456,20 @@ async function sendAgentHelp(ctx: Context): Promise<void> {
     `🤖 Agent Commands\n\n` +
       `Spawn agents:\n` +
       `/agent research "query"\n` +
-      `/agent research "query" --thorough\n` +
+      `/agent research "query" --light\n` +
+      `/agent research "query" --deep\n` +
       `/agent research "query" --focus "pricing"\n\n` +
+      `Research depths:\n` +
+      `  --light    Quick (2-3 sources)\n` +
+      `  --standard Default (5-8 sources)\n` +
+      `  --deep     Academic (10+ sources)\n\n` +
       `Manage agents:\n` +
       `/agent status - List running agents\n` +
       `/agent cancel <id> - Stop an agent\n\n` +
       `Test:\n` +
       `/agent test - Run integration test\n\n` +
       `Example:\n` +
-      `/agent research "AI coding assistant pricing" --thorough`
+      `/agent research "AI coding assistant pricing" --deep`
   );
 }
 

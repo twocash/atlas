@@ -1,8 +1,8 @@
 /**
  * Atlas Telegram Bot - Bot Setup & Message Handling
- * 
+ *
  * Initializes grammy bot, sets up middleware, and routes messages to handler.
- * 
+ *
  * @see IMPLEMENTATION.md Sprint 1.2 for requirements
  */
 
@@ -26,10 +26,12 @@ const ALLOWED_USERS = process.env.TELEGRAM_ALLOWED_USERS!
 export function createBot(): Bot<AtlasContext> {
   const bot = new Bot<AtlasContext>(TELEGRAM_BOT_TOKEN);
 
-  // Middleware: Check if user is allowed
+  // ==========================================
+  // Middleware: Auth check (runs first)
+  // ==========================================
   bot.use(async (ctx, next) => {
     const userId = ctx.from?.id;
-    
+
     if (!userId || !ALLOWED_USERS.includes(userId)) {
       // Silent rejection - don't respond to unauthorized users
       logger.warn("Unauthorized access attempt", { userId });
@@ -48,27 +50,10 @@ export function createBot(): Bot<AtlasContext> {
     await next();
   });
 
-  // Handle text messages - route based on intent
-  bot.on("message:text", async (ctx) => {
-    try {
-      await routeMessage(ctx);
-    } catch (error) {
-      logger.error("Error handling message", { error });
-      await ctx.reply("Something went wrong. Please try again.");
-    }
-  });
+  // ==========================================
+  // Commands (MUST come before generic handlers)
+  // ==========================================
 
-  // Handle callback queries (inline keyboard button presses)
-  bot.on("callback_query:data", async (ctx) => {
-    try {
-      await routeCallback(ctx);
-    } catch (error) {
-      logger.error("Error handling callback", { error });
-      await ctx.answerCallbackQuery({ text: "Error processing. Try again." });
-    }
-  });
-
-  // Handle commands
   bot.command("start", async (ctx) => {
     await ctx.reply(
       "Atlas is running.\n\n" +
@@ -157,6 +142,34 @@ export function createBot(): Bot<AtlasContext> {
     }
   });
 
+  // ==========================================
+  // Generic handlers (AFTER commands)
+  // ==========================================
+
+  // Handle text messages - route based on intent
+  bot.on("message:text", async (ctx) => {
+    try {
+      await routeMessage(ctx);
+    } catch (error) {
+      logger.error("Error handling message", { error });
+      await ctx.reply("Something went wrong. Please try again.");
+    }
+  });
+
+  // Handle callback queries (inline keyboard button presses)
+  bot.on("callback_query:data", async (ctx) => {
+    try {
+      await routeCallback(ctx);
+    } catch (error) {
+      logger.error("Error handling callback", { error });
+      await ctx.answerCallbackQuery({ text: "Error processing. Try again." });
+    }
+  });
+
+  // ==========================================
+  // Error handling & cleanup
+  // ==========================================
+
   // Error handler
   bot.catch((err) => {
     logger.error("Bot error", { error: err.error, ctx: err.ctx });
@@ -173,10 +186,10 @@ export function createBot(): Bot<AtlasContext> {
  */
 export async function startBot(bot: Bot<AtlasContext>): Promise<void> {
   logger.info("Starting bot with long polling...");
-  
+
   // Delete webhook to ensure we're using polling
   await bot.api.deleteWebhook();
-  
+
   // Start polling
   await bot.start({
     onStart: (botInfo) => {
@@ -193,7 +206,7 @@ export function createClarificationKeyboard(
   options: Array<{ text: string; data: string }>
 ): InlineKeyboard {
   const keyboard = new InlineKeyboard();
-  
+
   options.forEach((option, index) => {
     keyboard.text(option.text, option.data);
     // New row every 2 buttons

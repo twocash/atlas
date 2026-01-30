@@ -83,4 +83,5 @@ export {
   type ResearchConfig,
   type ResearchFinding,
   type ResearchResult,
+  type ResearchDepth,
 } from "./agents/research";
