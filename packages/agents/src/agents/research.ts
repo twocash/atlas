@@ -273,9 +273,9 @@ function getSummaryGuidance(depth: ResearchDepth): string {
     case "light":
       return "2-3 sentence executive summary with key takeaways";
     case "standard":
-      return "2-4 paragraph summary covering main findings, key insights, and implications";
+      return "2-4 FULL paragraphs (not sentences) covering main findings, key insights, and implications. Be thorough.";
     case "deep":
-      return "Comprehensive 4-6 paragraph academic summary including: research context, methodology overview, key findings with evidence strength, limitations, areas of consensus/debate, and implications for further research";
+      return "Comprehensive 4-6 paragraph academic summary including: research context, methodology overview, key findings with evidence strength, limitations, areas of consensus/debate, and implications for further research. Use your full token budget.";
   }
 }
 
@@ -285,7 +285,8 @@ function getQualityGuidelines(depth: ResearchDepth): string {
       return `## Guidelines
 - Speed over depth — get the essentials
 - Prefer recent, well-known sources
-- One source per major claim is acceptable`;
+- One source per major claim is acceptable
+- Summary should be 2-3 complete sentences`;
 
     case "standard":
       return `## Guidelines
@@ -293,7 +294,13 @@ function getQualityGuidelines(depth: ResearchDepth): string {
 - Cross-reference important claims
 - Include specific data points and statistics
 - Note publication dates for time-sensitive info
-- Be objective — present multiple viewpoints`;
+- Be objective — present multiple viewpoints
+
+## IMPORTANT: Response Length
+- Summary MUST be 2-4 full paragraphs (not sentences)
+- Include at least 6-8 distinct findings
+- Do NOT truncate your response — use the full output capacity
+- Complete every section fully before ending`;
 
     case "deep":
       return `## Quality Standards (REQUIRED)
@@ -305,7 +312,14 @@ function getQualityGuidelines(depth: ResearchDepth): string {
 - Chicago citations MUST include: Author(s), "Title," Publication, Date, URL, Accessed Date
 - Example citation: Smith, John. "AI Coding Assistants in 2025." Tech Review, January 15, 2025. https://example.com/article. Accessed January 30, 2026.
 - If a source lacks author, use organization name
-- Distinguish opinion/editorial from factual reporting`;
+- Distinguish opinion/editorial from factual reporting
+
+## CRITICAL: Response Length
+- Summary MUST be 4-6 full paragraphs covering context, findings, limitations, and implications
+- Include at least 10-15 distinct findings with full citations
+- Bibliography must be comprehensive with full Chicago-style entries
+- Do NOT truncate your response — you have ~25,000 tokens available
+- Complete every section fully before ending your response`;
   }
 }
 
