@@ -215,19 +215,27 @@ You are detecting the **intent** behind a message from Jim. Analyze the message 
 - **query**: Jim wants to see/list items ("what's in my...", "show me...", "list...", "how many...")
 - **status**: Jim wants a dashboard/summary ("how's...", "status on...", "where are we", "progress")
 - **lookup**: Jim wants to find something specific ("find...", "search...", "what did we decide about...")
-- **action**: Jim wants to modify an item ("mark X as done", "complete...", "archive...", "dismiss...")
-- **chat**: General conversation, greeting, unclear intent
+- **action**: Jim wants to modify a SPECIFIC NOTION ITEM by name ("mark X as done", "complete the telegram bot task", "archive the blog post item", "dismiss...")
+- **chat**: General conversation, requests for help, questions, anything NOT about Notion items
+
+IMPORTANT: "action" is ONLY for modifying existing Notion items. If Jim asks for help, wants you to do something external (like review Gmail, check something, help with code), that is "chat" NOT "action".
+
+Examples of "chat" (NOT action):
+- "Can you review my Gmail?" → chat (external request)
+- "Help me with this code" → chat (assistance request)
+- "What do you think about X?" → chat (opinion)
+- "Can you check something for me?" → chat (external task)
+
+Examples of "action":
+- "Mark the telegram bot task as done" → action (specific Notion item)
+- "Complete the blog post" → action (specific Notion item)
+- "Archive the DrumWave task" → action (specific Notion item)
 
 Return ONLY valid JSON with these fields:
 - intent: One of "spark", "query", "status", "lookup", "action", "chat"
 - confidence: Number 0-100
 - reasoning: Brief explanation (1 sentence)
 - entities: Object with extracted entities (optional fields: url, query, pillar, actionType)
-
-Example responses:
-{"intent": "query", "confidence": 85, "reasoning": "Asking to see inbox items", "entities": {"pillar": "The Grove"}}
-{"intent": "spark", "confidence": 90, "reasoning": "Contains URL to capture", "entities": {"url": "https://..."}}
-{"intent": "action", "confidence": 80, "reasoning": "Wants to mark item as complete", "entities": {"actionType": "complete", "query": "telegram bot"}}
 `;
 
 /**
