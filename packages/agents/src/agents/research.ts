@@ -2,11 +2,10 @@
  * Atlas Research Agent
  *
  * Autonomous agent for web research tasks.
- * Uses Claude with web search tool to find, analyze, and summarize
- * information with proper source citations.
+ * Uses Gemini 2.0 Flash with Google Search grounding for
+ * live web research with proper source citations.
  */
 
-import Anthropic from "@anthropic-ai/sdk";
 import type { AgentRegistry } from "../registry";
 import type { Agent, AgentResult, AgentMetrics } from "../types";
 
@@ -79,97 +78,100 @@ const RESEARCH_DEFAULTS = {
   depth: "quick" as const,
   maxSourcesQuick: 3,
   maxSourcesThorough: 8,
-  model: "claude-sonnet-4-20250514",
-  maxTokens: 4096,
+  model: "gemini-2.0-flash",
+  maxTokens: 8192,
 };
 
 // ==========================================
-// Claude Client
+// Gemini Client with Google Search Grounding
 // ==========================================
 
-let _anthropic: Anthropic | null = null;
-
-function getAnthropicClient(): Anthropic {
-  if (!_anthropic) {
-    const apiKey = process.env.ANTHROPIC_API_KEY;
-    if (!apiKey) {
-      throw new Error("ANTHROPIC_API_KEY environment variable is required");
-    }
-    _anthropic = new Anthropic({ apiKey });
-  }
-  return _anthropic;
+interface GeminiClient {
+  generateContent: (prompt: string) => Promise<GeminiResponse>;
 }
 
-// ==========================================
-// Web Search Tool Definition
-// ==========================================
+interface GeminiResponse {
+  text: string;
+  citations: Array<{ url: string; title: string }>;
+  groundingMetadata?: unknown;
+}
 
-const WEB_SEARCH_TOOL: Anthropic.Tool = {
-  name: "web_search",
-  description:
-    "Search the web for information. Returns relevant results with titles, URLs, and snippets.",
-  input_schema: {
-    type: "object" as const,
-    properties: {
-      query: {
-        type: "string",
-        description: "The search query",
-      },
-      num_results: {
-        type: "number",
-        description: "Number of results to return (default 5, max 10)",
-      },
-    },
-    required: ["query"],
-  },
-};
+let _geminiClient: GeminiClient | null = null;
 
-const FETCH_URL_TOOL: Anthropic.Tool = {
-  name: "fetch_url",
-  description:
-    "Fetch and read the content of a specific URL. Use this to get detailed information from a source.",
-  input_schema: {
-    type: "object" as const,
-    properties: {
-      url: {
-        type: "string",
-        description: "The URL to fetch",
+async function getGeminiClient(): Promise<GeminiClient> {
+  if (!_geminiClient) {
+    const apiKey = process.env.GEMINI_API_KEY;
+    if (!apiKey) {
+      throw new Error("GEMINI_API_KEY environment variable is required");
+    }
+
+    // Dynamic import for Google Generative AI SDK
+    const { GoogleGenerativeAI } = await import("@google/generative-ai");
+
+    const genAI = new GoogleGenerativeAI(apiKey);
+
+    // Get model with Google Search grounding enabled
+    const model = genAI.getGenerativeModel({
+      model: "gemini-2.0-flash",
+      tools: [{ googleSearch: {} }],
+    });
+
+    _geminiClient = {
+      generateContent: async (prompt: string): Promise<GeminiResponse> => {
+        const result = await model.generateContent(prompt);
+        const response = result.response;
+
+        // Extract grounding citations
+        const groundingMetadata = response.candidates?.[0]?.groundingMetadata;
+        const groundingChunks = groundingMetadata?.groundingChunks || [];
+
+        const citations: Array<{ url: string; title: string }> = [];
+        for (const chunk of groundingChunks) {
+          if (chunk.web) {
+            citations.push({
+              url: chunk.web.uri || "",
+              title: chunk.web.title || "",
+            });
+          }
+        }
+
+        return {
+          text: response.text(),
+          citations,
+          groundingMetadata,
+        };
       },
-    },
-    required: ["url"],
-  },
-};
+    };
+  }
+
+  return _geminiClient;
+}
 
 // ==========================================
 // System Prompts
 // ==========================================
 
-function buildResearchSystemPrompt(config: ResearchConfig): string {
+function buildResearchPrompt(config: ResearchConfig): string {
   const maxSources =
     config.depth === "thorough"
       ? RESEARCH_DEFAULTS.maxSourcesThorough
       : RESEARCH_DEFAULTS.maxSourcesQuick;
 
-  return `You are Atlas Research Agent, an autonomous research assistant.
+  return `You are Atlas Research Agent, an autonomous research assistant with access to Google Search.
 
-## Your Task
-Research the following query and provide a comprehensive, well-cited response.
-
-## Research Parameters
-- Query: "${config.query}"
-- Depth: ${config.depth || "quick"} (${config.depth === "thorough" ? "thorough analysis with 5-8 sources" : "quick overview with 2-3 sources"})
-${config.focus ? `- Focus Area: ${config.focus}` : ""}
-- Target Sources: ${maxSources}
+## Research Task
+Query: "${config.query}"
+${config.focus ? `Focus Area: ${config.focus}` : ""}
+Depth: ${config.depth || "quick"} (target ${maxSources} sources)
 
 ## Instructions
 
-1. **Search Phase**: Use web_search to find relevant, authoritative sources
-2. **Analysis Phase**: Use fetch_url to read promising sources in detail
-3. **Synthesis Phase**: Combine findings into a coherent summary
+Use Google Search to find current, authoritative information about this topic.
+Analyze multiple sources and synthesize findings into a coherent response.
 
-## Output Requirements
+## Output Format
 
-After completing your research, provide a final response in this EXACT JSON format:
+Provide your response in this exact JSON format:
 
 \`\`\`json
 {
@@ -177,8 +179,8 @@ After completing your research, provide a final response in this EXACT JSON form
   "findings": [
     {
       "claim": "Specific fact or insight discovered",
-      "source": "Name of the source (e.g., 'TechCrunch Article')",
-      "url": "https://...",
+      "source": "Name of the source",
+      "url": "https://source-url.com",
       "relevance": 95
     }
   ],
@@ -188,121 +190,14 @@ After completing your research, provide a final response in this EXACT JSON form
 
 ## Guidelines
 
-- Prioritize recent, authoritative sources
+- Use Google Search to find recent, authoritative sources
 - Cross-reference claims across multiple sources when possible
-- Include specific data points, quotes, or statistics when available
+- Include specific data points, quotes, or statistics
 - Be objective - present findings without bias
-- If information is conflicting, note the discrepancy
-${config.focus ? `- Focus specifically on aspects related to: ${config.focus}` : ""}
+- If information conflicts, note the discrepancy
+${config.focus ? `- Focus specifically on: ${config.focus}` : ""}
 
 Begin your research now.`;
-}
-
-// ==========================================
-// Tool Execution
-// ==========================================
-
-interface WebSearchResult {
-  title: string;
-  url: string;
-  snippet: string;
-}
-
-interface FetchResult {
-  url: string;
-  title: string;
-  content: string;
-  success: boolean;
-  error?: string;
-}
-
-/**
- * Execute web search (simulated - in production would use real search API)
- *
- * NOTE: This is a placeholder. In production, integrate with:
- * - Perplexity API for AI-powered search
- * - Google Custom Search API
- * - Bing Search API
- * - Or use Claude's native web search when available
- */
-async function executeWebSearch(
-  query: string,
-  numResults: number = 5
-): Promise<WebSearchResult[]> {
-  // In production, this would call a real search API
-  // For now, we'll use Claude's built-in web search capability if available
-  // or return a message indicating manual search is needed
-
-  console.log(`[Research Agent] Web search: "${query}" (${numResults} results)`);
-
-  // Placeholder - in real implementation:
-  // return await perplexitySearch(query, numResults);
-  // return await googleCustomSearch(query, numResults);
-
-  return [
-    {
-      title: `Search results for: ${query}`,
-      url: `https://search.example.com/q=${encodeURIComponent(query)}`,
-      snippet:
-        "This is a placeholder. Integrate with Perplexity, Google, or Bing Search API for real results.",
-    },
-  ];
-}
-
-/**
- * Fetch URL content (simulated - in production would fetch real content)
- */
-async function executeFetchUrl(url: string): Promise<FetchResult> {
-  console.log(`[Research Agent] Fetching: ${url}`);
-
-  // In production, this would fetch and parse the actual URL
-  // For now, return placeholder
-
-  try {
-    // Placeholder - in real implementation:
-    // const response = await fetch(url);
-    // const html = await response.text();
-    // return { url, title: extractTitle(html), content: extractContent(html), success: true };
-
-    return {
-      url,
-      title: "Placeholder Content",
-      content:
-        "This is placeholder content. Integrate with a web scraping service for real content.",
-      success: true,
-    };
-  } catch (error) {
-    return {
-      url,
-      title: "",
-      content: "",
-      success: false,
-      error: error instanceof Error ? error.message : "Unknown error",
-    };
-  }
-}
-
-/**
- * Execute a tool call from Claude
- */
-async function executeToolCall(
-  toolName: string,
-  input: unknown
-): Promise<unknown> {
-  switch (toolName) {
-    case "web_search": {
-      const params = input as { query: string; num_results?: number };
-      return await executeWebSearch(params.query, params.num_results || 5);
-    }
-
-    case "fetch_url": {
-      const params = input as { url: string };
-      return await executeFetchUrl(params.url);
-    }
-
-    default:
-      return { error: `Unknown tool: ${toolName}` };
-  }
 }
 
 // ==========================================
@@ -310,7 +205,7 @@ async function executeToolCall(
 // ==========================================
 
 /**
- * Execute a research task
+ * Execute a research task using Gemini with Google Search grounding
  */
 export async function executeResearch(
   config: ResearchConfig,
@@ -319,117 +214,41 @@ export async function executeResearch(
 ): Promise<AgentResult> {
   const startTime = Date.now();
   let apiCalls = 0;
-  let tokensUsed = 0;
 
   const depth = config.depth || RESEARCH_DEFAULTS.depth;
-  const anthropic = getAnthropicClient();
 
   try {
     // Report starting
     await registry.updateProgress(agent.id, 10, "Initializing research");
 
-    const systemPrompt = buildResearchSystemPrompt({ ...config, depth });
-    const tools = [WEB_SEARCH_TOOL, FETCH_URL_TOOL];
+    // Get Gemini client with grounding
+    const gemini = await getGeminiClient();
+    await registry.updateProgress(agent.id, 20, "Searching with Google");
 
-    const messages: Anthropic.MessageParam[] = [
-      {
-        role: "user",
-        content: `Research query: ${config.query}${config.focus ? `\nFocus on: ${config.focus}` : ""}`,
-      },
-    ];
+    // Build prompt and execute
+    const prompt = buildResearchPrompt({ ...config, depth });
 
-    // Report search phase
-    await registry.updateProgress(agent.id, 20, "Searching for sources");
-
-    // Initial request
-    let response = await anthropic.messages.create({
-      model: RESEARCH_DEFAULTS.model,
-      max_tokens: RESEARCH_DEFAULTS.maxTokens,
-      system: systemPrompt,
-      messages,
-      tools,
-    });
+    await registry.updateProgress(agent.id, 40, "Analyzing sources");
+    const response = await gemini.generateContent(prompt);
     apiCalls++;
-    tokensUsed += response.usage?.input_tokens || 0;
-    tokensUsed += response.usage?.output_tokens || 0;
 
-    // Tool use loop
-    let iterations = 0;
-    const maxIterations = depth === "thorough" ? 10 : 5;
-
-    while (response.stop_reason === "tool_use" && iterations < maxIterations) {
-      iterations++;
-
-      // Find tool use blocks
-      const toolUseBlocks = response.content.filter(
-        (block) => block.type === "tool_use"
-      );
-
-      if (toolUseBlocks.length === 0) break;
-
-      // Update progress based on iterations
-      const progressPercent = Math.min(20 + iterations * 10, 80);
-      const activity =
-        iterations <= 3 ? "Gathering sources" : "Analyzing content";
-      await registry.updateProgress(agent.id, progressPercent, activity);
-
-      // Execute all tool calls
-      const toolResults: Anthropic.ToolResultBlockParam[] = [];
-
-      for (const toolBlock of toolUseBlocks) {
-        if (toolBlock.type !== "tool_use") continue;
-
-        console.log(
-          `[Research Agent] Tool call: ${toolBlock.name}`,
-          toolBlock.input
-        );
-
-        const result = await executeToolCall(toolBlock.name, toolBlock.input);
-
-        toolResults.push({
-          type: "tool_result",
-          tool_use_id: toolBlock.id,
-          content: JSON.stringify(result),
-        });
-      }
-
-      // Continue conversation with tool results
-      messages.push({ role: "assistant", content: response.content });
-      messages.push({ role: "user", content: toolResults });
-
-      response = await anthropic.messages.create({
-        model: RESEARCH_DEFAULTS.model,
-        max_tokens: RESEARCH_DEFAULTS.maxTokens,
-        system: systemPrompt,
-        messages,
-        tools,
-      });
-      apiCalls++;
-      tokensUsed += response.usage?.input_tokens || 0;
-      tokensUsed += response.usage?.output_tokens || 0;
-    }
-
-    // Report synthesis phase
-    await registry.updateProgress(agent.id, 90, "Synthesizing findings");
-
-    // Extract final response
-    const textContent = response.content.find((block) => block.type === "text");
-    if (!textContent || textContent.type !== "text") {
-      throw new Error("No text response from Claude");
-    }
+    await registry.updateProgress(agent.id, 80, "Synthesizing findings");
 
     // Parse research result from response
     const researchResult = parseResearchResponse(
-      textContent.text,
+      response.text,
+      response.citations,
       config,
       depth
     );
+
+    await registry.updateProgress(agent.id, 95, "Finalizing report");
 
     // Calculate metrics
     const metrics: AgentMetrics = {
       durationMs: Date.now() - startTime,
       apiCalls,
-      tokensUsed,
+      tokensUsed: Math.ceil(prompt.length / 4) + Math.ceil(response.text.length / 4),
       retries: 0,
     };
 
@@ -455,7 +274,6 @@ export async function executeResearch(
       metrics: {
         durationMs: Date.now() - startTime,
         apiCalls,
-        tokensUsed,
         retries: 0,
       },
     };
@@ -463,10 +281,11 @@ export async function executeResearch(
 }
 
 /**
- * Parse Claude's response into structured ResearchResult
+ * Parse Gemini's response into structured ResearchResult
  */
 function parseResearchResponse(
   text: string,
+  citations: Array<{ url: string; title: string }>,
   config: ResearchConfig,
   depth: "quick" | "thorough"
 ): ResearchResult {
@@ -476,10 +295,35 @@ function parseResearchResponse(
   if (jsonMatch) {
     try {
       const parsed = JSON.parse(jsonMatch[1]);
+
+      // Merge grounding citations with parsed findings
+      const findings: ResearchFinding[] = parsed.findings || [];
+
+      // Add any citations from grounding that aren't in findings
+      for (const citation of citations) {
+        const exists = findings.some((f) => f.url === citation.url);
+        if (!exists && citation.url) {
+          findings.push({
+            claim: `Source: ${citation.title}`,
+            source: citation.title,
+            url: citation.url,
+            relevance: 80,
+          });
+        }
+      }
+
+      // Collect all unique source URLs
+      const sources = [
+        ...new Set([
+          ...(parsed.sources || []),
+          ...citations.map((c) => c.url).filter(Boolean),
+        ]),
+      ];
+
       return {
         summary: parsed.summary || text,
-        findings: parsed.findings || [],
-        sources: parsed.sources || [],
+        findings,
+        sources,
         query: config.query,
         focus: config.focus,
         depth,
@@ -496,7 +340,12 @@ function parseResearchResponse(
       return {
         summary: parsed.summary,
         findings: parsed.findings || [],
-        sources: parsed.sources || [],
+        sources: [
+          ...new Set([
+            ...(parsed.sources || []),
+            ...citations.map((c) => c.url).filter(Boolean),
+          ]),
+        ],
         query: config.query,
         focus: config.focus,
         depth,
@@ -506,11 +355,16 @@ function parseResearchResponse(
     // Not valid JSON
   }
 
-  // Fallback: treat entire response as summary
+  // Fallback: use text as summary, citations as sources
   return {
     summary: text,
-    findings: [],
-    sources: [],
+    findings: citations.map((c) => ({
+      claim: `Reference: ${c.title}`,
+      source: c.title,
+      url: c.url,
+      relevance: 80,
+    })),
+    sources: citations.map((c) => c.url).filter(Boolean),
     query: config.query,
     focus: config.focus,
     depth,

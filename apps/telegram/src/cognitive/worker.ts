@@ -32,6 +32,9 @@ export async function executeWorker(request: WorkerRequest): Promise<WorkerResul
       case "openai":
         result = await executeOpenAIWorker(request, startTime);
         break;
+      case "google":
+        result = await executeGeminiWorker(request, startTime);
+        break;
       case "openrouter":
         result = await executeOpenRouterWorker(request, startTime);
         break;
@@ -223,6 +226,89 @@ async function executeOpenAIWorker(
     provider: "openai",
     endpoint: "direct",
   };
+}
+
+/**
+ * Execute Gemini worker with Google Search grounding
+ */
+async function executeGeminiWorker(
+  request: WorkerRequest,
+  startTime: number
+): Promise<WorkerResult> {
+  // Dynamic import for Google Generative AI SDK
+  const { GoogleGenerativeAI } = await import("@google/generative-ai");
+
+  const client = new GoogleGenerativeAI(request.route.apiKey || "");
+
+  // Determine if we should use grounding (for research tasks)
+  const useGrounding = request.tools?.some((t) => t.name === "googleSearch");
+
+  // Get the model with optional grounding config
+  const model = client.getGenerativeModel({
+    model: "gemini-2.0-flash",
+    // Enable Google Search grounding for research
+    ...(useGrounding && {
+      tools: [{ googleSearch: {} }],
+    }),
+  });
+
+  // Combine system prompt and user message for Gemini
+  const prompt = `${request.systemPrompt}\n\n---\n\nUser: ${request.userMessage}`;
+
+  const result = await model.generateContent(prompt);
+  const response = result.response;
+
+  const latencyMs = Date.now() - startTime;
+
+  // Extract text content
+  const content = response.text();
+
+  // Extract grounding metadata if available
+  const groundingMetadata = response.candidates?.[0]?.groundingMetadata;
+  const groundingChunks = groundingMetadata?.groundingChunks || [];
+
+  // Build citations from grounding chunks
+  const citations: Array<{ url: string; title: string }> = [];
+  for (const chunk of groundingChunks) {
+    if (chunk.web) {
+      citations.push({
+        url: chunk.web.uri || "",
+        title: chunk.web.title || "",
+      });
+    }
+  }
+
+  // Estimate token usage (Gemini doesn't always provide exact counts)
+  const inputTokens = Math.ceil(prompt.length / 4);
+  const outputTokens = Math.ceil(content.length / 4);
+
+  const usage: TokenUsage = {
+    inputTokens,
+    outputTokens,
+    totalTokens: inputTokens + outputTokens,
+    cost: estimateCost(request.model.modelId, inputTokens, outputTokens),
+  };
+
+  // Attach grounding info to result
+  const resultWithGrounding = {
+    taskId: request.taskId,
+    success: true,
+    content,
+    json: citations.length > 0 ? { citations, groundingMetadata } : undefined,
+    usage,
+    latencyMs,
+    modelId: request.model.modelId,
+    provider: "google" as const,
+    endpoint: "direct" as const,
+  };
+
+  logger.debug("Gemini response with grounding", {
+    taskId: request.taskId,
+    citationCount: citations.length,
+    hasGrounding: !!groundingMetadata,
+  });
+
+  return resultWithGrounding;
 }
 
 /**

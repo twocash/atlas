@@ -14,7 +14,7 @@ export type ModelId =
   | "gemini-2.0-pro"
   | "local";
 
-export type Provider = "anthropic" | "openai" | "openrouter" | "local";
+export type Provider = "anthropic" | "openai" | "google" | "openrouter" | "local";
 
 export type ModelTier = "premium" | "efficient" | "free";
 
@@ -108,7 +108,7 @@ export const MODEL_CATALOG: Record<ModelId, ModelConfig> = {
 
   // === Google ===
   "gemini-2.0-flash": {
-    provider: "openrouter", // Via OpenRouter for now
+    provider: "google", // Direct API with grounding support
     tier: "efficient",
     contextWindow: 1000000,
     inputCostPer1M: 0.1,
@@ -118,7 +118,7 @@ export const MODEL_CATALOG: Record<ModelId, ModelConfig> = {
     maxOutputTokens: 8192,
   },
   "gemini-2.0-pro": {
-    provider: "openrouter", // Via OpenRouter for now
+    provider: "google", // Direct API
     tier: "premium",
     contextWindow: 2000000,
     inputCostPer1M: 1.25,
@@ -220,3 +220,28 @@ export const DEFAULT_MODEL_BY_TASK = {
   longContext: "claude-sonnet-4-20250514",
   simpleTransform: "local",
 } as const satisfies Record<string, ModelId>;
+
+/**
+ * Task-based model routing for specialist agents
+ *
+ * Maps agent task types to optimal models:
+ * - research: Gemini 2.0 Flash with Google Search grounding
+ * - coding: Claude Opus for complex code generation
+ * - chat: Claude Sonnet for general conversation
+ * - classification: Claude Haiku for quick SPARKS triage
+ */
+export type AgentTaskType = "research" | "coding" | "chat" | "classification";
+
+export const TASK_MODEL_MAP: Record<AgentTaskType, ModelId> = {
+  research: "gemini-2.0-flash",       // Deep research with Google Search grounding
+  coding: "claude-opus-4-20250514",   // Complex code generation
+  chat: "claude-sonnet-4-20250514",   // General conversation
+  classification: "claude-3-5-haiku-20241022", // Quick triage (SPARKS)
+};
+
+/**
+ * Get model for a specific agent task type
+ */
+export function getModelForTask(taskType: AgentTaskType): ModelId {
+  return TASK_MODEL_MAP[taskType];
+}
