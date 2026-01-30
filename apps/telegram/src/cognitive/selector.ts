@@ -152,7 +152,10 @@ function getNextFallback(currentModel: ModelId): ModelId | undefined {
     "claude-3-5-haiku-20241022": "claude-sonnet-4-20250514",
     "gpt-4o-mini": "gpt-4o",
     "gpt-4o": "claude-sonnet-4-20250514",
-    "claude-sonnet-4-20250514": undefined, // Top of chain
+    "claude-sonnet-4-20250514": "claude-opus-4-20250514",
+    "claude-opus-4-20250514": undefined, // Top of chain
+    "gemini-2.0-flash": "gemini-2.0-pro",
+    "gemini-2.0-pro": "claude-sonnet-4-20250514",
     local: "claude-3-5-haiku-20241022",
   };
 
