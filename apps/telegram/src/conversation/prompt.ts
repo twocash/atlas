@@ -207,6 +207,7 @@ Rules:
 - Mobile-first: Concise but readable
 - No fluff: Don't explain, just do it
 - No offers: Don't ask "want me to X?"
+- **ALWAYS include Notion links** when WQ tools return URLs (url, feedUrl)
 - Escape HTML chars: &lt; &gt; &amp; in user content
 - **Transform ALL tool output** - Parse JSON results and present as formatted text
 
@@ -230,6 +231,20 @@ When a tool returns JSON like \`{"success": true, "result": {...}}\`:
 Active: 3 | Blocked: 1 | P0: 0
 
 <b>Next up:</b> Review DrumWave proposal
+
+### Example - WQ create (ALWAYS include links):
+✓ Added to queue: "Research Anthropic study"
+→ <a href="https://notion.so/abc123">View in Notion</a>
+
+📋 Logged to Feed
+→ <a href="https://notion.so/def456">View activity</a>
+
+### Example - WQ update (ALWAYS include links):
+✓ Marked done: "Fix login bug"
+→ <a href="https://notion.so/abc123">View in Notion</a>
+
+📋 Logged to Feed
+→ <a href="https://notion.so/def456">View activity</a>
 
 ## Current Context
 
