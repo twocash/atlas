@@ -276,11 +276,15 @@ export async function detectIntentWithClaude(
       reasoning: `Claude: ${result.reasoning}`,
       entities: result.entities,
     };
-  } catch (error) {
-    const errorMessage = error instanceof Error ? error.message : String(error);
-    const errorDetails = error instanceof Error && 'status' in error
-      ? { status: (error as any).status, message: errorMessage }
-      : { message: errorMessage };
+  } catch (error: any) {
+    // Extract detailed error info from Anthropic SDK errors
+    const errorDetails = {
+      message: error?.message || String(error),
+      status: error?.status,
+      type: error?.error?.type,
+      code: error?.error?.error?.type || error?.code,
+      name: error?.name,
+    };
     logger.error("Claude intent detection failed", errorDetails);
 
     // Return heuristic result if available, otherwise default to chat
