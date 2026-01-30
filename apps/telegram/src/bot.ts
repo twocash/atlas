@@ -13,6 +13,7 @@ import { routeMessage, routeCallback, cleanupAll, clearUserSession } from "./han
 import { getModelOverride, setModelOverride, MODEL_SHORTCUTS, getModelDisplayName, clearSession } from "./session";
 import { handleAgentCommand } from "./agent-handler";
 import { initBriefings, type BriefingSystem } from "./briefing";
+import { getHelpText } from "./commands/help";
 import type { AtlasContext } from "./types";
 
 // Global briefing system instance
@@ -67,14 +68,12 @@ export function createBot(): Bot<AtlasContext> {
       "- \"status\" for overview\n" +
       "- \"find [term]\" to search\n" +
       "- \"mark [item] as done\" to update\n\n" +
-      "Commands:\n" +
-      "/start - Show this\n" +
-      "/status - Bot health\n" +
-      "/model - Set AI model\n" +
-      "/agent - Spawn specialist agents\n" +
-      "/briefing - Daily briefings (7am/12:30pm/6pm ET)\n" +
-      "/new - Clear session"
+      "Type /help for all commands."
     );
+  });
+
+  bot.command("help", async (ctx) => {
+    await ctx.reply(getHelpText());
   });
 
   bot.command("status", async (ctx) => {
