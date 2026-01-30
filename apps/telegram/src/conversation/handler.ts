@@ -8,7 +8,7 @@
 import type { Context } from 'grammy';
 import Anthropic from '@anthropic-ai/sdk';
 import { logger } from '../logger';
-import { getConversation, updateConversation, buildMessages } from './context';
+import { getConversation, updateConversation, buildMessages, type ToolContext } from './context';
 import { buildSystemPrompt } from './prompt';
 import { detectAttachment, buildAttachmentPrompt } from './attachments';
 import { createAuditTrail, type AuditEntry } from './audit';
@@ -128,14 +128,15 @@ export async function handleConversation(ctx: Context): Promise<void> {
   // Get conversation history
   const conversation = await getConversation(userId);
 
-  // Build system prompt
-  const systemPrompt = await buildSystemPrompt();
+  // Build system prompt (pass conversation for tool context continuity)
+  const systemPrompt = await buildSystemPrompt(conversation);
 
   // Build messages array for Claude API
   const messages: Anthropic.MessageParam[] = buildMessages(conversation, userContent);
 
   let totalTokens = 0;
   const toolsUsed: string[] = [];  // Track tools for conversation history
+  const toolContexts: ToolContext[] = [];  // Store tool calls/results for continuity
 
   try {
     // Call Claude with tools
@@ -179,6 +180,14 @@ export async function handleConversation(ctx: Context): Promise<void> {
           toolUse.name,
           toolUse.input as Record<string, unknown>
         );
+
+        // Capture tool context for conversation continuity
+        toolContexts.push({
+          toolName: toolUse.name,
+          input: toolUse.input as Record<string, unknown>,
+          result: result,
+          timestamp: new Date().toISOString(),
+        });
 
         toolResults.push({
           type: 'tool_result',
@@ -253,7 +262,8 @@ export async function handleConversation(ctx: Context): Promise<void> {
         feedId: auditResult.feedId,
         workQueueId: auditResult.workQueueId,
         toolsUsed: toolsUsed.length > 0 ? toolsUsed : undefined,
-      } : (toolsUsed.length > 0 ? { toolsUsed } : undefined)
+      } : (toolsUsed.length > 0 ? { toolsUsed } : undefined),
+      toolContexts.length > 0 ? toolContexts : undefined  // Pass tool context for continuity
     );
 
     // Send response (handle long messages)

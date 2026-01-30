@@ -12,6 +12,13 @@ const DATA_DIR = join(__dirname, '../../data');
 const CONVERSATIONS_DIR = join(DATA_DIR, 'conversations');
 const MAX_MESSAGES = 20; // Context window size
 
+export interface ToolContext {
+  toolName: string;
+  input: Record<string, unknown>;
+  result: unknown;
+  timestamp: string;
+}
+
 export interface ConversationMessage {
   role: 'user' | 'assistant';
   content: string;
@@ -23,6 +30,7 @@ export interface ConversationMessage {
     workQueueId?: string;
     toolsUsed?: string[];  // Track which tools were invoked
   };
+  toolContext?: ToolContext[];  // Store tool calls/results for continuity
 }
 
 export interface ConversationState {
@@ -87,7 +95,8 @@ export async function updateConversation(
   userId: number,
   userMessage: string,
   assistantResponse: string,
-  metadata?: ConversationMessage['metadata']
+  metadata?: ConversationMessage['metadata'],
+  toolContext?: ToolContext[]  // NEW: Store tool calls/results
 ): Promise<void> {
   const state = await getConversation(userId);
 
@@ -95,7 +104,6 @@ export async function updateConversation(
     role: 'user',
     content: userMessage,
     timestamp: new Date().toISOString(),
-    metadata,
   });
 
   state.messages.push({
@@ -103,6 +111,7 @@ export async function updateConversation(
     content: assistantResponse,
     timestamp: new Date().toISOString(),
     metadata,
+    toolContext,  // Include tool context for follow-up references
   });
 
   await saveConversation(state);

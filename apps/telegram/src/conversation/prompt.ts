@@ -7,6 +7,7 @@
 import { readFile, readdir } from 'fs/promises';
 import { join } from 'path';
 import { logger } from '../logger';
+import type { ConversationState } from './context';
 
 const DATA_DIR = join(__dirname, '../../data');
 const SKILLS_DIR = join(DATA_DIR, 'skills');
@@ -72,9 +73,51 @@ async function loadSkillsMetadata(): Promise<SkillMetadata[]> {
 }
 
 /**
+ * Format recent tool context for injection into system prompt
+ * This helps maintain continuity across conversation turns
+ */
+function formatRecentToolContext(conversation: ConversationState | undefined): string {
+  if (!conversation || conversation.messages.length === 0) {
+    return '';
+  }
+
+  // Get the last 3 messages that have tool context
+  const recentWithTools = conversation.messages
+    .filter(msg => msg.toolContext && msg.toolContext.length > 0)
+    .slice(-3);
+
+  if (recentWithTools.length === 0) {
+    return '';
+  }
+
+  let contextSection = '\n## Recent Tool Activity (for context)\n\n';
+
+  for (const msg of recentWithTools) {
+    if (msg.toolContext) {
+      for (const tc of msg.toolContext) {
+        // Summarize the tool call - don't include full results, just key info
+        const inputSummary = Object.keys(tc.input).length > 0
+          ? Object.entries(tc.input).map(([k, v]) => `${k}: ${typeof v === 'string' ? v.substring(0, 50) : JSON.stringify(v).substring(0, 50)}`).join(', ')
+          : 'no params';
+
+        // Extract success and key result info
+        const result = tc.result as { success?: boolean; result?: unknown } | undefined;
+        const successStr = result?.success !== undefined ? (result.success ? '✓' : '✗') : '?';
+
+        contextSection += `- ${tc.toolName}(${inputSummary}) → ${successStr}\n`;
+      }
+    }
+  }
+
+  contextSection += '\nUse this context for follow-up references like "that item", "the one I just asked about", etc.\n';
+
+  return contextSection;
+}
+
+/**
  * Build the complete system prompt
  */
-export async function buildSystemPrompt(): Promise<string> {
+export async function buildSystemPrompt(conversation?: ConversationState): Promise<string> {
   // Load identity files
   const soul = await loadFile(join(DATA_DIR, 'SOUL.md'));
   const user = await loadFile(join(DATA_DIR, 'USER.md'));
@@ -193,6 +236,12 @@ Active: 3 | Blocked: 1 | P0: 0
 Machine: Atlas [Telegram]
 Platform: Telegram Mobile
 `;
+
+  // Add recent tool context for continuity
+  const toolContextSection = formatRecentToolContext(conversation);
+  if (toolContextSection) {
+    prompt += toolContextSection;
+  }
 
   return prompt;
 }
