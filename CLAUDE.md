@@ -213,6 +213,20 @@ Clarification questions must be answerable in <10 seconds:
 
 ---
 
+## Quick Start Scripts
+
+**From any terminal, double-click or run:**
+```
+C:\github\atlas\start-telegram.bat
+```
+
+Or in PowerShell:
+```
+C:\github\atlas\start-telegram.ps1
+```
+
+---
+
 ## Session Notes
 
 ### Session: 2026-01-29
@@ -226,6 +240,9 @@ Clarification questions must be answerable in <10 seconds:
 - Migration audit and strategy documented
 - Brain docs consolidated
 - Created atlas/ monorepo (Atlas 2.0)
+- Agent SDK package created (`packages/agents/`)
+- Research Agent implemented
+- `/agent` command wired to Telegram
 
 ---
 

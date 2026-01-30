@@ -34,3 +34,6 @@ coverage/
 
 # Bun
 bun.lockb
+
+# Claude Code
+.claude/

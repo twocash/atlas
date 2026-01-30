@@ -11,6 +11,7 @@ import { logger } from "./logger";
 import { audit } from "./audit";
 import { routeMessage, routeCallback, cleanupAll, clearUserSession } from "./handlers";
 import { getModelOverride, setModelOverride, MODEL_SHORTCUTS, getModelDisplayName, clearSession } from "./session";
+import { handleAgentCommand } from "./agent-handler";
 import type { AtlasContext } from "./types";
 
 // Environment configuration
@@ -81,6 +82,7 @@ export function createBot(): Bot<AtlasContext> {
       "/start - Show this\n" +
       "/status - Bot health\n" +
       "/model - Set AI model\n" +
+      "/agent - Spawn specialist agents\n" +
       "/new - Clear session"
     );
   });
@@ -142,6 +144,17 @@ export function createBot(): Bot<AtlasContext> {
     setModelOverride(userId, model);
     await ctx.reply(`Model set to: ${getModelDisplayName(model)}`);
     logger.info("Model override set", { userId, model });
+  });
+
+  // Agent command - spawn and manage specialist agents
+  bot.command("agent", async (ctx) => {
+    try {
+      await ctx.replyWithChatAction("typing");
+      await handleAgentCommand(ctx);
+    } catch (error) {
+      logger.error("Error handling agent command", { error });
+      await ctx.reply("Agent command failed. Check logs.");
+    }
   });
 
   // Error handler
