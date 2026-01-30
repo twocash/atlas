@@ -262,7 +262,13 @@ export async function detectIntentWithClaude(
       throw new Error("No text response from Claude");
     }
 
-    const jsonText = textContent.text.trim();
+    // Extract JSON from markdown code blocks if present
+    let jsonText = textContent.text.trim();
+    const jsonMatch = jsonText.match(/```(?:json)?\s*([\s\S]*?)\s*```/);
+    if (jsonMatch) {
+      jsonText = jsonMatch[1].trim();
+    }
+
     const result = JSON.parse(jsonText) as {
       intent: MessageIntent;
       confidence: number;
