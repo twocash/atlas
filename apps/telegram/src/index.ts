@@ -20,6 +20,7 @@ async function main() {
     "TELEGRAM_BOT_TOKEN",
     "TELEGRAM_ALLOWED_USERS",
     "NOTION_API_KEY",
+    "ANTHROPIC_API_KEY",
   ];
 
   const missing = requiredEnvVars.filter((v) => !process.env[v]);

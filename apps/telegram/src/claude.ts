@@ -277,7 +277,11 @@ export async function detectIntentWithClaude(
       entities: result.entities,
     };
   } catch (error) {
-    logger.error("Claude intent detection failed", { error });
+    const errorMessage = error instanceof Error ? error.message : String(error);
+    const errorDetails = error instanceof Error && 'status' in error
+      ? { status: (error as any).status, message: errorMessage }
+      : { message: errorMessage };
+    logger.error("Claude intent detection failed", errorDetails);
 
     // Return heuristic result if available, otherwise default to chat
     if (heuristicResult) {
