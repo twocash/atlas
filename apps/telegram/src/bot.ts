@@ -19,8 +19,8 @@ import { formatStatsMessage, detectPatterns } from "./conversation/stats";
 import type { AtlasContext } from "./types";
 
 // Feature flag for conversational UX mode
-// Set ATLAS_CONVERSATIONAL_UX=true to enable Claude as front door
-const CONVERSATIONAL_UX_ENABLED = process.env.ATLAS_CONVERSATIONAL_UX === 'true';
+// Defaults to true - set ATLAS_CONVERSATIONAL_UX=false to disable
+const CONVERSATIONAL_UX_ENABLED = process.env.ATLAS_CONVERSATIONAL_UX !== 'false';
 
 // Global briefing system instance
 let briefingSystem: BriefingSystem | null = null;
