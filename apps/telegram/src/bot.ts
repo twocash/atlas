@@ -70,7 +70,7 @@ export function createBot(): Bot<AtlasContext> {
       "Atlas is running.\n\n" +
       "What I can do:\n" +
       "- Share a URL to capture\n" +
-      "- \"what's in my inbox?\" to see items\n" +
+      "- \"what's in my work queue?\" to see items\n" +
       "- \"status\" for overview\n" +
       "- \"find [term]\" to search\n" +
       "- \"mark [item] as done\" to update\n\n" +

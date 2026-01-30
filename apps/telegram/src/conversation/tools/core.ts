@@ -13,10 +13,9 @@ const notionApiKey = process.env.NOTION_API_KEY;
 console.log('[INIT] Notion client init, key prefix:', notionApiKey?.substring(0, 10) + '...');
 const notion = new Client({ auth: notionApiKey });
 
-// Notion Data Source IDs — from spec, verified correct
-// IMPORTANT: Use DATA SOURCE IDs, not database IDs
-const FEED_DATA_SOURCE_ID = 'a7493abb-804a-4759-b6ac-aeca62ae23b8';
-const WORK_QUEUE_DATA_SOURCE_ID = '6a8d9c43-b084-47b5-bc83-bc363640f2cd';
+// Notion Database IDs — verified via MCP search
+const FEED_DATABASE_ID = '90b2b33f-4b44-4b42-870f-8d62fb8cbf18';
+const WORK_QUEUE_DATABASE_ID = '3d679030-b76b-43bd-92d8-1ac51abb4a28';
 // NO INBOX — Telegram replaces it per spec
 
 // Helper to safely extract property values from Notion pages
@@ -221,7 +220,7 @@ async function executeNotionSearch(
     // Search Work Queue
     if (database === 'all' || database === 'work_queue') {
       const wqResults = await notion.databases.query({
-        database_id: WORK_QUEUE_DATA_SOURCE_ID,
+        database_id: WORK_QUEUE_DATABASE_ID,
         filter: {
           property: 'Task',
           title: { contains: query },
@@ -246,7 +245,7 @@ async function executeNotionSearch(
     // Search Feed
     if (database === 'all' || database === 'feed') {
       const feedResults = await notion.databases.query({
-        database_id: FEED_DATA_SOURCE_ID,
+        database_id: FEED_DATABASE_ID,
         filter: {
           property: 'Entry',
           title: { contains: query },
@@ -304,7 +303,7 @@ async function executeWorkQueueList(
     }
 
     const queryParams: Parameters<typeof notion.databases.query>[0] = {
-      database_id: WORK_QUEUE_DATA_SOURCE_ID,
+      database_id: WORK_QUEUE_DATABASE_ID,
       page_size: limit,
       sorts: [{ property: 'Priority', direction: 'ascending' }],
     };
@@ -351,7 +350,7 @@ async function executeWorkQueueCreate(
 
   try {
     const response = await notion.pages.create({
-      parent: { database_id: WORK_QUEUE_DATA_SOURCE_ID },
+      parent: { database_id: WORK_QUEUE_DATABASE_ID },
       properties: {
         'Task': { title: [{ text: { content: task } }] },
         'Type': { select: { name: type } },
@@ -442,7 +441,7 @@ async function executeStatusSummary(): Promise<{ success: boolean; result: unkno
 
     // Query Work Queue ONLY — no Inbox per spec
     const activeResults = await notion.databases.query({
-      database_id: WORK_QUEUE_DATA_SOURCE_ID,
+      database_id: WORK_QUEUE_DATABASE_ID,
       filter: {
         or: [
           { property: 'Status', select: { equals: 'Active' } },

@@ -51,7 +51,7 @@ These are **equal citizens**. A garage receipt gets the same treatment as an AI 
 - Be concise — Jim's attention is precious
 - Lead with the action or question
 - Use inline keyboards for choices (A/B/C, not typing)
-- Confirm actions simply: "✓ Captured to Inbox"
+- Confirm actions simply: "✓ Captured to Work Queue"
 - Match Jim's energy (casual, direct, no fluff)
 
 ### DON'T:
@@ -141,7 +141,7 @@ GitHub repo: cool/tool — Grove tool evaluation?
 
 ### Query Intent ("what's in my...")
 ```
-**Inbox** (12)
+**Work Queue** (12)
 
 - New tool for prompt testing [Grove]
 - DrumWave meeting notes [Consulting]
@@ -154,15 +154,11 @@ _...and more_
 ```
 **Atlas Status**
 
-**Inbox** (12)
-- 3 new
-- 2 clarifying
-- 7 routed
-
-**Work Queue** (8)
-- 2 queued
-- 3 in progress
-- 1 blocked
+**Work Queue** (12)
+- 3 captured
+- 5 active
+- 2 blocked
+- 2 done
 
 Urgent: 0 P0, 2 P1
 ```
@@ -171,9 +167,9 @@ Urgent: 0 P0, 2 P1
 ```
 **Found 3 results**
 
-- Memory paper notes [inbox]
+- Memory paper notes [feed]
 - Memory architecture doc [page]
-- Memory implementation task [work]
+- Memory implementation task [work queue]
 ```
 
 ### Action Intent ("mark X as done")
@@ -197,7 +193,7 @@ For help:
 ```
 I can help with:
 - Share a URL to capture
-- "what's in my inbox?" to see items
+- "what's in my work queue?" to see items
 - "status" for overview
 - "find [term]" to search
 - "mark [item] as done" to update
