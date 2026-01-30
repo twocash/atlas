@@ -38,8 +38,19 @@ export async function handleActionIntent(
   const actionType = intentResult.entities?.actionType || extractActionType(text);
   const query = intentResult.entities?.query || extractActionTarget(text);
 
-  if (!query || query.length < 2) {
-    await ctx.reply("Which item? Give me a title or keyword.");
+  // Must have a clear action type to proceed
+  if (!actionType) {
+    await ctx.reply(
+      "I'm not sure what action you want. Try:\n" +
+      '• "Mark [item] as done"\n' +
+      '• "Complete [item]"\n' +
+      '• "Archive [item]"'
+    );
+    return;
+  }
+
+  if (!query || query.length < 3) {
+    await ctx.reply("Which item? Give me a title or keyword (at least 3 chars).");
     return;
   }
 
@@ -59,14 +70,17 @@ export async function handleActionIntent(
       createdAt: new Date(),
     });
 
-    const actionLabel = getActionLabel(actionType || "complete");
+    const actionLabel = getActionLabel(actionType);
     const keyboard = new InlineKeyboard()
       .text(`Yes, ${actionLabel}`, `action_confirm`)
       .text("Cancel", "action_cancel");
 
-    await ctx.reply(`${actionLabel} "${item.title}"?`, {
-      reply_markup: keyboard,
-    });
+    // Include Notion link if available
+    const notionLink = item.url ? `\n📝 ${item.url}` : "";
+    await ctx.reply(
+      `${actionLabel.charAt(0).toUpperCase() + actionLabel.slice(1)} "${item.title}"?${notionLink}`,
+      { reply_markup: keyboard }
+    );
   } catch (error) {
     logger.error("Action intent failed", { error, query });
     await ctx.reply("Something went wrong. Try again?");
@@ -101,7 +115,8 @@ export async function handleActionCallback(ctx: Context, data: string): Promise<
       await updateNotionPage(pending.item.id, pending.actionType);
 
       const actionLabel = getActionLabel(pending.actionType);
-      const confirmMsg = `Done: ${actionLabel} "${pending.item.title}"`;
+      const notionLink = pending.item.url ? `\n📝 ${pending.item.url}` : "";
+      const confirmMsg = `✅ Done: ${actionLabel} "${pending.item.title}"${notionLink}`;
       await ctx.editMessageText(confirmMsg);
       audit.logResponse(userId, confirmMsg);
       logger.info("Action completed", {
@@ -110,7 +125,7 @@ export async function handleActionCallback(ctx: Context, data: string): Promise<
       });
     } catch (error) {
       logger.error("Action failed", { error });
-      await ctx.editMessageText("Action failed. Try again?");
+      await ctx.editMessageText("❌ Action failed. Try again?");
     }
 
     pendingActions.delete(userId);
@@ -120,12 +135,14 @@ export async function handleActionCallback(ctx: Context, data: string): Promise<
 
 /**
  * Extract action type from text
+ * Returns undefined if no clear action pattern is found
  */
 function extractActionType(
   text: string
 ): "complete" | "archive" | "dismiss" | "defer" | undefined {
   const lowerText = text.toLowerCase();
 
+  // Must have a clear action verb pattern
   if (/\b(complete|done|finish|mark.*(done|complete))\b/.test(lowerText)) {
     return "complete";
   }
@@ -139,7 +156,8 @@ function extractActionType(
     return "defer";
   }
 
-  return "complete"; // Default
+  // No clear action pattern found - don't default, return undefined
+  return undefined;
 }
 
 /**
