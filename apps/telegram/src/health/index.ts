@@ -298,7 +298,7 @@ async function checkNotionDatabases(): Promise<HealthCheckResult[]> {
   // Import and call the actual tool functions to test the real code paths
   const { executeCoreTools } = await import('../conversation/tools/core');
 
-  // Test get_status_summary - this queries Inbox and Work Queue
+  // Test get_status_summary - queries Work Queue (no Inbox per spec)
   console.log('[HEALTH] Testing get_status_summary (same route as tools)...');
   const statusResult = await executeCoreTools('get_status_summary', {});
 
@@ -306,7 +306,7 @@ async function checkNotionDatabases(): Promise<HealthCheckResult[]> {
     results.push({
       name: 'notion:get_status_summary',
       status: 'pass',
-      message: 'Status summary tool works (Inbox + Work Queue accessible)',
+      message: 'Status summary tool works (Work Queue accessible)',
       details: statusResult.result,
     });
   } else {
@@ -335,23 +335,7 @@ async function checkNotionDatabases(): Promise<HealthCheckResult[]> {
     });
   }
 
-  // Test inbox_list - queries Inbox with filters
-  console.log('[HEALTH] Testing inbox_list (same route as tools)...');
-  const inboxResult = await executeCoreTools('inbox_list', { limit: 1 });
-
-  if (inboxResult?.success) {
-    results.push({
-      name: 'notion:inbox_list',
-      status: 'pass',
-      message: 'Inbox list tool works',
-    });
-  } else {
-    results.push({
-      name: 'notion:inbox_list',
-      status: 'fail',
-      message: `Inbox list failed: ${inboxResult?.error || 'unknown error'}`,
-    });
-  }
+  // NO inbox_list — Telegram replaces Inbox per spec
 
   return results;
 }
@@ -381,8 +365,8 @@ export async function runHealthChecks(): Promise<HealthReport> {
   const criticalChecks = [
     'env:TELEGRAM_BOT_TOKEN',
     'env:ANTHROPIC_API_KEY',
-    'notion:Inbox 2.0',      // Database access is critical
-    'notion:Work Queue 2.0', // Database access is critical
+    'notion:get_status_summary', // Feed + Work Queue access is critical
+    'notion:work_queue_list',    // Work Queue access is critical
     'claude:sonnet',
   ];
 

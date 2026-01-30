@@ -115,8 +115,7 @@ ${skills.map(s => `- **${s.name}**: ${s.description}`).join('\n')}
 
 ### Status & Dashboard
 - \`get_status_summary\` → "what's on my plate", "status", "dashboard", "what am I working on"
-- \`inbox_list\` → "what's in inbox", "triage", "captured items", "pending sparks"
-- \`work_queue_list\` → "show tasks", "active items", "what's blocked", "P0s", "backlog"
+- \`work_queue_list\` → "show tasks", "active items", "what's blocked", "P0s", "backlog", "triage"
 
 ### Task Management
 - \`work_queue_create\` → Add new tasks to the queue
@@ -145,7 +144,7 @@ ${skills.map(s => `- **${s.name}**: ${s.description}`).join('\n')}
 ## Tool Selection Rules
 
 1. "what's on my plate" / "status" → \`get_status_summary\`
-2. "triage" / "what's in inbox" / "pending" → \`inbox_list\` (defaults to Status=Captured)
+2. "triage" / "pending" / "captured" → \`work_queue_list\` with status filter
 3. "what skills" / "what can you do" → \`list_skills\` (NEVER make up skills)
 4. "mark X done" / "complete" → \`work_queue_update\`
 5. "show active/blocked/P0" → \`work_queue_list\` with filters

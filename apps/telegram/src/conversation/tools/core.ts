@@ -13,10 +13,11 @@ const notionApiKey = process.env.NOTION_API_KEY;
 console.log('[INIT] Notion client init, key prefix:', notionApiKey?.substring(0, 10) + '...');
 const notion = new Client({ auth: notionApiKey });
 
-// Notion Database IDs (from CLAUDE.md)
-const FEED_DATABASE_ID = '3e8867d58aa5495780c2860dada8c993';
-const WORK_QUEUE_DATABASE_ID = '3d679030-b76b-43bd-92d8-1ac51abb4a28';
-const INBOX_DATABASE_ID = 'f6f638c9-6aee-42a7-8137-df5b6a560f50';
+// Notion Data Source IDs — from spec, verified correct
+// IMPORTANT: Use DATA SOURCE IDs, not database IDs
+const FEED_DATA_SOURCE_ID = 'a7493abb-804a-4759-b6ac-aeca62ae23b8';
+const WORK_QUEUE_DATA_SOURCE_ID = '6a8d9c43-b084-47b5-bc83-bc363640f2cd';
+// NO INBOX — Telegram replaces it per spec
 
 // Helper to safely extract property values from Notion pages
 function getTitle(props: Record<string, unknown>, key: string): string {
@@ -38,7 +39,7 @@ function getSelect(props: Record<string, unknown>, key: string): string | null {
 export const CORE_TOOLS: Anthropic.Tool[] = [
   {
     name: 'notion_search',
-    description: 'Search across Notion databases (Inbox, Feed, Work Queue). Use for finding items, checking status, or looking up past work.',
+    description: 'Search across Notion databases (Feed, Work Queue). Use for finding items, checking status, or looking up past work.',
     input_schema: {
       type: 'object' as const,
       properties: {
@@ -48,7 +49,7 @@ export const CORE_TOOLS: Anthropic.Tool[] = [
         },
         database: {
           type: 'string',
-          enum: ['inbox', 'feed', 'work_queue', 'all'],
+          enum: ['feed', 'work_queue', 'all'],
           description: 'Which database to search (default: all)',
         },
         limit: {
@@ -57,30 +58,6 @@ export const CORE_TOOLS: Anthropic.Tool[] = [
         },
       },
       required: ['query'],
-    },
-  },
-  {
-    name: 'inbox_list',
-    description: 'List items from Inbox 2.0 with optional filters. Use for triage - especially items with Status = Captured.',
-    input_schema: {
-      type: 'object' as const,
-      properties: {
-        status: {
-          type: 'string',
-          enum: ['Captured', 'Triaged', 'Routed', 'Archived'],
-          description: 'Filter by status (default: Captured for triage)',
-        },
-        pillar: {
-          type: 'string',
-          enum: ['Personal', 'The Grove', 'Consulting', 'Home/Garage'],
-          description: 'Filter by pillar',
-        },
-        limit: {
-          type: 'number',
-          description: 'Max results (default: 10)',
-        },
-      },
-      required: [],
     },
   },
   {
@@ -197,7 +174,7 @@ export const CORE_TOOLS: Anthropic.Tool[] = [
   },
   {
     name: 'get_status_summary',
-    description: 'Get a dashboard summary of inbox, work queue, and priorities. Use when Jim asks "what\'s on my plate" or "status".',
+    description: 'Get a dashboard summary of the work queue and priorities. Use when Jim asks "what\'s on my plate" or "status".',
     input_schema: {
       type: 'object' as const,
       properties: {},
@@ -216,8 +193,6 @@ export async function executeCoreTools(
   switch (toolName) {
     case 'notion_search':
       return await executeNotionSearch(input);
-    case 'inbox_list':
-      return await executeInboxList(input);
     case 'work_queue_list':
       return await executeWorkQueueList(input);
     case 'work_queue_create':
@@ -243,35 +218,10 @@ async function executeNotionSearch(
   try {
     const results: Array<{ title: string; url: string; database: string; status?: string; pillar?: string }> = [];
 
-    // Search Inbox 2.0
-    if (database === 'all' || database === 'inbox') {
-      const inboxResults = await notion.databases.query({
-        database_id: INBOX_DATABASE_ID,
-        filter: {
-          property: 'Spark',
-          title: { contains: query },
-        },
-        page_size: limit,
-      });
-
-      for (const page of inboxResults.results) {
-        if ('properties' in page) {
-          const props = page.properties as Record<string, unknown>;
-          results.push({
-            title: getTitle(props, 'Spark'),
-            url: `https://notion.so/${page.id.replace(/-/g, '')}`,
-            database: 'Inbox',
-            status: getSelect(props, 'Status') || undefined,
-            pillar: getSelect(props, 'Pillar') || undefined,
-          });
-        }
-      }
-    }
-
     // Search Work Queue
     if (database === 'all' || database === 'work_queue') {
       const wqResults = await notion.databases.query({
-        database_id: WORK_QUEUE_DATABASE_ID,
+        database_id: WORK_QUEUE_DATA_SOURCE_ID,
         filter: {
           property: 'Task',
           title: { contains: query },
@@ -296,7 +246,7 @@ async function executeNotionSearch(
     // Search Feed
     if (database === 'all' || database === 'feed') {
       const feedResults = await notion.databases.query({
-        database_id: FEED_DATABASE_ID,
+        database_id: FEED_DATA_SOURCE_ID,
         filter: {
           property: 'Entry',
           title: { contains: query },
@@ -332,66 +282,6 @@ async function executeNotionSearch(
   }
 }
 
-async function executeInboxList(
-  input: Record<string, unknown>
-): Promise<{ success: boolean; result: unknown; error?: string }> {
-  const status = (input.status as string) || 'Captured'; // Default to Captured for triage
-  const pillar = input.pillar as string | undefined;
-  const limit = (input.limit as number) || 10;
-
-  try {
-    const filters: Array<{ property: string; select: { equals: string } }> = [];
-
-    // Inbox 2.0 uses "Atlas Status" not "Status"
-    filters.push({ property: 'Atlas Status', select: { equals: status } });
-
-    if (pillar) {
-      filters.push({ property: 'Pillar', select: { equals: pillar } });
-    }
-
-    const queryParams: Parameters<typeof notion.databases.query>[0] = {
-      database_id: INBOX_DATABASE_ID,
-      page_size: limit,
-      sorts: [{ timestamp: 'created_time', direction: 'descending' }],
-    };
-
-    if (filters.length === 1) {
-      queryParams.filter = filters[0];
-    } else if (filters.length > 1) {
-      queryParams.filter = { and: filters };
-    }
-
-    const results = await notion.databases.query(queryParams);
-
-    const items = results.results.map(page => {
-      if ('properties' in page) {
-        const props = page.properties as Record<string, unknown>;
-        return {
-          id: page.id,
-          spark: getTitle(props, 'Spark'),
-          status: getSelect(props, 'Atlas Status'),
-          pillar: getSelect(props, 'Pillar'),
-          intent: getSelect(props, 'Intent'),
-          url: `https://notion.so/${page.id.replace(/-/g, '')}`,
-        };
-      }
-      return null;
-    }).filter(Boolean);
-
-    return {
-      success: true,
-      result: {
-        items,
-        count: items.length,
-        filter: { status, pillar },
-      },
-    };
-  } catch (error) {
-    logger.error('Inbox list failed', { error });
-    return { success: false, result: null, error: String(error) };
-  }
-}
-
 async function executeWorkQueueList(
   input: Record<string, unknown>
 ): Promise<{ success: boolean; result: unknown; error?: string }> {
@@ -414,7 +304,7 @@ async function executeWorkQueueList(
     }
 
     const queryParams: Parameters<typeof notion.databases.query>[0] = {
-      database_id: WORK_QUEUE_DATABASE_ID,
+      database_id: WORK_QUEUE_DATA_SOURCE_ID,
       page_size: limit,
       sorts: [{ property: 'Priority', direction: 'ascending' }],
     };
@@ -461,7 +351,7 @@ async function executeWorkQueueCreate(
 
   try {
     const response = await notion.pages.create({
-      parent: { database_id: WORK_QUEUE_DATABASE_ID },
+      parent: { database_id: WORK_QUEUE_DATA_SOURCE_ID },
       properties: {
         'Task': { title: [{ text: { content: task } }] },
         'Type': { select: { name: type } },
@@ -545,38 +435,14 @@ async function executeWebSearch(
 }
 
 async function executeStatusSummary(): Promise<{ success: boolean; result: unknown; error?: string }> {
-  console.log('[DEBUG] executeStatusSummary called');
-  console.log('[DEBUG] INBOX_DATABASE_ID:', INBOX_DATABASE_ID);
-  console.log('[DEBUG] WORK_QUEUE_DATABASE_ID:', WORK_QUEUE_DATABASE_ID);
-  console.log('[DEBUG] NOTION_API_KEY exists:', !!process.env.NOTION_API_KEY);
-
   try {
-    // Count by status
     const statusCounts: Record<string, number> = {};
     const pillarCounts: Record<string, number> = {};
     const p0Items: Array<{ task: string; pillar: string }> = [];
 
-    // Query Inbox (captured sparks awaiting triage)
-    // Inbox 2.0 uses "Atlas Status" property, not "Status"
-    let inboxCaptured = 0;
-    try {
-      console.log('[DEBUG] Querying Inbox...');
-      const inboxResults = await notion.databases.query({
-        database_id: INBOX_DATABASE_ID,
-        filter: { property: 'Atlas Status', select: { equals: 'Captured' } },
-        page_size: 50,
-      });
-      inboxCaptured = inboxResults.results.length;
-      console.log('[DEBUG] Inbox query succeeded, count:', inboxCaptured);
-    } catch (inboxError: any) {
-      console.log('[DEBUG] Inbox query FAILED:', inboxError?.code, inboxError?.message);
-      // Inbox query failed, continue with work queue
-    }
-
-    console.log('[DEBUG] Querying Work Queue...');
-    // Query active/blocked items from Work Queue
+    // Query Work Queue ONLY — no Inbox per spec
     const activeResults = await notion.databases.query({
-      database_id: WORK_QUEUE_DATABASE_ID,
+      database_id: WORK_QUEUE_DATA_SOURCE_ID,
       filter: {
         or: [
           { property: 'Status', select: { equals: 'Active' } },
@@ -604,39 +470,22 @@ async function executeStatusSummary(): Promise<{ success: boolean; result: unkno
       }
     }
 
-    // Build summary message
-    const summaryParts: string[] = [];
-    if (inboxCaptured > 0) {
-      summaryParts.push(`${inboxCaptured} inbox items to triage`);
-    }
-    if (p0Items.length > 0) {
-      summaryParts.push(`${p0Items.length} P0 items need attention`);
-    }
-    if (summaryParts.length === 0) {
-      summaryParts.push('Inbox clear. No P0 items. Queue is manageable.');
-    }
-
     return {
       success: true,
       result: {
-        inbox: { captured: inboxCaptured },
         workQueue: {
           totalActive: activeResults.results.length,
           byStatus: statusCounts,
           byPillar: pillarCounts,
         },
         p0Items,
-        summary: summaryParts.join('. '),
+        summary: p0Items.length > 0
+          ? `${p0Items.length} P0 items need attention`
+          : 'No P0 items. Queue is manageable.',
       },
     };
   } catch (error: any) {
-    const errorInfo = {
-      message: error?.message,
-      code: error?.code,
-      status: error?.status,
-      body: error?.body,
-    };
-    logger.error('Status summary failed', { error: errorInfo });
+    logger.error('Status summary failed', { error });
     return {
       success: false,
       result: null,
