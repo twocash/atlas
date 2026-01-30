@@ -9,6 +9,9 @@ import { Client } from '@notionhq/client';
 import { logger } from '../logger';
 import type { Pillar, RequestType, FeedStatus, WQStatus } from './types';
 
+// Re-export Pillar for use by other modules
+export type { Pillar };
+
 // Initialize Notion client
 const notion = new Client({ auth: process.env.NOTION_API_KEY });
 
@@ -304,5 +307,109 @@ export async function logReclassification(
     logger.info('Reclassification logged', { workQueueId, originalPillar, newPillar });
   } catch (error) {
     logger.error('Failed to log reclassification', { error, workQueueId });
+  }
+}
+
+/**
+ * Generate a clickable Notion URL from a page ID
+ */
+export function notionUrl(pageId: string): string {
+  return `https://notion.so/${pageId.replace(/-/g, '')}`;
+}
+
+/**
+ * Activity action types for WQ mutations
+ */
+export type WQActivityAction = 'created' | 'status_change' | 'priority_change' | 'updated';
+
+export interface WQActivityOptions {
+  action: WQActivityAction;
+  wqItemId: string;
+  wqTitle: string;
+  details?: string;  // e.g., "P2→P0" or "→ Done"
+  pillar?: Pillar;   // Inherit from WQ item if available
+  source: 'Telegram' | 'Scheduled' | 'CLI';
+}
+
+export interface WQActivityResult {
+  feedId: string;
+  feedUrl: string;
+}
+
+/**
+ * Build activity entry text based on action type
+ */
+function buildActivityEntry(opts: WQActivityOptions): string {
+  const title = opts.wqTitle.substring(0, 80);
+  switch (opts.action) {
+    case 'created':
+      return `Created: ${title}`;
+    case 'status_change':
+      return opts.details ? `${opts.details}: ${title}` : `Updated: ${title}`;
+    case 'priority_change':
+      return opts.details ? `Reprioritized: ${title} (${opts.details})` : `Reprioritized: ${title}`;
+    case 'updated':
+      return `Updated: ${title}`;
+    default:
+      return `Activity: ${title}`;
+  }
+}
+
+/**
+ * Log Work Queue activity to Feed
+ * Creates a Feed entry for any WQ mutation with bidirectional linking
+ */
+export async function logWQActivity(opts: WQActivityOptions): Promise<WQActivityResult | null> {
+  const entryText = buildActivityEntry(opts);
+  const pillar = opts.pillar || 'The Grove';
+
+  try {
+    const response = await notion.pages.create({
+      parent: { database_id: FEED_DATABASE_ID },
+      properties: {
+        'Entry': {
+          title: [{ text: { content: entryText } }],
+        },
+        'Pillar': {
+          select: { name: pillar },
+        },
+        'Request Type': {
+          select: { name: 'Process' },
+        },
+        'Source': {
+          select: { name: opts.source },
+        },
+        'Author': {
+          select: { name: 'Atlas [Telegram]' },
+        },
+        'Confidence': {
+          number: 1.0,  // Activity logs are certain
+        },
+        'Status': {
+          select: { name: 'Done' },  // Activity logs are already complete
+        },
+        'Date': {
+          date: { start: new Date().toISOString() },
+        },
+        'Work Queue': {
+          relation: [{ id: opts.wqItemId }],
+        },
+      },
+    });
+
+    const feedUrl = notionUrl(response.id);
+    logger.info('WQ activity logged to Feed', {
+      action: opts.action,
+      wqItemId: opts.wqItemId,
+      feedId: response.id,
+    });
+
+    return {
+      feedId: response.id,
+      feedUrl,
+    };
+  } catch (error) {
+    logger.error('Failed to log WQ activity', { error, opts });
+    return null;
   }
 }

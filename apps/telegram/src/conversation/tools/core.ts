@@ -7,6 +7,7 @@
 import type Anthropic from '@anthropic-ai/sdk';
 import { Client } from '@notionhq/client';
 import { logger } from '../../logger';
+import { logWQActivity, notionUrl, type Pillar } from '../audit';
 
 // Create Notion client - log the key prefix for debugging
 const notionApiKey = process.env.NOTION_API_KEY;
@@ -363,10 +364,27 @@ async function executeWorkQueueCreate(
       },
     });
 
-    const url = `https://notion.so/${response.id.replace(/-/g, '')}`;
+    const wqUrl = notionUrl(response.id);
+
+    // Log creation to Feed
+    const feedResult = await logWQActivity({
+      action: 'created',
+      wqItemId: response.id,
+      wqTitle: task,
+      pillar: pillar as Pillar,
+      source: 'Telegram',
+    });
+
     return {
       success: true,
-      result: { id: response.id, url, task, status: 'Captured' },
+      result: {
+        id: response.id,
+        url: wqUrl,
+        task,
+        status: 'Captured',
+        feedId: feedResult?.feedId,
+        feedUrl: feedResult?.feedUrl,
+      },
     };
   } catch (error) {
     logger.error('Work queue create failed', { error, task });
@@ -384,6 +402,21 @@ async function executeWorkQueueUpdate(
   const resolutionNotes = input.resolution_notes as string | undefined;
 
   try {
+    // First, fetch the current WQ item to get title, pillar, and current values
+    const currentPage = await notion.pages.retrieve({ page_id: id });
+    let wqTitle = 'Unknown';
+    let wqPillar: Pillar = 'The Grove';
+    let oldPriority: string | null = null;
+    let oldStatus: string | null = null;
+
+    if ('properties' in currentPage) {
+      const props = currentPage.properties as Record<string, unknown>;
+      wqTitle = getTitle(props, 'Task');
+      wqPillar = (getSelect(props, 'Pillar') as Pillar) || 'The Grove';
+      oldPriority = getSelect(props, 'Priority');
+      oldStatus = getSelect(props, 'Status');
+    }
+
     const properties: Record<string, unknown> = {};
 
     if (status) {
@@ -410,7 +443,56 @@ async function executeWorkQueueUpdate(
       properties: properties as any,
     });
 
-    return { success: true, result: { id, updated: Object.keys(properties) } };
+    const wqUrl = notionUrl(id);
+
+    // Log activity to Feed based on what changed
+    let feedResult = null;
+    if (status && status !== oldStatus) {
+      // Status change - use descriptive action
+      const statusLabel = status === 'Done' ? 'Completed' :
+                         status === 'Active' ? 'Started' :
+                         status === 'Blocked' ? 'Blocked' :
+                         status === 'Paused' ? 'Paused' : 'Updated';
+      feedResult = await logWQActivity({
+        action: 'status_change',
+        wqItemId: id,
+        wqTitle,
+        details: statusLabel,
+        pillar: wqPillar,
+        source: 'Telegram',
+      });
+    } else if (priority && priority !== oldPriority) {
+      // Priority change
+      feedResult = await logWQActivity({
+        action: 'priority_change',
+        wqItemId: id,
+        wqTitle,
+        details: `${oldPriority}→${priority}`,
+        pillar: wqPillar,
+        source: 'Telegram',
+      });
+    } else if (notes || resolutionNotes) {
+      // Notes update
+      feedResult = await logWQActivity({
+        action: 'updated',
+        wqItemId: id,
+        wqTitle,
+        pillar: wqPillar,
+        source: 'Telegram',
+      });
+    }
+
+    return {
+      success: true,
+      result: {
+        id,
+        url: wqUrl,
+        title: wqTitle,
+        updated: Object.keys(properties),
+        feedId: feedResult?.feedId,
+        feedUrl: feedResult?.feedUrl,
+      },
+    };
   } catch (error) {
     logger.error('Work queue update failed', { error, id });
     return { success: false, result: null, error: String(error) };
