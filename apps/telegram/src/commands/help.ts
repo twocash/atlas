@@ -33,6 +33,7 @@ MODEL SELECTION
 SESSION
 /new                        — Clear conversation session
 /status                     — System health check
+/stats                      — Weekly usage & work queue stats
 /help                       — This message
 
 COMING SOON

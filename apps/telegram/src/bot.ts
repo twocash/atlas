@@ -14,7 +14,13 @@ import { getModelOverride, setModelOverride, MODEL_SHORTCUTS, getModelDisplayNam
 import { handleAgentCommand } from "./agent-handler";
 import { initBriefings, type BriefingSystem } from "./briefing";
 import { getHelpText } from "./commands/help";
+import { handleConversation, clearConversation } from "./conversation";
+import { formatStatsMessage, detectPatterns } from "./conversation/stats";
 import type { AtlasContext } from "./types";
+
+// Feature flag for conversational UX mode
+// Set ATLAS_CONVERSATIONAL_UX=true to enable Claude as front door
+const CONVERSATIONAL_UX_ENABLED = process.env.ATLAS_CONVERSATIONAL_UX === 'true';
 
 // Global briefing system instance
 let briefingSystem: BriefingSystem | null = null;
@@ -98,6 +104,7 @@ export function createBot(): Bot<AtlasContext> {
     const userId = ctx.from!.id;
     clearUserSession(userId);
     clearSession(userId);
+    await clearConversation(userId);
     cleanupAll(0); // Clear all pending
     await ctx.reply("Session cleared.");
   });
@@ -146,6 +153,29 @@ export function createBot(): Bot<AtlasContext> {
     }
   });
 
+  // Stats command - show usage and work queue stats
+  bot.command("stats", async (ctx) => {
+    try {
+      await ctx.replyWithChatAction("typing");
+      const statsMessage = await formatStatsMessage(7);
+      await ctx.reply(statsMessage);
+
+      // Check for patterns and suggest skills
+      const patterns = await detectPatterns();
+      if (patterns.length > 0) {
+        let patternMsg = "\n💡 Patterns detected:\n";
+        for (const p of patterns.slice(0, 3)) {
+          patternMsg += `   • ${p.suggestion}\n`;
+        }
+        patternMsg += "\nWant me to create a skill for any of these?";
+        await ctx.reply(patternMsg);
+      }
+    } catch (error) {
+      logger.error("Error generating stats", { error });
+      await ctx.reply("Stats generation failed. Check logs.");
+    }
+  });
+
   // Briefing command - manual briefing control
   bot.command("briefing", async (ctx) => {
     const args = ctx.message?.text?.split(" ").slice(1).join(" ").toLowerCase().trim();
@@ -190,15 +220,60 @@ export function createBot(): Bot<AtlasContext> {
   // Generic handlers (AFTER commands)
   // ==========================================
 
-  // Handle text messages - route based on intent
+  // Handle text messages
   bot.on("message:text", async (ctx) => {
     try {
-      await routeMessage(ctx);
+      if (CONVERSATIONAL_UX_ENABLED) {
+        // New: Claude as front door
+        await handleConversation(ctx);
+      } else {
+        // Legacy: Router-based intent detection
+        await routeMessage(ctx);
+      }
     } catch (error) {
       logger.error("Error handling message", { error });
       await ctx.reply("Something went wrong. Please try again.");
     }
   });
+
+  // Handle attachments (photos, documents, voice, etc.) - only in conversational mode
+  if (CONVERSATIONAL_UX_ENABLED) {
+    bot.on("message:photo", async (ctx) => {
+      try {
+        await handleConversation(ctx);
+      } catch (error) {
+        logger.error("Error handling photo", { error });
+        await ctx.reply("Couldn't process that image. Try again?");
+      }
+    });
+
+    bot.on("message:document", async (ctx) => {
+      try {
+        await handleConversation(ctx);
+      } catch (error) {
+        logger.error("Error handling document", { error });
+        await ctx.reply("Couldn't process that document. Try again?");
+      }
+    });
+
+    bot.on("message:voice", async (ctx) => {
+      try {
+        await handleConversation(ctx);
+      } catch (error) {
+        logger.error("Error handling voice", { error });
+        await ctx.reply("Couldn't process that voice message. Try again?");
+      }
+    });
+
+    bot.on("message:video", async (ctx) => {
+      try {
+        await handleConversation(ctx);
+      } catch (error) {
+        logger.error("Error handling video", { error });
+        await ctx.reply("Couldn't process that video. Try again?");
+      }
+    });
+  }
 
   // Handle callback queries (inline keyboard button presses)
   bot.on("callback_query:data", async (ctx) => {
@@ -243,9 +318,12 @@ export async function startBot(bot: Bot<AtlasContext>): Promise<void> {
   // Start polling
   await bot.start({
     onStart: (botInfo) => {
-      logger.info(`Bot started as @${botInfo.username}`);
+      logger.info(`Bot started as @${botInfo.username}`, {
+        conversationalUX: CONVERSATIONAL_UX_ENABLED,
+      });
       console.log(`\n🤖 Atlas Bot is running as @${botInfo.username}`);
-      console.log(`📋 Briefings scheduled: 7am, 12:30pm, 6pm ET\n`);
+      console.log(`📋 Briefings scheduled: 7am, 12:30pm, 6pm ET`);
+      console.log(`💬 Conversational UX: ${CONVERSATIONAL_UX_ENABLED ? 'ENABLED' : 'disabled'}\n`);
     },
   });
 }
