@@ -363,9 +363,9 @@ export async function processMedia(
     }
 
     // Construct download URL
-    const botToken = process.env.BOT_TOKEN;
+    const botToken = process.env.TELEGRAM_BOT_TOKEN;
     if (!botToken) {
-      throw new Error('BOT_TOKEN required for file downloads');
+      throw new Error('TELEGRAM_BOT_TOKEN required for file downloads');
     }
 
     const downloadUrl = `https://api.telegram.org/file/bot${botToken}/${filePath}`;
