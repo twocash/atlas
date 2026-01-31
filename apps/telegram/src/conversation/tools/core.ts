@@ -276,11 +276,13 @@ async function executeNotionSearch(
   const database = (input.database as string) || 'all';
   const limit = (input.limit as number) || 10;
 
-  try {
-    const results: Array<{ title: string; url: string; database: string; status?: string; pillar?: string; type?: string }> = [];
+  logger.info('Notion search starting', { query, database, limit });
+  const results: Array<{ title: string; url: string; database: string; status?: string; pillar?: string; type?: string }> = [];
+  const errors: string[] = [];
 
-    // Search Work Queue
-    if (database === 'all' || database === 'work_queue') {
+  // Search Work Queue (isolated try/catch)
+  if (database === 'all' || database === 'work_queue') {
+    try {
       const wqResults = await notion.databases.query({
         database_id: WORK_QUEUE_DATABASE_ID,
         filter: {
@@ -302,10 +304,16 @@ async function executeNotionSearch(
           });
         }
       }
+      logger.debug('WQ search complete', { count: wqResults.results.length });
+    } catch (wqError: any) {
+      logger.warn('Work Queue search failed', { error: wqError?.message });
+      errors.push(`WQ: ${wqError?.message}`);
     }
+  }
 
-    // Search Feed
-    if (database === 'all' || database === 'feed') {
+  // Search Feed (isolated try/catch)
+  if (database === 'all' || database === 'feed') {
+    try {
       const feedResults = await notion.databases.query({
         database_id: FEED_DATABASE_ID,
         filter: {
@@ -325,43 +333,47 @@ async function executeNotionSearch(
           });
         }
       }
+      logger.debug('Feed search complete', { count: feedResults.results.length });
+    } catch (feedError: any) {
+      logger.warn('Feed search failed', { error: feedError?.message });
+      errors.push(`Feed: ${feedError?.message}`);
     }
+  }
 
-    // ALSO search globally across all Notion pages
-    if (database === 'all' || database === 'global') {
-      try {
-        const globalResults = await globalNotionSearch(query);
-        for (const item of globalResults) {
-          // Avoid duplicates from WQ/Feed
-          const alreadyFound = results.some(r => r.url === item.url);
-          if (!alreadyFound) {
-            results.push({
-              title: item.title,
-              url: item.url,
-              database: item.type === 'inbox' ? 'Inbox' : item.type === 'work' ? 'Work Queue' : 'Page',
-              type: item.type,
-            });
-          }
+  // ALWAYS search globally (this is the most important for finding docs/drafts)
+  if (database === 'all' || database === 'global') {
+    try {
+      const globalResults = await globalNotionSearch(query);
+      for (const item of globalResults) {
+        // Avoid duplicates from WQ/Feed
+        const alreadyFound = results.some(r => r.url === item.url);
+        if (!alreadyFound) {
+          results.push({
+            title: item.title,
+            url: item.url,
+            database: item.type === 'inbox' ? 'Inbox' : item.type === 'work' ? 'Work Queue' : 'Page',
+            type: item.type,
+          });
         }
-      } catch (globalError) {
-        logger.warn('Global Notion search failed, continuing with database results', { globalError });
       }
+      logger.debug('Global search complete', { count: globalResults.length });
+    } catch (globalError: any) {
+      logger.warn('Global Notion search failed', { error: globalError?.message });
+      errors.push(`Global: ${globalError?.message}`);
     }
+  }
 
-    return { success: true, result: results.slice(0, limit) };
-  } catch (error: any) {
-    const errorInfo = {
-      message: error?.message,
-      code: error?.code,
-      status: error?.status,
-    };
-    logger.error('Notion search failed', { error: errorInfo, query });
+  // Return results even if some searches failed
+  if (results.length === 0 && errors.length > 0) {
     return {
       success: false,
-      result: null,
-      error: `Notion error: ${error?.code || 'unknown'} - ${error?.message || String(error)}`
+      result: [],
+      error: `Search errors: ${errors.join('; ')}`
     };
   }
+
+  logger.info('Notion search complete', { query, resultCount: results.length, errors: errors.length });
+  return { success: true, result: results.slice(0, limit) };
 }
 
 async function executeWorkQueueList(
