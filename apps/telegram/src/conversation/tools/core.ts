@@ -351,7 +351,7 @@ async function executeNotionSearch(
           results.push({
             title: item.title,
             url: item.url,
-            database: item.type === 'inbox' ? 'Inbox' : item.type === 'work' ? 'Work Queue' : 'Page',
+            database: item.type === 'feed' ? 'Feed' : item.type === 'work' ? 'Work Queue' : 'Page',
             type: item.type,
           });
         }

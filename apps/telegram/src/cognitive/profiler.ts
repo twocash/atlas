@@ -12,7 +12,7 @@ import { logger } from "../logger";
  * Tool trigger patterns for intent detection
  */
 const TOOL_TRIGGERS = [
-  { tool: "query_inbox", pattern: /\b(inbox|captures?|sparks?|what'?s\s+in)\b/i },
+  { tool: "query_feed", pattern: /\b(feed|captures?|sparks?|what'?s\s+in)\b/i },
   { tool: "query_work_queue", pattern: /\b(queue|tasks?|work|projects?|to-?do)\b/i },
   { tool: "get_status", pattern: /\b(status|overview|urgent|p0|priority|focus)\b/i },
   { tool: "get_atlas_state", pattern: /\b(atlas|how'?s\s+it|state|health)\b/i },

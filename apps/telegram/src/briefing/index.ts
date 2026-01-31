@@ -2,7 +2,7 @@
  * Atlas Daily Briefing
  *
  * Scheduled Telegram briefings at 7am, 12:30pm, 6pm ET.
- * Surfaces blocked items, due dates, active work, and inbox count.
+ * Surfaces blocked items, due dates, active work, and feed pending count.
  *
  * @example
  * ```typescript
@@ -90,7 +90,7 @@ export function initBriefings(api: Api, chatId: number): BriefingSystem {
         due: data.dueThisWeek.length,
         active: data.active.length,
         completed: data.completedYesterday.length,
-        inbox: data.inboxCount,
+        feedPending: data.feedPendingCount,
       });
     } catch (error) {
       logger.error(`Failed to send ${label} briefing`, { error });

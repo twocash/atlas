@@ -5,7 +5,7 @@
  * with Claude fallback for ambiguous cases.
  *
  * Intent types:
- * - spark: URL present, "save this", capture to inbox
+ * - spark: URL present, "save this", capture to feed
  * - query: "what's in my...", "show me...", "list..."
  * - status: "how's...", "status on...", "where are we"
  * - lookup: "find...", "search...", "what did we decide"
@@ -25,7 +25,7 @@ import { logger } from "./logger";
 /** Patterns that strongly indicate a query intent */
 const QUERY_PATTERNS = [
   /^(what'?s?|show|list|how many|give me)\b/i,
-  /\b(inbox|queue|pending|items?|tasks?)\b/i,
+  /\b(feed|queue|pending|items?|tasks?)\b/i,
   /^(what|which|how many)\b.*\?$/i,
 ];
 

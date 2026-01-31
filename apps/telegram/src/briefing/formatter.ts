@@ -63,9 +63,9 @@ export function formatBriefing(data: BriefingData, briefingTime: BriefingTime): 
     sections.push(formatCompletedSection(data.completedYesterday));
   }
 
-  // Inbox count
-  if (data.inboxCount > 0) {
-    sections.push(`📥 INBOX (unprocessed): ${data.inboxCount} item${data.inboxCount === 1 ? "" : "s"}`);
+  // Feed pending count
+  if (data.feedPendingCount > 0) {
+    sections.push(`📥 FEED (pending): ${data.feedPendingCount} item${data.feedPendingCount === 1 ? "" : "s"}`);
   }
 
   // If nothing to report

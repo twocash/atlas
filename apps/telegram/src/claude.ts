@@ -62,7 +62,7 @@ You are classifying a spark (raw input) from Jim. Analyze the content and return
 - confidence: Number 0-100 representing classification confidence
 - reasoning: Brief explanation (1-2 sentences) of why you classified this way
 - tags: Array of relevant tags (e.g., ["ai-tools", "research"])
-- suggestedTitle: A concise title for the inbox item (max 100 chars)
+- suggestedTitle: A concise title for the Feed entry (max 100 chars)
 
 Return ONLY valid JSON, no markdown formatting or explanation outside the JSON.
 `;
@@ -329,14 +329,14 @@ export async function generateResponseWithTools(
 
   const tools: Anthropic.Tool[] = [
     {
-      name: "query_inbox",
-      description: "Get items from the inbox. Returns recent sparks/captures.",
+      name: "query_feed",
+      description: "Get items from the Feed activity log. Returns recent entries.",
       input_schema: {
         type: "object" as const,
         properties: {
           pillar: {
             type: "string",
-            enum: ["The Grove", "Personal", "Consulting", "Home"],
+            enum: ["The Grove", "Personal", "Consulting", "Home/Garage"],
             description: "Filter by pillar (optional)"
           },
           limit: { type: "number", description: "Max items to return (default 5)" }
@@ -362,7 +362,7 @@ export async function generateResponseWithTools(
     },
     {
       name: "get_status",
-      description: "Get a summary of inbox and work queue counts, including P0 items.",
+      description: "Get a summary of Feed and Work Queue counts, including P0 items.",
       input_schema: {
         type: "object" as const,
         properties: {},
@@ -382,10 +382,10 @@ export async function generateResponseWithTools(
 
   const systemPrompt = `${atlasIdentity}
 
-You are chatting with Jim via Telegram. You have tools to look up his inbox, work queue, and Atlas state.
+You are chatting with Jim via Telegram. You have tools to look up his feed, work queue, and Atlas state.
 
 RULES:
-- If Jim asks about inbox, queue, tasks, status, or priorities — USE THE TOOLS
+- If Jim asks about feed, queue, tasks, status, or priorities — USE THE TOOLS
 - Don't guess or make up items — look them up
 - Be concise. This is mobile. No walls of text.
 - Lead with what matters. Skip pleasantries.
@@ -398,7 +398,7 @@ VOICE:
 - Just answer.
 
 EXAMPLES:
-- "3 items in your inbox. 2 Grove, 1 Consulting."
+- "3 items in your feed. 2 Grove, 1 Consulting."
 - "Queue's clear. Nothing blocking."
 - "Found 2 P0s that need attention."
 `;
@@ -464,13 +464,13 @@ EXAMPLES:
  * Execute a tool call and return results
  */
 async function executeToolCall(toolName: string, input: unknown): Promise<unknown> {
-  const { queryInbox, queryWorkQueue, getStatusSummary } = await import("./notion");
+  const { queryFeed, queryWorkQueue, getStatusSummary } = await import("./notion");
   const { getState, getTasks, getHeartbeat } = await import("./atlas-system");
 
   switch (toolName) {
-    case "query_inbox": {
+    case "query_feed": {
       const params = input as { pillar?: string; limit?: number };
-      const result = await queryInbox({
+      const result = await queryFeed({
         pillar: params.pillar as any,
         limit: params.limit || 5
       });

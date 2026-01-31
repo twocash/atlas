@@ -139,7 +139,7 @@ export type Decision =
   | "Dismiss";
 
 /**
- * Atlas status for inbox items
+ * Atlas status for feed items
  */
 export type AtlasStatus = 
   | "New"
@@ -174,9 +174,9 @@ export type WorkStatus =
 export type Priority = "P0" | "P1" | "P2" | "P3";
 
 /**
- * Inbox item to create in Notion
+ * Feed item to create in Notion (activity log entry)
  */
-export interface InboxItem {
+export interface FeedItem {
   spark: string; // title
   source: string; // url
   sourceType: "Telegram" | "Browser" | "Manual";
@@ -191,6 +191,9 @@ export interface InboxItem {
   decisionDate?: Date;
 }
 
+/** @deprecated Use FeedItem instead */
+export type InboxItem = FeedItem;
+
 /**
  * Work queue item to create in Notion
  */
@@ -199,7 +202,7 @@ export interface WorkItem {
   type: "Research" | "Draft" | "Build" | "Schedule" | "Answer" | "Process";
   status: WorkStatus;
   priority: Priority;
-  inboxSourceId?: string; // relation to inbox
+  feedSourceId?: string; // relation to feed
   notes: string;
   queuedDate: Date;
 }
@@ -235,7 +238,7 @@ export type AllowedUser = number;
  * Message intent types - what does the user want to do?
  */
 export type MessageIntent =
-  | "spark"   // URL present, "save this", capture to inbox
+  | "spark"   // URL present, "save this", capture to feed
   | "query"   // "what's in my...", "show me...", "list..."
   | "status"  // "how's...", "status on...", "where are we"
   | "lookup"  // "find...", "search...", "what did we decide"
@@ -283,7 +286,7 @@ export interface NotionQueryOptions {
 }
 
 /**
- * Result from inbox/work queue queries
+ * Result from feed/work queue queries
  */
 export interface NotionQueryResult {
   items: NotionItemSummary[];
@@ -308,7 +311,7 @@ export interface NotionItemSummary {
  * Status summary across databases
  */
 export interface StatusSummary {
-  inbox: {
+  feed: {
     total: number;
     byStatus: Record<string, number>;
     byPillar: Record<string, number>;
@@ -327,7 +330,7 @@ export interface StatusSummary {
 export interface NotionSearchResult {
   id: string;
   title: string;
-  type: "inbox" | "work" | "page";
+  type: "feed" | "work" | "page";
   snippet?: string;
   url: string;
   matchScore?: number;

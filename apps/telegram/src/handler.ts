@@ -33,7 +33,7 @@ import {
   generatePillarChangeOptions,
   generateIntentChangeOptions
 } from "./clarify";
-import { createInboxItem, createWorkItem } from "./notion";
+import { createFeedItem, createWorkItem } from "./notion";
 import { logger } from "./logger";
 import { audit } from "./audit";
 
@@ -258,8 +258,8 @@ async function handleConfirm(
   pending.spark.clarification = clarification;
 
   try {
-    // Create inbox item
-    const inboxPageId = await createInboxItem(
+    // Create feed item
+    const feedPageId = await createFeedItem(
       pending.spark,
       pending.classification,
       decision,
@@ -270,7 +270,7 @@ async function handleConfirm(
     let workPageId: string | undefined;
     if (shouldRoute) {
       workPageId = await createWorkItem(
-        inboxPageId,
+        feedPageId,
         pending.spark,
         pending.classification
       );
@@ -281,8 +281,8 @@ async function handleConfirm(
     await ctx.editMessageText(confirmMsg);
 
     // Log success
-    audit.logResponse(userId, confirmMsg, inboxPageId);
-    logger.info("Spark captured", { inboxPageId, workPageId, pillar, intent });
+    audit.logResponse(userId, confirmMsg, feedPageId);
+    logger.info("Spark captured", { feedPageId, workPageId, pillar, intent });
 
   } catch (error) {
     logger.error("Failed to create Notion items", { error });

@@ -21,6 +21,10 @@ import type {
   NotionItemSummary,
   StatusSummary,
   NotionSearchResult,
+  Spark,
+  ClassificationResult,
+  Decision,
+  ClarificationExchange,
 } from "./types";
 import { logger } from "./logger";
 
@@ -29,12 +33,10 @@ import { logger } from "./logger";
 const FEED_DATABASE_ID = "90b2b33f-4b44-4b42-870f-8d62fb8cbf18";
 const WORK_QUEUE_DATABASE_ID = "3d679030-b76b-43bd-92d8-1ac51abb4a28";
 
-// Legacy export for gradual migration
+// Database ID accessor
 const getDatabaseIds = () => ({
   feed: FEED_DATABASE_ID,
   workQueue: WORK_QUEUE_DATABASE_ID,
-  // DEPRECATED - DO NOT USE
-  inbox: FEED_DATABASE_ID, // Redirect to Feed for any legacy code
 });
 
 // Lazy-initialized Notion client
@@ -251,8 +253,7 @@ export async function getStatusSummary(): Promise<StatusSummary> {
     }
 
     return {
-      // Legacy 'inbox' key redirects to Feed for compatibility
-      inbox: {
+      feed: {
         total: feedResponse.results.length,
         byStatus: feedByStatus,
         byPillar: feedByPillar,
@@ -510,25 +511,97 @@ function extractDate(page: any, propName: string): Date | undefined {
 
 // ==========================================
 // DEPRECATED FUNCTIONS - DO NOT USE
-// These exist only for legacy code migration
+// ==========================================
+// Legacy Item Creation (for handler.ts, spark.ts)
 // ==========================================
 
 /**
- * @deprecated Use conversation/audit.ts createAuditTrail instead
+ * Create a Feed entry in Notion
+ * Used by legacy handlers (handler.ts, spark.ts)
  */
-export async function createInboxItem(): Promise<string> {
-  throw new Error(
-    "createInboxItem is deprecated. Use conversation/audit.ts createAuditTrail instead."
-  );
+export async function createFeedItem(
+  _spark: Spark,
+  classification: ClassificationResult,
+  decision: Decision,
+  _clarification?: ClarificationExchange
+): Promise<string> {
+  const notion = getNotionClient();
+
+  try {
+    const response = await notion.pages.create({
+      parent: { database_id: FEED_DATABASE_ID },
+      properties: {
+        'Entry': {
+          title: [{ text: { content: classification.suggestedTitle.substring(0, 100) } }],
+        },
+        'Pillar': {
+          select: { name: classification.pillar },
+        },
+        'Source': {
+          select: { name: 'Telegram' },
+        },
+        'Status': {
+          select: { name: decision === 'Route to Work' ? 'Routed' : 'Done' },
+        },
+        'Confidence': {
+          number: classification.confidence / 100,
+        },
+        'Date': {
+          date: { start: new Date().toISOString() },
+        },
+      },
+    });
+
+    logger.info('Feed item created', { id: response.id });
+    return response.id;
+  } catch (error) {
+    logger.error('Failed to create Feed item', { error });
+    throw error;
+  }
 }
 
+/** @deprecated Use createFeedItem instead */
+export const createInboxItem = createFeedItem;
+
 /**
- * @deprecated Work items are created via conversation/tools/core.ts work_queue_create
+ * Create a Work Queue entry in Notion
+ * Used by legacy handlers (handler.ts, spark.ts)
  */
-export async function createWorkItem(): Promise<string> {
-  throw new Error(
-    "createWorkItem is deprecated. Use conversation/tools/core.ts work_queue_create instead."
-  );
+export async function createWorkItem(
+  feedPageId: string,
+  _spark: Spark,
+  classification: ClassificationResult
+): Promise<string> {
+  const notion = getNotionClient();
+
+  try {
+    const response = await notion.pages.create({
+      parent: { database_id: WORK_QUEUE_DATABASE_ID },
+      properties: {
+        'Task': {
+          title: [{ text: { content: classification.suggestedTitle.substring(0, 100) } }],
+        },
+        'Status': {
+          select: { name: 'Captured' },
+        },
+        'Priority': {
+          select: { name: 'P2' },
+        },
+        'Pillar': {
+          select: { name: classification.pillar },
+        },
+        'Feed Source': {
+          relation: [{ id: feedPageId }],
+        },
+      },
+    });
+
+    logger.info('Work Queue item created', { id: response.id, feedSource: feedPageId });
+    return response.id;
+  } catch (error) {
+    logger.error('Failed to create Work Queue item', { error });
+    throw error;
+  }
 }
 
 // Re-export getDatabaseIds for any remaining legacy code

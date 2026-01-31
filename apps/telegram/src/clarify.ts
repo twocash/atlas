@@ -289,5 +289,5 @@ export function formatConfirmationMessage(
     ? "→ routing to Work Queue" 
     : "→ classified for review";
   
-  return `✓ Captured to Inbox (${pillar} / ${intent}) ${action}`;
+  return `✓ Captured to Feed (${pillar} / ${intent}) ${action}`;
 }

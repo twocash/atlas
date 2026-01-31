@@ -121,7 +121,7 @@ async function handleWithLegacyRouter(text: string, userId: number): Promise<str
   const history = conversationHistory.get(userId) || [];
 
   // Detect if this might need tools (looks like a data query)
-  const mightNeedTools = /\b(inbox|queue|work|status|tasks?|items?|what'?s|show|list|urgent|p0|priority|focus|should|blocked|atlas|how'?s)\b/i.test(text);
+  const mightNeedTools = /\b(feed|queue|work|status|tasks?|items?|what'?s|show|list|urgent|p0|priority|focus|should|blocked|atlas|how'?s)\b/i.test(text);
 
   // Use tool-aware response if message hints at needing data
   return mightNeedTools
@@ -145,7 +145,7 @@ function getQuickResponse(text: string): string | null {
   if (/^(help|help me|\?)$/.test(lowerText)) {
     return `I can help with:
 - Share a URL to capture
-- "what's in my inbox?" to see items
+- "what's in my feed?" to see items
 - "status" for overview
 - "find [term]" to search
 - "mark [item] as done" to update`;
