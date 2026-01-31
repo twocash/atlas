@@ -167,8 +167,9 @@ async function createFeedEntry(entry: AuditEntry): Promise<{ id: string; url: st
       },
     });
 
-    const url = `https://notion.so/${response.id.replace(/-/g, '')}`;
-    logger.debug('Feed entry created', { id: response.id });
+    // Use the actual URL from Notion API (includes workspace context)
+    const url = (response as { url?: string }).url || `https://notion.so/${response.id.replace(/-/g, '')}`;
+    logger.debug('Feed entry created', { id: response.id, url });
     return { id: response.id, url };
   } catch (error) {
     logger.error('Failed to create Feed entry', { error, entry: entry.entry });
@@ -241,8 +242,9 @@ async function createWorkQueueEntry(
       },
     });
 
-    const url = `https://notion.so/${response.id.replace(/-/g, '')}`;
-    logger.debug('Work Queue entry created', { id: response.id, feedId });
+    // Use the actual URL from Notion API (includes workspace context)
+    const url = (response as { url?: string }).url || `https://notion.so/${response.id.replace(/-/g, '')}`;
+    logger.debug('Work Queue entry created', { id: response.id, feedId, url });
     return { id: response.id, url };
   } catch (error) {
     logger.error('Failed to create Work Queue entry', { error, entry: entry.entry });
@@ -365,6 +367,12 @@ export async function logReclassification(
 
 /**
  * Generate a clickable Notion URL from a page ID
+ *
+ * WARNING: This constructs a bare URL without workspace context.
+ * These URLs may not work correctly. Prefer using the `url` field
+ * returned directly from Notion API responses when available.
+ *
+ * @deprecated Use the `url` field from Notion API responses instead
  */
 export function notionUrl(pageId: string): string {
   return `https://notion.so/${pageId.replace(/-/g, '')}`;

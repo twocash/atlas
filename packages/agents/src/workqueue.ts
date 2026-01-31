@@ -49,6 +49,12 @@ function formatDate(date: Date = new Date()): string {
 
 /**
  * Get Notion page URL from page ID
+ *
+ * WARNING: This constructs a bare URL without workspace context.
+ * These URLs may not work correctly. Prefer using the `url` field
+ * returned directly from Notion API responses when available.
+ *
+ * @deprecated Use the `url` field from Notion API responses instead
  */
 export function getNotionPageUrl(pageId: string): string {
   const cleanId = pageId.replace(/-/g, "");
@@ -754,7 +760,8 @@ export async function createResearchWorkItem(
   });
 
   const pageId = response.id;
-  const url = getNotionPageUrl(pageId);
+  // Use actual URL from Notion API (includes workspace context) with fallback
+  const url = (response as { url?: string }).url || getNotionPageUrl(pageId);
 
   // Add initial comment
   await notion.comments.create({

@@ -297,7 +297,7 @@ async function executeNotionSearch(
           const props = page.properties as Record<string, unknown>;
           results.push({
             title: getTitle(props, 'Task'),
-            url: `https://notion.so/${page.id.replace(/-/g, '')}`,
+            url: (page as { url?: string }).url || `https://notion.so/${page.id.replace(/-/g, '')}`,
             database: 'Work Queue',
             status: getSelect(props, 'Status') || undefined,
             pillar: getSelect(props, 'Pillar') || undefined,
@@ -328,7 +328,7 @@ async function executeNotionSearch(
           const props = page.properties as Record<string, unknown>;
           results.push({
             title: getTitle(props, 'Entry'),
-            url: `https://notion.so/${page.id.replace(/-/g, '')}`,
+            url: (page as { url?: string }).url || `https://notion.so/${page.id.replace(/-/g, '')}`,
             database: 'Feed',
           });
         }
@@ -421,7 +421,7 @@ async function executeWorkQueueList(
           priority: getSelect(props, 'Priority'),
           pillar: getSelect(props, 'Pillar'),
           type: getSelect(props, 'Type'),
-          url: `https://notion.so/${page.id.replace(/-/g, '')}`,
+          url: (page as { url?: string }).url || `https://notion.so/${page.id.replace(/-/g, '')}`,
         };
       }
       return null;
