@@ -1,15 +1,20 @@
 /**
  * Atlas Daily Briefing - Notion Queries
  *
- * Queries Work Queue 2.0 and Inbox 2.0 for briefing data.
+ * Queries Feed 2.0 (activity log) and Work Queue 2.0 (task ledger).
+ * NO INBOX - Telegram IS the inbox.
+ *
+ * CANONICAL DATABASE IDs (Database Page IDs):
+ * - Feed 2.0:       90b2b33f-4b44-4b42-870f-8d62fb8cbf18
+ * - Work Queue 2.0: 3d679030-b76b-43bd-92d8-1ac51abb4a28
  */
 
 import { Client } from "@notionhq/client";
 import { logger } from "../logger";
 
-// Database IDs
+// CANONICAL DATABASE IDs - DO NOT CHANGE
+const FEED_DB_ID = "90b2b33f-4b44-4b42-870f-8d62fb8cbf18";
 const WORK_QUEUE_DB_ID = "3d679030-b76b-43bd-92d8-1ac51abb4a28";
-const INBOX_DB_ID = "f6f638c9-6aee-42a7-8137-df5b6a560f50";
 
 // Lazy-initialized Notion client
 let _notion: Client | null = null;
@@ -41,6 +46,8 @@ export interface BriefingData {
   dueThisWeek: BriefingItem[];
   active: BriefingItem[];
   completedYesterday: BriefingItem[];
+  feedPendingCount: number;
+  // DEPRECATED: Use feedPendingCount instead
   inboxCount: number;
   queriedAt: Date;
 }
@@ -203,38 +210,44 @@ export async function getCompletedYesterday(): Promise<BriefingItem[]> {
 }
 
 /**
- * Get count of unprocessed inbox items
+ * Get count of Feed items awaiting processing (Received or Processing status)
+ * Note: Telegram IS the inbox now. This counts Feed entries not yet Done.
  */
-export async function getInboxCount(): Promise<number> {
+export async function getFeedPendingCount(): Promise<number> {
   const notion = getNotionClient();
 
   try {
     const response = await notion.databases.query({
-      database_id: INBOX_DB_ID,
+      database_id: FEED_DB_ID,
       filter: {
-        property: "Atlas Status",
-        select: { equals: "Captured" },
+        or: [
+          { property: "Status", select: { equals: "Received" } },
+          { property: "Status", select: { equals: "Processing" } },
+        ],
       },
     });
 
     return response.results.length;
   } catch (error) {
-    logger.error("Failed to query inbox count", { error });
+    logger.error("Failed to query Feed pending count", { error });
     return 0;
   }
 }
+
+// DEPRECATED: Alias for legacy code
+export const getInboxCount = getFeedPendingCount;
 
 /**
  * Fetch all briefing data in parallel
  */
 export async function fetchBriefingData(): Promise<BriefingData> {
-  const [blocked, dueThisWeek, active, completedYesterday, inboxCount] =
+  const [blocked, dueThisWeek, active, completedYesterday, feedPendingCount] =
     await Promise.all([
       getBlockedItems(),
       getDueThisWeek(),
       getActiveItems(),
       getCompletedYesterday(),
-      getInboxCount(),
+      getFeedPendingCount(),
     ]);
 
   return {
@@ -242,7 +255,8 @@ export async function fetchBriefingData(): Promise<BriefingData> {
     dueThisWeek,
     active,
     completedYesterday,
-    inboxCount,
+    feedPendingCount,
+    inboxCount: feedPendingCount, // Legacy alias
     queriedAt: new Date(),
   };
 }
