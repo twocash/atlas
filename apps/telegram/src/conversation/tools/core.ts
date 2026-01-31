@@ -8,6 +8,7 @@ import type Anthropic from '@anthropic-ai/sdk';
 import { Client } from '@notionhq/client';
 import { logger } from '../../logger';
 import { logWQActivity, notionUrl, type Pillar } from '../audit';
+import { searchNotion as globalNotionSearch } from '../../notion';
 
 // Create Notion client - log the key prefix for debugging
 const notionApiKey = process.env.NOTION_API_KEY;
@@ -39,7 +40,7 @@ function getSelect(props: Record<string, unknown>, key: string): string | null {
 export const CORE_TOOLS: Anthropic.Tool[] = [
   {
     name: 'notion_search',
-    description: 'Search across Notion databases (Feed, Work Queue). Use for finding items, checking status, or looking up past work.',
+    description: 'Search Notion for pages, documents, drafts, or any content. Searches Feed, Work Queue, AND all other pages in the workspace. Use for finding documents, drafts, notes, or looking up past work.',
     input_schema: {
       type: 'object' as const,
       properties: {
@@ -49,12 +50,12 @@ export const CORE_TOOLS: Anthropic.Tool[] = [
         },
         database: {
           type: 'string',
-          enum: ['feed', 'work_queue', 'all'],
-          description: 'Which database to search (default: all)',
+          enum: ['feed', 'work_queue', 'global', 'all'],
+          description: 'Which to search: feed, work_queue, global (all pages), or all (default: all)',
         },
         limit: {
           type: 'number',
-          description: 'Max results to return (default: 5)',
+          description: 'Max results to return (default: 10)',
         },
       },
       required: ['query'],
@@ -213,10 +214,10 @@ async function executeNotionSearch(
 ): Promise<{ success: boolean; result: unknown; error?: string }> {
   const query = input.query as string;
   const database = (input.database as string) || 'all';
-  const limit = (input.limit as number) || 5;
+  const limit = (input.limit as number) || 10;
 
   try {
-    const results: Array<{ title: string; url: string; database: string; status?: string; pillar?: string }> = [];
+    const results: Array<{ title: string; url: string; database: string; status?: string; pillar?: string; type?: string }> = [];
 
     // Search Work Queue
     if (database === 'all' || database === 'work_queue') {
@@ -263,6 +264,27 @@ async function executeNotionSearch(
             database: 'Feed',
           });
         }
+      }
+    }
+
+    // ALSO search globally across all Notion pages
+    if (database === 'all' || database === 'global') {
+      try {
+        const globalResults = await globalNotionSearch(query);
+        for (const item of globalResults) {
+          // Avoid duplicates from WQ/Feed
+          const alreadyFound = results.some(r => r.url === item.url);
+          if (!alreadyFound) {
+            results.push({
+              title: item.title,
+              url: item.url,
+              database: item.type === 'inbox' ? 'Inbox' : item.type === 'work' ? 'Work Queue' : 'Page',
+              type: item.type,
+            });
+          }
+        }
+      } catch (globalError) {
+        logger.warn('Global Notion search failed, continuing with database results', { globalError });
       }
     }
 
