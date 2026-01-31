@@ -200,10 +200,11 @@ Invoke via subprocess. Editorial memory lives with the pipelines.
 
 ## Work Queue 2.0 Schema
 
-### Status (Universal)
+### Status
 | Status | Meaning |
 |--------|---------|
 | **Captured** | Exists, no commitment yet |
+| **Triaged** | Classified, ready for work |
 | **Active** | Currently being worked on |
 | **Paused** | Intentionally on hold |
 | **Blocked** | Can't proceed, needs something |
@@ -213,18 +214,21 @@ Invoke via subprocess. Editorial memory lives with the pipelines.
 ### Type (What kind of work)
 | Type | Atlas Asks | Example Output |
 |------|-----------|----------------|
-| **Draft** | "Ready for review?" | LinkedIn, Blog, Grove Corpus |
-| **Build** | "Did it work?" | GitHub commit, "Running" |
 | **Research** | "What did you decide?" | Decision doc, "Adopted X" |
-| **Process** | "Is this done?" | "Migration complete" |
+| **Build** | "Did it work?" | GitHub commit, "Running" |
+| **Draft** | "Ready for review?" | LinkedIn, Blog, Grove Corpus |
 | **Schedule** | "Did it happen?" | "Met with X on 1/30" |
 | **Answer** | "Did you reply?" | Link to comment/reply |
+| **Process** | "Is this done?" | "Migration complete" |
 
 ### Priority (Time Horizon)
 - **P0:** Today (on fire)
 - **P1:** This week
 - **P2:** This month
 - **P3:** Someday/maybe (backlog)
+
+### Pillar, Assignee, Disposition
+See `apps/telegram/CLAUDE.md` for complete field documentation
 
 ---
 

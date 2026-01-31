@@ -168,7 +168,7 @@ bun run typecheck    # Type check
 | `src/claude.ts` | Claude classification with SPARKS context |
 | `src/classifier.ts` | Heuristic fallback + confidence thresholds |
 | `src/clarify.ts` | Question generation + inline keyboards |
-| `src/notion.ts` | Inbox/Work Queue creation + comments |
+| `src/notion.ts` | Feed/Work Queue creation + comments |
 | `src/url.ts` | URL extraction and content fetching |
 | `src/types.ts` | All TypeScript interfaces |
 | `src/logger.ts` | Logging utility |
@@ -178,10 +178,11 @@ bun run typecheck    # Type check
 
 ## Work Queue 2.0 Schema
 
-### Status (Universal)
+### Status
 | Status | Meaning |
 |--------|---------|
 | **Captured** | Exists, no commitment yet |
+| **Triaged** | Classified, ready for work |
 | **Active** | Currently being worked on |
 | **Paused** | Intentionally on hold |
 | **Blocked** | Can't proceed, needs something |
@@ -191,18 +192,46 @@ bun run typecheck    # Type check
 ### Type (What kind of work)
 | Type | Atlas Asks | Example Output |
 |------|-----------|----------------|
-| **Draft** | "Ready for review?" | LinkedIn, Blog, Grove Corpus |
-| **Build** | "Did it work?" | GitHub commit, "Running" |
 | **Research** | "What did you decide?" | Decision doc, "Adopted X" |
-| **Process** | "Is this done?" | "Migration complete" |
+| **Build** | "Did it work?" | GitHub commit, "Running" |
+| **Draft** | "Ready for review?" | LinkedIn, Blog, Grove Corpus |
 | **Schedule** | "Did it happen?" | "Met with X on 1/30" |
 | **Answer** | "Did you reply?" | Link to comment/reply |
+| **Process** | "Is this done?" | "Migration complete" |
 
 ### Priority (Time Horizon)
 - **P0:** Today (on fire)
 - **P1:** This week
 - **P2:** This month
 - **P3:** Someday/maybe (backlog)
+
+### Pillar (Life Domain)
+- **Personal** - Health, relationships, growth, finances
+- **The Grove** - AI venture, architecture, research
+- **Consulting** - Client work, professional services
+- **Home/Garage** - Physical space, house, vehicles
+
+### Assignee
+- **Jim** - Human owner
+- **Atlas [Telegram]** - This bot instance
+- **Atlas [laptop]** / **Atlas [grove-node-1]** - Other Atlas instances
+- **Agent** - Autonomous agent execution
+
+### Disposition (Final State)
+- **Completed** - Successfully finished
+- **Dismissed** - Intentionally dropped
+- **Deferred** - Pushed to future
+- **Needs Rework** - Requires revision
+- **Published** - Released/shipped publicly
+
+### Additional Fields
+- **Notes** - Context and details
+- **Blocked Reason** - Why blocked (when status=Blocked)
+- **Resolution Notes** - How it was resolved
+- **Output** - URL to deliverable
+- **Work Type** - Brief description within pillar
+- **Original Pillar** - Tracks reclassification
+- **Was Reclassified** - Boolean flag
 
 ---
 

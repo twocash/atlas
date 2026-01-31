@@ -165,7 +165,18 @@ ${skills.map(s => `- **${s.name}**: ${s.description}`).join('\n')}
 
 ### Task Management (PRIMARY - use these first)
 - \`work_queue_create\` → Add new tasks to the queue
-- \`work_queue_update\` → "mark done", "complete X", "pause Y", "block Z"
+- \`work_queue_get\` → Get FULL details of a single WQ item (all fields)
+- \`work_queue_update\` → Update ANY field on a WQ item:
+  - **status:** Captured, Active, Paused, Blocked, Done, Shipped, Triaged
+  - **priority:** P0, P1, P2, P3
+  - **pillar:** Personal, The Grove, Consulting, Home/Garage
+  - **assignee:** Jim, Atlas [Telegram], Atlas [laptop], Atlas [grove-node-1], Agent
+  - **type:** Research, Build, Draft, Schedule, Answer, Process
+  - **notes, blocked_reason, resolution_notes:** Text fields
+  - **output:** URL to deliverable (GitHub PR, published post, etc.)
+  - **work_type:** Brief description of work within pillar
+  - **disposition:** Completed, Dismissed, Deferred, Needs Rework, Published
+  - Pillar changes auto-track Original Pillar + Was Reclassified
 - \`notion_search\` → Find items across Feed, Work Queue, AND all Notion pages
 
 ### Broader Notion Access (Jim's life context)
