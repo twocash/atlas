@@ -15,7 +15,8 @@ const notionApiKey = process.env.NOTION_API_KEY;
 console.log('[INIT] Notion client init, key prefix:', notionApiKey?.substring(0, 10) + '...');
 const notion = new Client({ auth: notionApiKey });
 
-// Notion Database IDs — verified via MCP search
+// Notion Database IDs — USE DATABASE PAGE IDs (not data source IDs!)
+// Per spec: https://www.notion.so/2f8780a78eef81bcbd69ece73530a3da
 const FEED_DATABASE_ID = '90b2b33f-4b44-4b42-870f-8d62fb8cbf18';
 const WORK_QUEUE_DATABASE_ID = '3d679030-b76b-43bd-92d8-1ac51abb4a28';
 // NO INBOX — Telegram replaces it per spec
