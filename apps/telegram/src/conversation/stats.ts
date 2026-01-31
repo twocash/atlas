@@ -14,8 +14,9 @@ const notion = new Client({ auth: process.env.NOTION_API_KEY });
 const DATA_DIR = join(__dirname, '../../data');
 const STATS_FILE = join(DATA_DIR, 'stats.json');
 
-// Notion Database IDs (from CLAUDE.md)
-const FEED_DATABASE_ID = '3e8867d58aa5495780c2860dada8c993';
+// Notion Database IDs — USE DATABASE PAGE IDs (not data source IDs!)
+// Per spec: https://www.notion.so/2f8780a78eef81bcbd69ece73530a3da
+const FEED_DATABASE_ID = '90b2b33f-4b44-4b42-870f-8d62fb8cbf18';
 const WORK_QUEUE_DATABASE_ID = '3d679030-b76b-43bd-92d8-1ac51abb4a28';
 
 // Cost per 1M tokens (approximate)
