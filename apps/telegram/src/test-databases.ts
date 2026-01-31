@@ -6,17 +6,17 @@
  *
  * Run with: bun run src/test-databases.ts
  *
- * CANONICAL DATA SOURCE IDs (NOT database page IDs!):
- * - Feed 2.0:       a7493abb-804a-4759-b6ac-aeca62ae23b8
- * - Work Queue 2.0: 6a8d9c43-b084-47b5-bc83-bc363640f2cd
+ * CANONICAL DATABASE IDs (for Notion SDK):
+ * - Feed 2.0:       90b2b33f-4b44-4b42-870f-8d62fb8cbf18
+ * - Work Queue 2.0: 3d679030-b76b-43bd-92d8-1ac51abb4a28
  */
 
 import "dotenv/config";
 import { Client } from "@notionhq/client";
 
 // CANONICAL DATA SOURCE IDs - DO NOT CHANGE
-const FEED_DATABASE_ID = "a7493abb-804a-4759-b6ac-aeca62ae23b8";
-const WORK_QUEUE_DATABASE_ID = "6a8d9c43-b084-47b5-bc83-bc363640f2cd";
+const FEED_DATABASE_ID = "90b2b33f-4b44-4b42-870f-8d62fb8cbf18";
+const WORK_QUEUE_DATABASE_ID = "3d679030-b76b-43bd-92d8-1ac51abb4a28";
 
 // DEPRECATED - DO NOT USE
 const DEPRECATED_INBOX_ID = "f6f638c9-6aee-42a7-8137-df5b6a560f50";

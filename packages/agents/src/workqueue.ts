@@ -5,7 +5,7 @@
  * sees real-time agent progress in his dashboard.
  *
  * Database: Work Queue 2.0
- * Data Source ID: 6a8d9c43-b084-47b5-bc83-bc363640f2cd
+ * ID: 3d679030-b76b-43bd-92d8-1ac51abb4a28
  */
 
 import { Client } from "@notionhq/client";
@@ -21,8 +21,7 @@ import type {
 // Configuration
 // ==========================================
 
-// DATA SOURCE ID - not database page ID!
-const WORK_QUEUE_DB_ID = "6a8d9c43-b084-47b5-bc83-bc363640f2cd";
+const WORK_QUEUE_DB_ID = "3d679030-b76b-43bd-92d8-1ac51abb4a28";
 
 // ==========================================
 // Notion Client (Lazy Loaded)

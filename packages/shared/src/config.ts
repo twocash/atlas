@@ -17,12 +17,12 @@ export function formatAtlasName(source?: 'telegram' | 'cli'): string {
   return base;
 }
 
-// Notion DATA SOURCE IDs (from CLAUDE.md)
-// CRITICAL: Use DATA SOURCE IDs, not database page IDs!
+// Notion Database IDs (from CLAUDE.md)
+// Database page IDs for Notion SDK
 export const ATLAS_DBS = {
-  // Active databases - DATA SOURCE IDs
-  FEED: 'a7493abb-804a-4759-b6ac-aeca62ae23b8',
-  WORK_QUEUE: '6a8d9c43-b084-47b5-bc83-bc363640f2cd',
+  // Active databases - database page IDs
+  FEED: '90b2b33f-4b44-4b42-870f-8d62fb8cbf18',
+  WORK_QUEUE: '3d679030-b76b-43bd-92d8-1ac51abb4a28',
   // NO INBOX - Telegram IS the inbox
 
   // Legacy (reference only - DO NOT USE)

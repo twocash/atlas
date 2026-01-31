@@ -15,9 +15,9 @@ const DATA_DIR = join(__dirname, '../../data');
 const STATS_FILE = join(DATA_DIR, 'stats.json');
 
 // Notion DATA SOURCE IDs — from spec, verified correct
-// CRITICAL: Use DATA SOURCE IDs (not database page IDs!)
-const FEED_DATABASE_ID = 'a7493abb-804a-4759-b6ac-aeca62ae23b8';
-const WORK_QUEUE_DATABASE_ID = '6a8d9c43-b084-47b5-bc83-bc363640f2cd';
+// Database page IDs for Notion SDK
+const FEED_DATABASE_ID = '90b2b33f-4b44-4b42-870f-8d62fb8cbf18';
+const WORK_QUEUE_DATABASE_ID = '3d679030-b76b-43bd-92d8-1ac51abb4a28';
 
 // Cost per 1M tokens (approximate)
 const TOKEN_COSTS = {

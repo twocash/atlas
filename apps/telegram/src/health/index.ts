@@ -309,7 +309,7 @@ async function checkNotionDatabases(): Promise<HealthCheckResult[]> {
     message: dbAccess.feed
       ? 'Feed 2.0 database accessible'
       : 'Feed 2.0 NOT accessible - CHECK FOR WRONG DATABASE ID IN CODE (not sharing)',
-    details: { dataSourceId: 'a7493abb-804a-4759-b6ac-aeca62ae23b8' }
+    details: { databaseId: '90b2b33f-4b44-4b42-870f-8d62fb8cbf18' }
   });
 
   results.push({
@@ -318,7 +318,7 @@ async function checkNotionDatabases(): Promise<HealthCheckResult[]> {
     message: dbAccess.workQueue
       ? 'Work Queue 2.0 database accessible'
       : 'Work Queue 2.0 NOT accessible - CHECK FOR WRONG DATABASE ID IN CODE (not sharing)',
-    details: { dataSourceId: '6a8d9c43-b084-47b5-bc83-bc363640f2cd' }
+    details: { databaseId: '3d679030-b76b-43bd-92d8-1ac51abb4a28' }
   });
 
   // Import and call the actual tool functions to test the real code paths

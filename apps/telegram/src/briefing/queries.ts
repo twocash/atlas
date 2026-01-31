@@ -4,17 +4,17 @@
  * Queries Feed 2.0 (activity log) and Work Queue 2.0 (task ledger).
  * NO INBOX - Telegram IS the inbox.
  *
- * CANONICAL DATA SOURCE IDs (NOT database page IDs!):
- * - Feed 2.0:       a7493abb-804a-4759-b6ac-aeca62ae23b8
- * - Work Queue 2.0: 6a8d9c43-b084-47b5-bc83-bc363640f2cd
+ * CANONICAL DATABASE IDs (for Notion SDK):
+ * - Feed 2.0:       90b2b33f-4b44-4b42-870f-8d62fb8cbf18
+ * - Work Queue 2.0: 3d679030-b76b-43bd-92d8-1ac51abb4a28
  */
 
 import { Client } from "@notionhq/client";
 import { logger } from "../logger";
 
 // CANONICAL DATA SOURCE IDs - DO NOT CHANGE
-const FEED_DB_ID = "a7493abb-804a-4759-b6ac-aeca62ae23b8";
-const WORK_QUEUE_DB_ID = "6a8d9c43-b084-47b5-bc83-bc363640f2cd";
+const FEED_DB_ID = "90b2b33f-4b44-4b42-870f-8d62fb8cbf18";
+const WORK_QUEUE_DB_ID = "3d679030-b76b-43bd-92d8-1ac51abb4a28";
 
 // Lazy-initialized Notion client
 let _notion: Client | null = null;

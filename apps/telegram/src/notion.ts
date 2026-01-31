@@ -4,9 +4,9 @@
  * Architecture: Feed 2.0 (activity log) + Work Queue 2.0 (task ledger)
  * NO INBOX - Telegram IS the inbox. Everything routes to Feed/WQ.
  *
- * CANONICAL DATA SOURCE IDs (NOT database page IDs!):
- * - Feed 2.0:       a7493abb-804a-4759-b6ac-aeca62ae23b8
- * - Work Queue 2.0: 6a8d9c43-b084-47b5-bc83-bc363640f2cd
+ * CANONICAL DATABASE IDs (for Notion SDK):
+ * - Feed 2.0:       90b2b33f-4b44-4b42-870f-8d62fb8cbf18
+ * - Work Queue 2.0: 3d679030-b76b-43bd-92d8-1ac51abb4a28
  *
  * @see IMPLEMENTATION.md Sprint 3 for requirements
  */
@@ -29,9 +29,9 @@ import type {
 import { logger } from "./logger";
 
 // CANONICAL DATA SOURCE IDs - DO NOT CHANGE
-// Use DATA SOURCE IDs (NOT database page IDs!)
-const FEED_DATABASE_ID = "a7493abb-804a-4759-b6ac-aeca62ae23b8";
-const WORK_QUEUE_DATABASE_ID = "6a8d9c43-b084-47b5-bc83-bc363640f2cd";
+// Use database page IDs (NOT data source IDs which are for MCP only)
+const FEED_DATABASE_ID = "90b2b33f-4b44-4b42-870f-8d62fb8cbf18";
+const WORK_QUEUE_DATABASE_ID = "3d679030-b76b-43bd-92d8-1ac51abb4a28";
 
 // Database ID accessor
 const getDatabaseIds = () => ({
