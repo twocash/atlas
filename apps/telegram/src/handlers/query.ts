@@ -6,7 +6,7 @@
 
 import type { Context } from "grammy";
 import type { IntentDetectionResult, Pillar, AtlasStatus } from "../types";
-import { queryInbox, queryWorkQueue } from "../notion";
+import { queryFeed, queryWorkQueue } from "../notion";
 import { logger } from "../logger";
 import { audit } from "../audit";
 import { updateState, getState } from "../atlas-system";
@@ -33,8 +33,8 @@ export async function handleQueryIntent(
     let response: string;
 
     switch (queryType) {
-      case "inbox":
-        response = await formatInboxQuery(pillar);
+      case "feed":
+        response = await formatFeedQuery(pillar);
         break;
       case "work":
         response = await formatWorkQueueQuery();
@@ -43,8 +43,8 @@ export async function handleQueryIntent(
         response = await formatPendingQuery(pillar);
         break;
       default:
-        // Default to inbox summary
-        response = await formatInboxQuery(pillar);
+        // Default to feed summary
+        response = await formatFeedQuery(pillar);
     }
 
     // Use plain text to avoid markdown parsing issues with special chars in titles
@@ -68,7 +68,7 @@ export async function handleQueryIntent(
 /**
  * Detect what type of query the user wants
  */
-function detectQueryType(text: string): "inbox" | "work" | "pending" | "all" {
+function detectQueryType(text: string): "feed" | "work" | "pending" | "all" {
   const lowerText = text.toLowerCase();
 
   if (/\b(work|queue|tasks?)\b/.test(lowerText)) {
@@ -79,18 +79,18 @@ function detectQueryType(text: string): "inbox" | "work" | "pending" | "all" {
     return "pending";
   }
 
-  if (/\b(inbox|sparks?|captured?)\b/.test(lowerText)) {
-    return "inbox";
+  if (/\b(feed|sparks?|captured?)\b/.test(lowerText)) {
+    return "feed";
   }
 
-  return "inbox"; // Default
+  return "feed"; // Default
 }
 
 /**
- * Format inbox query response
+ * Format feed query response
  */
-async function formatInboxQuery(pillar?: Pillar): Promise<string> {
-  const result = await queryInbox({
+async function formatFeedQuery(pillar?: Pillar): Promise<string> {
+  const result = await queryFeed({
     pillar,
     limit: 10,
     sortBy: "created",
@@ -99,7 +99,7 @@ async function formatInboxQuery(pillar?: Pillar): Promise<string> {
 
   if (result.items.length === 0) {
     const pillarText = pillar ? ` for ${pillar}` : "";
-    return `Inbox is empty${pillarText}. Nothing waiting.`;
+    return `Feed is empty${pillarText}. Nothing waiting.`;
   }
 
   // Count by status
@@ -109,11 +109,11 @@ async function formatInboxQuery(pillar?: Pillar): Promise<string> {
 
   // Conversational opener based on what's there
   if (pillar) {
-    response = `${pillar} inbox has ${result.total} item${result.total > 1 ? 's' : ''}:\n\n`;
+    response = `${pillar} feed has ${result.total} item${result.total > 1 ? 's' : ''}:\n\n`;
   } else if (newItems > 0) {
-    response = `${newItems} new in inbox:\n\n`;
+    response = `${newItems} new in feed:\n\n`;
   } else {
-    response = `Inbox (${result.total} items):\n\n`;
+    response = `Feed (${result.total} items):\n\n`;
   }
 
   for (const item of result.items) {
@@ -173,7 +173,7 @@ async function formatWorkQueueQuery(): Promise<string> {
  * Format pending items query
  */
 async function formatPendingQuery(pillar?: Pillar): Promise<string> {
-  const result = await queryInbox({
+  const result = await queryFeed({
     pillar,
     status: "New" as AtlasStatus,
     limit: 10,

@@ -40,7 +40,7 @@ export async function handleStatusIntent(
  * Format status summary for display
  */
 function formatStatusSummary(summary: {
-  inbox: {
+  feed: {
     total: number;
     byStatus: Record<string, number>;
     byPillar: Record<string, number>;
@@ -52,7 +52,7 @@ function formatStatusSummary(summary: {
   };
   lastUpdated: Date;
 }): string {
-  const newInbox = summary.inbox.byStatus["New"] || 0;
+  const newFeed = summary.feed.byStatus["New"] || 0;
   const queued = summary.workQueue.byStatus["Queued"] || 0;
   const inProgress = summary.workQueue.byStatus["In Progress"] || 0;
   const blocked = summary.workQueue.byStatus["Blocked"] || 0;
@@ -65,8 +65,8 @@ function formatStatusSummary(summary: {
     response = `Heads up: ${p0} P0 item${p0 > 1 ? 's' : ''} need attention.\n\n`;
   } else if (blocked > 0) {
     response = `${blocked} item${blocked > 1 ? 's' : ''} blocked.\n\n`;
-  } else if (newInbox > 0 && queued > 0) {
-    response = `${newInbox} new in inbox, ${queued} queued for work.\n\n`;
+  } else if (newFeed > 0 && queued > 0) {
+    response = `${newFeed} new in feed, ${queued} queued for work.\n\n`;
   } else if (inProgress > 0) {
     response = `${inProgress} in progress right now.\n\n`;
   } else {
@@ -74,8 +74,8 @@ function formatStatusSummary(summary: {
   }
 
   // Details
-  response += `Inbox: ${summary.inbox.total} total`;
-  if (newInbox > 0) response += ` (${newInbox} new)`;
+  response += `Feed: ${summary.feed.total} total`;
+  if (newFeed > 0) response += ` (${newFeed} new)`;
   response += `\n`;
 
   response += `Work: ${summary.workQueue.total} total`;
@@ -83,7 +83,7 @@ function formatStatusSummary(summary: {
   response += `\n`;
 
   // Pillar breakdown if multiple
-  const activePillars = Object.entries(summary.inbox.byPillar).filter(([_, count]) => count > 0);
+  const activePillars = Object.entries(summary.feed.byPillar).filter(([_, count]) => count > 0);
   if (activePillars.length > 1) {
     response += `\nBy pillar: `;
     response += activePillars.map(([p, c]) => `${p} ${c}`).join(", ");

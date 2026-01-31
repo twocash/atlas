@@ -26,7 +26,7 @@ import {
   generatePillarChangeOptions,
   generateIntentChangeOptions,
 } from "../clarify";
-import { createInboxItem, createWorkItem } from "../notion";
+import { createFeedItem, createWorkItem } from "../notion";
 import { logger } from "../logger";
 import { audit } from "../audit";
 import { updateState, getState, logUpdate } from "../atlas-system";
@@ -262,7 +262,7 @@ async function handleSparkConfirm(
   pending.spark.clarification = clarification;
 
   try {
-    const inboxPageId = await createInboxItem(
+    const feedPageId = await createFeedItem(
       pending.spark,
       pending.classification,
       decision,
@@ -271,14 +271,14 @@ async function handleSparkConfirm(
 
     let workPageId: string | undefined;
     if (shouldRoute) {
-      workPageId = await createWorkItem(inboxPageId, pending.spark, pending.classification);
+      workPageId = await createWorkItem(feedPageId, pending.spark, pending.classification);
     }
 
     const confirmMsg = formatConfirmationMessage(pillar, intent, shouldRoute);
     await ctx.editMessageText(confirmMsg);
 
-    audit.logResponse(userId, confirmMsg, inboxPageId);
-    logger.info("Spark captured", { inboxPageId, workPageId, pillar, intent });
+    audit.logResponse(userId, confirmMsg, feedPageId);
+    logger.info("Spark captured", { feedPageId, workPageId, pillar, intent });
 
     // Track capture in Atlas state
     const state = getState();
