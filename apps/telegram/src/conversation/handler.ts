@@ -26,6 +26,27 @@ const anthropic = new Anthropic({
 // Max tool call iterations to prevent runaway loops
 const MAX_TOOL_ITERATIONS = 5;
 
+// Reaction emoji for processing states
+const REACTIONS = {
+  READING: '👀',    // Message received, starting processing
+  WORKING: '⚡',    // Tools executing
+  DONE: '✅',       // Action completed (logged to WQ, filed media, etc.)
+  CHAT: '👍',       // Chat-only response, no action taken
+  ERROR: '❌',      // Error during processing
+} as const;
+
+/**
+ * Set reaction on a message, handling errors gracefully
+ */
+async function setReaction(ctx: Context, emoji: string): Promise<void> {
+  try {
+    await ctx.react(emoji);
+  } catch (error) {
+    // Reactions may fail (e.g., in channels, old messages, or unsupported emoji)
+    logger.debug('Failed to set reaction', { emoji, error });
+  }
+}
+
 // Classification prompt (injected into tool response handling)
 const CLASSIFICATION_PROMPT = `Based on the conversation, classify this request:
 
@@ -114,6 +135,9 @@ export async function handleConversation(ctx: Context): Promise<void> {
     textLength: messageText.length,
   });
 
+  // React to indicate message received
+  await setReaction(ctx, REACTIONS.READING);
+
   // Show typing indicator
   await ctx.replyWithChatAction('typing');
 
@@ -179,8 +203,15 @@ export async function handleConversation(ctx: Context): Promise<void> {
 
     // Tool use loop
     let iterations = 0;
+    let reactedWorking = false;
     while (response.stop_reason === 'tool_use' && iterations < MAX_TOOL_ITERATIONS) {
       iterations++;
+
+      // React to indicate tools are executing (only on first iteration)
+      if (!reactedWorking) {
+        await setReaction(ctx, REACTIONS.WORKING);
+        reactedWorking = true;
+      }
 
       // Find tool use blocks
       const toolUseBlocks = response.content.filter(
@@ -316,6 +347,10 @@ export async function handleConversation(ctx: Context): Promise<void> {
       model: 'claude-sonnet-4',
     });
 
+    // Final reaction based on whether action was taken
+    const actionTaken = !!auditResult || toolsUsed.length > 0 || !!mediaContext;
+    await setReaction(ctx, actionTaken ? REACTIONS.DONE : REACTIONS.CHAT);
+
     logger.info('Conversation response sent', {
       userId,
       pillar: classification.pillar,
@@ -323,10 +358,12 @@ export async function handleConversation(ctx: Context): Promise<void> {
       tokens: totalTokens,
       toolIterations: iterations,
       auditCreated: !!auditResult,
+      actionTaken,
     });
 
   } catch (error) {
     logger.error('Conversation handler error', { error, userId });
+    await setReaction(ctx, REACTIONS.ERROR);
     await ctx.reply("Something went wrong. Please try again.");
   }
 }
