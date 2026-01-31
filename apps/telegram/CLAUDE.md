@@ -53,6 +53,25 @@ All content flows into one of four life domains. **These are equal citizens**—
 | Atlas Inbox 1.0 | `c298b60934d248beb2c50942436b8bfe` | Archived |
 | Atlas Memory | `2eb780a78eef81fc8694e59d126fe159` | Corrections/rules |
 
+### ⚠️ CRITICAL: Database Access Errors - DO NOT ASSUME SHARING ISSUES
+
+**DOCUMENTED TRAP (fell for this 25+ times):**
+
+When a database returns "object_not_found" or "inaccessible", the problem is almost NEVER:
+- ❌ "Integration needs to be shared with the database"
+- ❌ "Check Notion settings > Connections"
+
+The problem is almost ALWAYS:
+- ✅ **Code is using the WRONG database ID** (drift toward legacy IDs)
+- ✅ **A file still references Inbox 2.0 or other deprecated databases**
+
+**BEFORE suggesting sharing fixes, ALWAYS:**
+1. Grep the codebase for the failing database ID
+2. Verify it matches the CANONICAL IDs above
+3. Check for any Inbox references (there should be ZERO)
+
+The databases ARE shared. They have always been shared. Stop suggesting sharing fixes.
+
 ---
 
 ## Session Startup Routine

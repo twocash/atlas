@@ -300,12 +300,15 @@ async function checkNotionDatabases(): Promise<HealthCheckResult[]> {
   console.log('[HEALTH] Verifying raw database access (Feed 2.0 + Work Queue 2.0)...');
   const dbAccess = await verifyDatabaseAccess();
 
+  // NOTE: If these fail, it's almost NEVER a sharing issue. It's almost ALWAYS
+  // code using the WRONG database ID (drift toward legacy Inbox IDs).
+  // See CLAUDE.md "CRITICAL: Database Access Errors" section.
   results.push({
     name: 'notion:feed_database',
     status: dbAccess.feed ? 'pass' : 'fail',
     message: dbAccess.feed
       ? 'Feed 2.0 database accessible'
-      : 'Feed 2.0 database NOT accessible - check integration sharing',
+      : 'Feed 2.0 NOT accessible - CHECK FOR WRONG DATABASE ID IN CODE (not sharing)',
     details: { databaseId: '90b2b33f-4b44-4b42-870f-8d62fb8cbf18' }
   });
 
@@ -314,7 +317,7 @@ async function checkNotionDatabases(): Promise<HealthCheckResult[]> {
     status: dbAccess.workQueue ? 'pass' : 'fail',
     message: dbAccess.workQueue
       ? 'Work Queue 2.0 database accessible'
-      : 'Work Queue 2.0 database NOT accessible - check integration sharing',
+      : 'Work Queue 2.0 NOT accessible - CHECK FOR WRONG DATABASE ID IN CODE (not sharing)',
     details: { databaseId: '3d679030-b76b-43bd-92d8-1ac51abb4a28' }
   });
 
