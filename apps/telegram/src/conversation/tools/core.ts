@@ -142,7 +142,7 @@ export const CORE_TOOLS: Anthropic.Tool[] = [
   },
   {
     name: 'work_queue_update',
-    description: 'Update an existing Work Queue item. Can update ANY field: status, priority, pillar, assignee, type, notes, etc.',
+    description: 'Update an existing Work Queue item. Can update ANY field from the Work Queue 2.0 schema.',
     input_schema: {
       type: 'object' as const,
       properties: {
@@ -152,7 +152,7 @@ export const CORE_TOOLS: Anthropic.Tool[] = [
         },
         status: {
           type: 'string',
-          enum: ['Captured', 'Active', 'Paused', 'Blocked', 'Done', 'Shipped'],
+          enum: ['Captured', 'Active', 'Paused', 'Blocked', 'Done', 'Shipped', 'Triaged'],
           description: 'New status',
         },
         priority: {
@@ -167,16 +167,17 @@ export const CORE_TOOLS: Anthropic.Tool[] = [
         },
         assignee: {
           type: 'string',
-          description: 'Who is responsible (e.g., "Jim", "Atlas [Telegram]")',
+          enum: ['Jim', 'Atlas [Telegram]', 'Atlas [laptop]', 'Atlas [grove-node-1]', 'Agent'],
+          description: 'Who is responsible for this task',
         },
         type: {
           type: 'string',
-          enum: ['Draft', 'Build', 'Research', 'Process', 'Schedule', 'Answer'],
+          enum: ['Research', 'Build', 'Draft', 'Schedule', 'Answer', 'Process'],
           description: 'Type of work',
         },
         notes: {
           type: 'string',
-          description: 'Add to notes field',
+          description: 'Task notes and context',
         },
         resolution_notes: {
           type: 'string',
@@ -185,6 +186,28 @@ export const CORE_TOOLS: Anthropic.Tool[] = [
         blocked_reason: {
           type: 'string',
           description: 'Why this item is blocked (when status=Blocked)',
+        },
+        output: {
+          type: 'string',
+          description: 'URL to the output/deliverable (e.g., GitHub PR, published post)',
+        },
+        work_type: {
+          type: 'string',
+          description: 'Brief description of work type within pillar',
+        },
+        disposition: {
+          type: 'string',
+          enum: ['Completed', 'Dismissed', 'Deferred', 'Needs Rework', 'Published'],
+          description: 'Final disposition of completed work',
+        },
+        was_reclassified: {
+          type: 'boolean',
+          description: 'Whether this item was reclassified from original pillar',
+        },
+        original_pillar: {
+          type: 'string',
+          enum: ['Personal', 'The Grove', 'Consulting', 'Home/Garage'],
+          description: 'Original pillar before reclassification (set automatically when pillar changes)',
         },
       },
       required: ['id'],
@@ -571,6 +594,7 @@ async function executeWorkQueueUpdate(
   input: Record<string, unknown>
 ): Promise<{ success: boolean; result: unknown; error?: string }> {
   const id = input.id as string;
+  // Extract ALL Work Queue 2.0 schema fields
   const status = input.status as string | undefined;
   const priority = input.priority as string | undefined;
   const pillar = input.pillar as string | undefined;
@@ -579,6 +603,11 @@ async function executeWorkQueueUpdate(
   const notes = input.notes as string | undefined;
   const resolutionNotes = input.resolution_notes as string | undefined;
   const blockedReason = input.blocked_reason as string | undefined;
+  const output = input.output as string | undefined;
+  const workType = input.work_type as string | undefined;
+  const disposition = input.disposition as string | undefined;
+  const wasReclassified = input.was_reclassified as boolean | undefined;
+  const originalPillar = input.original_pillar as string | undefined;
 
   try {
     // First, fetch the current WQ item to get title, pillar, and current values
@@ -587,6 +616,7 @@ async function executeWorkQueueUpdate(
     let wqPillar: Pillar = 'The Grove';
     let oldPriority: string | null = null;
     let oldStatus: string | null = null;
+    let oldPillar: string | null = null;
 
     if ('properties' in currentPage) {
       const props = currentPage.properties as Record<string, unknown>;
@@ -594,10 +624,12 @@ async function executeWorkQueueUpdate(
       wqPillar = (getSelect(props, 'Pillar') as Pillar) || 'The Grove';
       oldPriority = getSelect(props, 'Priority');
       oldStatus = getSelect(props, 'Status');
+      oldPillar = getSelect(props, 'Pillar');
     }
 
     const properties: Record<string, unknown> = {};
 
+    // Status with automatic date tracking
     if (status) {
       properties['Status'] = { select: { name: status } };
       if (status === 'Done' || status === 'Shipped') {
@@ -610,8 +642,14 @@ async function executeWorkQueueUpdate(
     if (priority) {
       properties['Priority'] = { select: { name: priority } };
     }
+    // Pillar with automatic reclassification tracking
     if (pillar) {
       properties['Pillar'] = { select: { name: pillar } };
+      // If pillar is changing, track the reclassification
+      if (oldPillar && pillar !== oldPillar) {
+        properties['Original Pillar'] = { select: { name: oldPillar } };
+        properties['Was Reclassified'] = { checkbox: true };
+      }
       wqPillar = pillar as Pillar; // Update for Feed logging
     }
     if (assignee) {
@@ -628,6 +666,23 @@ async function executeWorkQueueUpdate(
     }
     if (blockedReason) {
       properties['Blocked Reason'] = { rich_text: [{ text: { content: blockedReason } }] };
+    }
+    // Output is a URL type, not rich_text
+    if (output) {
+      properties['Output'] = { url: output };
+    }
+    if (workType) {
+      properties['Work Type'] = { rich_text: [{ text: { content: workType } }] };
+    }
+    if (disposition) {
+      properties['Disposition'] = { select: { name: disposition } };
+    }
+    // Manual override for reclassification tracking
+    if (wasReclassified !== undefined) {
+      properties['Was Reclassified'] = { checkbox: wasReclassified };
+    }
+    if (originalPillar) {
+      properties['Original Pillar'] = { select: { name: originalPillar } };
     }
 
     await notion.pages.update({
