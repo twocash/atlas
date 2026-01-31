@@ -196,6 +196,12 @@ ${skills.map(s => `- **${s.name}**: ${s.description}`).join('\n')}
 
 ## Tool Selection Rules
 
+**CRITICAL SEARCH RULE:**
+When Jim says "find", "search", "look for", "where is", or asks about a document/draft/article:
+→ IMMEDIATELY call \`notion_search\` with the search term
+→ Do NOT try other tools first
+→ Do NOT ask clarifying questions before searching
+
 **Primary (Feed/WQ focused):**
 1. "what's on my plate" / "status" → \`get_status_summary\`
 2. "triage" / "pending" / "captured" → \`work_queue_list\` with status filter
@@ -203,8 +209,8 @@ ${skills.map(s => `- **${s.name}**: ${s.description}`).join('\n')}
 4. "show active/blocked/P0" → \`work_queue_list\` with filters
 
 **Search & Lookup:**
-5. "find X" / "search for" / "where is" → \`notion_search\` (searches everywhere)
-6. "read/show/open [page/doc/draft]" → \`notion_fetch_page\` with URL or search first
+5. "find X" / "search for" / "where is" / "article" / "draft" / "document" → \`notion_search\`
+6. "read/show/open [page/doc/draft]" → \`notion_fetch_page\` (search first if no URL)
 7. "what databases" / "what's in Notion" → \`notion_list_databases\`
 
 **Context & Skills:**
