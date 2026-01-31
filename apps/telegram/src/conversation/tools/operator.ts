@@ -214,6 +214,25 @@ IMPORTANT: All scripts must include a header comment with @description and @risk
       required: ['id'],
     },
   },
+  {
+    name: 'validate_typescript',
+    description: 'Type-check a TypeScript file without executing. Returns errors or "OK". Use before running scripts to catch issues early.',
+    input_schema: {
+      type: 'object' as const,
+      properties: {
+        workspace: {
+          type: 'string',
+          enum: ['skills', 'temp'],
+          description: '"skills" = data/skills/, "temp" = data/temp/',
+        },
+        path: {
+          type: 'string',
+          description: 'Relative path to .ts file within the workspace',
+        },
+      },
+      required: ['workspace', 'path'],
+    },
+  },
 ];
 
 // ============================================================================
@@ -375,8 +394,8 @@ async function createBugEntry(context: BugContext): Promise<string | null> {
       },
     });
 
-    const pageId = response.id.replace(/-/g, '');
-    const url = `https://notion.so/${pageId}`;
+    // Use URL from Notion API response (includes workspace context)
+    const url = (response as { url?: string }).url || `https://notion.so/${response.id.replace(/-/g, '')}`;
 
     logger.info('Bug entry created in Work Queue', { script: context.script, url });
     return url;
@@ -409,6 +428,8 @@ export async function executeOperatorTools(
       return await executeListSchedules();
     case 'delete_schedule':
       return await executeDeleteSchedule(input);
+    case 'validate_typescript':
+      return await executeValidateTypeScript(input);
     default:
       return null;
   }
@@ -820,4 +841,102 @@ async function executeDeleteSchedule(
     }
     return { success: false, result: null, error: `Failed to delete schedule: ${err}` };
   }
+}
+
+// ============================================================================
+// TYPESCRIPT VALIDATION
+// ============================================================================
+
+async function executeValidateTypeScript(
+  input: Record<string, unknown>
+): Promise<{ success: boolean; result: unknown; error?: string }> {
+  const workspace = input.workspace as 'skills' | 'temp';
+  const filePath = input.path as string;
+
+  // Determine base directory
+  const baseDir = workspace === 'skills' ? SKILLS_DIR : join(WORKSPACE_ROOT, 'data/temp');
+
+  // Normalize and resolve
+  const fullPath = resolve(baseDir, normalize(filePath));
+
+  // Path escape check
+  if (!fullPath.startsWith(baseDir)) {
+    return { success: false, result: null, error: 'Path escapes allowed directory' };
+  }
+
+  // Extension check
+  if (!fullPath.endsWith('.ts')) {
+    return { success: false, result: null, error: 'Only .ts files can be validated' };
+  }
+
+  // Check file exists
+  try {
+    await access(fullPath);
+  } catch {
+    return { success: false, result: null, error: `File not found: ${filePath}` };
+  }
+
+  // Run tsc --noEmit on the file
+  return new Promise((resolvePromise) => {
+    const proc = spawn('bun', ['run', 'tsc', '--noEmit', fullPath], {
+      cwd: WORKSPACE_ROOT,
+      timeout: 30000,
+      env: {
+        PATH: process.env.PATH,
+        HOME: process.env.HOME || process.env.USERPROFILE,
+      },
+    });
+
+    let stdout = '';
+    let stderr = '';
+
+    proc.stdout.on('data', (data) => {
+      stdout += data.toString();
+    });
+
+    proc.stderr.on('data', (data) => {
+      stderr += data.toString();
+    });
+
+    proc.on('close', (code) => {
+      logger.info('TypeScript validation complete', { file: filePath, exitCode: code });
+
+      if (code === 0) {
+        resolvePromise({
+          success: true,
+          result: {
+            file: filePath,
+            valid: true,
+            message: 'TypeScript validation passed - no errors',
+          },
+        });
+      } else {
+        // Parse tsc output for errors
+        const errors = (stdout + stderr)
+          .split('\n')
+          .filter(line => line.includes('error TS') || line.includes(': error'))
+          .slice(0, 10); // Limit to first 10 errors
+
+        resolvePromise({
+          success: true, // Tool succeeded, but file has errors
+          result: {
+            file: filePath,
+            valid: false,
+            errorCount: errors.length,
+            errors,
+            rawOutput: (stdout + stderr).slice(0, 2000),
+            message: `TypeScript validation failed with ${errors.length} error(s)`,
+          },
+        });
+      }
+    });
+
+    proc.on('error', (err) => {
+      resolvePromise({
+        success: false,
+        result: null,
+        error: `Failed to run TypeScript validator: ${err}`,
+      });
+    });
+  });
 }

@@ -224,6 +224,26 @@ ${skills.map(s => `- **${s.name}**: ${s.description}`).join('\n')}
 - \`update_soul\` → Change behavior/personality (tell Jim when you do this)
 - \`update_user\` → Learn new facts about Jim
 
+### Operator Tools (Shell Execution & Diagnostics)
+- \`run_script\` → Execute scripts from data/temp/scripts/ or data/skills/
+  - Use \`write_file\` first to create the script
+  - Returns stdout, stderr, exit code
+  - Auto-creates bug ticket in Work Queue on failure
+- \`check_script_safety\` → Validate script before running (blocked commands check)
+- \`validate_typescript\` → Type-check .ts files without executing
+  - Catches errors BEFORE runtime
+  - Use for all TypeScript scripts before running
+
+### Scheduling
+- \`create_schedule\` → Set up recurring tasks with cron expressions
+  - Examples: "0 8 * * 1-5" (8am weekdays), "*/30 * * * *" (every 30 min)
+- \`list_schedules\` → Show all scheduled tasks
+- \`delete_schedule\` → Remove a scheduled task
+
+### System Diagnostics
+- \`system_status\` → Health check: uptime, memory, scheduled tasks, directory status
+- \`read_logs\` → Read shell execution history and errors
+
 ## Tool Selection Rules
 
 **CRITICAL SEARCH RULE:**
