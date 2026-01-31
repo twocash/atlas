@@ -179,9 +179,25 @@ ${skills.map(s => `- **${s.name}**: ${s.description}`).join('\n')}
 - Searching for something not in Feed/WQ
 
 ### Agent Dispatch
-- \`dispatch_research\` → Deep research with sources (light/standard/deep)
-- \`dispatch_draft\` → Create content (blog, linkedin, email, memo)
-- \`dispatch_transcription\` → Voice/audio transcription (stub - coming soon)
+- \`dispatch_research\` → Research with web sources. **ALWAYS ASK FIRST:**
+  1. **Depth:** "Quick scan, standard research, or deep dive?"
+     - light = 2-3 sources, quick facts
+     - standard = 5-8 sources with synthesis
+     - deep = 10+ sources, academic rigor
+  2. **Output style:** "Any particular voice? (Grove analytical, LinkedIn punchy, memo format, raw notes)"
+  3. **Focus:** "Anything specific to focus on?"
+
+  EXCEPTION: If Jim explicitly specifies depth AND style, skip questions.
+
+- \`dispatch_draft\` → Create content. ASK: format, voice, length
+- \`dispatch_transcription\` → Voice/audio transcription (stub)
+
+**Writing Voices (check data/skills/ for saved styles):**
+- "grove" = Analytical, technical, thought-leadership
+- "linkedin" = Punchy, professional, engagement-focused
+- "consulting" = Executive summary, recommendations-driven
+- "personal" = Casual, conversational
+- Custom voices can be saved as skills
 
 ### File Operations
 - \`read_file\` / \`write_file\` → Work with workspace files

@@ -141,19 +141,26 @@ export async function syncAgentSpawn(
   workItemId: string,
   agent: Agent
 ): Promise<void> {
+  console.log("[WorkQueue] syncAgentSpawn called", { workItemId, agentId: agent.id });
   const notion = getNotionClient();
 
-  await notion.pages.update({
-    page_id: workItemId,
-    properties: {
-      Status: {
-        select: { name: "Active" },
+  try {
+    await notion.pages.update({
+      page_id: workItemId,
+      properties: {
+        Status: {
+          select: { name: "Active" },
+        },
+        Started: {
+          date: { start: formatDate(agent.startedAt || new Date()) },
+        },
       },
-      Started: {
-        date: { start: formatDate(agent.startedAt || new Date()) },
-      },
-    },
-  });
+    });
+    console.log("[WorkQueue] Status updated to Active", { workItemId });
+  } catch (error) {
+    console.error("[WorkQueue] Failed to update status to Active", { workItemId, error });
+    throw error;
+  }
 
   // Add comment documenting agent assignment
   await notion.comments.create({
@@ -227,6 +234,13 @@ export async function syncAgentComplete(
   agent: Agent,
   result: AgentResult
 ): Promise<void> {
+  console.log("[WorkQueue] syncAgentComplete called", {
+    workItemId,
+    agentId: agent.id,
+    hasResult: !!result,
+    hasSummary: !!result?.summary,
+    hasOutput: !!result?.output,
+  });
   const notion = getNotionClient();
 
   // Build notes summary
@@ -277,6 +291,12 @@ async function appendResearchResultsToPage(
   agent: Agent,
   result: AgentResult
 ): Promise<void> {
+  console.log("[WorkQueue] appendResearchResultsToPage called", {
+    pageId,
+    agentId: agent.id,
+    hasSummary: !!result?.summary,
+    summaryLength: result?.summary?.length || 0,
+  });
   const notion = getNotionClient();
 
   // Build blocks for the page content
@@ -559,10 +579,17 @@ export async function wireAgentToWorkQueue(
   await syncAgentSpawn(workItemId, agent);
 
   // Subscribe to all events for this agent
+  console.log("[WorkQueue] Subscribing to agent events", { agentId: agent.id, workItemId });
+
   return registry.subscribe(agent.id, async (event: AgentEvent) => {
+    console.log("[WorkQueue] Event received", { type: event.type, agentId: event.agentId });
+
     // Get latest agent state
     const currentAgent = await registry.status(agent.id);
-    if (!currentAgent) return;
+    if (!currentAgent) {
+      console.warn("[WorkQueue] Agent not found for event", { agentId: agent.id });
+      return;
+    }
 
     switch (event.type) {
       case "progress": {
@@ -577,12 +604,15 @@ export async function wireAgentToWorkQueue(
       }
 
       case "completed": {
+        console.log("[WorkQueue] Handling completed event", { agentId: agent.id });
         const result = event.data as AgentResult;
         await syncAgentComplete(workItemId, currentAgent, result);
+        console.log("[WorkQueue] Completed event handled", { agentId: agent.id });
         break;
       }
 
       case "failed": {
+        console.log("[WorkQueue] Handling failed event", { agentId: agent.id });
         const data = event.data as { error: string; retryable: boolean };
         await syncAgentFailure(
           workItemId,

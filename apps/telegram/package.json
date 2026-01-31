@@ -17,11 +17,19 @@
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.39.0",
+    "@google/genai": "^1.0.0",
     "@google/generative-ai": "^0.21.0",
     "@notionhq/client": "^2.2.14",
+    "cheerio": "^1.0.0",
+    "cron": "^4.4.0",
+    "csv-parse": "^5.6.0",
     "dotenv": "^16.3.1",
     "grammy": "^1.21.1",
-    "openai": "^4.104.0"
+    "openai": "^4.104.0",
+    "pdf-parse": "^1.1.1",
+    "sharp": "^0.33.5",
+    "simple-git": "^3.27.0",
+    "xlsx": "^0.18.5"
   },
   "devDependencies": {
     "@types/bun": "latest",

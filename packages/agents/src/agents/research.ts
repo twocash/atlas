@@ -24,6 +24,16 @@ import type { Agent, AgentResult, AgentMetrics } from "../types";
 export type ResearchDepth = "light" | "standard" | "deep";
 
 /**
+ * Writing voice/style for research output
+ */
+export type ResearchVoice =
+  | "grove-analytical"
+  | "linkedin-punchy"
+  | "consulting"
+  | "raw-notes"
+  | "custom";
+
+/**
  * Configuration for a research task
  */
 export interface ResearchConfig {
@@ -38,6 +48,12 @@ export interface ResearchConfig {
 
   /** Maximum sources to include (overrides depth default) */
   maxSources?: number;
+
+  /** Writing voice/style for the output */
+  voice?: ResearchVoice;
+
+  /** Custom voice instructions (when voice="custom") */
+  voiceInstructions?: string;
 }
 
 /**
@@ -148,47 +164,183 @@ async function getGeminiClient(): Promise<GeminiClient> {
       throw new Error("GEMINI_API_KEY environment variable is required");
     }
 
-    const { GoogleGenerativeAI } = await import("@google/generative-ai");
-    const genAI = new GoogleGenerativeAI(apiKey);
+    // Use the new @google/genai SDK (recommended for Gemini 2.0+)
+    // Falls back to legacy SDK if new one isn't available
+    let useNewSdk = false;
+    let genaiModule: any;
 
-    _geminiClient = {
-      generateContent: async (prompt: string, maxTokens: number): Promise<GeminiResponse> => {
-        // Get model with Google Search grounding enabled
-        const model = genAI.getGenerativeModel({
-          model: "gemini-2.0-flash",
-          tools: [{ googleSearch: {} }],
-          generationConfig: {
-            maxOutputTokens: maxTokens,
-          },
-        });
+    try {
+      genaiModule = await import("@google/genai");
+      useNewSdk = true;
+    } catch {
+      // Fall back to legacy SDK
+      genaiModule = await import("@google/generative-ai");
+    }
 
-        const result = await model.generateContent(prompt);
-        const response = result.response;
+    if (useNewSdk) {
+      // New SDK: @google/genai
+      const { GoogleGenAI } = genaiModule;
+      const ai = new GoogleGenAI({ apiKey });
 
-        // Extract grounding citations
-        const groundingMetadata = response.candidates?.[0]?.groundingMetadata;
-        const groundingChunks = groundingMetadata?.groundingChunks || [];
+      _geminiClient = {
+        generateContent: async (prompt: string, maxTokens: number): Promise<GeminiResponse> => {
+          const response = await ai.models.generateContent({
+            model: "gemini-2.0-flash",
+            contents: prompt,
+            config: {
+              tools: [{ googleSearch: {} }],
+              maxOutputTokens: maxTokens,
+            },
+          });
 
-        const citations: Array<{ url: string; title: string }> = [];
-        for (const chunk of groundingChunks) {
-          if (chunk.web) {
-            citations.push({
-              url: chunk.web.uri || "",
-              title: chunk.web.title || "",
-            });
+          // Extract grounding metadata from response
+          const groundingMetadata = response.candidates?.[0]?.groundingMetadata;
+          const groundingChunks = (groundingMetadata as any)?.groundingChunks || [];
+
+          const citations: Array<{ url: string; title: string }> = [];
+          for (const chunk of groundingChunks) {
+            if (chunk.web) {
+              citations.push({
+                url: chunk.web.uri || "",
+                title: chunk.web.title || "",
+              });
+            }
           }
-        }
 
-        return {
-          text: response.text(),
-          citations,
-          groundingMetadata,
-        };
-      },
-    };
+          return {
+            text: response.text || "",
+            citations,
+            groundingMetadata,
+          };
+        },
+      };
+    } else {
+      // Legacy SDK: @google/generative-ai
+      const { GoogleGenerativeAI } = genaiModule;
+      const genAI = new GoogleGenerativeAI(apiKey);
+
+      _geminiClient = {
+        generateContent: async (prompt: string, maxTokens: number): Promise<GeminiResponse> => {
+          // For legacy SDK with Gemini 2.0, use google_search (not googleSearchRetrieval)
+          const model = genAI.getGenerativeModel({
+            model: "gemini-2.0-flash",
+            tools: [{ google_search: {} }] as any,
+            generationConfig: {
+              maxOutputTokens: maxTokens,
+            },
+          });
+
+          const result = await model.generateContent(prompt);
+          const response = result.response;
+
+          // Extract grounding citations
+          const groundingMetadata = response.candidates?.[0]?.groundingMetadata;
+          const groundingChunks = (groundingMetadata as any)?.groundingChunks ||
+                                  (groundingMetadata as any)?.groundingChuncks || []; // Typo in some SDK versions
+
+          const citations: Array<{ url: string; title: string }> = [];
+          for (const chunk of groundingChunks) {
+            if (chunk.web) {
+              citations.push({
+                url: chunk.web.uri || "",
+                title: chunk.web.title || "",
+              });
+            }
+          }
+
+          return {
+            text: response.text(),
+            citations,
+            groundingMetadata,
+          };
+        },
+      };
+    }
   }
 
   return _geminiClient;
+}
+
+// ==========================================
+// Voice Styling
+// ==========================================
+
+/**
+ * Default voice instructions for each predefined voice
+ */
+const VOICE_DEFAULTS: Record<Exclude<ResearchVoice, "custom">, string> = {
+  "grove-analytical": `
+## Writing Voice: Grove Analytical
+
+Write with technical depth while remaining accessible. Key characteristics:
+- Evidence-based claims with citations
+- Forward-looking analysis ("This suggests...", "The trajectory points to...")
+- Balanced skepticism (acknowledge hype vs. substance)
+- Builder's perspective (practical implications)
+- Confident but not arrogant tone
+- Lead with insights, not summaries
+- Use concrete examples
+- End with implications or next questions
+- Avoid: buzzwords, hype, vague conclusions
+`,
+
+  "linkedin-punchy": `
+## Writing Voice: LinkedIn Punchy
+
+Write for professional engagement and shareability. Key characteristics:
+- Hook in first line (pattern interrupt)
+- Short paragraphs (1-2 sentences max)
+- Scannable structure with clear takeaways
+- Confident, authoritative tone
+- Slightly provocative (challenge assumptions)
+- Authentic, not corporate
+- Use numbered lists for key points
+- End with a question or call to reflection
+- No walls of text
+`,
+
+  "consulting": `
+## Writing Voice: Consulting/Executive
+
+Write for senior decision-makers. Key characteristics:
+- Executive summary up front
+- Recommendations-driven structure
+- Clear "so what" for each point
+- Quantify impact where possible
+- Professional, measured tone
+- Action-oriented conclusions
+- Risk/benefit framing
+- MECE structure (mutually exclusive, collectively exhaustive)
+`,
+
+  "raw-notes": `
+## Writing Voice: Raw Notes
+
+Provide research in working-notes format. Key characteristics:
+- Bullet points over prose
+- Include raw quotes and data points
+- Note contradictions and uncertainties
+- Keep synthesis minimal
+- Organized by source or theme
+- Include URLs inline with each point
+- Good for further processing/editing
+`,
+};
+
+/**
+ * Get voice instructions for the research output
+ */
+function getVoiceInstructions(config: ResearchConfig): string {
+  if (!config.voice || config.voice === "grove-analytical") {
+    // Default voice
+    return VOICE_DEFAULTS["grove-analytical"];
+  }
+
+  if (config.voice === "custom" && config.voiceInstructions) {
+    return `\n## Writing Voice: Custom\n\n${config.voiceInstructions}\n`;
+  }
+
+  return VOICE_DEFAULTS[config.voice] || VOICE_DEFAULTS["grove-analytical"];
 }
 
 // ==========================================
@@ -198,6 +350,7 @@ async function getGeminiClient(): Promise<GeminiClient> {
 function buildResearchPrompt(config: ResearchConfig): string {
   const depth = config.depth || "standard";
   const depthCfg = DEPTH_CONFIG[depth];
+  const voiceInstructions = getVoiceInstructions(config);
 
   const basePrompt = `You are Atlas Research Agent, an autonomous research assistant with access to Google Search.
 
@@ -206,7 +359,7 @@ Query: "${config.query}"
 ${config.focus ? `Focus Area: ${config.focus}` : ""}
 Depth: ${depth} — ${depthCfg.description}
 Target Sources: ${config.maxSources || depthCfg.targetSources}+
-
+${voiceInstructions}
 ## Instructions
 
 Use Google Search to find current, authoritative information about this topic.
@@ -250,9 +403,12 @@ function getDepthInstructions(depth: ResearchDepth): string {
       return `This is a STANDARD research task. Focus on:
 - Comprehensive coverage of the topic
 - Multiple perspectives from 5-8 sources
-- Analyze and synthesize information
+- SYNTHESIZE information - don't just list facts, explain what they MEAN
+- Identify patterns, trends, and connections across sources
+- Provide YOUR analysis: What's the current state? Where is this heading?
 - Cross-reference claims across sources
-- Note any conflicting information`;
+- Note any conflicting information or debates
+- Include specific recommendations or implications for someone building in this space`;
 
     case "deep":
       return `This is a DEEP RESEARCH task requiring ACADEMIC RIGOR. You must:
@@ -273,7 +429,7 @@ function getSummaryGuidance(depth: ResearchDepth): string {
     case "light":
       return "2-3 sentence executive summary with key takeaways";
     case "standard":
-      return "2-4 FULL paragraphs (not sentences) covering main findings, key insights, and implications. Be thorough.";
+      return "Write 3-5 FULL paragraphs that SYNTHESIZE your research. Para 1: Current landscape overview. Para 2-3: Key players, approaches, and trade-offs. Para 4: Emerging trends and where things are heading. Para 5: Practical implications - what should someone building in this space know? Be opinionated and analytical, not just descriptive.";
     case "deep":
       return "Comprehensive 4-6 paragraph academic summary including: research context, methodology overview, key findings with evidence strength, limitations, areas of consensus/debate, and implications for further research. Use your full token budget.";
   }
@@ -293,6 +449,17 @@ function getQualityGuidelines(depth: ResearchDepth): string {
 - Balance depth with practicality
 - Cross-reference important claims
 - Include specific data points and statistics
+- DO NOT just list sources - ANALYZE them
+- What patterns emerge? What's the consensus? Where do experts disagree?
+- Be OPINIONATED: What's working? What's hype? What's the smart path forward?
+- End with actionable insights for someone building in this space
+
+## CRITICAL: Summary Quality
+Your summary is the MOST IMPORTANT part. It should:
+- Read like an expert briefing, not a book report
+- Provide genuine insight, not just facts
+- Help the reader make decisions
+- Be worth reading even without the source list
 - Note publication dates for time-sensitive info
 - Be objective — present multiple viewpoints
 
@@ -396,11 +563,15 @@ export async function executeResearch(
   } catch (error) {
     const errorMessage =
       error instanceof Error ? error.message : "Unknown error";
+    const errorStack = error instanceof Error ? error.stack : undefined;
     console.error("[Research Agent] Error:", errorMessage);
+    if (errorStack) {
+      console.error("[Research Agent] Stack:", errorStack);
+    }
 
     return {
       success: false,
-      output: { error: errorMessage },
+      output: { error: errorMessage, stack: errorStack },
       summary: `Research failed: ${errorMessage}`,
       metrics: {
         durationMs: Date.now() - startTime,
@@ -596,5 +767,5 @@ export async function runResearchAgent(
 // Exports
 // ==========================================
 
-export { DEPTH_CONFIG };
-export type { ResearchConfig, ResearchFinding, ResearchResult, ResearchDepth };
+export { DEPTH_CONFIG, VOICE_DEFAULTS };
+export type { ResearchConfig, ResearchFinding, ResearchResult, ResearchDepth, ResearchVoice };

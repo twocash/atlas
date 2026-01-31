@@ -8,6 +8,7 @@
 import type { Context } from 'grammy';
 import Anthropic from '@anthropic-ai/sdk';
 import { logger } from '../logger';
+import { markdownToHtml } from '../formatting';
 import { getConversation, updateConversation, buildMessages, type ToolContext } from './context';
 import { buildSystemPrompt } from './prompt';
 import { detectAttachment, buildAttachmentPrompt } from './attachments';
@@ -267,15 +268,17 @@ export async function handleConversation(ctx: Context): Promise<void> {
     );
 
     // Send response (handle long messages)
-    // Use HTML parse mode for professional formatting
-    if (responseText.length > 4000) {
+    // Convert markdown to HTML for Telegram rendering
+    const formattedResponse = markdownToHtml(responseText);
+
+    if (formattedResponse.length > 4000) {
       // Split into chunks for Telegram's message limit
-      const chunks = splitMessage(responseText, 4000);
+      const chunks = splitMessage(formattedResponse, 4000);
       for (const chunk of chunks) {
         await ctx.reply(chunk, { parse_mode: 'HTML' });
       }
     } else {
-      await ctx.reply(responseText, { parse_mode: 'HTML' });
+      await ctx.reply(formattedResponse, { parse_mode: 'HTML' });
     }
 
     // Record usage for stats

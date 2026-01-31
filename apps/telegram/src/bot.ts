@@ -38,6 +38,23 @@ export function createBot(): Bot<AtlasContext> {
   const bot = new Bot<AtlasContext>(TELEGRAM_BOT_TOKEN);
 
   // ==========================================
+  // Global default: HTML parse_mode for all messages
+  // ==========================================
+  const PARSE_MODE_METHODS = ['sendMessage', 'editMessageText', 'sendPhoto', 'sendDocument', 'sendVideo', 'sendAudio', 'sendVoice'];
+
+  bot.api.config.use((prev, method, payload, signal) => {
+    // Only add parse_mode for methods that support it and don't already have it
+    if (PARSE_MODE_METHODS.includes(method)) {
+      const p = payload as Record<string, unknown>;
+      if (!('parse_mode' in p)) {
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        return prev(method, { ...p, parse_mode: 'HTML' } as any, signal);
+      }
+    }
+    return prev(method, payload, signal);
+  });
+
+  // ==========================================
   // Middleware: Auth check (runs first)
   // ==========================================
   bot.use(async (ctx, next) => {

@@ -13,6 +13,7 @@ import { createBot, startBot } from "./bot";
 import { logger } from "./logger";
 import { initAtlasSystem, updateHeartbeat, logUpdate } from "./atlas-system";
 import { healthCheckOrDie } from "./health";
+import { initScheduler, stopScheduler, type ScheduledTask } from "./scheduler";
 
 async function main() {
   logger.info("Starting Atlas Telegram Bot...");
@@ -31,6 +32,7 @@ async function main() {
   // Graceful shutdown handlers
   const shutdown = async (signal: string) => {
     logger.info(`Received ${signal}, shutting down gracefully...`);
+    stopScheduler();
     await bot.stop();
     process.exit(0);
   };
@@ -40,6 +42,31 @@ async function main() {
 
   // Start the bot
   await startBot(bot);
+
+  // Initialize scheduler after bot is running
+  await initScheduler(async (task: ScheduledTask) => {
+    logger.info('Executing scheduled task', { id: task.id, action: task.action });
+
+    // Send message to Jim's chat
+    const jimChatId = process.env.TELEGRAM_ALLOWED_USERS?.split(',')[0];
+    if (!jimChatId) return;
+
+    try {
+      switch (task.action) {
+        case 'send_message':
+          await bot.api.sendMessage(jimChatId, `⏰ Scheduled: ${task.target}`);
+          break;
+        case 'execute_skill':
+          await bot.api.sendMessage(jimChatId, `⏰ Running skill: ${task.target}\n(Skill execution coming soon)`);
+          break;
+        case 'run_script':
+          await bot.api.sendMessage(jimChatId, `⏰ Running script: ${task.target}\n(Script execution coming soon)`);
+          break;
+      }
+    } catch (err) {
+      logger.error('Failed to execute scheduled task', { id: task.id, error: err });
+    }
+  });
 }
 
 main().catch((error) => {

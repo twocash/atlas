@@ -8,12 +8,14 @@ export { CORE_TOOLS, executeCoreTools } from './core';
 export { AGENT_TOOLS, executeAgentTools } from './agents';
 export { WORKSPACE_TOOLS, executeWorkspaceTools } from './workspace';
 export { SELF_MOD_TOOLS, executeSelfModTools } from './self-mod';
+export { OPERATOR_TOOLS, executeOperatorTools } from './operator';
 
 import type Anthropic from '@anthropic-ai/sdk';
 import { CORE_TOOLS, executeCoreTools } from './core';
 import { AGENT_TOOLS, executeAgentTools } from './agents';
 import { WORKSPACE_TOOLS, executeWorkspaceTools } from './workspace';
 import { SELF_MOD_TOOLS, executeSelfModTools } from './self-mod';
+import { OPERATOR_TOOLS, executeOperatorTools } from './operator';
 
 /**
  * All available tools for Claude
@@ -23,6 +25,7 @@ export const ALL_TOOLS: Anthropic.Tool[] = [
   ...AGENT_TOOLS,
   ...WORKSPACE_TOOLS,
   ...SELF_MOD_TOOLS,
+  ...OPERATOR_TOOLS,
 ];
 
 /**
@@ -44,6 +47,9 @@ export async function executeTool(
 
   const selfModResult = await executeSelfModTools(toolName, input);
   if (selfModResult !== null) return selfModResult;
+
+  const operatorResult = await executeOperatorTools(toolName, input);
+  if (operatorResult !== null) return operatorResult;
 
   return {
     success: false,

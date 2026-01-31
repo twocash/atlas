@@ -10,7 +10,7 @@ import { logger } from '../../logger';
 export const AGENT_TOOLS: Anthropic.Tool[] = [
   {
     name: 'dispatch_research',
-    description: 'Dispatch the Research Agent for deep investigation. Use for topics requiring multiple sources, synthesis, and analysis. Returns a comprehensive research report.',
+    description: 'Dispatch the Research Agent for deep investigation. ALWAYS ask user about depth and voice before calling unless they specified both.',
     input_schema: {
       type: 'object' as const,
       properties: {
@@ -21,7 +21,12 @@ export const AGENT_TOOLS: Anthropic.Tool[] = [
         depth: {
           type: 'string',
           enum: ['light', 'standard', 'deep'],
-          description: 'Research depth: light (2-3 sources, quick), standard (5-8 sources), deep (10+ sources, academic)',
+          description: 'Research depth: light (quick facts), standard (synthesis), deep (academic rigor)',
+        },
+        voice: {
+          type: 'string',
+          enum: ['grove-analytical', 'linkedin-punchy', 'consulting', 'raw-notes', 'custom'],
+          description: 'Output voice/style. Check data/skills/voices/ for definitions.',
         },
         focus: {
           type: 'string',
@@ -33,7 +38,7 @@ export const AGENT_TOOLS: Anthropic.Tool[] = [
           description: 'Which pillar this research is for',
         },
       },
-      required: ['query', 'pillar'],
+      required: ['query', 'pillar', 'depth', 'voice'],
     },
   },
   {
@@ -117,56 +122,107 @@ async function executeDispatchResearch(
 ): Promise<{ success: boolean; result: unknown; error?: string }> {
   const query = input.query as string;
   const depth = (input.depth as string) || 'standard';
+  const voice = (input.voice as string) || 'grove-analytical';
   const focus = input.focus as string | undefined;
   const pillar = input.pillar as string;
 
-  logger.info('Dispatching research agent', { query, depth, pillar });
+  logger.info('Dispatching research agent', { query, depth, voice, pillar });
 
   try {
-    // Build the research request
-    const researchQuery = focus ? `${query} (focus: ${focus})` : query;
+    // Import research agent components
+    const { createResearchWorkItem, wireAgentToWorkQueue } = await import(
+      '../../../../../packages/agents/src/workqueue'
+    );
+    const { AgentRegistry } = await import(
+      '../../../../../packages/agents/src/registry'
+    );
+    const { executeResearch } = await import(
+      '../../../../../packages/agents/src/agents/research'
+    );
 
-    // Create work queue item for research
-    const { Client } = await import('@notionhq/client');
-    const notion = new Client({ auth: process.env.NOTION_API_KEY });
-    const WORK_QUEUE_DATABASE_ID = '3d679030-b76b-43bd-92d8-1ac51abb4a28';
+    // Create registry for this research task
+    const registry = new AgentRegistry();
 
-    const response = await notion.pages.create({
-      parent: { database_id: WORK_QUEUE_DATABASE_ID },
-      properties: {
-        'Task': { title: [{ text: { content: `Research: ${researchQuery}` } }] },
-        'Type': { select: { name: 'Research' } },
-        'Status': { select: { name: 'Captured' } },
-        'Priority': { select: { name: depth === 'deep' ? 'P1' : 'P2' } },
-        'Pillar': { select: { name: pillar } },
-        'Assignee': { select: { name: 'Atlas [Telegram]' } },
-        'Notes': { rich_text: [{ text: { content: `Depth: ${depth}\nFocus: ${focus || 'general'}` } }] },
-        'Queued': { date: { start: new Date().toISOString().split('T')[0] } },
-      },
+    // Create Work Queue item
+    const { pageId: workItemId, url: notionUrl } = await createResearchWorkItem({
+      query,
+      depth: depth as 'light' | 'standard' | 'deep',
+      focus,
+      priority: depth === 'deep' ? 'P1' : 'P2',
     });
 
-    const url = `https://notion.so/${response.id.replace(/-/g, '')}`;
+    logger.info('Work Queue item created', { workItemId, notionUrl });
+
+    // Spawn the agent
+    const agent = await registry.spawn({
+      type: 'research',
+      name: `Research: ${query.substring(0, 50)}`,
+      instructions: JSON.stringify({ query, depth, voice, focus }),
+      priority: depth === 'deep' ? 'P1' : 'P2',
+      workItemId,
+    });
+
+    // Wire to Work Queue for status updates
+    const subscription = await wireAgentToWorkQueue(agent, registry);
+
+    // Start the agent
+    await registry.start(agent.id);
+
+    // Execute research (this does the actual Gemini call)
+    logger.info('Executing research', { agentId: agent.id, query, voice });
+    const result = await executeResearch(
+      {
+        query,
+        depth: depth as 'light' | 'standard' | 'deep',
+        focus,
+        voice: voice as 'grove-analytical' | 'linkedin-punchy' | 'consulting' | 'raw-notes' | 'custom',
+      },
+      agent,
+      registry
+    );
+
+    // Complete or fail the agent
+    if (result.success) {
+      logger.info('Research completed successfully', { agentId: agent.id });
+      await registry.complete(agent.id, result);
+    } else {
+      logger.warn('Research failed', { agentId: agent.id, summary: result.summary });
+      await registry.fail(agent.id, result.summary || 'Research failed', true);
+    }
+
+    // Cleanup subscription
+    subscription.unsubscribe();
+
+    // Return result
+    const researchOutput = result.output as { summary?: string; findings?: any[]; sources?: string[] } | undefined;
 
     return {
-      success: true,
+      success: result.success,
       result: {
-        message: 'Research task queued. Use /agent research for full research capability.',
-        query: researchQuery,
+        message: result.success
+          ? `Research complete! Found ${researchOutput?.sources?.length || 0} sources.`
+          : `Research failed: ${result.summary}`,
+        query,
         depth,
+        voice,
         pillar,
-        workQueueUrl: url,
+        workQueueUrl: notionUrl,
+        summary: researchOutput?.summary?.substring(0, 500),
+        sourcesCount: researchOutput?.sources?.length || 0,
+        findingsCount: researchOutput?.findings?.length || 0,
       },
     };
   } catch (error) {
-    logger.error('Research dispatch failed', { error, query });
+    const errorMessage = error instanceof Error ? error.message : String(error);
+    logger.error('Research dispatch failed', { error: errorMessage, query });
 
     return {
       success: false,
       result: {
-        message: 'Research dispatch failed.',
+        message: `Research dispatch failed: ${errorMessage}`,
         query,
       },
-      error: String(error),
+      error: errorMessage,
     };
   }
 }
