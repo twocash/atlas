@@ -9,6 +9,7 @@ import { readFile, writeFile, mkdir, readdir } from 'fs/promises';
 import { join, resolve, dirname } from 'path';
 import { fileURLToPath } from 'url';
 import { logger } from '../../logger';
+import { listArchivedMedia, type Pillar } from '../media';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
@@ -85,6 +86,25 @@ export const WORKSPACE_TOOLS: Anthropic.Tool[] = [
       required: ['workspace'],
     },
   },
+  {
+    name: 'list_media',
+    description: 'List archived media files. Media is organized by pillar and retained for 30 days.',
+    input_schema: {
+      type: 'object' as const,
+      properties: {
+        pillar: {
+          type: 'string',
+          enum: ['Personal', 'The Grove', 'Consulting', 'Home/Garage'],
+          description: 'Filter by pillar (optional, shows all if omitted)',
+        },
+        limit: {
+          type: 'number',
+          description: 'Max results to return (default 20)',
+        },
+      },
+      required: [],
+    },
+  },
 ];
 
 /**
@@ -120,6 +140,8 @@ export async function executeWorkspaceTools(
       return await executeWriteFile(input);
     case 'list_workspace':
       return await executeListWorkspace(input);
+    case 'list_media':
+      return await executeListMedia(input);
     default:
       return null;
   }
@@ -227,6 +249,40 @@ async function executeListWorkspace(
       return { success: true, result: { path: workspace, entries: [], count: 0 } };
     }
     logger.error('List workspace failed', { error, workspace });
+    return { success: false, result: null, error: String(error) };
+  }
+}
+
+async function executeListMedia(
+  input: Record<string, unknown>
+): Promise<{ success: boolean; result: unknown; error?: string }> {
+  const pillar = input.pillar as Pillar | undefined;
+  const limit = Math.min((input.limit as number) || 20, 100);
+
+  try {
+    const media = await listArchivedMedia(pillar);
+    const limited = media.slice(0, limit);
+
+    return {
+      success: true,
+      result: {
+        pillar: pillar || 'all',
+        count: limited.length,
+        total: media.length,
+        media: limited.map(m => ({
+          path: m.path,
+          pillar: m.pillar,
+          type: m.type,
+          archivedAt: m.archivedAt,
+          name: m.originalName || m.path.split('/').pop(),
+        })),
+        message: media.length === 0
+          ? 'No archived media found.'
+          : `Found ${media.length} media file(s)${pillar ? ` in ${pillar}` : ''}.`,
+      },
+    };
+  } catch (error) {
+    logger.error('List media failed', { error, pillar });
     return { success: false, result: null, error: String(error) };
   }
 }

@@ -213,6 +213,21 @@ ${skills.map(s => `- **${s.name}**: ${s.description}`).join('\n')}
 ### File Operations
 - \`read_file\` / \`write_file\` → Work with workspace files
 - \`list_workspace\` → Browse files in skills/, memory/, temp/, exports/
+- \`list_media\` → List archived media by pillar
+
+### Media Processing (Automatic)
+When Jim shares images, documents, voice messages, or videos:
+1. **Downloaded** from Telegram
+2. **Analyzed** by Gemini (vision, OCR, transcription)
+3. **Archived** to data/media/[pillar]/ for 30 days
+4. **Logged** to Feed 2.0 in Notion
+5. **Context injected** so you can act on it
+
+You automatically receive Gemini's analysis - respond based on what you see.
+For photos: describe content, extract text, identify action items
+For documents: summarize, extract key data, identify type
+For voice/audio: transcription provided
+For video: scene description, speech transcription
 
 ### Skills System
 - \`list_skills\` → REQUIRED for "what skills", "what can you do", "capabilities"

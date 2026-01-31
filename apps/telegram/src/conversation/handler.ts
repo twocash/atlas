@@ -12,6 +12,7 @@ import { markdownToHtml } from '../formatting';
 import { getConversation, updateConversation, buildMessages, type ToolContext } from './context';
 import { buildSystemPrompt } from './prompt';
 import { detectAttachment, buildAttachmentPrompt } from './attachments';
+import { processMedia, buildMediaContext, type Pillar } from './media';
 import { createAuditTrail, type AuditEntry } from './audit';
 import { ALL_TOOLS, executeTool } from './tools';
 import { recordUsage } from './stats';
@@ -122,8 +123,33 @@ export async function handleConversation(ctx: Context): Promise<void> {
 
   // Build the message content
   let userContent = messageText;
+
+  // Process media with Gemini if attachment present
+  let mediaContext = null;
   if (hasAttachment) {
-    userContent += buildAttachmentPrompt(attachment);
+    logger.info('Processing media attachment', { type: attachment.type });
+    await ctx.replyWithChatAction('typing');
+
+    // Quick classification for pillar routing
+    const quickPillar = await classifyMessage(messageText || attachment.caption || 'media')
+      .then(c => c.pillar as Pillar)
+      .catch(() => 'The Grove' as Pillar);
+
+    // Process with Gemini + archive + log to Feed
+    mediaContext = await processMedia(ctx, attachment, quickPillar);
+
+    if (mediaContext) {
+      // Inject Gemini's understanding into Claude's context
+      userContent += buildMediaContext(mediaContext, attachment);
+      logger.info('Media processed', {
+        type: mediaContext.type,
+        processingTime: mediaContext.processingTime,
+        archived: !!mediaContext.archivedPath,
+      });
+    } else {
+      // Fallback to basic attachment prompt
+      userContent += buildAttachmentPrompt(attachment);
+    }
   }
 
   // Get conversation history
