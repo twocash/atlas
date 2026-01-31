@@ -7,7 +7,11 @@
 import type Anthropic from '@anthropic-ai/sdk';
 import { readFile, writeFile, mkdir, readdir } from 'fs/promises';
 import { join, resolve, dirname } from 'path';
+import { fileURLToPath } from 'url';
 import { logger } from '../../logger';
+
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = dirname(__filename);
 
 // Allowed workspace paths (relative to apps/telegram/)
 const WORKSPACE_ROOT = resolve(__dirname, '../../..');

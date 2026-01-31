@@ -1,13 +1,14 @@
 /**
  * Atlas Telegram Bot - Entry Point
- * 
+ *
  * Initializes the bot and starts listening for messages.
- * 
+ *
  * @see IMPLEMENTATION.md Sprint 1.2 for requirements
  */
 
-import dotenv from "dotenv";
-dotenv.config({ override: true });
+// MUST be first - loads .env before any other imports
+import "dotenv/config";
+
 import { createBot, startBot } from "./bot";
 import { logger } from "./logger";
 import { initAtlasSystem, updateHeartbeat, logUpdate } from "./atlas-system";

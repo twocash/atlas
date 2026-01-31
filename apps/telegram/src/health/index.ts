@@ -8,9 +8,12 @@
 import { Client } from '@notionhq/client';
 import Anthropic from '@anthropic-ai/sdk';
 import { readFile, access } from 'fs/promises';
-import { join } from 'path';
+import { join, dirname } from 'path';
+import { fileURLToPath } from 'url';
 import { constants } from 'fs';
 
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = dirname(__filename);
 const DATA_DIR = join(__dirname, '../../data');
 const CONFIG_DIR = join(__dirname, '../../config');
 
@@ -388,12 +391,12 @@ export async function runHealthChecks(): Promise<HealthReport> {
   let canStart = true;
 
   // Critical failures that prevent startup
+  // NOTE: Feed is NOT critical - bot can function with Work Queue only
   const criticalChecks = [
     'env:TELEGRAM_BOT_TOKEN',
     'env:ANTHROPIC_API_KEY',
-    'notion:feed_database',      // Feed 2.0 database raw access
     'notion:wq_database',        // Work Queue 2.0 database raw access
-    'notion:get_status_summary', // Feed + Work Queue access via tools
+    'notion:get_status_summary', // Work Queue access via tools
     'notion:work_queue_list',    // Work Queue access via tools
     'claude:sonnet',
   ];
