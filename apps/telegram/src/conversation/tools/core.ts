@@ -38,6 +38,22 @@ function getSelect(props: Record<string, unknown>, key: string): string | null {
   return null;
 }
 
+function getRichText(props: Record<string, unknown>, key: string): string | null {
+  const prop = props[key] as { type?: string; rich_text?: Array<{ plain_text?: string }> } | undefined;
+  if (prop?.type === 'rich_text' && Array.isArray(prop.rich_text) && prop.rich_text.length > 0) {
+    return prop.rich_text.map(t => t.plain_text || '').join('');
+  }
+  return null;
+}
+
+function getDate(props: Record<string, unknown>, key: string): string | null {
+  const prop = props[key] as { type?: string; date?: { start?: string } | null } | undefined;
+  if (prop?.type === 'date' && prop.date?.start) {
+    return prop.date.start;
+  }
+  return null;
+}
+
 export const CORE_TOOLS: Anthropic.Tool[] = [
   {
     name: 'notion_search',
@@ -126,7 +142,7 @@ export const CORE_TOOLS: Anthropic.Tool[] = [
   },
   {
     name: 'work_queue_update',
-    description: 'Update an existing Work Queue item. Use when marking tasks done, changing status, or adding notes.',
+    description: 'Update an existing Work Queue item. Can update ANY field: status, priority, pillar, assignee, type, notes, etc.',
     input_schema: {
       type: 'object' as const,
       properties: {
@@ -144,6 +160,20 @@ export const CORE_TOOLS: Anthropic.Tool[] = [
           enum: ['P0', 'P1', 'P2', 'P3'],
           description: 'New priority',
         },
+        pillar: {
+          type: 'string',
+          enum: ['Personal', 'The Grove', 'Consulting', 'Home/Garage'],
+          description: 'Which life domain this belongs to',
+        },
+        assignee: {
+          type: 'string',
+          description: 'Who is responsible (e.g., "Jim", "Atlas [Telegram]")',
+        },
+        type: {
+          type: 'string',
+          enum: ['Draft', 'Build', 'Research', 'Process', 'Schedule', 'Answer'],
+          description: 'Type of work',
+        },
         notes: {
           type: 'string',
           description: 'Add to notes field',
@@ -151,6 +181,24 @@ export const CORE_TOOLS: Anthropic.Tool[] = [
         resolution_notes: {
           type: 'string',
           description: 'How the item was resolved (for Done/Shipped)',
+        },
+        blocked_reason: {
+          type: 'string',
+          description: 'Why this item is blocked (when status=Blocked)',
+        },
+      },
+      required: ['id'],
+    },
+  },
+  {
+    name: 'work_queue_get',
+    description: 'Get full details of a single Work Queue item by ID. Returns ALL properties including notes, assignee, blocked reason, dates, etc.',
+    input_schema: {
+      type: 'object' as const,
+      properties: {
+        id: {
+          type: 'string',
+          description: 'Notion page ID of the Work Queue item',
         },
       },
       required: ['id'],
@@ -253,6 +301,8 @@ export async function executeCoreTools(
       return await executeWorkQueueCreate(input);
     case 'work_queue_update':
       return await executeWorkQueueUpdate(input);
+    case 'work_queue_get':
+      return await executeWorkQueueGet(input);
     case 'web_search':
       return await executeWebSearch(input);
     case 'get_status_summary':
@@ -523,8 +573,12 @@ async function executeWorkQueueUpdate(
   const id = input.id as string;
   const status = input.status as string | undefined;
   const priority = input.priority as string | undefined;
+  const pillar = input.pillar as string | undefined;
+  const assignee = input.assignee as string | undefined;
+  const type = input.type as string | undefined;
   const notes = input.notes as string | undefined;
   const resolutionNotes = input.resolution_notes as string | undefined;
+  const blockedReason = input.blocked_reason as string | undefined;
 
   try {
     // First, fetch the current WQ item to get title, pillar, and current values
@@ -556,11 +610,24 @@ async function executeWorkQueueUpdate(
     if (priority) {
       properties['Priority'] = { select: { name: priority } };
     }
+    if (pillar) {
+      properties['Pillar'] = { select: { name: pillar } };
+      wqPillar = pillar as Pillar; // Update for Feed logging
+    }
+    if (assignee) {
+      properties['Assignee'] = { select: { name: assignee } };
+    }
+    if (type) {
+      properties['Type'] = { select: { name: type } };
+    }
     if (notes) {
       properties['Notes'] = { rich_text: [{ text: { content: notes } }] };
     }
     if (resolutionNotes) {
       properties['Resolution Notes'] = { rich_text: [{ text: { content: resolutionNotes } }] };
+    }
+    if (blockedReason) {
+      properties['Blocked Reason'] = { rich_text: [{ text: { content: blockedReason } }] };
     }
 
     await notion.pages.update({
@@ -620,6 +687,46 @@ async function executeWorkQueueUpdate(
     };
   } catch (error) {
     logger.error('Work queue update failed', { error, id });
+    return { success: false, result: null, error: String(error) };
+  }
+}
+
+async function executeWorkQueueGet(
+  input: Record<string, unknown>
+): Promise<{ success: boolean; result: unknown; error?: string }> {
+  const id = input.id as string;
+
+  try {
+    const page = await notion.pages.retrieve({ page_id: id });
+
+    if (!('properties' in page)) {
+      return { success: false, result: null, error: 'Page has no properties' };
+    }
+
+    const props = page.properties as Record<string, unknown>;
+
+    // Extract all relevant properties
+    const item = {
+      id: page.id,
+      url: (page as { url?: string }).url || `https://notion.so/${page.id.replace(/-/g, '')}`,
+      task: getTitle(props, 'Task'),
+      status: getSelect(props, 'Status'),
+      priority: getSelect(props, 'Priority'),
+      pillar: getSelect(props, 'Pillar'),
+      type: getSelect(props, 'Type'),
+      assignee: getSelect(props, 'Assignee'),
+      notes: getRichText(props, 'Notes'),
+      blockedReason: getRichText(props, 'Blocked Reason'),
+      resolutionNotes: getRichText(props, 'Resolution Notes'),
+      output: getRichText(props, 'Output'),
+      queued: getDate(props, 'Queued'),
+      started: getDate(props, 'Started'),
+      completed: getDate(props, 'Completed'),
+    };
+
+    return { success: true, result: item };
+  } catch (error) {
+    logger.error('Work queue get failed', { error, id });
     return { success: false, result: null, error: String(error) };
   }
 }
