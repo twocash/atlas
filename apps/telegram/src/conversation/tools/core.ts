@@ -444,6 +444,8 @@ async function executeWorkQueueCreate(
   const notes = input.notes as string | undefined;
 
   try {
+    logger.info('WQ Create: Starting', { task, type, pillar, priority, dbId: WORK_QUEUE_DATABASE_ID });
+
     const response = await notion.pages.create({
       parent: { database_id: WORK_QUEUE_DATABASE_ID },
       properties: {
@@ -458,9 +460,31 @@ async function executeWorkQueueCreate(
       },
     });
 
+    logger.info('WQ Create: Notion API returned', { pageId: response.id, object: response.object });
+
+    // VERIFY the page actually exists
+    try {
+      const verification = await notion.pages.retrieve({ page_id: response.id });
+      logger.info('WQ Create: Verified page exists', {
+        pageId: response.id,
+        verified: true,
+        parent: 'parent' in verification ? verification.parent : 'unknown'
+      });
+    } catch (verifyError) {
+      logger.error('WQ Create: VERIFICATION FAILED - Page does not exist!', {
+        pageId: response.id,
+        error: verifyError
+      });
+      return {
+        success: false,
+        result: null,
+        error: `Page creation returned ID but page does not exist: ${response.id}`
+      };
+    }
+
     const wqUrl = notionUrl(response.id);
 
-    // Log creation to Feed
+    // Log creation to Feed (non-blocking, errors are caught internally)
     const feedResult = await logWQActivity({
       action: 'created',
       wqItemId: response.id,
@@ -468,6 +492,8 @@ async function executeWorkQueueCreate(
       pillar: pillar as Pillar,
       source: 'Telegram',
     });
+
+    logger.info('WQ Create: Complete', { pageId: response.id, feedLogged: !!feedResult });
 
     return {
       success: true,
@@ -480,8 +506,13 @@ async function executeWorkQueueCreate(
         feedUrl: feedResult?.feedUrl,
       },
     };
-  } catch (error) {
-    logger.error('Work queue create failed', { error, task });
+  } catch (error: any) {
+    logger.error('Work queue create failed', {
+      error: error?.message || String(error),
+      code: error?.code,
+      status: error?.status,
+      task
+    });
     return { success: false, result: null, error: String(error) };
   }
 }
