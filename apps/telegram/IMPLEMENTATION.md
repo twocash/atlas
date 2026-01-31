@@ -140,9 +140,9 @@ This document breaks the Atlas Telegram project into executable sprints. Each sp
 #### 3.1 Notion Client Setup
 - [x] Create `src/notion.ts`:
   - Initialize Notion client with API key
-  - Define canonical database IDs as constants:
-    - Feed 2.0: `90b2b33f-4b44-4b42-870f-8d62fb8cbf18`
-    - Work Queue 2.0: `3d679030-b76b-43bd-92d8-1ac51abb4a28`
+  - Define canonical DATA SOURCE IDs as constants:
+    - Feed 2.0: `a7493abb-804a-4759-b6ac-aeca62ae23b8`
+    - Work Queue 2.0: `6a8d9c43-b084-47b5-bc83-bc363640f2cd`
   - TypeScript interfaces for properties (in types.ts)
 
 #### 3.2 Feed Item Creation

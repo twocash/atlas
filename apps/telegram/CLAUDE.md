@@ -40,11 +40,11 @@ All content flows into one of four life domains. **These are equal citizens**—
 **Architecture:** Feed 2.0 (activity log) + Work Queue 2.0 (task ledger)
 **NO INBOX** — Telegram IS the inbox.
 
-### Canonical (DO NOT CHANGE)
-| Database | ID | Purpose |
+### Canonical DATA SOURCE IDs (DO NOT CHANGE)
+| Database | Data Source ID | Purpose |
 |----------|-----|---------|
-| **Feed 2.0** | `90b2b33f-4b44-4b42-870f-8d62fb8cbf18` | Activity log |
-| **Work Queue 2.0** | `3d679030-b76b-43bd-92d8-1ac51abb4a28` | Task ledger |
+| **Feed 2.0** | `a7493abb-804a-4759-b6ac-aeca62ae23b8` | Activity log |
+| **Work Queue 2.0** | `6a8d9c43-b084-47b5-bc83-bc363640f2cd` | Task ledger |
 
 ### Legacy (Reference Only - DO NOT USE)
 | Database | ID | Purpose |

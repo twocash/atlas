@@ -15,10 +15,11 @@ export type { Pillar };
 // Initialize Notion client
 const notion = new Client({ auth: process.env.NOTION_API_KEY });
 
-// Notion Database IDs — USE DATABASE PAGE IDs (not data source IDs!)
-// Per spec: https://www.notion.so/2f8780a78eef81bcbd69ece73530a3da
-const FEED_DATABASE_ID = '90b2b33f-4b44-4b42-870f-8d62fb8cbf18';
-const WORK_QUEUE_DATABASE_ID = '3d679030-b76b-43bd-92d8-1ac51abb4a28';
+// Notion DATA SOURCE IDs — from spec, verified correct
+// CRITICAL: Use DATA SOURCE IDs (not database page IDs!)
+// Per PATCH-database-wiring-fix.md
+const FEED_DATABASE_ID = 'a7493abb-804a-4759-b6ac-aeca62ae23b8';
+const WORK_QUEUE_DATABASE_ID = '6a8d9c43-b084-47b5-bc83-bc363640f2cd';
 
 // Track Feed database health - if it's inaccessible, skip Feed logging
 let feedDatabaseHealthy = true;
