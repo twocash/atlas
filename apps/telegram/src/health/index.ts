@@ -295,6 +295,29 @@ async function checkVoiceConfigs(): Promise<HealthCheckResult[]> {
 async function checkNotionDatabases(): Promise<HealthCheckResult[]> {
   const results: HealthCheckResult[] = [];
 
+  // First, verify raw database access using verifyDatabaseAccess
+  const { verifyDatabaseAccess } = await import('../conversation/audit');
+  console.log('[HEALTH] Verifying raw database access (Feed 2.0 + Work Queue 2.0)...');
+  const dbAccess = await verifyDatabaseAccess();
+
+  results.push({
+    name: 'notion:feed_database',
+    status: dbAccess.feed ? 'pass' : 'fail',
+    message: dbAccess.feed
+      ? 'Feed 2.0 database accessible'
+      : 'Feed 2.0 database NOT accessible - check integration sharing',
+    details: { databaseId: '90b2b33f-4b44-4b42-870f-8d62fb8cbf18' }
+  });
+
+  results.push({
+    name: 'notion:wq_database',
+    status: dbAccess.workQueue ? 'pass' : 'fail',
+    message: dbAccess.workQueue
+      ? 'Work Queue 2.0 database accessible'
+      : 'Work Queue 2.0 database NOT accessible - check integration sharing',
+    details: { databaseId: '3d679030-b76b-43bd-92d8-1ac51abb4a28' }
+  });
+
   // Import and call the actual tool functions to test the real code paths
   const { executeCoreTools } = await import('../conversation/tools/core');
 
@@ -365,8 +388,10 @@ export async function runHealthChecks(): Promise<HealthReport> {
   const criticalChecks = [
     'env:TELEGRAM_BOT_TOKEN',
     'env:ANTHROPIC_API_KEY',
-    'notion:get_status_summary', // Feed + Work Queue access is critical
-    'notion:work_queue_list',    // Work Queue access is critical
+    'notion:feed_database',      // Feed 2.0 database raw access
+    'notion:wq_database',        // Work Queue 2.0 database raw access
+    'notion:get_status_summary', // Feed + Work Queue access via tools
+    'notion:work_queue_list',    // Work Queue access via tools
     'claude:sonnet',
   ];
 

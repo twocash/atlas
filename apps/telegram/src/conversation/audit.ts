@@ -20,6 +20,57 @@ const notion = new Client({ auth: process.env.NOTION_API_KEY });
 const FEED_DATABASE_ID = '90b2b33f-4b44-4b42-870f-8d62fb8cbf18';
 const WORK_QUEUE_DATABASE_ID = '3d679030-b76b-43bd-92d8-1ac51abb4a28';
 
+// Track Feed database health - if it's inaccessible, skip Feed logging
+let feedDatabaseHealthy = true;
+let lastFeedCheck = 0;
+const FEED_CHECK_INTERVAL = 60000; // Re-check every 60 seconds
+
+/**
+ * Verify database access on startup or after failures
+ */
+export async function verifyDatabaseAccess(): Promise<{
+  feed: boolean;
+  workQueue: boolean;
+  details: string;
+}> {
+  const results = { feed: false, workQueue: false, details: '' };
+
+  // Test Feed 2.0
+  try {
+    await notion.databases.retrieve({ database_id: FEED_DATABASE_ID });
+    results.feed = true;
+    feedDatabaseHealthy = true;
+    logger.info('Feed 2.0 database accessible', { id: FEED_DATABASE_ID });
+  } catch (error: any) {
+    results.feed = false;
+    feedDatabaseHealthy = false;
+    logger.error('Feed 2.0 database NOT accessible', {
+      id: FEED_DATABASE_ID,
+      error: error?.message || String(error),
+      code: error?.code
+    });
+  }
+
+  // Test Work Queue 2.0
+  try {
+    await notion.databases.retrieve({ database_id: WORK_QUEUE_DATABASE_ID });
+    results.workQueue = true;
+    logger.info('Work Queue 2.0 database accessible', { id: WORK_QUEUE_DATABASE_ID });
+  } catch (error: any) {
+    results.workQueue = false;
+    logger.error('Work Queue 2.0 database NOT accessible', {
+      id: WORK_QUEUE_DATABASE_ID,
+      error: error?.message || String(error),
+      code: error?.code
+    });
+  }
+
+  results.details = `Feed: ${results.feed ? '✓' : '✗'}, WorkQueue: ${results.workQueue ? '✓' : '✗'}`;
+  lastFeedCheck = Date.now();
+
+  return results;
+}
+
 export interface AuditEntry {
   // Core
   entry: string;           // Human-readable summary
