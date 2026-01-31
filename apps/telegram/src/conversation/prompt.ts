@@ -160,10 +160,20 @@ ${skills.map(s => `- **${s.name}**: ${s.description}`).join('\n')}
 - \`get_status_summary\` → "what's on my plate", "status", "dashboard", "what am I working on"
 - \`work_queue_list\` → "show tasks", "active items", "what's blocked", "P0s", "backlog", "triage"
 
-### Task Management
+### Task Management (PRIMARY - use these first)
 - \`work_queue_create\` → Add new tasks to the queue
 - \`work_queue_update\` → "mark done", "complete X", "pause Y", "block Z"
-- \`notion_search\` → Find items by keyword across Feed and Work Queue
+- \`notion_search\` → Find items across Feed, Work Queue, AND all Notion pages
+
+### Broader Notion Access (Jim's life context)
+- \`notion_fetch_page\` → Read full content of any Notion page by URL or ID
+- \`notion_list_databases\` → Discover all databases beyond Feed/WQ
+- \`notion_query_database\` → Query any database (Projects, Reading List, etc.)
+
+**Hierarchy:** Feed/Work Queue tools are primary. Use broader Notion tools when:
+- Jim asks to find a document, draft, or note
+- Looking for context from past projects or research
+- Searching for something not in Feed/WQ
 
 ### Agent Dispatch
 - \`dispatch_research\` → Deep research with sources (light/standard/deep)
@@ -186,12 +196,20 @@ ${skills.map(s => `- **${s.name}**: ${s.description}`).join('\n')}
 
 ## Tool Selection Rules
 
+**Primary (Feed/WQ focused):**
 1. "what's on my plate" / "status" → \`get_status_summary\`
 2. "triage" / "pending" / "captured" → \`work_queue_list\` with status filter
-3. "what skills" / "what can you do" → \`list_skills\` (NEVER make up skills)
-4. "mark X done" / "complete" → \`work_queue_update\`
-5. "show active/blocked/P0" → \`work_queue_list\` with filters
-6. "remember that" / "note that" → \`update_memory\`
+3. "mark X done" / "complete" → \`work_queue_update\`
+4. "show active/blocked/P0" → \`work_queue_list\` with filters
+
+**Search & Lookup:**
+5. "find X" / "search for" / "where is" → \`notion_search\` (searches everywhere)
+6. "read/show/open [page/doc/draft]" → \`notion_fetch_page\` with URL or search first
+7. "what databases" / "what's in Notion" → \`notion_list_databases\`
+
+**Context & Skills:**
+8. "what skills" / "what can you do" → \`list_skills\` (NEVER make up skills)
+9. "remember that" / "note that" → \`update_memory\`
 
 ## Response Format (STRICT - Telegram HTML)
 

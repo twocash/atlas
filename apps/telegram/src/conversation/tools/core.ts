@@ -182,6 +182,58 @@ export const CORE_TOOLS: Anthropic.Tool[] = [
       required: [],
     },
   },
+  // ==========================================
+  // Broader Notion Access (Context & Awareness)
+  // ==========================================
+  {
+    name: 'notion_fetch_page',
+    description: 'Fetch full content of a Notion page by URL or ID. Use to read documents, drafts, notes, or any page content. Returns page properties and body text.',
+    input_schema: {
+      type: 'object' as const,
+      properties: {
+        page_id: {
+          type: 'string',
+          description: 'Notion page ID (with or without dashes) or full Notion URL',
+        },
+      },
+      required: ['page_id'],
+    },
+  },
+  {
+    name: 'notion_list_databases',
+    description: 'List all Notion databases Jim has shared with Atlas. Use to discover what databases exist beyond Feed/Work Queue.',
+    input_schema: {
+      type: 'object' as const,
+      properties: {},
+      required: [],
+    },
+  },
+  {
+    name: 'notion_query_database',
+    description: 'Query any Notion database by name or ID. Use for databases beyond Feed/Work Queue - like projects, contacts, reading lists, etc.',
+    input_schema: {
+      type: 'object' as const,
+      properties: {
+        database: {
+          type: 'string',
+          description: 'Database name (e.g., "Projects", "Reading List") or database ID',
+        },
+        filter_property: {
+          type: 'string',
+          description: 'Property name to filter on (optional)',
+        },
+        filter_value: {
+          type: 'string',
+          description: 'Value to filter for (optional)',
+        },
+        limit: {
+          type: 'number',
+          description: 'Max results (default: 10)',
+        },
+      },
+      required: ['database'],
+    },
+  },
 ];
 
 /**
@@ -204,6 +256,13 @@ export async function executeCoreTools(
       return await executeWebSearch(input);
     case 'get_status_summary':
       return await executeStatusSummary();
+    // Broader Notion access
+    case 'notion_fetch_page':
+      return await executeNotionFetchPage(input);
+    case 'notion_list_databases':
+      return await executeNotionListDatabases();
+    case 'notion_query_database':
+      return await executeNotionQueryDatabase(input);
     default:
       return null; // Not a core tool
   }
@@ -593,6 +652,288 @@ async function executeStatusSummary(): Promise<{ success: boolean; result: unkno
       success: false,
       result: null,
       error: `Notion error: ${error?.code || 'unknown'} - ${error?.message || String(error)}`
+    };
+  }
+}
+
+// ==========================================
+// Broader Notion Access Functions
+// ==========================================
+
+/**
+ * Extract page ID from URL or return as-is
+ */
+function extractPageId(input: string): string {
+  // Handle full Notion URLs
+  if (input.includes('notion.so')) {
+    // Extract the ID part (last segment, may have query params)
+    const match = input.match(/([a-f0-9]{32}|[a-f0-9-]{36})/i);
+    if (match) return match[1];
+  }
+  // Already an ID
+  return input.replace(/-/g, '');
+}
+
+/**
+ * Extract text content from Notion blocks
+ */
+function extractBlockText(blocks: any[]): string {
+  const textParts: string[] = [];
+
+  for (const block of blocks) {
+    if (block.type === 'paragraph' && block.paragraph?.rich_text) {
+      const text = block.paragraph.rich_text.map((t: any) => t.plain_text).join('');
+      if (text) textParts.push(text);
+    } else if (block.type === 'heading_1' && block.heading_1?.rich_text) {
+      const text = block.heading_1.rich_text.map((t: any) => t.plain_text).join('');
+      if (text) textParts.push(`# ${text}`);
+    } else if (block.type === 'heading_2' && block.heading_2?.rich_text) {
+      const text = block.heading_2.rich_text.map((t: any) => t.plain_text).join('');
+      if (text) textParts.push(`## ${text}`);
+    } else if (block.type === 'heading_3' && block.heading_3?.rich_text) {
+      const text = block.heading_3.rich_text.map((t: any) => t.plain_text).join('');
+      if (text) textParts.push(`### ${text}`);
+    } else if (block.type === 'bulleted_list_item' && block.bulleted_list_item?.rich_text) {
+      const text = block.bulleted_list_item.rich_text.map((t: any) => t.plain_text).join('');
+      if (text) textParts.push(`• ${text}`);
+    } else if (block.type === 'numbered_list_item' && block.numbered_list_item?.rich_text) {
+      const text = block.numbered_list_item.rich_text.map((t: any) => t.plain_text).join('');
+      if (text) textParts.push(`- ${text}`);
+    } else if (block.type === 'to_do' && block.to_do?.rich_text) {
+      const text = block.to_do.rich_text.map((t: any) => t.plain_text).join('');
+      const checked = block.to_do.checked ? '☑' : '☐';
+      if (text) textParts.push(`${checked} ${text}`);
+    } else if (block.type === 'code' && block.code?.rich_text) {
+      const text = block.code.rich_text.map((t: any) => t.plain_text).join('');
+      if (text) textParts.push(`\`\`\`\n${text}\n\`\`\``);
+    } else if (block.type === 'quote' && block.quote?.rich_text) {
+      const text = block.quote.rich_text.map((t: any) => t.plain_text).join('');
+      if (text) textParts.push(`> ${text}`);
+    } else if (block.type === 'callout' && block.callout?.rich_text) {
+      const text = block.callout.rich_text.map((t: any) => t.plain_text).join('');
+      if (text) textParts.push(`📌 ${text}`);
+    } else if (block.type === 'divider') {
+      textParts.push('---');
+    }
+  }
+
+  return textParts.join('\n\n');
+}
+
+/**
+ * Fetch a Notion page by ID or URL
+ */
+async function executeNotionFetchPage(
+  input: Record<string, unknown>
+): Promise<{ success: boolean; result: unknown; error?: string }> {
+  const pageIdInput = input.page_id as string;
+  const pageId = extractPageId(pageIdInput);
+
+  try {
+    // Get page metadata
+    const page = await notion.pages.retrieve({ page_id: pageId });
+
+    let title = 'Untitled';
+    let properties: Record<string, any> = {};
+
+    if ('properties' in page) {
+      const props = page.properties as Record<string, unknown>;
+      // Try to extract title from various property names
+      title = getTitle(props, 'Name') || getTitle(props, 'Title') || getTitle(props, 'Task') || getTitle(props, 'Entry') || getTitle(props, 'Spark') || 'Untitled';
+
+      // Extract key properties
+      for (const [key, value] of Object.entries(props)) {
+        const val = value as any;
+        if (val.type === 'select' && val.select?.name) {
+          properties[key] = val.select.name;
+        } else if (val.type === 'multi_select' && val.multi_select) {
+          properties[key] = val.multi_select.map((s: any) => s.name).join(', ');
+        } else if (val.type === 'date' && val.date?.start) {
+          properties[key] = val.date.start;
+        } else if (val.type === 'checkbox') {
+          properties[key] = val.checkbox;
+        } else if (val.type === 'number' && val.number !== null) {
+          properties[key] = val.number;
+        } else if (val.type === 'url' && val.url) {
+          properties[key] = val.url;
+        } else if (val.type === 'rich_text' && val.rich_text?.[0]?.plain_text) {
+          properties[key] = val.rich_text.map((t: any) => t.plain_text).join('');
+        }
+      }
+    }
+
+    // Get page content (blocks)
+    const blocks = await notion.blocks.children.list({ block_id: pageId, page_size: 100 });
+    const content = extractBlockText(blocks.results);
+
+    return {
+      success: true,
+      result: {
+        id: pageId,
+        title,
+        url: notionUrl(pageId),
+        properties,
+        content: content || '(No content)',
+        lastEdited: 'last_edited_time' in page ? page.last_edited_time : undefined,
+      },
+    };
+  } catch (error: any) {
+    logger.error('Notion fetch page failed', { error, pageId });
+    return {
+      success: false,
+      result: null,
+      error: `Notion error: ${error?.code || 'unknown'} - ${error?.message || String(error)}`,
+    };
+  }
+}
+
+/**
+ * List all databases the integration can access
+ */
+async function executeNotionListDatabases(): Promise<{ success: boolean; result: unknown; error?: string }> {
+  try {
+    const response = await notion.search({
+      filter: { property: 'object', value: 'database' },
+      page_size: 50,
+    });
+
+    const databases = response.results.map((db: any) => {
+      const titleProp = db.title?.[0]?.plain_text || 'Untitled';
+      return {
+        id: db.id,
+        name: titleProp,
+        url: notionUrl(db.id),
+      };
+    });
+
+    return {
+      success: true,
+      result: {
+        databases,
+        count: databases.length,
+      },
+    };
+  } catch (error: any) {
+    logger.error('Notion list databases failed', { error });
+    return {
+      success: false,
+      result: null,
+      error: `Notion error: ${error?.code || 'unknown'} - ${error?.message || String(error)}`,
+    };
+  }
+}
+
+/**
+ * Query any Notion database by name or ID
+ */
+async function executeNotionQueryDatabase(
+  input: Record<string, unknown>
+): Promise<{ success: boolean; result: unknown; error?: string }> {
+  const databaseInput = input.database as string;
+  const filterProperty = input.filter_property as string | undefined;
+  const filterValue = input.filter_value as string | undefined;
+  const limit = (input.limit as number) || 10;
+
+  try {
+    // First, find the database by name if not an ID
+    let databaseId = databaseInput;
+
+    // Check if it looks like an ID (32 hex chars or UUID format)
+    const isId = /^[a-f0-9]{32}$|^[a-f0-9-]{36}$/i.test(databaseInput);
+
+    if (!isId) {
+      // Search for database by name
+      const searchResponse = await notion.search({
+        query: databaseInput,
+        filter: { property: 'object', value: 'database' },
+        page_size: 5,
+      });
+
+      const matchingDb = searchResponse.results.find((db: any) => {
+        const name = db.title?.[0]?.plain_text?.toLowerCase() || '';
+        return name.includes(databaseInput.toLowerCase());
+      });
+
+      if (!matchingDb) {
+        return {
+          success: false,
+          result: null,
+          error: `Database "${databaseInput}" not found. Use notion_list_databases to see available databases.`,
+        };
+      }
+
+      databaseId = matchingDb.id;
+    }
+
+    // Build filter if provided
+    let filter: any = undefined;
+    if (filterProperty && filterValue) {
+      // Try common property types
+      filter = {
+        or: [
+          { property: filterProperty, select: { equals: filterValue } },
+          { property: filterProperty, rich_text: { contains: filterValue } },
+          { property: filterProperty, title: { contains: filterValue } },
+        ],
+      };
+    }
+
+    // Query the database
+    const response = await notion.databases.query({
+      database_id: databaseId,
+      filter,
+      page_size: limit,
+    });
+
+    const items = response.results.map((page: any) => {
+      const props = page.properties || {};
+
+      // Extract title (try common property names)
+      let title = 'Untitled';
+      for (const [, value] of Object.entries(props)) {
+        const val = value as any;
+        if (val.type === 'title' && val.title?.[0]?.plain_text) {
+          title = val.title[0].plain_text;
+          break;
+        }
+      }
+
+      // Extract a few key properties
+      const summary: Record<string, any> = {};
+      for (const [key, value] of Object.entries(props)) {
+        const val = value as any;
+        if (val.type === 'select' && val.select?.name) {
+          summary[key] = val.select.name;
+        } else if (val.type === 'status' && val.status?.name) {
+          summary[key] = val.status.name;
+        } else if (val.type === 'date' && val.date?.start) {
+          summary[key] = val.date.start;
+        }
+      }
+
+      return {
+        id: page.id,
+        title,
+        url: notionUrl(page.id),
+        ...summary,
+      };
+    });
+
+    return {
+      success: true,
+      result: {
+        database: databaseInput,
+        items,
+        count: items.length,
+        hasMore: response.has_more,
+      },
+    };
+  } catch (error: any) {
+    logger.error('Notion query database failed', { error, database: databaseInput });
+    return {
+      success: false,
+      result: null,
+      error: `Notion error: ${error?.code || 'unknown'} - ${error?.message || String(error)}`,
     };
   }
 }
