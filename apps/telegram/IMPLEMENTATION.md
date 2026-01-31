@@ -128,7 +128,10 @@ This document breaks the Atlas Telegram project into executable sprints. Each sp
 
 ## Sprint 3: Notion Integration ✅ COMPLETE
 
-**Goal:** Classified sparks create items in Atlas Inbox 2.0 with full context
+**Goal:** Every message creates Feed + Work Queue entries with bidirectional linking
+
+**Architecture:** Feed 2.0 (activity log) + Work Queue 2.0 (task ledger)
+**NO INBOX** — Telegram IS the inbox.
 
 **Duration:** 1-2 days
 
@@ -137,17 +140,15 @@ This document breaks the Atlas Telegram project into executable sprints. Each sp
 #### 3.1 Notion Client Setup
 - [x] Create `src/notion.ts`:
   - Initialize Notion client with API key
-  - Define database IDs as constants
+  - Define canonical database IDs as constants:
+    - Feed 2.0: `90b2b33f-4b44-4b42-870f-8d62fb8cbf18`
+    - Work Queue 2.0: `3d679030-b76b-43bd-92d8-1ac51abb4a28`
   - TypeScript interfaces for properties (in types.ts)
 
-#### 3.2 Inbox Item Creation
-- [x] Implement `createInboxItem()`:
+#### 3.2 Feed Item Creation
+- [x] Implement `createFeedItem()`:
   - Map classification to Notion properties
-  - All required fields set:
-    - Spark (title), Source (URL), Source Type
-    - Pillar, Intent, Confidence
-    - Atlas Status, Decision, Atlas Notes
-    - Spark Date, Decision Date, Tags
+  - Fields: Entry (title), Pillar, Source, Status, Confidence, Date
 
 #### 3.3 Comment Stream
 - [x] Implement `addTelegramExchangeComment()`:
@@ -155,23 +156,22 @@ This document breaks the Atlas Telegram project into executable sprints. Each sp
   - Includes timestamp, URL, classification, clarification, action
 - [x] Comment format matches spec
 
-#### 3.4 Work Queue Routing
+#### 3.4 Work Queue Routing (Bidirectional)
 - [x] Implement `createWorkItem()`:
-  - Create Work Queue item when Decision = "Route to Work"
-  - Link back to Inbox item via relation
-  - Set initial status to "Queued"
+  - Create Work Queue item with Feed Source relation
+  - Bidirectional linking (Feed → WQ and WQ → Feed auto-populates)
+  - Status based on Request Type (Quick/Chat → Done, else Captured)
   - Priority based on confidence
-- [x] Update Inbox item with "Routed To" relation
 
 #### 3.5 Confirmation Messages
 - [x] Send confirmation to Telegram after Notion write
-- [x] Format: "✓ Captured to Inbox (Pillar / Intent) → routing to Work Queue"
+- [x] Format: "✓ Captured to Feed (Pillar / Intent) → routing to Work Queue"
 
 ### Acceptance Criteria
-- [x] Classified sparks create Inbox 2.0 items
+- [x] Every message creates Feed 2.0 entry with classification
+- [x] Every Feed entry creates linked Work Queue item
 - [x] Telegram exchange captured in Notion comments
-- [x] Items routed to Work Queue when appropriate
-- [x] Relations properly linked
+- [x] Bidirectional relations properly linked
 - [x] User receives confirmation in Telegram
 
 ---

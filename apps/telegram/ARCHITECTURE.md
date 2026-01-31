@@ -47,15 +47,19 @@
 
 ### 4. Notion Integration
 
-**Databases:**
-- Atlas Inbox 2.0 (`collection://04c04ac3-b974-4b7a-9651-e024ee484630`)
-- Atlas Work Queue 2.0 (`collection://6a8d9c43-b084-47b5-bc83-bc363640f2cd`)
+**Architecture:** Feed 2.0 (activity log) + Work Queue 2.0 (task ledger)
+**NO INBOX** — Telegram IS the inbox.
+
+**Databases (Canonical IDs - DO NOT CHANGE):**
+- Feed 2.0: `90b2b33f-4b44-4b42-870f-8d62fb8cbf18`
+- Work Queue 2.0: `3d679030-b76b-43bd-92d8-1ac51abb4a28`
 
 **Operations:**
-- Create inbox items with full classification
-- Add comments capturing Telegram exchange
-- Update status as items progress
-- Create work queue items when routing
+- Every message → Feed entry (with Pillar classification)
+- Every Feed entry → Work Queue item (bidirectional relation)
+- Track classification confidence
+- Comments capture Telegram exchange
+- Status updates as items progress
 
 ---
 
@@ -90,13 +94,13 @@
 
 6. JIM taps button (< 10 seconds)
 
-7. CLAUDE creates Notion item
-   - Inbox 2.0 entry with all properties
+7. CLAUDE creates Notion items
+   - Feed 2.0 entry with classification metadata
+   - Work Queue 2.0 item (bidirectional relation)
    - Comment with full Telegram exchange
-   - Routes to Work Queue if decision = "Route to Work"
 
 8. BOT confirms
-   "✓ Captured to Inbox → routing for evaluation."
+   "✓ Captured to Feed (Pillar / Intent) → routing to Work Queue"
 ```
 
 ### Edge Cases
@@ -208,34 +212,35 @@ AUDIT_LOG_PATH=./logs           # Where to write audit logs
 
 ## Notion Schema Reference
 
-### Atlas Inbox 2.0
+### Feed 2.0 (Activity Log)
 
 | Property | Type | Purpose |
 |----------|------|---------|
-| Spark | title | Spark summary |
-| Source | url | Original link |
-| Source Type | select | Telegram, Browser, Manual |
-| Pillar | select | Personal, Grove, Consulting, Home |
-| Confidence | number (%) | Classification confidence |
-| Intent | select | Research, Catalog, Build, Content, Reference, Task, Question |
-| Decision | select | Route to Work, Archive, Defer, Dismiss |
-| Atlas Status | select | New, Clarifying, Classified, Routed, Archived, Dismissed |
-| Atlas Notes | rich_text | Classification reasoning |
-| Tags | multi_select | ai-tools, research, code, etc. |
-| Routed To | relation | → Work Queue 2.0 |
-| Spark Date | date | When captured |
-| Decision Date | date | When classified |
+| Entry | title | Human-readable summary |
+| Pillar | select | Personal, The Grove, Consulting, Home/Garage |
+| Request Type | select | Research, Draft, Build, Schedule, Answer, Process, Quick, Triage |
+| Source | select | Telegram, Notion Comment, Scheduled, Claude Code, CLI |
+| Author | select | Jim, Atlas [laptop], Atlas [Telegram], Atlas [grove-node-1] |
+| Work Queue | relation | → Links to Work Queue item |
+| Confidence | number | Classification confidence (0-1) |
+| Keywords | multi_select | Extracted keywords for pattern matching |
+| Status | select | Open, Processing, Routed, Done |
+| Date | date | Timestamp |
 
-### Atlas Work Queue 2.0
+### Work Queue 2.0 (Task Ledger)
 
 | Property | Type | Purpose |
 |----------|------|---------|
 | Task | title | Task name |
 | Type | select | Research, Draft, Build, Schedule, Answer, Process |
-| Status | select | Queued, In Progress, Blocked, Review, Done |
-| Disposition | select | Completed, Published, Dismissed, Deferred, Needs Rework |
+| Status | select | Captured, Active, Paused, Blocked, Done, Shipped |
 | Priority | select | P0, P1, P2, P3 |
-| Inbox Source | relation | ← Inbox 2.0 |
+| Pillar | select | Personal, The Grove, Consulting, Home/Garage |
+| Feed Source | relation | ← Links back to originating Feed entry |
+| Was Reclassified | checkbox | Jim corrected the classification? |
+| Original Pillar | select | What Atlas initially guessed (if reclassified) |
+| Resolution Notes | text | How it was resolved |
+| Cycle Time | formula | Completed - Queued (computed) |
 | Output | url | Deliverable link |
 | Queued | date | When created |
 | Started | date | When work began |

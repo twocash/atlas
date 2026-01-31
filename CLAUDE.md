@@ -52,25 +52,28 @@ All content flows into one of four life domains. **These are equal citizens**—
 
 ## Notion Databases
 
-### Current (Inbox 2.0 + Work Queue 2.0)
-| Database | ID | Purpose |
-|----------|-----|---------|
-| **Inbox 2.0** | `f6f638c9-6aee-42a7-8137-df5b6a560f50` | Spark capture |
-| **Work Queue 2.0** | `3d679030-b76b-43bd-92d8-1ac51abb4a28` | Task execution |
+**Architecture:** Feed 2.0 (activity log) + Work Queue 2.0 (task ledger)
+**NO INBOX** — Telegram IS the inbox.
 
-### Legacy (Reference Only)
+### Canonical (DO NOT CHANGE)
 | Database | ID | Purpose |
 |----------|-----|---------|
-| Atlas Inbox 1.0 | `c298b60934d248beb2c50942436b8bfe` | Migrated to 2.0 |
-| Atlas Feed | `3e8867d58aa5495780c2860dada8c993` | Session logs |
+| **Feed 2.0** | `90b2b33f-4b44-4b42-870f-8d62fb8cbf18` | Activity log |
+| **Work Queue 2.0** | `3d679030-b76b-43bd-92d8-1ac51abb4a28` | Task ledger |
+
+### Legacy (Reference Only - DO NOT USE)
+| Database | ID | Purpose |
+|----------|-----|---------|
+| Inbox 2.0 (DEPRECATED) | `f6f638c9-6aee-42a7-8137-df5b6a560f50` | Supplanted by Telegram |
+| Atlas Inbox 1.0 | `c298b60934d248beb2c50942436b8bfe` | Archived |
 | Atlas Memory | `2eb780a78eef81fc8694e59d126fe159` | Corrections/rules |
 
 ---
 
 ## Session Startup Routine
 
-1. **Read the Feed** - Check for new entries from Jim since last session
-2. **Check the Inbox** - Look for items with Status = Captured
+1. **Read the Feed** - Check for new entries since last session
+2. **Check Work Queue** - Look for items with Status = Captured or Active
 3. **Triage pending items** - For each:
    - Read full context
    - Determine Pillar, Type, Priority
