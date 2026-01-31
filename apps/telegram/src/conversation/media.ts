@@ -62,6 +62,9 @@ async function logMediaToFeed(
   result: MediaContext,
   pillar: Pillar
 ): Promise<string | null> {
+  // Defensive default for pillar (classification may return null)
+  const safePillar = pillar || 'The Grove';
+
   try {
     const notion = getNotion();
 
@@ -106,7 +109,7 @@ async function logMediaToFeed(
           title: [{ text: { content: title.slice(0, 100) } }],
         },
         Pillar: {
-          select: { name: pillar },
+          select: { name: safePillar },
         },
         Source: {
           select: { name: 'Telegram' },
@@ -126,7 +129,7 @@ async function logMediaToFeed(
     // Get URL from response
     const url = (response as { url?: string }).url || `https://notion.so/${response.id.replace(/-/g, '')}`;
 
-    logger.info('Media logged to Feed 2.0', { title, pillar, url });
+    logger.info('Media logged to Feed 2.0', { title, pillar: safePillar, url });
     return url;
 
   } catch (error) {

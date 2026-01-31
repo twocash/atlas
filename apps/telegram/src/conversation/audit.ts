@@ -121,6 +121,9 @@ function determineInitialStatus(requestType: RequestType): { feedStatus: FeedSta
 async function createFeedEntry(entry: AuditEntry): Promise<{ id: string; url: string }> {
   const { feedStatus } = determineInitialStatus(entry.requestType);
 
+  // Defensive default for pillar (classification may return null)
+  const pillar = entry.pillar || 'The Grove';
+
   try {
     const response = await notion.pages.create({
       parent: { database_id: FEED_DATABASE_ID },
@@ -129,7 +132,7 @@ async function createFeedEntry(entry: AuditEntry): Promise<{ id: string; url: st
           title: [{ text: { content: entry.entry.substring(0, 100) } }],
         },
         'Pillar': {
-          select: { name: entry.pillar },
+          select: { name: pillar },
         },
         'Request Type': {
           select: { name: entry.requestType },
@@ -186,6 +189,9 @@ async function createWorkQueueEntry(
 ): Promise<{ id: string; url: string }> {
   const { wqStatus } = determineInitialStatus(entry.requestType);
 
+  // Defensive default for pillar (classification may return null)
+  const pillar = entry.pillar || 'The Grove';
+
   // Map request type to work queue type
   const typeMap: Record<RequestType, string> = {
     'Research': 'Research',
@@ -218,7 +224,7 @@ async function createWorkQueueEntry(
           select: { name: 'P2' }, // Default, can be upgraded
         },
         'Pillar': {
-          select: { name: entry.pillar },
+          select: { name: pillar },
         },
         'Assignee': {
           select: { name: 'Atlas [Telegram]' },
