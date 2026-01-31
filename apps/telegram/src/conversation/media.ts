@@ -115,9 +115,9 @@ async function logMediaToFeed(
           select: { name: 'Jim' },
         },
         Status: {
-          select: { name: 'Processed' },
+          select: { name: 'Received' },
         },
-        Description: {
+        Notes: {
           rich_text: [{ text: { content: descriptionParts.join('\n').slice(0, 2000) } }],
         },
       },
