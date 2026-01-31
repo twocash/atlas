@@ -593,6 +593,9 @@ export async function createWorkItem(
         'Feed Source': {
           relation: [{ id: feedPageId }],
         },
+        'Queued': {
+          date: { start: new Date().toISOString().split('T')[0] },
+        },
       },
     });
 
