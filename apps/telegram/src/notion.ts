@@ -1,22 +1,21 @@
 /**
  * Atlas Telegram Bot - Notion Integration
- * 
- * Creates inbox items, adds comments, routes to work queue.
- * 
+ *
+ * Architecture: Feed 2.0 (activity log) + Work Queue 2.0 (task ledger)
+ * NO INBOX - Telegram IS the inbox. Everything routes to Feed/WQ.
+ *
+ * CANONICAL DATABASE IDs (Database Page IDs):
+ * - Feed 2.0:       90b2b33f-4b44-4b42-870f-8d62fb8cbf18
+ * - Work Queue 2.0: 3d679030-b76b-43bd-92d8-1ac51abb4a28
+ *
  * @see IMPLEMENTATION.md Sprint 3 for requirements
  */
 
 import { Client } from "@notionhq/client";
 import type {
-  Spark,
-  ClassificationResult,
-  ClarificationExchange,
   Pillar,
-  Intent,
-  Decision,
-  AtlasStatus,
-  WorkStatus,
   Priority,
+  WorkStatus,
   NotionQueryOptions,
   NotionQueryResult,
   NotionItemSummary,
@@ -25,10 +24,17 @@ import type {
 } from "./types";
 import { logger } from "./logger";
 
-// Database IDs (lazy loaded) - from CLAUDE.md
+// CANONICAL DATABASE IDs - DO NOT CHANGE
+// Database Page IDs (not Data Source IDs)
+const FEED_DATABASE_ID = "90b2b33f-4b44-4b42-870f-8d62fb8cbf18";
+const WORK_QUEUE_DATABASE_ID = "3d679030-b76b-43bd-92d8-1ac51abb4a28";
+
+// Legacy export for gradual migration
 const getDatabaseIds = () => ({
-  inbox: process.env.NOTION_INBOX_DB || "f6f638c9-6aee-42a7-8137-df5b6a560f50",
-  workQueue: process.env.NOTION_WORK_QUEUE_DB || "3d679030-b76b-43bd-92d8-1ac51abb4a28",
+  feed: FEED_DATABASE_ID,
+  workQueue: WORK_QUEUE_DATABASE_ID,
+  // DEPRECATED - DO NOT USE
+  inbox: FEED_DATABASE_ID, // Redirect to Feed for any legacy code
 });
 
 // Lazy-initialized Notion client
@@ -39,7 +45,7 @@ function getNotionClient(): Client {
     logger.debug("Initializing Notion client", {
       keyPresent: !!apiKey,
       keyLength: apiKey?.length,
-      keyPrefix: apiKey?.substring(0, 7) // Just "secret_" prefix, safe to log
+      keyPrefix: apiKey?.substring(0, 7),
     });
     _notion = new Client({
       auth: apiKey,
@@ -48,298 +54,17 @@ function getNotionClient(): Client {
   return _notion;
 }
 
-/**
- * Create an inbox item from a classified spark
- */
-export async function createInboxItem(
-  spark: Spark,
-  classification: ClassificationResult,
-  decision: Decision,
-  clarification?: ClarificationExchange
-): Promise<string> {
-  logger.info("Creating inbox item", { 
-    url: spark.url, 
-    pillar: classification.pillar 
-  });
-
-  try {
-    // Build properties object
-    const properties: Record<string, any> = {
-      // Title
-      "Spark": {
-        title: [{ text: { content: classification.suggestedTitle || spark.content.substring(0, 100) } }],
-      },
-      // Source Type
-      "Source Type": {
-        select: { name: spark.source },
-      },
-      // Pillar
-      "Pillar": {
-        select: { name: classification.pillar },
-      },
-      // Intent
-      "Intent": {
-        select: { name: classification.intent },
-      },
-      // Confidence (as decimal, e.g., 0.85 for 85%)
-      "Confidence": {
-        number: classification.confidence / 100,
-      },
-      // Decision
-      "Decision": {
-        select: { name: decision },
-      },
-      // Atlas Status
-      "Atlas Status": {
-        select: { name: decision === "Route to Work" ? "Routed" : "Classified" },
-      },
-      // Atlas Notes
-      "Atlas Notes": {
-        rich_text: [{ text: { content: classification.reasoning } }],
-      },
-      // Tags
-      "Tags": {
-        multi_select: classification.tags.map(tag => ({ name: tag })),
-      },
-      // Spark Date
-      "Spark Date": {
-        date: { start: spark.receivedAt.toISOString().split("T")[0] },
-      },
-      // Decision Date
-      "Decision Date": {
-        date: { start: new Date().toISOString().split("T")[0] },
-      },
-    };
-
-    // Add URL if present
-    if (spark.url) {
-      properties["Source"] = { url: spark.url };
-    }
-
-    const response = await getNotionClient().pages.create({
-      parent: { database_id: getDatabaseIds().inbox },
-      properties,
-    });
-
-    const pageId = response.id;
-    logger.info("Inbox item created", { pageId });
-
-    // Add comment with full exchange
-    await addTelegramExchangeComment(pageId, spark, classification, clarification);
-
-    return pageId;
-  } catch (error) {
-    logger.error("Failed to create inbox item", { error });
-    throw error;
-  }
-}
-
-/**
- * Add a comment documenting the Telegram exchange
- */
-export async function addTelegramExchangeComment(
-  pageId: string,
-  spark: Spark,
-  classification: ClassificationResult,
-  clarification?: ClarificationExchange
-): Promise<void> {
-  const date = new Date().toISOString().split("T")[0];
-  
-  let commentText = `[TELEGRAM EXCHANGE - ${date}]
-
-JIM SHARED: ${spark.url || spark.content}
-
-ATLAS CLASSIFICATION:
-• Source Type: ${spark.source}
-• Detected Pillar: ${classification.pillar} @ ${classification.confidence}%
-• Detected Intent: ${classification.intent}
-• Reasoning: ${classification.reasoning}`;
-
-  if (clarification) {
-    commentText += `
-
-CLARIFICATION:
-Atlas: "${clarification.question}"
-Jim: ${clarification.response}`;
-  }
-
-  commentText += `
-
-ACTION: Created inbox item, ${spark.classification?.intent === "Build" ? "routing to Work Queue" : "classified for review"}.`;
-
-  try {
-    await getNotionClient().comments.create({
-      parent: { page_id: pageId },
-      rich_text: [{ text: { content: commentText } }],
-    });
-    logger.debug("Comment added to inbox item", { pageId });
-  } catch (error) {
-    logger.error("Failed to add comment", { pageId, error });
-    // Don't throw - comment failure shouldn't fail the whole operation
-  }
-}
-
-/**
- * Create a work queue item and link to inbox
- */
-export async function createWorkItem(
-  inboxPageId: string,
-  spark: Spark,
-  classification: ClassificationResult
-): Promise<string> {
-  logger.info("Creating work queue item", { inboxPageId });
-
-  // Map intent to work type
-  const typeMap: Record<Intent, string> = {
-    "Research": "Research",
-    "Catalog": "Process",
-    "Build": "Build",
-    "Content": "Draft",
-    "Reference": "Process",
-    "Task": "Build",
-    "Question": "Answer",
-  };
-
-  // Map confidence to priority
-  const priority: Priority = classification.confidence >= 90 ? "P1" 
-    : classification.confidence >= 70 ? "P2" 
-    : "P3";
-
-  try {
-    const response = await getNotionClient().pages.create({
-      parent: { database_id: getDatabaseIds().workQueue },
-      properties: {
-        // Title
-        "Task": {
-          title: [{ text: { content: classification.suggestedTitle || spark.content.substring(0, 100) } }],
-        },
-        // Type
-        "Type": {
-          select: { name: typeMap[classification.intent] || "Process" },
-        },
-        // Status
-        "Status": {
-          select: { name: "Captured" },
-        },
-        // Priority
-        "Priority": {
-          select: { name: priority },
-        },
-        // Inbox Source relation
-        "Inbox Source": {
-          relation: [{ id: inboxPageId }],
-        },
-        // Queued date
-        "Queued": {
-          date: { start: new Date().toISOString().split("T")[0] },
-        },
-      },
-    });
-
-    const workPageId = response.id;
-    logger.info("Work queue item created", { workPageId, inboxPageId });
-
-    // Update inbox item with relation to work queue
-    await updateInboxWithWorkRelation(inboxPageId, workPageId);
-
-    // Add initial comment to work item
-    await addWorkItemComment(workPageId, spark, classification);
-
-    return workPageId;
-  } catch (error) {
-    logger.error("Failed to create work item", { error });
-    throw error;
-  }
-}
-
-/**
- * Update inbox item with relation to work queue item
- */
-async function updateInboxWithWorkRelation(
-  inboxPageId: string,
-  workPageId: string
-): Promise<void> {
-  try {
-    await getNotionClient().pages.update({
-      page_id: inboxPageId,
-      properties: {
-        "Routed To": {
-          relation: [{ id: workPageId }],
-        },
-      },
-    });
-  } catch (error) {
-    logger.error("Failed to update inbox with work relation", { error });
-    // Non-critical, don't throw
-  }
-}
-
-/**
- * Add initial comment to work queue item
- */
-async function addWorkItemComment(
-  pageId: string,
-  spark: Spark,
-  classification: ClassificationResult
-): Promise<void> {
-  const commentText = `[WORK ITEM CREATED - ${new Date().toISOString().split("T")[0]}]
-
-SOURCE: ${spark.url || spark.content}
-
-CONTEXT:
-• Pillar: ${classification.pillar}
-• Intent: ${classification.intent}
-• Classification confidence: ${classification.confidence}%
-
-NOTES:
-${classification.reasoning}
-
-Ready for execution.`;
-
-  try {
-    await getNotionClient().comments.create({
-      parent: { page_id: pageId },
-      rich_text: [{ text: { content: commentText } }],
-    });
-  } catch (error) {
-    logger.error("Failed to add work item comment", { error });
-  }
-}
-
-/**
- * Get Notion page URL from page ID
- */
-export function getNotionPageUrl(pageId: string): string {
-  // Remove dashes from page ID for URL
-  const cleanId = pageId.replace(/-/g, "");
-  return `https://notion.so/${cleanId}`;
-}
-
-/**
- * Test Notion connection
- */
-export async function testNotionConnection(): Promise<boolean> {
-  try {
-    await getNotionClient().databases.retrieve({ database_id: getDatabaseIds().inbox });
-    logger.info("Notion connection successful");
-    return true;
-  } catch (error) {
-    logger.error("Notion connection failed", { error });
-    return false;
-  }
-}
-
 // ==========================================
-// Query Methods (Intent Router Phase 2)
+// Feed 2.0 Functions (Activity Log)
 // ==========================================
 
 /**
- * Query inbox items with optional filters
+ * Query Feed entries with optional filters
  */
-export async function queryInbox(
+export async function queryFeed(
   options: NotionQueryOptions = {}
 ): Promise<NotionQueryResult> {
-  logger.debug("Querying inbox", options);
+  logger.debug("Querying Feed", options);
 
   const filters: any[] = [];
 
@@ -352,34 +77,43 @@ export async function queryInbox(
 
   if (options.status) {
     filters.push({
-      property: "Atlas Status",
+      property: "Status",
       select: { equals: options.status },
     });
   }
 
   const sorts: any[] = [];
   if (options.sortBy === "created") {
-    sorts.push({ property: "Spark Date", direction: options.sortDirection === "asc" ? "ascending" : "descending" });
+    sorts.push({
+      property: "Date",
+      direction: options.sortDirection === "asc" ? "ascending" : "descending",
+    });
   } else if (options.sortBy === "updated") {
-    sorts.push({ timestamp: "last_edited_time", direction: options.sortDirection === "asc" ? "ascending" : "descending" });
+    sorts.push({
+      timestamp: "last_edited_time",
+      direction: options.sortDirection === "asc" ? "ascending" : "descending",
+    });
   }
 
   try {
     const response = await getNotionClient().databases.query({
-      database_id: getDatabaseIds().inbox,
+      database_id: FEED_DATABASE_ID,
       filter: filters.length > 0 ? { and: filters } : undefined,
-      sorts: sorts.length > 0 ? sorts : [{ timestamp: "created_time", direction: "descending" }],
+      sorts:
+        sorts.length > 0
+          ? sorts
+          : [{ timestamp: "created_time", direction: "descending" }],
       page_size: options.limit || 10,
     });
 
     const items: NotionItemSummary[] = response.results.map((page: any) => ({
       id: page.id,
-      title: extractTitle(page),
+      title: extractTitle(page, "Entry"),
       pillar: extractSelect(page, "Pillar") as Pillar | undefined,
-      status: extractSelect(page, "Atlas Status"),
-      priority: undefined, // Inbox doesn't have priority
+      status: extractSelect(page, "Status"),
+      priority: undefined,
       createdAt: page.created_time ? new Date(page.created_time) : undefined,
-      url: extractUrl(page, "Source"),
+      url: getNotionPageUrl(page.id),
     }));
 
     return {
@@ -388,10 +122,17 @@ export async function queryInbox(
       hasMore: response.has_more,
     };
   } catch (error) {
-    logger.error("Failed to query inbox", { error });
+    logger.error("Failed to query Feed", { error });
     throw error;
   }
 }
+
+// DEPRECATED: Alias for legacy code - use queryFeed instead
+export const queryInbox = queryFeed;
+
+// ==========================================
+// Work Queue 2.0 Functions (Task Ledger)
+// ==========================================
 
 /**
  * Query work queue items with optional filters
@@ -410,25 +151,41 @@ export async function queryWorkQueue(
     });
   }
 
+  if (options.pillar) {
+    filters.push({
+      property: "Pillar",
+      select: { equals: options.pillar },
+    });
+  }
+
   const sorts: any[] = [];
   if (options.sortBy === "priority") {
-    sorts.push({ property: "Priority", direction: options.sortDirection === "desc" ? "descending" : "ascending" });
+    sorts.push({
+      property: "Priority",
+      direction: options.sortDirection === "desc" ? "descending" : "ascending",
+    });
   } else if (options.sortBy === "created") {
-    sorts.push({ property: "Queued", direction: options.sortDirection === "asc" ? "ascending" : "descending" });
+    sorts.push({
+      property: "Queued",
+      direction: options.sortDirection === "asc" ? "ascending" : "descending",
+    });
   }
 
   try {
     const response = await getNotionClient().databases.query({
-      database_id: getDatabaseIds().workQueue,
+      database_id: WORK_QUEUE_DATABASE_ID,
       filter: filters.length > 0 ? { and: filters } : undefined,
-      sorts: sorts.length > 0 ? sorts : [{ property: "Priority", direction: "ascending" }],
+      sorts:
+        sorts.length > 0
+          ? sorts
+          : [{ property: "Priority", direction: "ascending" }],
       page_size: options.limit || 10,
     });
 
     const items: NotionItemSummary[] = response.results.map((page: any) => ({
       id: page.id,
-      title: extractTitle(page),
-      pillar: undefined,
+      title: extractTitle(page, "Task"),
+      pillar: extractSelect(page, "Pillar") as Pillar | undefined,
       status: extractSelect(page, "Status"),
       priority: extractSelect(page, "Priority") as Priority | undefined,
       createdAt: extractDate(page, "Queued"),
@@ -446,35 +203,39 @@ export async function queryWorkQueue(
   }
 }
 
+// ==========================================
+// Status & Search
+// ==========================================
+
 /**
- * Get status summary across databases
+ * Get status summary across databases (Feed + WQ)
  */
 export async function getStatusSummary(): Promise<StatusSummary> {
   logger.debug("Getting status summary");
 
   try {
     // Query both databases for aggregates
-    const [inboxResponse, workResponse] = await Promise.all([
+    const [feedResponse, workResponse] = await Promise.all([
       getNotionClient().databases.query({
-        database_id: getDatabaseIds().inbox,
+        database_id: FEED_DATABASE_ID,
         page_size: 100,
       }),
       getNotionClient().databases.query({
-        database_id: getDatabaseIds().workQueue,
+        database_id: WORK_QUEUE_DATABASE_ID,
         page_size: 100,
       }),
     ]);
 
-    // Aggregate inbox stats
-    const inboxByStatus: Record<string, number> = {};
-    const inboxByPillar: Record<string, number> = {};
+    // Aggregate Feed stats
+    const feedByStatus: Record<string, number> = {};
+    const feedByPillar: Record<string, number> = {};
 
-    for (const page of inboxResponse.results as any[]) {
-      const status = extractSelect(page, "Atlas Status") || "Unknown";
+    for (const page of feedResponse.results as any[]) {
+      const status = extractSelect(page, "Status") || "Unknown";
       const pillar = extractSelect(page, "Pillar") || "Unknown";
 
-      inboxByStatus[status] = (inboxByStatus[status] || 0) + 1;
-      inboxByPillar[pillar] = (inboxByPillar[pillar] || 0) + 1;
+      feedByStatus[status] = (feedByStatus[status] || 0) + 1;
+      feedByPillar[pillar] = (feedByPillar[pillar] || 0) + 1;
     }
 
     // Aggregate work queue stats
@@ -490,10 +251,11 @@ export async function getStatusSummary(): Promise<StatusSummary> {
     }
 
     return {
+      // Legacy 'inbox' key redirects to Feed for compatibility
       inbox: {
-        total: inboxResponse.results.length,
-        byStatus: inboxByStatus,
-        byPillar: inboxByPillar,
+        total: feedResponse.results.length,
+        byStatus: feedByStatus,
+        byPillar: feedByPillar,
       },
       workQueue: {
         total: workResponse.results.length,
@@ -531,12 +293,13 @@ export async function searchNotion(query: string): Promise<NotionSearchResult[]>
 
       const pageAny = page as any;
       const title = extractSearchTitle(pageAny);
-      const parentDb = pageAny.parent?.database_id;
+      const parentDb = pageAny.parent?.database_id?.replace(/-/g, "");
 
-      let type: "inbox" | "work" | "page" = "page";
-      if (parentDb === getDatabaseIds().inbox.replace(/-/g, "")) {
-        type = "inbox";
-      } else if (parentDb === getDatabaseIds().workQueue.replace(/-/g, "")) {
+      // Determine type based on parent database
+      let type: "feed" | "work" | "page" = "page";
+      if (parentDb === FEED_DATABASE_ID.replace(/-/g, "")) {
+        type = "feed";
+      } else if (parentDb === WORK_QUEUE_DATABASE_ID.replace(/-/g, "")) {
         type = "work";
       }
 
@@ -556,7 +319,50 @@ export async function searchNotion(query: string): Promise<NotionSearchResult[]>
 }
 
 /**
- * Update a Notion page (complete, archive, dismiss)
+ * Find an item by title search
+ */
+export async function findItemByTitle(
+  query: string
+): Promise<NotionItemSummary | null> {
+  logger.debug("Finding item by title", { query });
+
+  const lowerQuery = query.toLowerCase();
+
+  // Search work queue first (most likely for actions)
+  const workResults = await queryWorkQueue({ limit: 20 });
+  for (const item of workResults.items) {
+    if (item.title.toLowerCase().includes(lowerQuery)) {
+      return item;
+    }
+  }
+
+  // Search Feed
+  const feedResults = await queryFeed({ limit: 20 });
+  for (const item of feedResults.items) {
+    if (item.title.toLowerCase().includes(lowerQuery)) {
+      return item;
+    }
+  }
+
+  // Fall back to global Notion search
+  const searchResults = await searchNotion(query);
+  if (searchResults.length > 0) {
+    return {
+      id: searchResults[0].id,
+      title: searchResults[0].title,
+      url: searchResults[0].url,
+    };
+  }
+
+  return null;
+}
+
+// ==========================================
+// Page Updates
+// ==========================================
+
+/**
+ * Update a Notion page (complete, archive, dismiss, defer)
  */
 export async function updateNotionPage(
   pageId: string,
@@ -564,27 +370,26 @@ export async function updateNotionPage(
 ): Promise<void> {
   logger.info("Updating Notion page", { pageId, action });
 
-  // Determine which database and status to set
   const page = await getNotionClient().pages.retrieve({ page_id: pageId });
   const pageAny = page as any;
   const parentDb = pageAny.parent?.database_id?.replace(/-/g, "");
 
-  const isInbox = parentDb === getDatabaseIds().inbox.replace(/-/g, "");
-  const isWorkQueue = parentDb === getDatabaseIds().workQueue.replace(/-/g, "");
+  const isFeed = parentDb === FEED_DATABASE_ID.replace(/-/g, "");
+  const isWorkQueue = parentDb === WORK_QUEUE_DATABASE_ID.replace(/-/g, "");
 
   try {
-    if (isInbox) {
-      const statusMap: Record<string, AtlasStatus> = {
-        complete: "Archived",
-        archive: "Archived",
+    if (isFeed) {
+      const statusMap: Record<string, string> = {
+        complete: "Done",
+        archive: "Done",
         dismiss: "Dismissed",
-        defer: "Classified", // Keep in inbox but mark for later
+        defer: "Routed",
       };
 
       await getNotionClient().pages.update({
         page_id: pageId,
         properties: {
-          "Atlas Status": {
+          Status: {
             select: { name: statusMap[action] },
           },
         },
@@ -607,7 +412,7 @@ export async function updateNotionPage(
       });
     }
 
-    // Add a comment noting the action
+    // Add comment noting the action
     const actionDate = new Date().toISOString().split("T")[0];
     await getNotionClient().comments.create({
       parent: { page_id: pageId },
@@ -627,57 +432,58 @@ export async function updateNotionPage(
   }
 }
 
+// ==========================================
+// Connection & Utilities
+// ==========================================
+
 /**
- * Find an item by title search (for action intents)
+ * Get Notion page URL from page ID
  */
-export async function findItemByTitle(
-  query: string
-): Promise<NotionItemSummary | null> {
-  logger.debug("Finding item by title", { query });
+export function getNotionPageUrl(pageId: string): string {
+  const cleanId = pageId.replace(/-/g, "");
+  return `https://notion.so/${cleanId}`;
+}
 
-  // Search inbox first
-  const inboxResults = await queryInbox({ limit: 20 });
-  const lowerQuery = query.toLowerCase();
-
-  for (const item of inboxResults.items) {
-    if (item.title.toLowerCase().includes(lowerQuery)) {
-      return item;
-    }
+/**
+ * Test Notion connection - tests Feed 2.0 access
+ */
+export async function testNotionConnection(): Promise<boolean> {
+  try {
+    // Test Feed 2.0 access (the primary database)
+    await getNotionClient().databases.retrieve({
+      database_id: FEED_DATABASE_ID,
+    });
+    logger.info("Notion connection successful (Feed 2.0)");
+    return true;
+  } catch (error) {
+    logger.error("Notion connection failed", { error });
+    return false;
   }
+}
 
-  // Search work queue
-  const workResults = await queryWorkQueue({ limit: 20 });
-
-  for (const item of workResults.items) {
-    if (item.title.toLowerCase().includes(lowerQuery)) {
-      return item;
-    }
-  }
-
-  // Fall back to Notion search
-  const searchResults = await searchNotion(query);
-
-  if (searchResults.length > 0) {
-    return {
-      id: searchResults[0].id,
-      title: searchResults[0].title,
-      url: searchResults[0].url,
-    };
-  }
-
-  return null;
+/**
+ * Get database IDs - for external reference
+ */
+export function getCanonicalDatabaseIds() {
+  return {
+    feed: FEED_DATABASE_ID,
+    workQueue: WORK_QUEUE_DATABASE_ID,
+  };
 }
 
 // ==========================================
 // Helper Functions
 // ==========================================
 
-/**
- * Extract title from a Notion page
- */
-function extractTitle(page: any): string {
-  // Try common title property names
-  for (const propName of ["Spark", "Task", "Name", "Title"]) {
+function extractTitle(page: any, primaryProp: string = "Task"): string {
+  // Try primary property first
+  const primary = page.properties?.[primaryProp];
+  if (primary?.title?.[0]?.plain_text) {
+    return primary.title[0].plain_text;
+  }
+
+  // Try common fallbacks
+  for (const propName of ["Entry", "Task", "Name", "Title", "Spark"]) {
     const prop = page.properties?.[propName];
     if (prop?.title?.[0]?.plain_text) {
       return prop.title[0].plain_text;
@@ -686,35 +492,44 @@ function extractTitle(page: any): string {
   return "Untitled";
 }
 
-/**
- * Extract title from search result
- */
 function extractSearchTitle(page: any): string {
-  // For search results, title is in a different location
   if (page.properties) {
     return extractTitle(page);
   }
   return "Untitled";
 }
 
-/**
- * Extract select value from a property
- */
 function extractSelect(page: any, propName: string): string | undefined {
   return page.properties?.[propName]?.select?.name;
 }
 
-/**
- * Extract URL from a property
- */
-function extractUrl(page: any, propName: string): string | undefined {
-  return page.properties?.[propName]?.url;
-}
-
-/**
- * Extract date from a property
- */
 function extractDate(page: any, propName: string): Date | undefined {
   const dateStr = page.properties?.[propName]?.date?.start;
   return dateStr ? new Date(dateStr) : undefined;
 }
+
+// ==========================================
+// DEPRECATED FUNCTIONS - DO NOT USE
+// These exist only for legacy code migration
+// ==========================================
+
+/**
+ * @deprecated Use conversation/audit.ts createAuditTrail instead
+ */
+export async function createInboxItem(): Promise<string> {
+  throw new Error(
+    "createInboxItem is deprecated. Use conversation/audit.ts createAuditTrail instead."
+  );
+}
+
+/**
+ * @deprecated Work items are created via conversation/tools/core.ts work_queue_create
+ */
+export async function createWorkItem(): Promise<string> {
+  throw new Error(
+    "createWorkItem is deprecated. Use conversation/tools/core.ts work_queue_create instead."
+  );
+}
+
+// Re-export getDatabaseIds for any remaining legacy code
+export { getDatabaseIds };
