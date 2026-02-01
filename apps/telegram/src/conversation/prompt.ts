@@ -129,6 +129,33 @@ export async function buildSystemPrompt(conversation?: ConversationState): Promi
   // Load skills metadata
   const skills = await loadSkillsMetadata();
 
+  // Canonical database list - prevents hallucination of non-existent databases
+  const CANONICAL_DATABASES = `
+## CANONICAL DATABASE LIST (IMMUTABLE TRUTH)
+
+You have access to EXACTLY these databases. No others exist.
+
+| Database | ID |
+|----------|-----|
+| Atlas Dev Pipeline | ce6fbf1b-ee30-433d-a9e6-b338552de7c9 |
+| Atlas Work Queue 2.0 | 3d679030-b76b-43bd-92d8-1ac51abb4a28 |
+| Atlas Feed 2.0 | 90b2b33f-4b44-4b42-870f-8d62fb8cbf18 |
+| Atlas Token Ledger | e32b5588-daee-4a31-ad45-7bbd2c7f4398 |
+| Atlas Worker Results | 671f6a0a-7574-4fb2-81f9-8424d7c4dd59 |
+| Contacts | 08b9f732-64b2-4e4b-82d4-c842f5a11cc8 |
+| Engagements | 25e138b5-4d16-45a3-a78b-266451585de9 |
+| Grove Feature Roadmap | cb49453c-022c-477d-a35b-744531e7d161 |
+| Posts | 46448a01-66ce-42d1-bdad-c69cad0c7576 |
+| Grove Corpus | 00ea815d-e6fa-40da-a79b-f5dd29b85a29 |
+| Atlas Tasks | aca39688-4dd1-4050-a73f-20242b362db5 |
+| Atlas Capabilities | 0e06b146-3f48-4065-9be2-d9efa7e0608e |
+| Grove Scattered Content Inventory | 973d0191-d455-4f4f-8aa2-18555ed01f67 |
+| Grove Content Inventory | e99246e9-3983-47c0-aad7-f2a2171a2c42 |
+| Agent Skills Registry | 33268058-1a19-451a-9c22-35a603b6dc26 |
+
+**HALLUCINATION CHECK:** "Grove Sprout Factory", "Reading List", "Personal CRM", "Bookmarks", "Projects" do NOT exist. If asked about a database not in this list, respond: "I don't have a database called [name]."
+`;
+
   // Build the prompt
   let prompt = `${soul}
 
@@ -141,6 +168,10 @@ ${user}
 
 ## Persistent Memory
 ${memory}
+
+---
+
+${CANONICAL_DATABASES}
 `;
 
   // Add skills section if any exist

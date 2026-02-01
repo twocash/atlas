@@ -125,7 +125,7 @@ async function routeToPitCrew(params: {
 
   // Check if Pit Crew MCP is connected
   const mcpStatus = getMcpStatus();
-  const pitCrewStatus = mcpStatus['pit-crew'];
+  const pitCrewStatus = mcpStatus['pit_crew'];
 
   if (!pitCrewStatus || pitCrewStatus.status !== 'connected') {
     logger.warn('[Dispatcher] Pit Crew MCP not connected, falling back to direct Notion');
@@ -134,7 +134,7 @@ async function routeToPitCrew(params: {
   }
 
   try {
-    const result = await executeMcpTool('mcp__pit-crew__dispatch_work', {
+    const result = await executeMcpTool('mcp__pit_crew__dispatch_work', {
       type: 'bug',
       title,
       context: description,

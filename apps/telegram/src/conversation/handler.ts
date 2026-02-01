@@ -202,6 +202,7 @@ export async function handleConversation(ctx: Context): Promise<void> {
     let response = await anthropic.messages.create({
       model: 'claude-sonnet-4-20250514',
       max_tokens: 4096,
+      temperature: 0.4,  // PM mode - balanced precision, reduces hallucination
       system: systemPrompt,
       messages,
       tools,
@@ -304,6 +305,7 @@ export async function handleConversation(ctx: Context): Promise<void> {
       response = await anthropic.messages.create({
         model: 'claude-sonnet-4-20250514',
         max_tokens: 4096,
+        temperature: 0.4,  // PM mode - balanced precision, reduces hallucination
         system: systemPrompt,
         messages,
         tools,
