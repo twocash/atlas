@@ -258,9 +258,23 @@ export async function handleConversation(ctx: Context): Promise<void> {
         });
 
         // Format result to make errors EXPLICIT and impossible to ignore
+        // AND make URLs UNMISSABLE to prevent hallucination
         let toolResultContent: string;
         if (result.success) {
-          toolResultContent = JSON.stringify(result);
+          const resultObj = result.result as Record<string, unknown> | undefined;
+          const url = resultObj?.url as string | undefined;
+          const feedUrl = resultObj?.feedUrl as string | undefined;
+
+          if (url || feedUrl) {
+            // CRITICAL: Make URLs impossible to miss - Claude was hallucinating them
+            let urlBlock = '\n\n🔗 MANDATORY URLs (copy EXACTLY - do NOT fabricate):\n';
+            if (url) urlBlock += `   ITEM URL: ${url}\n`;
+            if (feedUrl) urlBlock += `   FEED URL: ${feedUrl}\n`;
+            urlBlock += '\n⚠️ Use these EXACT URLs in your response. If you use any other URL, you are HALLUCINATING.\n\n';
+            toolResultContent = `✅ SUCCESS${urlBlock}Full result:\n${JSON.stringify(result)}`;
+          } else {
+            toolResultContent = JSON.stringify(result);
+          }
         } else {
           // CRITICAL: Prefix failed results so Claude cannot hallucinate success
           toolResultContent = `⚠️ TOOL FAILED - DO NOT CLAIM SUCCESS ⚠️\n\nError: ${result.error || 'Unknown error'}\n\nRaw result: ${JSON.stringify(result)}\n\n⚠️ You MUST acknowledge this failure to the user. Do NOT pretend this operation succeeded.`;
