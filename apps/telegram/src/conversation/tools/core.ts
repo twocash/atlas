@@ -386,6 +386,23 @@ export const CORE_TOOLS: Anthropic.Tool[] = [
       required: [],
     },
   },
+  // ==========================================
+  // Changelog (What's New)
+  // ==========================================
+  {
+    name: 'get_changelog',
+    description: 'Get recently shipped features and bug fixes from the Dev Pipeline. Use to understand what capabilities are now available or what was recently fixed.',
+    input_schema: {
+      type: 'object' as const,
+      properties: {
+        limit: {
+          type: 'number',
+          description: 'Max items to return (default: 10)',
+        },
+      },
+      required: [],
+    },
+  },
 ];
 
 /**
@@ -422,6 +439,9 @@ export async function executeCoreTools(
       return await executeDevPipelineCreate(input);
     case 'dev_pipeline_list':
       return await executeDevPipelineList(input);
+    // Changelog
+    case 'get_changelog':
+      return await executeGetChangelog(input);
     default:
       return null; // Not a core tool
   }
@@ -1355,6 +1375,7 @@ async function executeDevPipelineList(
           type: getSelect(props, 'Type'),
           handler: getSelect(props, 'Handler'),
           requestor: getSelect(props, 'Requestor'),
+          resolution: getRichText(props, 'Resolution'), // What was delivered (commits, deliverables)
           url: (page as { url?: string }).url || `https://notion.so/${page.id.replace(/-/g, '')}`,
         };
       }
@@ -1371,6 +1392,86 @@ async function executeDevPipelineList(
     };
   } catch (error: any) {
     logger.error('Dev Pipeline list failed', { error });
+    return {
+      success: false,
+      result: null,
+      error: `Notion error: ${error?.code || 'unknown'} - ${error?.message || String(error)}`,
+    };
+  }
+}
+
+// ==========================================
+// CHANGELOG (What's New)
+// ==========================================
+
+/**
+ * Get recently shipped features and fixes.
+ * This is how Pit Crew enlightens Atlas about new capabilities.
+ */
+async function executeGetChangelog(
+  input: Record<string, unknown>
+): Promise<{ success: boolean; result: unknown; error?: string }> {
+  const limit = (input.limit as number) || 10;
+
+  try {
+    // Query recently shipped/closed items from Dev Pipeline
+    const results = await notion.databases.query({
+      database_id: DEV_PIPELINE_DATABASE_ID,
+      filter: {
+        or: [
+          { property: 'Status', select: { equals: 'Shipped' } },
+          { property: 'Status', select: { equals: 'Closed' } },
+        ],
+      },
+      sorts: [
+        { timestamp: 'last_edited_time', direction: 'descending' },
+      ],
+      page_size: limit,
+    });
+
+    const items = results.results.map(page => {
+      if ('properties' in page) {
+        const props = page.properties as Record<string, unknown>;
+        return {
+          title: getTitle(props, 'Discussion'),
+          type: getSelect(props, 'Type'),
+          status: getSelect(props, 'Status'),
+          resolution: getRichText(props, 'Resolution'), // Commits and deliverables
+          url: (page as { url?: string }).url || `https://notion.so/${page.id.replace(/-/g, '')}`,
+        };
+      }
+      return null;
+    }).filter(Boolean);
+
+    // Separate by type for easier understanding
+    const features = items.filter((i: any) => i.type === 'Feature');
+    const bugs = items.filter((i: any) => i.type === 'Bug' || i.type === 'Hotfix');
+    const sprints = items.filter((i: any) => i.title?.includes('SPRINT'));
+
+    return {
+      success: true,
+      result: {
+        summary: `${features.length} features, ${bugs.length} bug fixes, ${sprints.length} sprints shipped`,
+        sprints: sprints.map((s: any) => ({
+          title: s.title,
+          resolution: s.resolution,
+          url: s.url,
+        })),
+        features: features.map((f: any) => ({
+          title: f.title,
+          resolution: f.resolution,
+          url: f.url,
+        })),
+        bugs: bugs.map((b: any) => ({
+          title: b.title,
+          resolution: b.resolution,
+          url: b.url,
+        })),
+        message: 'Use this to understand what capabilities are now available.',
+      },
+    };
+  } catch (error: any) {
+    logger.error('Get changelog failed', { error });
     return {
       success: false,
       result: null,
