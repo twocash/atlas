@@ -8,7 +8,7 @@
 import type { Context } from 'grammy';
 import Anthropic from '@anthropic-ai/sdk';
 import { logger } from '../logger';
-import { markdownToHtml } from '../formatting';
+import { formatMessage } from '../formatting';
 import { getConversation, updateConversation, buildMessages, type ToolContext } from './context';
 import { buildSystemPrompt } from './prompt';
 import { detectAttachment, buildAttachmentPrompt } from './attachments';
@@ -193,6 +193,11 @@ export async function handleConversation(ctx: Context): Promise<void> {
     // Get all tools (native + MCP) dynamically
     const tools = getAllTools();
 
+    // Detect if message requires tool use (create/add operations)
+    const lowerMessage = messageText.toLowerCase();
+    const requiresToolUse = /\b(create|add|log|make|put|track|file|submit)\b.*\b(bug|feature|task|item|pipeline|queue|notion)\b/i.test(messageText) ||
+                           /\b(dev.?pipeline|work.?queue)\b/i.test(messageText);
+
     // Call Claude with tools
     let response = await anthropic.messages.create({
       model: 'claude-sonnet-4-20250514',
@@ -200,6 +205,8 @@ export async function handleConversation(ctx: Context): Promise<void> {
       system: systemPrompt,
       messages,
       tools,
+      // Force tool use for create/add operations
+      ...(requiresToolUse && { tool_choice: { type: 'any' as const } }),
     });
 
     totalTokens += response.usage.input_tokens + response.usage.output_tokens;
@@ -341,8 +348,8 @@ export async function handleConversation(ctx: Context): Promise<void> {
     );
 
     // Send response (handle long messages)
-    // Convert markdown to HTML for Telegram rendering
-    const formattedResponse = markdownToHtml(responseText);
+    // Smart formatting: preserves HTML if present, converts markdown otherwise
+    const formattedResponse = formatMessage(responseText);
 
     if (formattedResponse.length > 4000) {
       // Split into chunks for Telegram's message limit

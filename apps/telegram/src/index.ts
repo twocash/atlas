@@ -7,7 +7,9 @@
  */
 
 // MUST be first - loads .env before any other imports
-import "dotenv/config";
+// Uses override:true to ensure .env values take precedence over system env vars
+import { config } from 'dotenv';
+config({ override: true });
 
 import { createBot, startBot } from "./bot";
 import { logger } from "./logger";

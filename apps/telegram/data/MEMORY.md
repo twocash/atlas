@@ -43,7 +43,9 @@ When Jim corrects a classification:
 
 - 2026-01-31: CRITICAL - Examples in documentation are NOT templates. "https://notion.so/abc123" is an EXAMPLE, not a real link. ONLY use URLs from actual tool responses: `url`, `notion_url`, `feedUrl`, `wq_url`. If the tool didn't return a URL, say "Notion sync pending" — NEVER fabricate one.
 - 2026-02-01: CRITICAL - Hallucinated successful database migration when both source and target databases returned 404 errors. Claimed to migrate 19 items when no access existed. Must ALWAYS verify tool responses show actual success before claiming completion. Never fabricate operations results.
+- 2026-02-01: BUG RESOLVED - "Atlas sees zero items in Dev Pipeline" - Root cause: Integration mismatch. Databases shared with "Atlas Telegram" integration but .env contains "My Boy Atlas" token. FIX: Replace NOTION_API_KEY in .env with Atlas Telegram integration token. See "Integration Mismatch Pattern" section above for diagnosis protocol.
 
+- 2026-02-01: RESOLVED - dev_pipeline_create tool actually works correctly (verified via test scripts). The issue was Claude fabricating URLs in text responses instead of using the EXACT URLs from tool results. Fake URLs have pattern `15653b4c700280...` while real URLs have varied UUIDs like `2fa780a7-8eef-81f8-...`. Added URL INTEGRITY RULE to system prompt requiring exact URL copying from tool result JSON.
 ## Anti-Hallucination Protocol
 
 **MANDATORY for all Notion/MCP operations:**
@@ -53,12 +55,33 @@ When Jim corrects a classification:
 3. **NO SILENT FAILURES** - If an operation fails, you MUST tell Jim. Never claim success when the tool returned an error.
 4. **SELF-DIAGNOSE** - When tool fails, explain WHY (access denied? wrong ID? API error?). Don't just say "it failed."
 5. **COUNT ACTUAL RESULTS** - If you claim "19 items migrated", there must BE 19 successful create operations in your tool results. Count them.
+6. **URL INTEGRITY** - When displaying Notion links, copy the EXACT `url` field from tool result JSON. NEVER generate URLs like `https://notion.so/Title-[fake-id]`. If tool result has no URL, say "Link unavailable".
+
+**URL Hallucination Pattern:**
+- Fabricated URLs often share common prefixes (e.g., `15653b4c700280...`)
+- Real Notion UUIDs are varied like `2fa780a7-8eef-81f8-b470-...`
+- If all your URLs have similar prefixes, you're hallucinating
 
 **Quick diagnostic for Notion failures:**
 - "unauthorized" → Token is invalid (check .env)
-- "object_not_found" → Database not shared with Atlas integration (fix in Notion UI), OR wrong ID type (see below)
+- "object_not_found" → Database not shared with Atlas integration (fix in Notion UI), OR wrong ID type (see below), OR **integration mismatch** (see below)
 - "validation_error" → Wrong property names or values
 - Timeout → MCP server crashed, check console logs
+
+## CRITICAL: Integration Mismatch Pattern (BUG-2026-02-01)
+
+**THE TRAP:** Notion has multiple integrations. A database can be shared with "Atlas Telegram" but .env can have a token for "My Boy Atlas" — two different integrations!
+
+**DIAGNOSIS PROTOCOL (BEFORE suggesting fixes):**
+1. **Test the actual token:** `curl -H "Authorization: Bearer $NOTION_API_KEY" https://api.notion.com/v1/users/me`
+2. **Check which integration name is returned** (look at `bot.owner.name` in response)
+3. **Compare** to the integration shown in Notion's database settings
+
+**If integration names don't match → The .env has the WRONG token.**
+
+**FIX:** Replace NOTION_API_KEY in .env with the token from the integration that IS shared with the databases.
+
+**DO NOT:** Suggest "share the database with the integration" if you haven't tested which integration the token belongs to. Test first, diagnose properly.
 
 ## CRITICAL: Notion ID Types
 
@@ -74,7 +97,46 @@ Notion has TWO different ID types. Using the wrong one causes 404 errors.
 - `mcp__notion__API-query-data-source` → Use DATA SOURCE ID
 - `mcp__notion__API-retrieve-a-database` → Use DATABASE PAGE ID
 - `mcp__notion__API-post-page` with `parent.database_id` → Use DATABASE PAGE ID
+- `mcp__notion__API-post-search` → Works with any search term (recommended for queries)
 - Native Atlas tools (work_queue_create, etc.) → Use DATABASE PAGE ID
+
+**RECOMMENDED QUERY APPROACH:**
+The Notion MCP plugin's `query-data-source` tool requires separate Data Source configuration.
+For reliable database queries, use `mcp__notion__API-post-search` instead - it works without extra setup.
+
+## Notion Health Check Tool
+
+Atlas has a built-in `notion_health_check` tool. Use it to verify access to all critical databases:
+- Work Queue 2.0
+- Feed 2.0
+- Dev Pipeline
+
+Run this tool when experiencing Notion issues or at session start to verify connectivity.
+
+## Canonical Integration: My Boy Atlas
+
+**Token:** Stored in .env as NOTION_API_KEY
+**Integration Name:** My Boy Atlas
+**Integration ID:** b621e25a-46fc-43ed-9ba8-94d375e91fdf
+**All databases must be shared with this integration.**
+
+To verify token: `curl -H "Authorization: Bearer $NOTION_API_KEY" https://api.notion.com/v1/users/me`
+Expected response should include `"name":"My Boy Atlas"`
+
+## CRITICAL: System Environment Variable Override (BUG-2026-01-31)
+
+**THE TRAP:** Windows/system may have `NOTION_API_KEY` set as a user or machine environment variable. The dotenv library does NOT override existing env vars by default, so the system env var takes precedence over .env!
+
+**DIAGNOSIS:**
+1. Check system env: `printenv | grep NOTION_API_KEY` or `echo $NOTION_API_KEY`
+2. Compare to .env file value
+3. If different, the system env var is winning
+
+**FIX APPLIED:** `src/index.ts` now uses `config({ override: true })` to ensure .env always wins.
+
+**If problems persist:**
+- Clear system env var: PowerShell `[Environment]::SetEnvironmentVariable('NOTION_API_KEY', $null, 'User')`
+- Or just verify .env has the correct token and restart Atlas
 ## Patterns
 
 Testing session 2026-01-30: Multiple infrastructure bugs discovered during initial testing phase.

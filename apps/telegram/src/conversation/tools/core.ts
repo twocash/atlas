@@ -19,6 +19,7 @@ const notion = new Client({ auth: notionApiKey });
 // Database page IDs for Notion SDK
 const FEED_DATABASE_ID = '90b2b33f-4b44-4b42-870f-8d62fb8cbf18';
 const WORK_QUEUE_DATABASE_ID = '3d679030-b76b-43bd-92d8-1ac51abb4a28';
+const DEV_PIPELINE_DATABASE_ID = 'ce6fbf1b-ee30-433d-a9e6-b338552de7c9';
 // NO INBOX — Telegram replaces it per spec
 
 // Helper to safely extract property values from Notion pages
@@ -306,6 +307,85 @@ export const CORE_TOOLS: Anthropic.Tool[] = [
       required: ['database'],
     },
   },
+  // ==========================================
+  // Dev Pipeline (Atlas Development Tracking)
+  // ==========================================
+  {
+    name: 'dev_pipeline_create',
+    description: 'Create an item in the Atlas Dev Pipeline database. Use for bugs, features, and development tasks that go through the Pit Crew workflow.',
+    input_schema: {
+      type: 'object' as const,
+      properties: {
+        title: {
+          type: 'string',
+          description: 'Title/name of the item (e.g., "BUG: MCP tools not working")',
+        },
+        type: {
+          type: 'string',
+          enum: ['Bug', 'Feature', 'Question', 'Hotfix'],
+          description: 'Type of dev work',
+        },
+        priority: {
+          type: 'string',
+          enum: ['P0', 'P1', 'P2'],
+          description: 'Priority level (P0=urgent, P1=this week, P2=backlog)',
+        },
+        status: {
+          type: 'string',
+          enum: ['Dispatched', 'In Progress', 'Needs Approval', 'Approved', 'Shipped', 'Closed'],
+          description: 'Current status (default: Dispatched)',
+        },
+        thread: {
+          type: 'string',
+          description: 'Context/thread of discussion about this item',
+        },
+        resolution: {
+          type: 'string',
+          description: 'Resolution notes (for completed items)',
+        },
+        requestor: {
+          type: 'string',
+          enum: ['Jim', 'Atlas [Telegram]', 'Pit Crew'],
+          description: 'Who requested this (default: Atlas [Telegram])',
+        },
+        handler: {
+          type: 'string',
+          enum: ['Jim', 'Pit Crew', 'Atlas [Telegram]'],
+          description: 'Who is handling this (default: Pit Crew)',
+        },
+      },
+      required: ['title', 'type', 'priority'],
+    },
+  },
+  {
+    name: 'dev_pipeline_list',
+    description: 'List items from the Dev Pipeline with optional filters. Use to see bugs, features, and development tasks.',
+    input_schema: {
+      type: 'object' as const,
+      properties: {
+        status: {
+          type: 'string',
+          enum: ['Dispatched', 'In Progress', 'Needs Approval', 'Approved', 'Shipped', 'Closed'],
+          description: 'Filter by status',
+        },
+        type: {
+          type: 'string',
+          enum: ['Bug', 'Feature', 'Question', 'Hotfix'],
+          description: 'Filter by type',
+        },
+        priority: {
+          type: 'string',
+          enum: ['P0', 'P1', 'P2'],
+          description: 'Filter by priority',
+        },
+        limit: {
+          type: 'number',
+          description: 'Max results (default: 10)',
+        },
+      },
+      required: [],
+    },
+  },
 ];
 
 /**
@@ -337,6 +417,11 @@ export async function executeCoreTools(
       return await executeNotionListDatabases();
     case 'notion_query_database':
       return await executeNotionQueryDatabase(input);
+    // Dev Pipeline
+    case 'dev_pipeline_create':
+      return await executeDevPipelineCreate(input);
+    case 'dev_pipeline_list':
+      return await executeDevPipelineList(input);
     default:
       return null; // Not a core tool
   }
@@ -1136,6 +1221,156 @@ async function executeNotionQueryDatabase(
     };
   } catch (error: any) {
     logger.error('Notion query database failed', { error, database: databaseInput });
+    return {
+      success: false,
+      result: null,
+      error: `Notion error: ${error?.code || 'unknown'} - ${error?.message || String(error)}`,
+    };
+  }
+}
+
+// ==========================================
+// DEV PIPELINE TOOLS
+// ==========================================
+
+async function executeDevPipelineCreate(
+  input: Record<string, unknown>
+): Promise<{ success: boolean; result: unknown; error?: string }> {
+  const title = input.title as string;
+  const type = input.type as string;
+  const priority = input.priority as string;
+  const status = (input.status as string) || 'Dispatched';
+  const thread = input.thread as string | undefined;
+  const resolution = input.resolution as string | undefined;
+  const requestor = (input.requestor as string) || 'Atlas [Telegram]';
+  const handler = (input.handler as string) || 'Pit Crew';
+
+  try {
+    logger.info('Dev Pipeline Create: Starting', { title, type, priority, dbId: DEV_PIPELINE_DATABASE_ID });
+
+    const properties: Record<string, unknown> = {
+      'Discussion': { title: [{ text: { content: title } }] },
+      'Type': { select: { name: type } },
+      'Priority': { select: { name: priority } },
+      'Status': { select: { name: status } },
+      'Requestor': { select: { name: requestor } },
+      'Handler': { select: { name: handler } },
+      'Dispatched': { date: { start: new Date().toISOString().split('T')[0] } },
+    };
+
+    if (thread) {
+      properties['Thread'] = { rich_text: [{ text: { content: thread } }] };
+    }
+    if (resolution) {
+      properties['Resolution'] = { rich_text: [{ text: { content: resolution } }] };
+    }
+
+    const response = await notion.pages.create({
+      parent: { database_id: DEV_PIPELINE_DATABASE_ID },
+      properties,
+    });
+
+    logger.info('Dev Pipeline Create: Notion API returned', { pageId: response.id });
+
+    // VERIFY the page actually exists - ANTI-HALLUCINATION
+    try {
+      const verification = await notion.pages.retrieve({ page_id: response.id });
+      logger.info('Dev Pipeline Create: Verified page exists', { pageId: response.id, verified: true });
+    } catch (verifyError) {
+      logger.error('Dev Pipeline Create: VERIFICATION FAILED - Page does not exist!', { pageId: response.id, error: verifyError });
+      return {
+        success: false,
+        result: null,
+        error: `Page creation claimed success but verification failed. Page ID ${response.id} does not exist.`,
+      };
+    }
+
+    const url = (response as { url?: string }).url || `https://notion.so/${response.id.replace(/-/g, '')}`;
+
+    return {
+      success: true,
+      result: {
+        id: response.id,
+        url,
+        title,
+        type,
+        priority,
+        status,
+        message: `Created in Dev Pipeline: ${title}`,
+      },
+    };
+  } catch (error: any) {
+    logger.error('Dev Pipeline create failed', { error, title });
+    return {
+      success: false,
+      result: null,
+      error: `Notion error: ${error?.code || 'unknown'} - ${error?.message || String(error)}`,
+    };
+  }
+}
+
+async function executeDevPipelineList(
+  input: Record<string, unknown>
+): Promise<{ success: boolean; result: unknown; error?: string }> {
+  const status = input.status as string | undefined;
+  const type = input.type as string | undefined;
+  const priority = input.priority as string | undefined;
+  const limit = (input.limit as number) || 10;
+
+  try {
+    const filters: Array<{ property: string; select: { equals: string } }> = [];
+
+    if (status) {
+      filters.push({ property: 'Status', select: { equals: status } });
+    }
+    if (type) {
+      filters.push({ property: 'Type', select: { equals: type } });
+    }
+    if (priority) {
+      filters.push({ property: 'Priority', select: { equals: priority } });
+    }
+
+    const queryParams: Parameters<typeof notion.databases.query>[0] = {
+      database_id: DEV_PIPELINE_DATABASE_ID,
+      page_size: limit,
+      sorts: [{ property: 'Priority', direction: 'ascending' }],
+    };
+
+    if (filters.length > 0) {
+      queryParams.filter = filters.length === 1
+        ? filters[0]
+        : { and: filters };
+    }
+
+    const results = await notion.databases.query(queryParams);
+
+    const items = results.results.map(page => {
+      if ('properties' in page) {
+        const props = page.properties as Record<string, unknown>;
+        return {
+          id: page.id,
+          title: getTitle(props, 'Discussion'),
+          status: getSelect(props, 'Status'),
+          priority: getSelect(props, 'Priority'),
+          type: getSelect(props, 'Type'),
+          handler: getSelect(props, 'Handler'),
+          requestor: getSelect(props, 'Requestor'),
+          url: (page as { url?: string }).url || `https://notion.so/${page.id.replace(/-/g, '')}`,
+        };
+      }
+      return null;
+    }).filter(Boolean);
+
+    return {
+      success: true,
+      result: {
+        items,
+        count: items.length,
+        hasMore: results.has_more,
+      },
+    };
+  } catch (error: any) {
+    logger.error('Dev Pipeline list failed', { error });
     return {
       success: false,
       result: null,

@@ -5,6 +5,9 @@
  * Fails fast if critical dependencies are missing.
  */
 
+// Export the notion-check module for direct access
+export { checkNotionAccess, formatHealthCheck, ensureNotionAccess } from './notion-check';
+
 import { Client } from '@notionhq/client';
 import Anthropic from '@anthropic-ai/sdk';
 import { readFile, access } from 'fs/promises';

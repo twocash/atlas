@@ -14,6 +14,7 @@ import { Client } from '@notionhq/client';
 import { logger } from '../../logger';
 import { getScheduledTasks, registerTask, unregisterTask, type ScheduledTask } from '../../scheduler';
 import { restartMcp, getMcpStatus, listMcpTools } from '../../mcp';
+import { checkNotionAccess, formatHealthCheck } from '../../health/notion-check';
 
 // ESM compatibility
 const __filename = fileURLToPath(import.meta.url);
@@ -249,6 +250,15 @@ IMPORTANT: All scripts must include a header comment with @description and @risk
       required: ['action'],
     },
   },
+  {
+    name: 'notion_health_check',
+    description: 'Verify Notion integration access to all critical databases (Work Queue, Feed, Dev Pipeline). Run on startup or when experiencing Notion issues. Returns which databases are accessible and which are not.',
+    input_schema: {
+      type: 'object' as const,
+      properties: {},
+      required: [],
+    },
+  },
 ];
 
 // ============================================================================
@@ -448,6 +458,8 @@ export async function executeOperatorTools(
       return await executeValidateTypeScript(input);
     case 'mcp_management':
       return await executeMcpManagement(input);
+    case 'notion_health_check':
+      return await executeNotionHealthCheck();
     default:
       return null;
   }
@@ -1030,5 +1042,33 @@ async function executeMcpManagement(
         result: null,
         error: `Unknown action: ${action}. Use 'restart', 'status', or 'list_tools'.`,
       };
+  }
+}
+
+// ============================================================================
+// NOTION HEALTH CHECK
+// ============================================================================
+
+async function executeNotionHealthCheck(): Promise<{ success: boolean; result: unknown; error?: string }> {
+  try {
+    const result = await checkNotionAccess();
+
+    return {
+      success: result.success,
+      result: {
+        integration: result.integration,
+        overall: result.success ? 'HEALTHY' : 'ISSUES DETECTED',
+        databases: result.databases,
+        formattedOutput: formatHealthCheck(result),
+        timestamp: result.timestamp,
+      },
+      error: result.success ? undefined : 'One or more databases are not accessible',
+    };
+  } catch (err) {
+    return {
+      success: false,
+      result: null,
+      error: `Failed to run Notion health check: ${err}`,
+    };
   }
 }
