@@ -58,6 +58,21 @@ bun run typecheck
 - [ ] Notion sync successful (check for `notion_url`)
 - [ ] Final message summarizes what was done
 
+### MANDATORY: Notion Sprint Record Update
+**Every completed task MUST update its Notion record:**
+
+- [ ] **Dev Pipeline item** → Status: "Shipped" (or "Needs Approval")
+- [ ] **Resolution field** populated with:
+  - Commit hash(es): `abc123 feat: description`
+  - What was delivered (bullet points)
+  - Any follow-up needed
+- [ ] **Work Queue item** (if exists) → Status: "Done"
+- [ ] **Resolution Notes** field on WQ item updated
+
+**CRITICAL: Commits without Notion updates = incomplete work.**
+
+Use `submit_ticket` tool for new work to ensure tracking from the start.
+
 ### Format:
 ```markdown
 **COMPLETED:** [Task Title]

@@ -25,6 +25,31 @@ Follow `packages/skills/superpowers/atlas-debug.md`:
 - Root cause investigation before any fix
 - Circuit breaker: 3 failed fixes = stop and question architecture
 
+### MANDATORY SPRINT HOUSEKEEPING (NON-NEGOTIABLE)
+
+**You MUST update Notion to reflect actual work status. No silent work.**
+
+**On Task Start:**
+1. Update Dev Pipeline item → Status: "In Progress"
+2. Post message with what you're starting
+
+**During Work (every significant milestone):**
+1. Post progress messages to the discussion thread
+2. Include commit hashes when code ships
+3. Update Thread field with context
+
+**On Task Complete:**
+1. Update Dev Pipeline item → Status: "Shipped" or "Needs Approval"
+2. Add Resolution field with:
+   - Commit hashes (e.g., `6b1ccc5 feat(neuro-link): unified dispatcher`)
+   - What was delivered (bullet points)
+   - Any follow-up needed
+3. If corresponding Work Queue item exists, update it too → Status: "Done"
+
+**CRITICAL: Commits without Notion updates = incomplete work.**
+
+The `submit_ticket` tool now enforces tracking URLs. Use it for new work.
+
 ### FORBIDDEN ACTIONS
 - Creating new database IDs (Use `atlas-patterns.md`)
 - Using `npm` or `node` (Use `bun`)
