@@ -28,6 +28,7 @@ When Jim corrects a classification:
 3. Look for pattern - if corrected twice for same thing, add explicit rule
 4. Apply adjusted weighting going forward
 
+- CRITICAL ROUTING RULE: Research Agent bugs/issues go to Atlas Dev Pipeline (via Pit Crew), NOT Work Queue. Work Queue is for Jim's tasks. Dev Pipeline is for Atlas infrastructure issues. Research Agent is Atlas infrastructure, therefore = Dev Pipeline via Pit Crew dispatch.
 ## Corrections Log
 
 *(Atlas logs corrections here for pattern detection)*
@@ -46,6 +47,7 @@ When Jim corrects a classification:
 - 2026-02-01: BUG RESOLVED - "Atlas sees zero items in Dev Pipeline" - Root cause: Integration mismatch. Databases shared with "Atlas Telegram" integration but .env contains "My Boy Atlas" token. FIX: Replace NOTION_API_KEY in .env with Atlas Telegram integration token. See "Integration Mismatch Pattern" section above for diagnosis protocol.
 
 - 2026-02-01: RESOLVED - dev_pipeline_create tool actually works correctly (verified via test scripts). The issue was Claude fabricating URLs in text responses instead of using the EXACT URLs from tool results. Fake URLs have pattern `15653b4c700280...` while real URLs have varied UUIDs like `2fa780a7-8eef-81f8-...`. Added URL INTEGRITY RULE to system prompt requiring exact URL copying from tool result JSON.
+- 2026-02-01: ROUTING ERROR - Put Research Agent P0 bug in Work Queue instead of dispatching to Pit Crew for Dev Pipeline. Jim corrected: "pit crew activities go to the Atlas Dev Pipeline". Research Agent = Atlas infrastructure = Pit Crew territory, not Jim tasks.
 ## Anti-Hallucination Protocol
 
 **MANDATORY for all Notion/MCP operations:**

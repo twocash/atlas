@@ -368,9 +368,19 @@ export interface AgentEventSubscriber {
 
 /**
  * Work Queue status values that agents can set
+ *
+ * Status Flow:
+ * - Captured: Exists, needs human review before execution
+ * - Triaged: Classified and ready for autonomous execution
+ * - Active: Currently being worked on
+ * - Paused: Intentionally on hold
+ * - Blocked: Can't proceed, needs something
+ * - Done: Complete
+ * - Shipped: Delivered/published/deployed
  */
 export type WorkQueueStatus =
   | "Captured"
+  | "Triaged"
   | "Active"
   | "Paused"
   | "Blocked"

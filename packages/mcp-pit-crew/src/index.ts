@@ -19,7 +19,12 @@ import {
 } from '@modelcontextprotocol/sdk/types.js';
 import { readFile, writeFile, mkdir, readdir } from 'fs/promises';
 import { join } from 'path';
-// NOTE: @notionhq/client removed - Notion sync now handled by Notion MCP plugin
+import { Client } from '@notionhq/client';
+
+// === NOTION CLIENT ===
+// Re-enabled for guaranteed URL return (Neuro-Link Sprint)
+const notion = new Client({ auth: process.env.NOTION_API_KEY });
+const DEV_PIPELINE_DATABASE_ID = 'ce6fbf1b-ee30-433d-a9e6-b338552de7c9';
 
 // === CONFIGURATION ===
 
@@ -96,29 +101,63 @@ function generateId(title: string): string {
   return `${date}-${slug}`;
 }
 
-// === NOTION SYNC (DISABLED) ===
+// === NOTION SYNC (RE-ENABLED - Neuro-Link Sprint) ===
 
 /**
- * NOTION SYNC DISABLED
+ * Sync discussion to Notion Dev Pipeline
  *
- * The @notionhq/client SDK requires a valid API token in pit-crew-mcp's env,
- * but Atlas's token was invalid. Instead of fixing the token (fragile),
- * we removed this dependency entirely.
+ * CRITICAL: This sync is MANDATORY for the "No Ticket, No Work" protocol.
+ * Every dispatch MUST return a notion_url or fail explicitly.
  *
- * ARCHITECTURE DECISION:
- * - pit-crew-mcp: Just manages local JSON files (fast, reliable)
- * - Notion sync: Done separately via Notion MCP plugin which is already authenticated
- *
- * This separation of concerns means:
- * 1. pit-crew-mcp always works (no external dependencies)
- * 2. Notion visibility can be added by any agent with Notion MCP access
- * 3. No duplicate API key management
+ * The NOTION_API_KEY must be set in the MCP server's environment.
  */
-async function syncToNotion(_discussion: Discussion): Promise<string | null> {
-  // Notion sync disabled - use Notion MCP plugin instead
-  // The calling agent should sync to Notion using mcp__plugin_Notion_notion__notion-create-pages
-  console.error('[PitCrew] Notion sync disabled - use Notion MCP plugin for visibility');
-  return null;
+async function syncToNotion(discussion: Discussion): Promise<string | null> {
+  if (!process.env.NOTION_API_KEY) {
+    console.error('[PitCrew] ERROR: NOTION_API_KEY not set - cannot sync to Notion');
+    return null;
+  }
+
+  try {
+    // Map discussion type to Dev Pipeline Type
+    const typeMap: Record<Discussion['type'], string> = {
+      'bug': 'Bug',
+      'feature': 'Feature',
+      'question': 'Question',
+      'hotfix': 'Hotfix',
+    };
+
+    // Map discussion status to Dev Pipeline Status
+    const statusMap: Record<Discussion['status'], string> = {
+      'dispatched': 'Dispatched',
+      'in-progress': 'In Progress',
+      'needs-approval': 'Needs Approval',
+      'approved': 'Approved',
+      'deployed': 'Shipped',
+      'closed': 'Closed',
+    };
+
+    const response = await notion.pages.create({
+      parent: { database_id: DEV_PIPELINE_DATABASE_ID },
+      properties: {
+        'Discussion': { title: [{ text: { content: discussion.title } }] },
+        'Type': { select: { name: typeMap[discussion.type] || 'Bug' } },
+        'Priority': { select: { name: discussion.priority } },
+        'Status': { select: { name: statusMap[discussion.status] || 'Dispatched' } },
+        'Requestor': { select: { name: discussion.requestor === 'atlas' ? 'Atlas [Telegram]' : discussion.requestor } },
+        'Handler': { select: { name: 'Pit Crew' } },
+        'Thread': { rich_text: [{ text: { content: discussion.context.substring(0, 2000) } }] },
+        'Dispatched': { date: { start: new Date().toISOString().split('T')[0] } },
+      },
+    });
+
+    // Use actual URL from API response
+    const url = (response as { url?: string }).url || `https://notion.so/${response.id.replace(/-/g, '')}`;
+    console.error(`[PitCrew] Synced to Notion: ${url}`);
+    return url;
+  } catch (error) {
+    console.error('[PitCrew] Notion sync FAILED:', error);
+    return null;
+  }
 }
 
 // === MCP SERVER ===
@@ -231,12 +270,31 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
         updated: new Date().toISOString(),
       };
 
+      // 1. Save local record (always works)
       await saveDiscussion(discussion);
+
+      // 2. SYNC TO NOTION (MANDATORY - Neuro-Link Protocol)
+      // If this fails, we return an error so Atlas knows the dispatch is incomplete
       const notionUrl = await syncToNotion(discussion);
-      if (notionUrl) {
-        discussion.notion_url = notionUrl;
-        await saveDiscussion(discussion);
+
+      if (!notionUrl) {
+        // CRITICAL: Return error if Notion sync failed
+        // Atlas should NOT confirm dispatch without a trackable URL
+        return {
+          content: [{
+            type: 'text',
+            text: JSON.stringify({
+              success: false,
+              discussion_id: id,
+              error: `Created local record ${id} but FAILED to sync to Notion. Check NOTION_API_KEY environment variable.`,
+            }),
+          }],
+        };
       }
+
+      // Update local record with Notion URL
+      discussion.notion_url = notionUrl;
+      await saveDiscussion(discussion);
 
       return {
         content: [{
