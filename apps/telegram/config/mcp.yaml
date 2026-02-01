@@ -1,0 +1,29 @@
+# Atlas MCP Server Configuration
+#
+# Defines external MCP servers that Atlas can connect to.
+# Environment variables can be substituted with ${VAR_NAME} syntax.
+#
+# Each server gets a namespace prefix to avoid tool name collisions.
+# For example, a tool "dispatch_work" from "pit_crew" becomes "pit_crew__dispatch_work"
+
+servers:
+  # Pit Crew - Development partner MCP server
+  # Enables Atlas <-> Pit Crew agent-to-agent communication
+  pit_crew:
+    command: "bun"
+    args: ["run", "${PIT_CREW_SERVER_PATH:-../../packages/mcp-pit-crew/src/index.ts}"]
+    env:
+      NOTION_API_KEY: "${NOTION_API_KEY}"
+      PIT_CREW_DATA_DIR: "${PIT_CREW_DATA_DIR:-./data/pit-crew}"
+      NOTION_PIPELINE_DB: "${NOTION_PIPELINE_DB:-ce6fbf1bee30433da9e6b338552de7c9}"
+    timeout: 30000
+    reconnectDelay: 5000
+    maxReconnectAttempts: 3
+    # Set to false to enable pit-crew server
+    disabled: false
+
+  # Example: Add more MCP servers here
+  # memory:
+  #   command: "npx"
+  #   args: ["-y", "@modelcontextprotocol/server-memory"]
+  #   timeout: 10000

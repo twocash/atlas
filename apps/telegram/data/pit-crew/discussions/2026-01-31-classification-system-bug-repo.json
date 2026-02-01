@@ -1,0 +1,19 @@
+{
+  "id": "2026-01-31-classification-system-bug-repo",
+  "title": "Classification system bug reported by Jim",
+  "type": "bug",
+  "priority": "P1",
+  "status": "dispatched",
+  "requestor": "atlas",
+  "assignee": "pit-crew",
+  "context": "Jim reported a bug in the classification system. Need to investigate what's going wrong with pillar classifications, work queue routing, feed categorization, and sprout generation accuracy. Jim indicated there are issues with how items are being classified across Personal, Grove, Consulting, Home/Garage, and Atlas Dev pillars.",
+  "messages": [
+    {
+      "timestamp": "2026-01-31T22:34:29.667Z",
+      "from": "atlas",
+      "content": "**Dispatched:** Classification system bug reported by Jim\n\nJim reported a bug in the classification system. Need to investigate what's going wrong with pillar classifications, work queue routing, feed categorization, and sprout generation accuracy. Jim indicated there are issues with how items are being classified across Personal, Grove, Consulting, Home/Garage, and Atlas Dev pillars."
+    }
+  ],
+  "created": "2026-01-31T22:34:29.667Z",
+  "updated": "2026-01-31T22:34:29.667Z"
+}

@@ -1,0 +1,34 @@
+{
+  "id": "2026-01-31-critical-atlas-generating-inva",
+  "title": "CRITICAL: Atlas generating invalid Notion URLs",
+  "type": "bug",
+  "priority": "P0",
+  "status": "in-progress",
+  "requestor": "atlas",
+  "assignee": "pit-crew",
+  "context": "CRITICAL BUG: Atlas is generating invalid Notion URLs when using MCP pit_crew tools. Example broken URL: https://www.notion.so/jimcalhoun/2026-01-31-classification-system-bug-repo-1875adfef55180cd8ac2c7b914f70fb0 - this link does not exist and goes nowhere. Jim cannot access development discussions, monitor progress, or provide feedback because all Notion links are broken. The tool responses claim to provide notion_url fields but they are malformed/invalid. This completely breaks workflow visibility and must be fixed immediately before other development work can proceed.",
+  "messages": [
+    {
+      "timestamp": "2026-01-31T22:34:36.899Z",
+      "from": "atlas",
+      "content": "**Dispatched:** CRITICAL: Atlas generating invalid Notion URLs\n\nCRITICAL BUG: Atlas is generating invalid Notion URLs when using MCP pit_crew tools. Example broken URL: https://www.notion.so/jimcalhoun/2026-01-31-classification-system-bug-repo-1875adfef55180cd8ac2c7b914f70fb0 - this link does not exist and goes nowhere. Jim cannot access development discussions, monitor progress, or provide feedback because all Notion links are broken. The tool responses claim to provide notion_url fields but they are malformed/invalid. This completely breaks workflow visibility and must be fixed immediately before other development work can proceed."
+    },
+    {
+      "timestamp": "2026-01-31T22:55:00.000Z",
+      "from": "pit-crew",
+      "content": "**Status:** dispatched → in-progress\n\n**Investigation findings:**\n\n1. **Root cause #1:** Wrong database ID - was using data source ID `1460539c...` instead of database page ID `ce6fbf1b...` → FIXED\n\n2. **Root cause #2:** Property value mismatches - sending `atlas` but DB expects `Atlas [Telegram]`, sending `pit-crew` but DB expects `Pit Crew` → FIXED\n\n3. **Root cause #3:** Silent failures - syncToNotion() was catching errors but not logging them, so we couldn't see why it was failing → FIXED (added diagnostic logging)\n\n**Files modified:**\n- `packages/mcp-pit-crew/src/index.ts` - Fixed DB ID, property mappings, added logging\n- `apps/telegram/config/mcp.yaml` - Fixed default DB ID\n\n**Next step:** Jim to restart Atlas and test dispatch. Console will now show exactly what's failing if sync still doesn't work."
+    },
+    {
+      "timestamp": "2026-01-31T23:45:00.000Z",
+      "from": "pit-crew",
+      "content": "**UPDATE: Deeper investigation - MCP connection not working**\n\nJim reported `toolIterations: 0` in console logs - the MCP dispatch tool isn't being called at all. Claude is claiming to dispatch but no actual tool execution happens.\n\n**New root causes identified:**\n\n4. **Root cause #4:** MCP tools not available to Claude - `getMcpTools()` returning empty array because relative path not resolving on Windows.\n\n**Fixes applied:**\n\n1. Added path resolution - relative paths in mcp.yaml args are now resolved to absolute paths before spawning subprocess\n\n2. Added comprehensive diagnostic logging to `apps/telegram/src/mcp/index.ts`\n\n3. Added logging to `apps/telegram/src/conversation/tools/index.ts`\n\n**Files modified:**\n- `apps/telegram/src/mcp/index.ts` - Path resolution + comprehensive logging\n- `apps/telegram/src/conversation/tools/index.ts` - Tool count logging"
+    },
+    {
+      "timestamp": "2026-02-01T01:55:00.000Z",
+      "from": "pit-crew",
+      "content": "**MCP CONNECTION WORKING**\n\nJim restarted Atlas. Console output confirms:\n```\n[MCP] Resolved path: ../../packages/mcp-pit-crew/src/index.ts → C:\\github\\atlas\\packages\\mcp-pit-crew\\src\\index.ts\n[MCP] === INITIALIZATION COMPLETE ===\n[MCP] Servers: 1/1 connected\n[MCP] Total MCP tools available: 5\n[MCP]   pit_crew: connected (5 tools)\n```\n\n**Verified integration chain:**\n- ✅ handler.ts uses `getAllTools()` (dynamic, includes MCP)\n- ✅ `getAllTools()` merges native + MCP tools\n- ✅ `executeTool()` routes MCP tools via `isMcpTool()` check\n- ✅ Updated barrel export to use `getAllTools` instead of deprecated `ALL_TOOLS`\n\n**Status:** MCP infrastructure working. Awaiting Jim's test of full dispatch flow (Atlas → MCP tool → Notion sync)."
+    }
+  ],
+  "created": "2026-01-31T22:34:36.899Z",
+  "updated": "2026-02-01T01:55:00.000Z"
+}

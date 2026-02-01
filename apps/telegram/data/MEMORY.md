@@ -32,11 +32,16 @@ When Jim corrects a classification:
 
 *(Atlas logs corrections here for pattern detection)*
 
+- 2026-01-31: MCP/Pit Crew dispatches MUST include Notion link. Jim needs to follow along, monitor, provide feedback. No exceptions. Every dispatch_work/post_message response → include the notion_url.
+
 ---
 
 *Last updated: 2026-01-31*
 
 
+- 2026-01-31: CRITICAL - Never hallucinate Notion URLs. Only share actual URLs returned by work_queue_create and other tools. Jim needs seamless connectivity - fake links break his workflow. Always use real url/feedUrl fields from tool responses.
+
+- 2026-01-31: CRITICAL - Examples in documentation are NOT templates. "https://notion.so/abc123" is an EXAMPLE, not a real link. ONLY use URLs from actual tool responses: `url`, `notion_url`, `feedUrl`, `wq_url`. If the tool didn't return a URL, say "Notion sync pending" — NEVER fabricate one.
 ## Patterns
 
 Testing session 2026-01-30: Multiple infrastructure bugs discovered during initial testing phase.
@@ -53,12 +58,16 @@ Testing session 2026-01-30: Multiple infrastructure bugs discovered during initi
 Jim's feedback: "Remember that! This is what we're all about - getting stuff done!" 
 
 KEY PRINCIPLE: Be resourceful first, ask questions second. Use available tools to solve problems rather than punting back to Jim. This is the Atlas way - strategic autonomy in service of Jim's goals.
+- BROWSER AUTOMATION CAPABILITIES: Atlas has full browser automation through Playwright and Puppeteer. Can navigate websites, fill forms, extract data, take screenshots. Chrome can be launched with remote debugging on localhost:9222. Scripts exist for Gmail navigation and invoice extraction. This is a core Atlas capability - not a limitation.
 ## Preferences
 
 WORKFLOW: Always include emoji links to Notion pages for visual context and easy navigation. This helps Jim make decisions while staying on the same page and closing out projects efficiently. The consistent visual marker reduces cognitive load and improves workflow speed.
 
-Standard format: [emoji] [brief description] → [Notion link]
-Example: 📋 Work Queue item → https://notion.so/abc123
+Standard format: [emoji] [brief description] → [actual URL from tool response]
+
+**NEVER use placeholder URLs.** Only use real URLs extracted from tool response fields (`url`, `notion_url`, `feedUrl`). If no URL returned, state "Notion sync pending" — do not fabricate.
+
+**MCP/Pit Crew dispatches:** ALWAYS include link to Atlas Dev Pipeline discussion page using the `notion_url` field from the tool response. Jim needs to monitor progress, provide feedback, and stay in the loop.
 
 ## Atlas Settings
 
@@ -67,4 +76,31 @@ Example: 📋 Work Queue item → https://notion.so/abc123
 **Options:** on | off | ask
 **Description:** When Grove research is identified, automatically create a sprout in Grove Sprout Factory.
 
-*(Atlas can update this setting when Jim requests)*
+### mcp_pit_crew_enabled
+**Value:** on
+**Options:** on | off
+**Description:** Enable Pit Crew MCP server for development dispatch. When on, Atlas can send bugs, features, and questions to Pit Crew for resolution.
+
+*(Atlas can update these settings when Jim requests)*
+
+## Capabilities Log
+
+### 2026-01-31: MCP Client Enablement (ATLAS-MCP-001)
+
+Atlas now has MCP (Model Context Protocol) integration:
+
+**What it means:**
+- Can connect to external tool servers dynamically
+- Tools are fetched on startup and cached for performance
+- New capabilities can be added without code changes to Atlas
+
+**First MCP Server: Pit Crew**
+- Agent-to-agent communication with development partner
+- Dispatches bugs, features, questions to Pit Crew
+- Tracks discussions with Notion sync to Atlas Dev Pipeline
+- Status workflow: dispatched → in-progress → needs-approval → approved → deployed → closed
+
+**Files created:**
+- `apps/telegram/src/mcp/index.ts` - MCP client integration
+- `apps/telegram/config/mcp.yaml` - Server configuration
+- `packages/mcp-pit-crew/` - Pit Crew MCP server

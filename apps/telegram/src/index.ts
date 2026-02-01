@@ -14,6 +14,7 @@ import { logger } from "./logger";
 import { initAtlasSystem, updateHeartbeat, logUpdate } from "./atlas-system";
 import { healthCheckOrDie } from "./health";
 import { initScheduler, stopScheduler, type ScheduledTask } from "./scheduler";
+import { initMcp, shutdownMcp } from "./mcp";
 
 async function main() {
   logger.info("Starting Atlas Telegram Bot...");
@@ -26,6 +27,11 @@ async function main() {
   updateHeartbeat({ status: "healthy", telegramConnected: true });
   logUpdate("STARTUP: Atlas initialized");
 
+  // Initialize MCP connections (non-blocking)
+  await initMcp().catch(err => {
+    logger.warn("MCP initialization failed (non-fatal)", { error: err.message });
+  });
+
   // Create and start the bot
   const bot = createBot();
   
@@ -33,6 +39,7 @@ async function main() {
   const shutdown = async (signal: string) => {
     logger.info(`Received ${signal}, shutting down gracefully...`);
     stopScheduler();
+    await shutdownMcp();
     await bot.stop();
     process.exit(0);
   };

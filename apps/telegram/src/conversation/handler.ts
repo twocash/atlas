@@ -14,7 +14,7 @@ import { buildSystemPrompt } from './prompt';
 import { detectAttachment, buildAttachmentPrompt } from './attachments';
 import { processMedia, buildMediaContext, type Pillar } from './media';
 import { createAuditTrail, type AuditEntry } from './audit';
-import { ALL_TOOLS, executeTool } from './tools';
+import { getAllTools, executeTool } from './tools';
 import { recordUsage } from './stats';
 import type { ClassificationResult } from './types';
 
@@ -190,13 +190,16 @@ export async function handleConversation(ctx: Context): Promise<void> {
   const toolContexts: ToolContext[] = [];  // Store tool calls/results for continuity
 
   try {
+    // Get all tools (native + MCP) dynamically
+    const tools = getAllTools();
+
     // Call Claude with tools
     let response = await anthropic.messages.create({
       model: 'claude-sonnet-4-20250514',
       max_tokens: 4096,
       system: systemPrompt,
       messages,
-      tools: ALL_TOOLS,
+      tools,
     });
 
     totalTokens += response.usage.input_tokens + response.usage.output_tokens;
@@ -269,7 +272,7 @@ export async function handleConversation(ctx: Context): Promise<void> {
         max_tokens: 4096,
         system: systemPrompt,
         messages,
-        tools: ALL_TOOLS,
+        tools,
       });
 
       totalTokens += response.usage.input_tokens + response.usage.output_tokens;

@@ -9,7 +9,7 @@ export { getConversation, clearConversation, updateConversation } from './contex
 export { buildSystemPrompt, getIdentity } from './prompt';
 export { detectAttachment, formatAttachmentInfo, buildAttachmentPrompt } from './attachments';
 export { createAuditTrail, updateWorkQueueStatus, logReclassification } from './audit';
-export { ALL_TOOLS, executeTool } from './tools';
+export { getAllTools, executeTool } from './tools';
 export { recordUsage, getStats, getWorkQueueStats, formatStatsMessage, detectPatterns } from './stats';
 export { planTask, determineDepth, selectModel, estimateTime, formatTaskPlan, getModelName } from './router';
 export type { TaskDepth, TaskPlan } from './router';
