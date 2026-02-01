@@ -22,14 +22,15 @@ servers:
     # Set to false to enable pit-crew server
     disabled: false
 
-  # Notion - Full-featured MCP server with write capabilities
-  # Enables page/block/database operations including content editing
-  # Source: https://github.com/awkoy/notion-mcp-server
+  # Notion - Official Notion MCP Server (v2.0.0+)
+  # Supports: read, create, update pages/blocks/databases
+  # Source: https://github.com/makenotion/notion-mcp-server
+  # Docs: https://developers.notion.com/docs/mcp
   notion:
     command: "npx"
-    args: ["-y", "notion-mcp-server"]
+    args: ["-y", "@notionhq/notion-mcp-server"]
     env:
-      NOTION_API_KEY: "${NOTION_API_KEY}"
+      NOTION_TOKEN: "${NOTION_API_KEY}"
     timeout: 30000
     reconnectDelay: 5000
     maxReconnectAttempts: 3
