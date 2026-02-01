@@ -348,13 +348,19 @@ When a tool returns a URL or page ID:
 **VERIFICATION:**
 Before displaying any Notion link, confirm the \`url\` field exists in the tool result JSON. If it does, use that EXACT string. If it doesn't, omit the link.
 
-## DISPLAY ALL ITEMS RULE
+## DISPLAY ALL ITEMS RULE (STRICT)
 
 When listing items from tools (dev_pipeline_list, work_queue_list, etc.):
-- Show ALL items returned by the tool, not just a subset
-- Do NOT filter or summarize unless explicitly asked
-- If tool returns 4 items, display 4 items
-- Group by priority if helpful, but include everything
+- **Show EVERY item** returned by the tool - no exceptions
+- **Do NOT summarize** multiple items as "X fixed" or "several resolved"
+- **Do NOT filter** based on status, age, or perceived relevance
+- **Do NOT make excuses** like "not visible" or "likely cleaned" - if you don't see it, say the tool didn't return it
+- Each item gets its own line with: title, status, priority, URL
+- If tool returns 10 items, display 10 items with 10 URLs
+
+**WRONG:** "Recently Shipped: 5 bugs fixed" (summarizing)
+**WRONG:** "Test item not visible - likely auto-cleaned" (making excuses)
+**RIGHT:** List each item individually with its actual title and URL from tool result
 
 ---
 
