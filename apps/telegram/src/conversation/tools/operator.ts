@@ -13,6 +13,7 @@ import { fileURLToPath } from 'url';
 import { Client } from '@notionhq/client';
 import { logger } from '../../logger';
 import { getScheduledTasks, registerTask, unregisterTask, type ScheduledTask } from '../../scheduler';
+import { restartMcp, getMcpStatus, listMcpTools } from '../../mcp';
 
 // ESM compatibility
 const __filename = fileURLToPath(import.meta.url);
@@ -233,6 +234,21 @@ IMPORTANT: All scripts must include a header comment with @description and @risk
       required: ['workspace', 'path'],
     },
   },
+  {
+    name: 'mcp_management',
+    description: 'Manage the MCP subsystem. Use to reload config after installing a new server, check status, or list available tools.',
+    input_schema: {
+      type: 'object' as const,
+      properties: {
+        action: {
+          type: 'string',
+          enum: ['restart', 'status', 'list_tools'],
+          description: 'restart = reload mcp.yaml and reconnect, status = show server states, list_tools = show all available MCP tools',
+        },
+      },
+      required: ['action'],
+    },
+  },
 ];
 
 // ============================================================================
@@ -430,6 +446,8 @@ export async function executeOperatorTools(
       return await executeDeleteSchedule(input);
     case 'validate_typescript':
       return await executeValidateTypeScript(input);
+    case 'mcp_management':
+      return await executeMcpManagement(input);
     default:
       return null;
   }
@@ -939,4 +957,78 @@ async function executeValidateTypeScript(
       });
     });
   });
+}
+
+// ============================================================================
+// MCP MANAGEMENT
+// ============================================================================
+
+async function executeMcpManagement(
+  input: Record<string, unknown>
+): Promise<{ success: boolean; result: unknown; error?: string }> {
+  const action = input.action as 'restart' | 'status' | 'list_tools';
+
+  switch (action) {
+    case 'restart': {
+      try {
+        const result = await restartMcp();
+        return {
+          success: true,
+          result: {
+            message: `MCP subsystem restarted successfully`,
+            servers: result.servers,
+            toolCount: result.toolCount,
+          },
+        };
+      } catch (err) {
+        return {
+          success: false,
+          result: null,
+          error: `Failed to restart MCP: ${err}`,
+        };
+      }
+    }
+
+    case 'status': {
+      const status = getMcpStatus();
+      const serverCount = Object.keys(status).length;
+      const connectedCount = Object.values(status).filter(s => s.status === 'connected').length;
+      const totalTools = Object.values(status).reduce((sum, s) => sum + s.toolCount, 0);
+
+      return {
+        success: true,
+        result: {
+          summary: `${connectedCount}/${serverCount} servers connected, ${totalTools} tools available`,
+          servers: status,
+        },
+      };
+    }
+
+    case 'list_tools': {
+      const tools = listMcpTools();
+      const byServer: Record<string, string[]> = {};
+
+      for (const tool of tools) {
+        if (!byServer[tool.server]) {
+          byServer[tool.server] = [];
+        }
+        byServer[tool.server].push(`${tool.tool}: ${tool.description.slice(0, 100)}`);
+      }
+
+      return {
+        success: true,
+        result: {
+          totalTools: tools.length,
+          byServer,
+        },
+      };
+    }
+
+    default:
+      return {
+        success: false,
+        result: null,
+        error: `Unknown action: ${action}. Use 'restart', 'status', or 'list_tools'.`,
+      };
+  }
 }

@@ -4,6 +4,22 @@
 Enforce architectural consistency. These are the laws of physics for this codebase.
 Deviations require explicit approval from Jim.
 
+## Hierarchy Rule
+
+**This file is the constitution.** If you encounter conflicts:
+
+| Source | Priority | Action |
+|--------|----------|--------|
+| `atlas-patterns.md` | **HIGHEST** | Always follow |
+| `MEMORY.md` | High | Follow unless conflicts with patterns |
+| `SOUL.md` | High | Identity guidance |
+| Other docs | Normal | Reference only |
+
+**If MEMORY.md conflicts with atlas-patterns.md:**
+1. Follow atlas-patterns.md
+2. Flag the conflict to Jim: "MEMORY.md says X, but atlas-patterns.md says Y. Following patterns."
+3. Do NOT silently resolve the conflict
+
 ---
 
 ## 1. Database Constants

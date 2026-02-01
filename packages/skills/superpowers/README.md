@@ -16,6 +16,7 @@ Every skill produces verifiable output, enabling human verification.
 | `atlas-tdd` | Test-driven development | Any code change |
 | `atlas-debug` | Root cause investigation | Any bug fix |
 | `atlas-completion` | Verification checklist | Before marking done |
+| `atlas-mcp-hunter` | Find/install MCP servers | Capability expansion |
 
 ## Usage
 

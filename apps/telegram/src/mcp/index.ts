@@ -436,3 +436,48 @@ export async function shutdownMcp(): Promise<void> {
   initialized = false;
   logger.info('[MCP] Shutdown complete');
 }
+
+/**
+ * Restart the MCP subsystem - reload config and reconnect all servers.
+ * Use this after modifying mcp.yaml to load new servers without restarting the bot.
+ */
+export async function restartMcp(): Promise<{ servers: string[]; toolCount: number }> {
+  console.error('[MCP] === RESTARTING SUBSYSTEM ===');
+  logger.info('[MCP] Restarting subsystem...');
+
+  // 1. Disconnect everything
+  await shutdownMcp();
+
+  // 2. Re-initialize (shutdownMcp sets initialized = false)
+  await initMcp();
+
+  // 3. Return status
+  const serverList = Array.from(states.keys());
+  const totalTools = Array.from(states.values()).reduce((sum, s) => sum + s.tools.length, 0);
+
+  console.error(`[MCP] Restart complete. ${serverList.length} servers, ${totalTools} tools.`);
+  logger.info('[MCP] Restart complete', { servers: serverList, toolCount: totalTools });
+
+  return { servers: serverList, toolCount: totalTools };
+}
+
+/**
+ * List all available MCP tools with their descriptions
+ */
+export function listMcpTools(): Array<{ server: string; tool: string; description: string }> {
+  const toolList: Array<{ server: string; tool: string; description: string }> = [];
+
+  for (const [serverId, state] of states.entries()) {
+    if (state.status !== 'connected') continue;
+
+    for (const tool of state.tools) {
+      toolList.push({
+        server: serverId,
+        tool: tool.name,
+        description: tool.description || '',
+      });
+    }
+  }
+
+  return toolList;
+}

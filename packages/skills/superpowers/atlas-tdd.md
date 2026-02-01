@@ -13,12 +13,22 @@ This is the RED → GREEN → REFACTOR cycle, enforced.
 - Any code that touches data or logic
 
 **SKIP for (with acknowledgment):**
-- Documentation changes
+- Pure documentation (README, comments)
 - CSS/styling only
-- Configuration files
+- Configuration files (non-logic)
 - Pure logging additions
 
+**NEVER SKIP for (these are LOGIC):**
+- System prompts
+- Skill files (*.md in skills/)
+- Prompt templates
+- Classification rules
+- Any text that controls agent behavior
+
 If skipping, state: "Skipping TDD: [reason]"
+
+**Prompts Are Code:** If automated tests aren't possible for prompt/skill changes,
+you MUST perform manual verification steps and document the test cases you ran.
 
 ---
 
