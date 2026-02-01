@@ -10,10 +10,14 @@
     "typecheck": "tsc --noEmit",
     "lint": "eslint src/",
     "test": "bun test",
+    "test:dispatcher": "bun test test/dispatcher.test.ts",
     "test:e2e": "bun run src/health/test-runner.ts",
     "health": "bun run src/health/test-runner.ts",
     "test:notion": "bun run src/test-notion.ts",
-    "test:claude": "bun run src/test-claude.ts"
+    "test:claude": "bun run src/test-claude.ts",
+    "validate:schema": "bun run scripts/validate-db-schema.ts",
+    "preflight": "bun run scripts/preflight-check.ts",
+    "preflight:full": "bun run scripts/preflight-check.ts && bun test"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.39.0",

@@ -6,7 +6,9 @@
   "type": "module",
   "scripts": {
     "typecheck": "tsc --noEmit",
-    "test": "bun test"
+    "test": "bun test",
+    "test:worker": "bun test test/worker-logic.test.ts",
+    "worker": "bun run src/worker.ts"
   },
   "dependencies": {
     "@google/generative-ai": "^0.21.0",

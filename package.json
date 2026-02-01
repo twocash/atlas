@@ -9,6 +9,9 @@
   "scripts": {
     "dev:telegram": "cd apps/telegram && bun run dev",
     "dev:chrome": "cd apps/chrome-ext && bun run dev",
-    "typecheck": "bun run --filter '*' typecheck"
+    "typecheck": "bun run --filter '*' typecheck",
+    "worker": "cd packages/agents && bun run worker",
+    "preflight": "cd apps/telegram && bun run preflight && cd ../../packages/agents && bun test",
+    "preflight:schema": "cd apps/telegram && bun run validate:schema"
   }
 }
