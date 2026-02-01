@@ -1100,6 +1100,9 @@ async function executeNotionFetchPage(
 
 /**
  * List all databases the integration can access
+ *
+ * ANTI-HALLUCINATION: Returns EXACT database names from Notion API.
+ * Claude MUST use these exact names - do NOT fabricate databases.
  */
 async function executeNotionListDatabases(): Promise<{ success: boolean; result: unknown; error?: string }> {
   try {
@@ -1117,11 +1120,18 @@ async function executeNotionListDatabases(): Promise<{ success: boolean; result:
       };
     });
 
+    // ANTI-HALLUCINATION: Create an explicit list of ONLY these database names
+    const databaseNames = databases.map(db => db.name);
+
     return {
       success: true,
       result: {
+        // CRITICAL WARNING - Claude was fabricating database names
+        _ANTI_HALLUCINATION_WARNING: '⚠️ ONLY the databases listed below exist. Do NOT mention or reference any database not in this list. Names like "Grove Sprout Factory", "Personal CRM", "Reading List", "Bookmarks" are HALLUCINATIONS unless they appear in the EXACT_DATABASE_NAMES list.',
+        EXACT_DATABASE_NAMES: databaseNames,
         databases,
         count: databases.length,
+        _REMINDER: 'If you mention a database name not in EXACT_DATABASE_NAMES, you are LYING to the user.',
       },
     };
   } catch (error: any) {
@@ -1136,6 +1146,8 @@ async function executeNotionListDatabases(): Promise<{ success: boolean; result:
 
 /**
  * Query any Notion database by name or ID
+ *
+ * ANTI-HALLUCINATION: Only returns data that actually exists in Notion.
  */
 async function executeNotionQueryDatabase(
   input: Record<string, unknown>
@@ -1148,6 +1160,7 @@ async function executeNotionQueryDatabase(
   try {
     // First, find the database by name if not an ID
     let databaseId = databaseInput;
+    let actualDatabaseName = databaseInput;
 
     // Check if it looks like an ID (32 hex chars or UUID format)
     const isId = /^[a-f0-9]{32}$|^[a-f0-9-]{36}$/i.test(databaseInput);
@@ -1160,20 +1173,27 @@ async function executeNotionQueryDatabase(
         page_size: 5,
       });
 
+      // Get all available database names for error reporting
+      const availableNames = searchResponse.results.map((db: any) =>
+        db.title?.[0]?.plain_text || 'Untitled'
+      );
+
       const matchingDb = searchResponse.results.find((db: any) => {
         const name = db.title?.[0]?.plain_text?.toLowerCase() || '';
         return name.includes(databaseInput.toLowerCase());
       });
 
       if (!matchingDb) {
+        // ANTI-HALLUCINATION: Explicit failure with list of what DOES exist
         return {
           success: false,
           result: null,
-          error: `Database "${databaseInput}" not found. Use notion_list_databases to see available databases.`,
+          error: `⚠️ DATABASE NOT FOUND: "${databaseInput}" does not exist.\n\nAvailable databases: ${availableNames.join(', ') || 'None found'}\n\n⚠️ Do NOT claim this database exists. It does NOT. Use notion_list_databases to see all available databases.`,
         };
       }
 
       databaseId = matchingDb.id;
+      actualDatabaseName = (matchingDb as any).title?.[0]?.plain_text || 'Untitled';
     }
 
     // Build filter if provided
@@ -1230,13 +1250,21 @@ async function executeNotionQueryDatabase(
       };
     });
 
+    // ANTI-HALLUCINATION: Explicitly list item titles that were found
+    const itemTitles = items.map((i: any) => i.title);
+
     return {
       success: true,
       result: {
-        database: databaseInput,
+        _ANTI_HALLUCINATION_WARNING: `⚠️ ONLY ${items.length} items found in "${actualDatabaseName}". Do NOT fabricate additional items.`,
+        database: actualDatabaseName, // Use actual name from Notion, not user input
+        EXACT_ITEM_TITLES: itemTitles,
         items,
         count: items.length,
         hasMore: response.has_more,
+        _REMINDER: items.length === 0
+          ? '⚠️ ZERO items found. Do NOT claim items exist in this database.'
+          : `Only these ${items.length} items exist. Any other item names are HALLUCINATIONS.`,
       },
     };
   } catch (error: any) {
@@ -1448,9 +1476,15 @@ async function executeGetChangelog(
     const bugs = items.filter((i: any) => i.type === 'Bug' || i.type === 'Hotfix');
     const sprints = items.filter((i: any) => i.title?.includes('SPRINT'));
 
+    // ANTI-HALLUCINATION: Extract ONLY the capabilities mentioned in resolutions
+    const allResolutions = items
+      .map((i: any) => i.resolution)
+      .filter(Boolean);
+
     return {
       success: true,
       result: {
+        _ANTI_HALLUCINATION_WARNING: '⚠️ ONLY capabilities listed in "resolution" fields below are available. Do NOT claim capabilities not explicitly mentioned here.',
         summary: `${features.length} features, ${bugs.length} bug fixes, ${sprints.length} sprints shipped`,
         sprints: sprints.map((s: any) => ({
           title: s.title,
@@ -1467,7 +1501,10 @@ async function executeGetChangelog(
           resolution: b.resolution,
           url: b.url,
         })),
-        message: 'Use this to understand what capabilities are now available.',
+        _CAPABILITIES_SUMMARY: allResolutions.length > 0
+          ? `These are the ONLY documented capabilities: ${allResolutions.join(' | ')}`
+          : '⚠️ No capabilities documented in resolutions. Do NOT claim undocumented features.',
+        message: 'ONLY mention capabilities that appear in the resolution fields above. Anything else is a HALLUCINATION.',
       },
     };
   } catch (error: any) {
