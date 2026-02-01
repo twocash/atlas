@@ -259,6 +259,21 @@ IMPORTANT: All scripts must include a header comment with @description and @risk
       required: [],
     },
   },
+  {
+    name: 'update_self',
+    description: 'Check for and apply updates to Atlas. Use when Pit Crew has shipped new features or fixes. Can check-only or apply updates and trigger restart.',
+    input_schema: {
+      type: 'object' as const,
+      properties: {
+        action: {
+          type: 'string',
+          enum: ['check', 'apply'],
+          description: 'check = see if updates available, apply = pull updates and restart',
+        },
+      },
+      required: ['action'],
+    },
+  },
 ];
 
 // ============================================================================
@@ -460,6 +475,8 @@ export async function executeOperatorTools(
       return await executeMcpManagement(input);
     case 'notion_health_check':
       return await executeNotionHealthCheck();
+    case 'update_self':
+      return await executeUpdateSelf(input);
     default:
       return null;
   }
@@ -1069,6 +1086,99 @@ async function executeNotionHealthCheck(): Promise<{ success: boolean; result: u
       success: false,
       result: null,
       error: `Failed to run Notion health check: ${err}`,
+    };
+  }
+}
+
+// ============================================================================
+// SELF-UPDATE
+// ============================================================================
+
+async function executeUpdateSelf(
+  input: Record<string, unknown>
+): Promise<{ success: boolean; result: unknown; error?: string }> {
+  const action = input.action as 'check' | 'apply';
+
+  try {
+    const { execSync } = await import('child_process');
+    const rootDir = resolve(__dirname, '../../../..');
+
+    const run = (cmd: string) => execSync(cmd, {
+      cwd: rootDir,
+      encoding: 'utf-8',
+      timeout: 30000,
+    }).trim();
+
+    // Get current state
+    const currentCommit = run('git rev-parse --short HEAD');
+    const currentBranch = run('git rev-parse --abbrev-ref HEAD');
+
+    // Fetch latest
+    run('git fetch origin');
+
+    // Check if behind
+    const behindCount = parseInt(run(`git rev-list HEAD..origin/${currentBranch} --count`), 10);
+
+    if (behindCount === 0) {
+      return {
+        success: true,
+        result: {
+          hasUpdates: false,
+          currentCommit,
+          message: `Already up to date at ${currentCommit}`,
+        },
+      };
+    }
+
+    // Get pending commits
+    const latestCommit = run(`git rev-parse --short origin/${currentBranch}`);
+    const commitLog = run(`git log --oneline HEAD..origin/${currentBranch}`);
+    const commits = commitLog.split('\n').filter(Boolean);
+
+    if (action === 'check') {
+      return {
+        success: true,
+        result: {
+          hasUpdates: true,
+          currentCommit,
+          latestCommit,
+          commitsBehind: behindCount,
+          commits,
+          message: `${behindCount} update(s) available. Use action='apply' to update.`,
+        },
+      };
+    }
+
+    // Apply update
+    logger.info('Self-update: Pulling latest code...');
+    run('git pull origin');
+
+    const newCommit = run('git rev-parse --short HEAD');
+
+    // Touch entry point to trigger bun --watch reload
+    const entryPoint = resolve(__dirname, '../../index.ts');
+    const { readFile: rf, writeFile: wf } = await import('fs/promises');
+    const content = await rf(entryPoint, 'utf-8');
+    await wf(entryPoint, content);
+
+    logger.info('Self-update: Update applied, restart triggered', { oldCommit: currentCommit, newCommit });
+
+    return {
+      success: true,
+      result: {
+        hasUpdates: true,
+        previousCommit: currentCommit,
+        newCommit,
+        commits,
+        message: `Updated ${currentCommit} → ${newCommit}. Restart triggered. I'll be back in a moment!`,
+      },
+    };
+  } catch (err: any) {
+    logger.error('Self-update failed', { error: err.message });
+    return {
+      success: false,
+      result: null,
+      error: `Self-update failed: ${err.message}`,
     };
   }
 }
