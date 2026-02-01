@@ -3,7 +3,7 @@
   "title": "CRITICAL: Atlas generating invalid Notion URLs",
   "type": "bug",
   "priority": "P0",
-  "status": "in-progress",
+  "status": "needs-approval",
   "requestor": "atlas",
   "assignee": "pit-crew",
   "context": "CRITICAL BUG: Atlas is generating invalid Notion URLs when using MCP pit_crew tools. Example broken URL: https://www.notion.so/jimcalhoun/2026-01-31-classification-system-bug-repo-1875adfef55180cd8ac2c7b914f70fb0 - this link does not exist and goes nowhere. Jim cannot access development discussions, monitor progress, or provide feedback because all Notion links are broken. The tool responses claim to provide notion_url fields but they are malformed/invalid. This completely breaks workflow visibility and must be fixed immediately before other development work can proceed.",
@@ -27,8 +27,13 @@
       "timestamp": "2026-02-01T01:55:00.000Z",
       "from": "pit-crew",
       "content": "**MCP CONNECTION WORKING**\n\nJim restarted Atlas. Console output confirms:\n```\n[MCP] Resolved path: ../../packages/mcp-pit-crew/src/index.ts → C:\\github\\atlas\\packages\\mcp-pit-crew\\src\\index.ts\n[MCP] === INITIALIZATION COMPLETE ===\n[MCP] Servers: 1/1 connected\n[MCP] Total MCP tools available: 5\n[MCP]   pit_crew: connected (5 tools)\n```\n\n**Verified integration chain:**\n- ✅ handler.ts uses `getAllTools()` (dynamic, includes MCP)\n- ✅ `getAllTools()` merges native + MCP tools\n- ✅ `executeTool()` routes MCP tools via `isMcpTool()` check\n- ✅ Updated barrel export to use `getAllTools` instead of deprecated `ALL_TOOLS`\n\n**Status:** MCP infrastructure working. Awaiting Jim's test of full dispatch flow (Atlas → MCP tool → Notion sync)."
+    },
+    {
+      "timestamp": "2026-02-01T02:50:00.000Z",
+      "from": "pit-crew",
+      "content": "**NOTION MCP SERVER FIXED**\n\nSwapped from community `notion-mcp-server` (required NOTION_PAGE_ID, was failing) to official `@notionhq/notion-mcp-server` v2.0.0+.\n\n**Changes:**\n- `apps/telegram/config/mcp.yaml` - Updated to official package with NOTION_TOKEN env var\n- Committed: `fix(mcp): use official Notion MCP server with write support`\n\n**Official server capabilities:**\n- ✅ Read pages/blocks/databases\n- ✅ Create pages/blocks\n- ✅ Update pages/blocks\n- ✅ Query databases\n\n**Ready for final verification:**\n1. Restart Atlas\n2. Confirm both servers connect (pit_crew + notion)\n3. Test dispatch flow → verify Notion URL is real\n\n**Superpowers Protocol ACTIVE:** All future bugs flow through:\npit-crew-mcp dispatch → onboarding → debug → TDD → completion"
     }
   ],
   "created": "2026-01-31T22:34:36.899Z",
-  "updated": "2026-02-01T01:55:00.000Z"
+  "updated": "2026-02-01T02:50:00.000Z"
 }
