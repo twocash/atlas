@@ -15,6 +15,7 @@ import { createBot, startBot } from "./bot";
 import { logger } from "./logger";
 import { initAtlasSystem, updateHeartbeat, logUpdate } from "./atlas-system";
 import { healthCheckOrDie } from "./health";
+import { verifySystemIntegrity } from "./health/integrity";
 import { initScheduler, stopScheduler, type ScheduledTask } from "./scheduler";
 import { initMcp, shutdownMcp } from "./mcp";
 
@@ -23,6 +24,14 @@ async function main() {
 
   // Run health checks (exits if critical failures)
   await healthCheckOrDie();
+
+  // Verify database schema integrity (exits if corrupted)
+  const isSystemHealthy = await verifySystemIntegrity();
+  if (!isSystemHealthy) {
+    logger.error("Startup Aborted: System Integrity Check Failed.");
+    logger.error("Fix the database schema in Notion before restarting.");
+    process.exit(1);
+  }
 
   // Initialize Atlas system directory
   initAtlasSystem();
