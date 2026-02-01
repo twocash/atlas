@@ -4,7 +4,8 @@
  * Run with: bun run src/test-notion.ts
  */
 
-import "dotenv/config";
+import { config } from "dotenv";
+config({ override: true });
 import { testNotionConnection } from "./notion";
 
 async function main() {

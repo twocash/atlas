@@ -11,7 +11,8 @@
  * - Work Queue 2.0: 3d679030-b76b-43bd-92d8-1ac51abb4a28
  */
 
-import "dotenv/config";
+import { config } from "dotenv";
+config({ override: true });
 import { Client } from "@notionhq/client";
 
 // CANONICAL DATA SOURCE IDs - DO NOT CHANGE

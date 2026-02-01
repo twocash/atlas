@@ -4,7 +4,8 @@
  * Run with: bun run src/test-claude.ts
  */
 
-import "dotenv/config";
+import { config } from "dotenv";
+config({ override: true });
 import { testClaudeConnection, classifyWithClaude } from "./claude";
 
 async function main() {

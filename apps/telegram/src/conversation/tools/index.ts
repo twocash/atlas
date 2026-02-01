@@ -3,16 +3,29 @@
  *
  * All tools available to Claude for conversation handling.
  * Includes both native Atlas tools and dynamic MCP tools.
+ *
+ * NEURO-LINK SPRINT: submit_ticket is now the PRIMARY way to dispatch async work.
+ * Legacy tools (dispatch_research, work_queue_create) are deprecated but still
+ * available for backwards compatibility.
  */
 
+// Core tools (Notion search, status, broader access)
 export { CORE_TOOLS, executeCoreTools } from './core';
+
+// Dispatcher (PRIMARY - Neuro-Link Sprint)
+export { DISPATCHER_TOOLS, executeDispatcherTools } from './dispatcher';
+
+// Legacy agent tools (DEPRECATED - use submit_ticket instead)
 export { AGENT_TOOLS, executeAgentTools } from './agents';
+
+// Other tool categories
 export { WORKSPACE_TOOLS, executeWorkspaceTools } from './workspace';
 export { SELF_MOD_TOOLS, executeSelfModTools } from './self-mod';
 export { OPERATOR_TOOLS, executeOperatorTools } from './operator';
 
 import type Anthropic from '@anthropic-ai/sdk';
 import { CORE_TOOLS, executeCoreTools } from './core';
+import { DISPATCHER_TOOLS, executeDispatcherTools } from './dispatcher';
 import { AGENT_TOOLS, executeAgentTools } from './agents';
 import { WORKSPACE_TOOLS, executeWorkspaceTools } from './workspace';
 import { SELF_MOD_TOOLS, executeSelfModTools } from './self-mod';
@@ -21,13 +34,22 @@ import { getMcpTools, isMcpTool, executeMcpTool } from '../../mcp';
 
 /**
  * Native Atlas tools (static)
+ *
+ * Order matters for tool selection guidance:
+ * 1. DISPATCHER_TOOLS - Primary async dispatch (submit_ticket)
+ * 2. CORE_TOOLS - Notion operations, status
+ * 3. WORKSPACE_TOOLS - File operations
+ * 4. SELF_MOD_TOOLS - Memory/soul updates
+ * 5. OPERATOR_TOOLS - Scripts, scheduling
+ * 6. AGENT_TOOLS - Legacy dispatch (deprecated)
  */
 const NATIVE_TOOLS: Anthropic.Tool[] = [
+  ...DISPATCHER_TOOLS,  // PRIMARY: submit_ticket
   ...CORE_TOOLS,
-  ...AGENT_TOOLS,
   ...WORKSPACE_TOOLS,
   ...SELF_MOD_TOOLS,
   ...OPERATOR_TOOLS,
+  ...AGENT_TOOLS,       // DEPRECATED: dispatch_research, etc.
 ];
 
 /**
@@ -52,6 +74,8 @@ export const ALL_TOOLS: Anthropic.Tool[] = NATIVE_TOOLS;
 /**
  * Execute a tool call and return the result
  * Handles both native Atlas tools and MCP tools
+ *
+ * NEURO-LINK SPRINT: Dispatcher tools (submit_ticket) are checked FIRST
  */
 export async function executeTool(
   toolName: string,
@@ -62,12 +86,13 @@ export async function executeTool(
     return await executeMcpTool(toolName, input);
   }
 
+  // Try dispatcher tools FIRST (submit_ticket is primary)
+  const dispatcherResult = await executeDispatcherTools(toolName, input);
+  if (dispatcherResult !== null) return dispatcherResult;
+
   // Try each native tool category
   const coreResult = await executeCoreTools(toolName, input);
   if (coreResult !== null) return coreResult;
-
-  const agentResult = await executeAgentTools(toolName, input);
-  if (agentResult !== null) return agentResult;
 
   const workspaceResult = await executeWorkspaceTools(toolName, input);
   if (workspaceResult !== null) return workspaceResult;
@@ -77,6 +102,10 @@ export async function executeTool(
 
   const operatorResult = await executeOperatorTools(toolName, input);
   if (operatorResult !== null) return operatorResult;
+
+  // Legacy agent tools (deprecated but still functional)
+  const agentResult = await executeAgentTools(toolName, input);
+  if (agentResult !== null) return agentResult;
 
   return {
     success: false,
