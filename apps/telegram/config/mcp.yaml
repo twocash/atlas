@@ -22,6 +22,18 @@ servers:
     # Set to false to enable pit-crew server
     disabled: false
 
+  # Notion - Official Notion API MCP server
+  # Enables page/database operations via MCP
+  notion:
+    command: "npx"
+    args: ["-y", "@notionhq/notion-mcp-server"]
+    env:
+      NOTION_TOKEN: "${NOTION_API_KEY}"
+    timeout: 30000
+    reconnectDelay: 5000
+    maxReconnectAttempts: 3
+    disabled: false
+
   # Example: Add more MCP servers here
   # memory:
   #   command: "npx"
