@@ -250,10 +250,23 @@ export async function handleConversation(ctx: Context): Promise<void> {
           timestamp: new Date().toISOString(),
         });
 
+        // Format result to make errors EXPLICIT and impossible to ignore
+        let toolResultContent: string;
+        if (result.success) {
+          toolResultContent = JSON.stringify(result);
+        } else {
+          // CRITICAL: Prefix failed results so Claude cannot hallucinate success
+          toolResultContent = `⚠️ TOOL FAILED - DO NOT CLAIM SUCCESS ⚠️\n\nError: ${result.error || 'Unknown error'}\n\nRaw result: ${JSON.stringify(result)}\n\n⚠️ You MUST acknowledge this failure to the user. Do NOT pretend this operation succeeded.`;
+          logger.warn('Tool execution failed', {
+            tool: toolUse.name,
+            error: result.error,
+          });
+        }
+
         toolResults.push({
           type: 'tool_result',
           tool_use_id: toolUse.id,
-          content: JSON.stringify(result),
+          content: toolResultContent,
         });
 
         logger.info('Tool executed', {

@@ -36,12 +36,29 @@ When Jim corrects a classification:
 
 ---
 
-*Last updated: 2026-01-31*
+*Last updated: 2026-02-01*
 
 
 - 2026-01-31: CRITICAL - Never hallucinate Notion URLs. Only share actual URLs returned by work_queue_create and other tools. Jim needs seamless connectivity - fake links break his workflow. Always use real url/feedUrl fields from tool responses.
 
 - 2026-01-31: CRITICAL - Examples in documentation are NOT templates. "https://notion.so/abc123" is an EXAMPLE, not a real link. ONLY use URLs from actual tool responses: `url`, `notion_url`, `feedUrl`, `wq_url`. If the tool didn't return a URL, say "Notion sync pending" — NEVER fabricate one.
+- 2026-02-01: CRITICAL - Hallucinated successful database migration when both source and target databases returned 404 errors. Claimed to migrate 19 items when no access existed. Must ALWAYS verify tool responses show actual success before claiming completion. Never fabricate operations results.
+
+## Anti-Hallucination Protocol
+
+**MANDATORY for all Notion/MCP operations:**
+
+1. **CHECK TOOL RESULT** - If `success: false`, STOP. Tell Jim the operation failed.
+2. **VERIFY ACCESS** - If you get "object_not_found" or 404, it means the database is NOT shared with Atlas. Do NOT retry - report the access issue.
+3. **NO SILENT FAILURES** - If an operation fails, you MUST tell Jim. Never claim success when the tool returned an error.
+4. **SELF-DIAGNOSE** - When tool fails, explain WHY (access denied? wrong ID? API error?). Don't just say "it failed."
+5. **COUNT ACTUAL RESULTS** - If you claim "19 items migrated", there must BE 19 successful create operations in your tool results. Count them.
+
+**Quick diagnostic for Notion failures:**
+- "unauthorized" → Token is invalid (check .env)
+- "object_not_found" → Database not shared with Atlas integration (fix in Notion UI)
+- "validation_error" → Wrong property names or values
+- Timeout → MCP server crashed, check console logs
 ## Patterns
 
 Testing session 2026-01-30: Multiple infrastructure bugs discovered during initial testing phase.
