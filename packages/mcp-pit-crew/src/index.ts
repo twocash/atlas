@@ -19,15 +19,12 @@ import {
 } from '@modelcontextprotocol/sdk/types.js';
 import { readFile, writeFile, mkdir, readdir } from 'fs/promises';
 import { join } from 'path';
-import { Client as NotionClient } from '@notionhq/client';
+// NOTE: @notionhq/client removed - Notion sync now handled by Notion MCP plugin
 
 // === CONFIGURATION ===
 
 const DATA_DIR = process.env.PIT_CREW_DATA_DIR || './data/pit-crew';
 const DISCUSSIONS_DIR = join(DATA_DIR, 'discussions');
-const NOTION_API_KEY = process.env.NOTION_API_KEY;
-// Atlas Dev Pipeline database PAGE ID (not data source ID)
-const NOTION_PIPELINE_DB = process.env.NOTION_PIPELINE_DB || 'ce6fbf1bee30433da9e6b338552de7c9';
 
 // === TYPES ===
 
@@ -99,130 +96,29 @@ function generateId(title: string): string {
   return `${date}-${slug}`;
 }
 
-// === NOTION SYNC ===
+// === NOTION SYNC (DISABLED) ===
 
 /**
- * Retry wrapper for Notion API calls.
- * Handles 429 (rate limit) and transient errors gracefully.
+ * NOTION SYNC DISABLED
+ *
+ * The @notionhq/client SDK requires a valid API token in pit-crew-mcp's env,
+ * but Atlas's token was invalid. Instead of fixing the token (fragile),
+ * we removed this dependency entirely.
+ *
+ * ARCHITECTURE DECISION:
+ * - pit-crew-mcp: Just manages local JSON files (fast, reliable)
+ * - Notion sync: Done separately via Notion MCP plugin which is already authenticated
+ *
+ * This separation of concerns means:
+ * 1. pit-crew-mcp always works (no external dependencies)
+ * 2. Notion visibility can be added by any agent with Notion MCP access
+ * 3. No duplicate API key management
  */
-async function safeNotionCall<T>(
-  operation: () => Promise<T>,
-  maxRetries = 3
-): Promise<T> {
-  let lastError: Error | undefined;
-
-  for (let attempt = 1; attempt <= maxRetries; attempt++) {
-    try {
-      return await operation();
-    } catch (err: unknown) {
-      const error = err as { status?: number; message?: string };
-      lastError = err instanceof Error ? err : new Error(String(err));
-
-      if (error.status === 429) {
-        // Rate limited - exponential backoff
-        const delay = Math.pow(2, attempt) * 1000;
-        console.error(`[PitCrew] Notion rate limit. Waiting ${delay / 1000}s (attempt ${attempt}/${maxRetries})...`);
-        await new Promise(r => setTimeout(r, delay));
-        continue;
-      }
-
-      if (error.status && error.status >= 500) {
-        // Server error - retry with backoff
-        const delay = attempt * 1000;
-        console.error(`[PitCrew] Notion server error (${error.status}). Retrying in ${delay / 1000}s...`);
-        await new Promise(r => setTimeout(r, delay));
-        continue;
-      }
-
-      // Non-retryable error
-      throw err;
-    }
-  }
-
-  throw lastError ?? new Error('Notion call failed after max retries');
-}
-
-async function syncToNotion(discussion: Discussion): Promise<string | null> {
-  if (!NOTION_API_KEY) {
-    console.error('[PitCrew] NOTION_API_KEY not set - skipping Notion sync');
-    return null;
-  }
-  if (!NOTION_PIPELINE_DB) {
-    console.error('[PitCrew] NOTION_PIPELINE_DB not set - skipping Notion sync');
-    return null;
-  }
-  console.error(`[PitCrew] Syncing to Notion DB: ${NOTION_PIPELINE_DB.substring(0, 8)}...`);
-
-  const notion = new NotionClient({ auth: NOTION_API_KEY });
-
-  // Format thread as markdown
-  const threadMd = discussion.messages
-    .map(m => `**${m.from}** (${m.timestamp}):\n${m.content}`)
-    .join('\n\n---\n\n');
-
-  try {
-    // Check if page exists (by title match - simple approach)
-    if (discussion.notion_url) {
-      // Update existing page
-      const pageId = discussion.notion_url.split('/').pop()?.split('-').pop() || '';
-      await safeNotionCall(() => notion.pages.update({
-        page_id: pageId,
-        properties: {
-          'Status': { select: { name: formatStatus(discussion.status) } },
-          'Thread': { rich_text: [{ text: { content: threadMd.substring(0, 2000) } }] },
-          'Output': discussion.output ? { url: discussion.output } : { url: null },
-        },
-      }));
-      return discussion.notion_url;
-    } else {
-      // Map internal values to Notion select options
-      const requestorMap: Record<string, string> = {
-        'atlas': 'Atlas [Telegram]',
-        'jim': 'Jim',
-      };
-      const handlerMap: Record<string, string> = {
-        'pit-crew': 'Pit Crew',
-      };
-      const typeMap: Record<string, string> = {
-        'bug': 'Bug',
-        'feature': 'Feature',
-        'hotfix': 'Hotfix',
-        'question': 'Question',
-      };
-
-      // Create new page
-      const response = await safeNotionCall(() => notion.pages.create({
-        parent: { database_id: NOTION_PIPELINE_DB },
-        properties: {
-          'Discussion': { title: [{ text: { content: discussion.title } }] },
-          'Status': { select: { name: formatStatus(discussion.status) } },
-          'Type': { select: { name: typeMap[discussion.type] || capitalize(discussion.type) } },
-          'Priority': { select: { name: discussion.priority } },
-          'Requestor': { select: { name: requestorMap[discussion.requestor] || discussion.requestor } },
-          'Handler': { select: { name: handlerMap[discussion.assignee] || discussion.assignee } },
-          'Thread': { rich_text: [{ text: { content: threadMd.substring(0, 2000) } }] },
-          'Work Queue': discussion.wq_url ? { url: discussion.wq_url } : { url: null },
-          'Dispatched': { date: { start: discussion.created.split('T')[0] } },
-          'Discussion ID': { rich_text: [{ text: { content: discussion.id } }] },
-        },
-      }));
-      const url = (response as { url?: string }).url || null;
-      console.error(`[PitCrew] Created Notion page: ${url}`);
-      return url;
-    }
-  } catch (error: any) {
-    console.error('[PitCrew] Notion sync failed:', error?.message || error);
-    console.error('[PitCrew] Error details:', JSON.stringify(error?.body || error, null, 2));
-    return null;
-  }
-}
-
-function formatStatus(status: string): string {
-  return status.split('-').map(capitalize).join(' ');
-}
-
-function capitalize(s: string): string {
-  return s.charAt(0).toUpperCase() + s.slice(1);
+async function syncToNotion(_discussion: Discussion): Promise<string | null> {
+  // Notion sync disabled - use Notion MCP plugin instead
+  // The calling agent should sync to Notion using mcp__plugin_Notion_notion__notion-create-pages
+  console.error('[PitCrew] Notion sync disabled - use Notion MCP plugin for visibility');
+  return null;
 }
 
 // === MCP SERVER ===
