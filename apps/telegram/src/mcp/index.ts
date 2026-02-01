@@ -392,7 +392,39 @@ export async function executeMcpTool(
       arguments: args,
     });
 
-    const result = await Promise.race([callPromise, timeoutPromise]);
+    const result = await Promise.race([callPromise, timeoutPromise]) as {
+      content: Array<{ type: string; text?: string }>;
+      isError?: boolean;
+    };
+
+    // Check if the MCP tool returned an error (isError flag or error in content)
+    if (result.isError) {
+      const errorText = result.content
+        ?.filter(c => c.type === 'text')
+        .map(c => c.text)
+        .join('\n') || 'MCP tool returned error';
+      logger.error('[MCP] Tool returned error', { tool: namespacedName, error: errorText });
+      return {
+        success: false,
+        result,
+        error: errorText,
+      };
+    }
+
+    // Also check for error patterns in the content itself
+    const contentText = result.content
+      ?.filter(c => c.type === 'text')
+      .map(c => c.text)
+      .join('\n') || '';
+
+    if (contentText.includes('"object":"error"') || contentText.includes('object_not_found')) {
+      logger.error('[MCP] Tool content contains error', { tool: namespacedName, content: contentText.substring(0, 500) });
+      return {
+        success: false,
+        result,
+        error: contentText,
+      };
+    }
 
     return {
       success: true,

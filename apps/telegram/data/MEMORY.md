@@ -56,9 +56,25 @@ When Jim corrects a classification:
 
 **Quick diagnostic for Notion failures:**
 - "unauthorized" → Token is invalid (check .env)
-- "object_not_found" → Database not shared with Atlas integration (fix in Notion UI)
+- "object_not_found" → Database not shared with Atlas integration (fix in Notion UI), OR wrong ID type (see below)
 - "validation_error" → Wrong property names or values
 - Timeout → MCP server crashed, check console logs
+
+## CRITICAL: Notion ID Types
+
+Notion has TWO different ID types. Using the wrong one causes 404 errors.
+
+| Database | Database Page ID | Data Source ID |
+|----------|------------------|----------------|
+| **Work Queue 2.0** | `3d679030-b76b-43bd-92d8-1ac51abb4a28` | `6a8d9c43-b084-47b5-bc83-bc363640f2cd` |
+| **Feed 2.0** | `90b2b33f-4b44-4b42-870f-8d62fb8cbf18` | `a7493abb-804a-4759-b6ac-aeca62ae23b8` |
+| **Dev Pipeline** | `ce6fbf1b-ee30-433d-a9e6-b338552de7c9` | `1460539c-7002-447a-a8b7-17bba06c6559` |
+
+**When to use which:**
+- `mcp__notion__API-query-data-source` → Use DATA SOURCE ID
+- `mcp__notion__API-retrieve-a-database` → Use DATABASE PAGE ID
+- `mcp__notion__API-post-page` with `parent.database_id` → Use DATABASE PAGE ID
+- Native Atlas tools (work_queue_create, etc.) → Use DATABASE PAGE ID
 ## Patterns
 
 Testing session 2026-01-30: Multiple infrastructure bugs discovered during initial testing phase.
