@@ -14,6 +14,10 @@ import { handleLookupIntent } from "./lookup";
 import { handleActionIntent, handleActionCallback, cleanupPendingActions } from "./action";
 import { handleChatIntent, clearConversationHistory } from "./chat";
 import { handleVoiceCallback } from "./voice-callback";
+import { handleContentCallback } from "./content-callback";
+import { handleNotionCallback, handleNotionStatusUpdate } from "./notion-callback";
+import { isContentCallback } from "../conversation/content-confirm";
+import { isNotionCallback } from "../conversation/notion-url";
 import { logger } from "../logger";
 import { audit } from "../audit";
 import { updateState, getState, updateHeartbeat } from "../atlas-system";
@@ -107,6 +111,23 @@ export async function routeCallback(ctx: Context): Promise<void> {
     return;
   }
 
+  // Notion URL callbacks (object-aware handling)
+  if (isNotionCallback(data)) {
+    // Check if it's a status update (nested callback)
+    if (data.includes(':status:')) {
+      await handleNotionStatusUpdate(ctx);
+    } else {
+      await handleNotionCallback(ctx);
+    }
+    return;
+  }
+
+  // Content classification callbacks (Universal Content Analysis)
+  if (isContentCallback(data)) {
+    await handleContentCallback(ctx);
+    return;
+  }
+
   // Action callbacks
   if (data.startsWith("action_")) {
     await handleActionCallback(ctx, data);
@@ -144,4 +165,5 @@ export {
   handleActionCallback,
   handleChatIntent,
   handleVoiceCallback,
+  handleContentCallback,
 };

@@ -17,9 +17,23 @@ RESEARCH & AGENTS
   --standard                — Thorough (5-8 sources)
   --deep                    — Academic (10+ sources)
   --focus "area"            — Narrow focus
+  --voice <id>              — Writing voice (see below)
 /agent status               — List running agents
 /agent cancel <id>          — Stop an agent
 /agent test                 — Test agent system
+
+VOICE OPTIONS (for --voice)
+  grove        — Technical thought leadership
+  consulting   — Executive/recommendations
+  linkedin     — Punchy, shareable
+  personal     — Reflective, growth-focused
+  (omit --voice for interactive selection)
+
+WORK QUEUE EXECUTION
+/work                       — Run one worker cycle
+/work status                — Show queue depth & worker state
+/work start                 — Start continuous polling
+/work stop                  — Stop continuous polling
 
 BRIEFINGS
 /briefing now               — Send briefing immediately
@@ -32,7 +46,8 @@ MODEL SELECTION
 
 SESSION
 /new                        — Clear conversation session
-/status                     — System health check
+/status                     — Quick status check
+/health                     — Full system diagnostics
 /stats                      — Weekly usage & work queue stats
 /help                       — This message
 

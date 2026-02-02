@@ -16,7 +16,15 @@ import { processMedia, buildMediaContext, type Pillar } from './media';
 import { createAuditTrail, type AuditEntry } from './audit';
 import { getAllTools, executeTool } from './tools';
 import { recordUsage } from './stats';
+import { maybeHandleAsContentShare, triggerMediaConfirmation, triggerInstantClassification } from './content-flow';
 import type { ClassificationResult } from './types';
+
+// Feature flag for content confirmation keyboard (Universal Content Analysis)
+// Enabled by default - set ATLAS_CONTENT_CONFIRM=false to disable
+const CONTENT_CONFIRM_ENABLED = process.env.ATLAS_CONTENT_CONFIRM !== 'false';
+
+// Log feature status on module load
+logger.info('Content confirmation keyboard', { enabled: CONTENT_CONFIRM_ENABLED });
 
 // Initialize Anthropic client
 const anthropic = new Anthropic({
@@ -145,13 +153,41 @@ export async function handleConversation(ctx: Context): Promise<void> {
   const attachment = detectAttachment(ctx);
   const hasAttachment = attachment.type !== 'none';
 
+  // Check for content share (URL) - trigger confirmation keyboard if enabled
+  // Skip if message has attachments (let those go through normal flow)
+  if (CONTENT_CONFIRM_ENABLED && !hasAttachment && messageText) {
+    const handled = await maybeHandleAsContentShare(ctx);
+    if (handled) {
+      // Content confirmation keyboard shown - don't continue with Claude processing
+      await setReaction(ctx, REACTIONS.DONE);
+      logger.info('Content share detected, confirmation keyboard shown', { userId });
+      return;
+    }
+  }
+
   // Build the message content
   let userContent = messageText;
 
   // Process media with Gemini if attachment present
   let mediaContext = null;
   if (hasAttachment) {
-    logger.info('Processing media attachment', { type: attachment.type });
+    logger.info('Media attachment detected', { type: attachment.type });
+
+    // CLASSIFY-FIRST FLOW: Show instant keyboard BEFORE running Gemini
+    // This enables faster UX and pillar-aware analysis
+    if (CONTENT_CONFIRM_ENABLED) {
+      const handled = await triggerInstantClassification(ctx, attachment);
+      if (handled) {
+        await setReaction(ctx, REACTIONS.DONE);
+        logger.info('Media detected, instant classification keyboard shown (classify-first)', {
+          userId,
+          type: attachment.type,
+        });
+        return; // Don't continue to Claude - keyboard handles flow
+      }
+    }
+
+    // FALLBACK: If classify-first disabled or failed, use legacy flow
     await ctx.replyWithChatAction('typing');
 
     // Quick classification for pillar routing
@@ -163,7 +199,20 @@ export async function handleConversation(ctx: Context): Promise<void> {
     mediaContext = await processMedia(ctx, attachment, quickPillar);
 
     if (mediaContext) {
-      // Inject Gemini's understanding into Claude's context
+      // If content confirmation is enabled but classify-first failed, use old flow
+      if (CONTENT_CONFIRM_ENABLED) {
+        const handled = await triggerMediaConfirmation(ctx, attachment, mediaContext, quickPillar);
+        if (handled) {
+          await setReaction(ctx, REACTIONS.DONE);
+          logger.info('Media processed, confirmation keyboard shown (legacy)', {
+            userId,
+            type: mediaContext.type,
+          });
+          return; // Don't continue to Claude
+        }
+      }
+
+      // Fallback: Inject Gemini's understanding into Claude's context
       userContent += buildMediaContext(mediaContext, attachment);
       logger.info('Media processed', {
         type: mediaContext.type,

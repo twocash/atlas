@@ -16,6 +16,7 @@ import { logger } from "./logger";
 import { initAtlasSystem, updateHeartbeat, logUpdate } from "./atlas-system";
 import { healthCheckOrDie } from "./health";
 import { verifySystemIntegrity } from "./health/integrity";
+import { runVoiceHealthCheck } from "./health/voice-check";
 import { initScheduler, stopScheduler, type ScheduledTask } from "./scheduler";
 import { initMcp, shutdownMcp } from "./mcp";
 
@@ -32,6 +33,9 @@ async function main() {
     logger.error("Fix the database schema in Notion before restarting.");
     process.exit(1);
   }
+
+  // Verify voice configuration (non-fatal, but warns loudly)
+  await runVoiceHealthCheck();
 
   // Initialize Atlas system directory
   initAtlasSystem();

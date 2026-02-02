@@ -24,6 +24,10 @@ import type { AtlasContext } from "./types";
 // Defaults to true - set ATLAS_CONVERSATIONAL_UX=false to disable
 const CONVERSATIONAL_UX_ENABLED = process.env.ATLAS_CONVERSATIONAL_UX !== 'false';
 
+// Feature flag for content confirmation keyboard (Universal Content Analysis)
+// Defaults to true - set ATLAS_CONTENT_CONFIRM=false to disable
+const CONTENT_CONFIRM_ENABLED = process.env.ATLAS_CONTENT_CONFIRM !== 'false';
+
 // Global briefing system instance
 let briefingSystem: BriefingSystem | null = null;
 
@@ -383,10 +387,12 @@ export async function startBot(bot: Bot<AtlasContext>): Promise<void> {
     onStart: (botInfo) => {
       logger.info(`Bot started as @${botInfo.username}`, {
         conversationalUX: CONVERSATIONAL_UX_ENABLED,
+        contentConfirm: CONTENT_CONFIRM_ENABLED,
       });
       console.log(`\n🤖 Atlas Bot is running as @${botInfo.username}`);
       console.log(`📋 Briefings scheduled: 7am, 12:30pm, 6pm ET`);
-      console.log(`💬 Conversational UX: ${CONVERSATIONAL_UX_ENABLED ? 'ENABLED' : 'disabled'}\n`);
+      console.log(`💬 Conversational UX: ${CONVERSATIONAL_UX_ENABLED ? 'ENABLED' : 'disabled'}`);
+      console.log(`🔗 Content Confirm: ${CONTENT_CONFIRM_ENABLED ? 'ENABLED' : 'disabled'}\n`);
     },
   });
 }

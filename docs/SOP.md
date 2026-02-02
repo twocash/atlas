@@ -114,4 +114,94 @@ Before marking any Work Queue item as "Done":
 
 ---
 
+## SOP-004: Spike Tests with Production Environment
+
+**Effective:** 2026-02-02
+**Scope:** All integration tests, spike tests, and workflow verification
+
+### Rule
+
+**Spike tests MUST run with production environment variables to catch integration bugs.**
+
+Running tests without proper environment variables has repeatedly caused bugs to slip through:
+- Notion API calls fail silently or with misleading errors
+- Optional fields appear to work but fail in production
+- Token/credential issues masked as "null returns"
+
+### Process
+
+1. **Create spike test** — `test/[feature]-spike.ts`
+2. **Load environment** — Use `.env` or explicit env loading
+3. **Run with env** — Execute using production credentials
+4. **Verify real integrations** — Notion, APIs should actually work
+
+### Running Spike Tests
+
+**Windows (PowerShell):**
+```powershell
+cd apps/telegram
+$env:NOTION_API_KEY = (Get-Content .env | Select-String "NOTION_API_KEY" | ForEach-Object { $_.Line -replace 'NOTION_API_KEY=','' })
+bun test/my-spike.ts
+```
+
+**Windows (One-liner with .env):**
+```powershell
+cd apps/telegram; foreach ($line in Get-Content .env) { if ($line -match "^([^=]+)=(.*)$") { [Environment]::SetEnvironmentVariable($matches[1], $matches[2]) } }; bun test/my-spike.ts
+```
+
+**Or use the npm script (recommended):**
+```bash
+cd apps/telegram
+bun run spike test/my-spike.ts
+```
+
+### Spike Test Template
+
+```typescript
+/**
+ * Spike Test: [Feature] Verification
+ *
+ * Run: bun run spike test/[feature]-spike.ts
+ */
+
+// Verify environment is loaded
+if (!process.env.NOTION_API_KEY) {
+  console.error('❌ NOTION_API_KEY not set. Load .env first.');
+  process.exit(1);
+}
+
+// ... test code
+```
+
+### What to Verify
+
+| Integration | What to Check |
+|-------------|---------------|
+| **Notion** | Create/read entries actually work, not just "no errors" |
+| **Telegram** | Keyboard callbacks route correctly |
+| **Claude/Gemini** | API calls return expected format |
+| **External APIs** | Real responses, not mocked |
+
+### Acceptance Criteria
+
+For features with external integrations:
+
+```markdown
+### Acceptance Criteria
+
+- [ ] Spike test created
+- [ ] **Spike test passes with production env** ← REQUIRED
+- [ ] All API calls verified (not just code paths)
+- [ ] Error handling tested with real responses
+```
+
+### Failure Indicators
+
+If you see these in spike tests, **STOP** — the feature is broken:
+- `API token is invalid` — Wrong/missing NOTION_API_KEY
+- `returned NULL` — Integration failure, not just missing optional field
+- `object_not_found` — Wrong database ID (check CLAUDE.md canonical IDs)
+
+---
+
 *SOPs are living documents. Update as patterns emerge.*

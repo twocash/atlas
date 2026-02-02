@@ -27,6 +27,35 @@ let lastFeedCheck = 0;
 const FEED_CHECK_INTERVAL = 60000; // Re-check every 60 seconds
 
 /**
+ * Strip Markdown formatting for Notion plain text
+ * Notion rich_text doesn't render Markdown - it shows raw asterisks
+ */
+function stripMarkdown(text: string): string {
+  return text
+    .replace(/\*\*([^*]+)\*\*/g, '$1')     // Bold **text**
+    .replace(/\*([^*]+)\*/g, '$1')          // Italic *text*
+    .replace(/__([^_]+)__/g, '$1')          // Bold __text__
+    .replace(/_([^_]+)_/g, '$1')            // Italic _text_
+    .replace(/`([^`]+)`/g, '$1')            // Inline code `text`
+    .replace(/```[\s\S]*?```/g, '')         // Code blocks
+    .replace(/#+\s+/g, '')                  // Headers
+    .replace(/\[([^\]]+)\]\([^)]+\)/g, '$1') // Links [text](url)
+    .replace(/<binary data[^>]*>/gi, '')    // Binary artifacts
+    .replace(/\\([*_`#\[\]])/g, '$1')       // Escaped chars
+    .trim();
+}
+
+/**
+ * Clean and truncate text for Notion blocks
+ * Notion has a 2000 char limit per rich_text block
+ */
+function prepareForNotion(text: string, maxLength: number = 2000): string {
+  const cleaned = stripMarkdown(text);
+  if (cleaned.length <= maxLength) return cleaned;
+  return cleaned.substring(0, maxLength - 3) + '...';
+}
+
+/**
  * Verify database access on startup or after failures
  */
 export async function verifyDatabaseAccess(): Promise<{
@@ -93,6 +122,35 @@ export interface AuditEntry {
 
   // Token tracking
   tokenCount?: number;
+
+  // URL & Content Analysis (Universal Content Analysis)
+  url?: string;                // Original source URL
+  urlTitle?: string;           // Page/Post title
+  urlDomain?: string;          // e.g., "threads.net", "github.com"
+  urlDescription?: string;     // Meta description or post snippet
+  contentAuthor?: string;      // Author/Handle for social media
+  extractionMethod?: 'Fetch' | 'Browser' | 'Gemini';  // Capitalized to match Notion options
+
+  // Context Injection: Structured payload for future re-analysis
+  // Stores full extracted text/metadata for Progressive Learning
+  contentPayload?: string;
+
+  // Analysis Content: Rich analysis to write to Feed page body
+  // This makes content searchable, referenceable, and actionable
+  analysisContent?: {
+    summary?: string;        // Brief summary of the content
+    fullText?: string;       // OCR text, article body, transcript, etc.
+    keyPoints?: string[];    // Extracted key points or insights
+    suggestedActions?: string[];  // What could be done with this
+    metadata?: Record<string, string>;  // Source, author, date, etc.
+  };
+
+  // Pattern Learning (Universal Content Analysis - Classify First)
+  contentType?: 'image' | 'document' | 'url' | 'video' | 'audio';  // What was shared
+  contentSource?: string;  // Domain or media subtype (threads.net, pdf, screenshot)
+  classificationConfirmed?: boolean;  // Was this human-verified?
+  classificationAdjusted?: boolean;   // Did user change the suggestion?
+  originalSuggestion?: string;        // What Atlas initially suggested
 }
 
 export interface AuditResult {
@@ -173,6 +231,72 @@ async function createFeedEntry(entry: AuditEntry): Promise<{ id: string; url: st
     // Use the actual URL from Notion API (includes workspace context)
     const url = (response as { url?: string }).url || `https://notion.so/${response.id.replace(/-/g, '')}`;
     logger.debug('Feed entry created', { id: response.id, url });
+
+    // Try to add optional fields (non-fatal if properties don't exist yet)
+    // These are added in a separate update to prevent core entry creation from failing
+    const optionalProps: Record<string, unknown> = {};
+
+    // URL & Content Analysis fields (Universal Content Analysis)
+    if (entry.url) {
+      optionalProps['Source URL'] = { url: entry.url };
+    }
+    if (entry.urlTitle) {
+      optionalProps['URL Title'] = { rich_text: [{ text: { content: entry.urlTitle.substring(0, 2000) } }] };
+    }
+    if (entry.urlDomain) {
+      optionalProps['Domain'] = { rich_text: [{ text: { content: entry.urlDomain } }] };
+    }
+    if (entry.contentAuthor) {
+      optionalProps['Content Author'] = { rich_text: [{ text: { content: entry.contentAuthor } }] };
+    }
+    if (entry.extractionMethod) {
+      optionalProps['Extraction Method'] = { select: { name: entry.extractionMethod } };
+    }
+    if (entry.contentPayload) {
+      optionalProps['Context Payload'] = { rich_text: [{ text: { content: entry.contentPayload.substring(0, 2000) } }] };
+    }
+
+    // Pattern Learning fields
+    if (entry.contentType) {
+      optionalProps['Content Type'] = { select: { name: entry.contentType } };
+    }
+    if (entry.contentSource) {
+      optionalProps['Content Source'] = { rich_text: [{ text: { content: entry.contentSource } }] };
+    }
+    if (entry.classificationConfirmed !== undefined) {
+      optionalProps['Classification Confirmed'] = { checkbox: entry.classificationConfirmed };
+    }
+    if (entry.classificationAdjusted !== undefined) {
+      optionalProps['Classification Adjusted'] = { checkbox: entry.classificationAdjusted };
+    }
+    if (entry.originalSuggestion) {
+      optionalProps['Original Suggestion'] = { rich_text: [{ text: { content: entry.originalSuggestion } }] };
+    }
+
+    // Update with optional fields if any exist
+    if (Object.keys(optionalProps).length > 0) {
+      try {
+        await notion.pages.update({
+          page_id: response.id,
+          properties: optionalProps as Parameters<typeof notion.pages.update>[0]['properties'],
+        });
+        logger.debug('Optional fields added to Feed entry', { id: response.id, fieldCount: Object.keys(optionalProps).length });
+      } catch (optionalError) {
+        // Non-fatal: some optional properties may not exist in Notion schema
+        // Core entry was created successfully, just log the warning
+        logger.warn('Some optional Feed fields not added (properties may not exist in Notion)', {
+          id: response.id,
+          error: optionalError instanceof Error ? optionalError.message : String(optionalError),
+          attemptedFields: Object.keys(optionalProps),
+        });
+      }
+    }
+
+    // Append analysis content to page body if provided
+    if (entry.analysisContent) {
+      await appendAnalysisToPage(response.id, entry.analysisContent, entry);
+    }
+
     return { id: response.id, url };
   } catch (error) {
     logger.error('Failed to create Feed entry', { error, entry: entry.entry });
@@ -181,7 +305,233 @@ async function createFeedEntry(entry: AuditEntry): Promise<{ id: string; url: st
 }
 
 /**
+ * Append analysis content to a Notion page as blocks
+ *
+ * This writes the analysis to the page body so it's:
+ * - Searchable in Notion
+ * - Referenceable for future conversations
+ * - Actionable for pattern learning
+ */
+async function appendAnalysisToPage(
+  pageId: string,
+  analysis: NonNullable<AuditEntry['analysisContent']>,
+  entry: AuditEntry
+): Promise<void> {
+  try {
+    const blocks: Array<{
+      object: 'block';
+      type: string;
+      [key: string]: unknown;
+    }> = [];
+
+    // Add a divider first
+    blocks.push({
+      object: 'block',
+      type: 'divider',
+      divider: {},
+    });
+
+    // Add analysis header
+    blocks.push({
+      object: 'block',
+      type: 'heading_2',
+      heading_2: {
+        rich_text: [{ type: 'text', text: { content: 'Analysis' } }],
+      },
+    });
+
+    // Add summary if present (strip markdown for Notion)
+    if (analysis.summary) {
+      blocks.push({
+        object: 'block',
+        type: 'callout',
+        callout: {
+          rich_text: [{ type: 'text', text: { content: prepareForNotion(analysis.summary) } }],
+          icon: { type: 'emoji', emoji: '📋' },
+        },
+      });
+    }
+
+    // Add metadata section if present
+    if (analysis.metadata && Object.keys(analysis.metadata).length > 0) {
+      blocks.push({
+        object: 'block',
+        type: 'heading_3',
+        heading_3: {
+          rich_text: [{ type: 'text', text: { content: 'Source Info' } }],
+        },
+      });
+
+      for (const [key, value] of Object.entries(analysis.metadata)) {
+        if (value) {
+          blocks.push({
+            object: 'block',
+            type: 'bulleted_list_item',
+            bulleted_list_item: {
+              rich_text: [{ type: 'text', text: { content: `${key}: ${value}` } }],
+            },
+          });
+        }
+      }
+    }
+
+    // Add key points if present
+    if (analysis.keyPoints && analysis.keyPoints.length > 0) {
+      blocks.push({
+        object: 'block',
+        type: 'heading_3',
+        heading_3: {
+          rich_text: [{ type: 'text', text: { content: 'Key Points' } }],
+        },
+      });
+
+      for (const point of analysis.keyPoints) {
+        blocks.push({
+          object: 'block',
+          type: 'bulleted_list_item',
+          bulleted_list_item: {
+            rich_text: [{ type: 'text', text: { content: stripMarkdown(point) } }],
+          },
+        });
+      }
+    }
+
+    // Add suggested actions if present
+    if (analysis.suggestedActions && analysis.suggestedActions.length > 0) {
+      blocks.push({
+        object: 'block',
+        type: 'heading_3',
+        heading_3: {
+          rich_text: [{ type: 'text', text: { content: 'Suggested Actions' } }],
+        },
+      });
+
+      for (const action of analysis.suggestedActions) {
+        blocks.push({
+          object: 'block',
+          type: 'to_do',
+          to_do: {
+            rich_text: [{ type: 'text', text: { content: action } }],
+            checked: false,
+          },
+        });
+      }
+    }
+
+    // Add full text content if present (truncated to avoid API limits)
+    if (analysis.fullText) {
+      blocks.push({
+        object: 'block',
+        type: 'heading_3',
+        heading_3: {
+          rich_text: [{ type: 'text', text: { content: 'Content' } }],
+        },
+      });
+
+      // Split into chunks if too long (Notion has 2000 char limit per block)
+      const MAX_BLOCK_LENGTH = 1900;
+      const chunks = splitTextIntoChunks(analysis.fullText, MAX_BLOCK_LENGTH);
+
+      for (const chunk of chunks.slice(0, 10)) { // Max 10 blocks to avoid API limits
+        blocks.push({
+          object: 'block',
+          type: 'paragraph',
+          paragraph: {
+            rich_text: [{ type: 'text', text: { content: chunk } }],
+          },
+        });
+      }
+
+      if (chunks.length > 10) {
+        blocks.push({
+          object: 'block',
+          type: 'paragraph',
+          paragraph: {
+            rich_text: [{
+              type: 'text',
+              text: { content: `[... ${chunks.length - 10} more sections truncated ...]` },
+              annotations: { italic: true, color: 'gray' },
+            }],
+          },
+        });
+      }
+    }
+
+    // Add source URL if present
+    if (entry.url) {
+      blocks.push({
+        object: 'block',
+        type: 'heading_3',
+        heading_3: {
+          rich_text: [{ type: 'text', text: { content: 'Source' } }],
+        },
+      });
+
+      blocks.push({
+        object: 'block',
+        type: 'bookmark',
+        bookmark: {
+          url: entry.url,
+        },
+      });
+    }
+
+    // Append blocks to page
+    if (blocks.length > 0) {
+      await notion.blocks.children.append({
+        block_id: pageId,
+        children: blocks as Parameters<typeof notion.blocks.children.append>[0]['children'],
+      });
+
+      logger.info('Analysis content appended to Feed page', {
+        pageId,
+        blockCount: blocks.length,
+        hasSummary: !!analysis.summary,
+        hasFullText: !!analysis.fullText,
+        keyPointCount: analysis.keyPoints?.length || 0,
+      });
+    }
+  } catch (error) {
+    // Non-fatal: page was created, just couldn't add analysis blocks
+    logger.warn('Failed to append analysis to Feed page', {
+      pageId,
+      error: error instanceof Error ? error.message : String(error),
+    });
+  }
+}
+
+/**
+ * Split text into chunks of max length, trying to break at sentence boundaries
+ */
+function splitTextIntoChunks(text: string, maxLength: number): string[] {
+  const chunks: string[] = [];
+  let remaining = text;
+
+  while (remaining.length > 0) {
+    if (remaining.length <= maxLength) {
+      chunks.push(remaining);
+      break;
+    }
+
+    // Try to find a good break point (sentence end)
+    let breakPoint = remaining.lastIndexOf('. ', maxLength);
+    if (breakPoint === -1 || breakPoint < maxLength / 2) {
+      breakPoint = remaining.lastIndexOf(' ', maxLength);
+    }
+    if (breakPoint === -1) {
+      breakPoint = maxLength;
+    }
+
+    chunks.push(remaining.substring(0, breakPoint + 1).trim());
+    remaining = remaining.substring(breakPoint + 1).trim();
+  }
+
+  return chunks;
+}
+
+/**
  * Create Work Queue entry in Notion with link back to Feed
+ * Includes source URL if available for quick reference
  */
 async function createWorkQueueEntry(
   entry: AuditEntry,
@@ -245,16 +595,148 @@ async function createWorkQueueEntry(
             rich_text: [{ text: { content: entry.workType } }],
           },
         }),
+        // Source Link for quick access to original URL
+        ...(entry.url && {
+          'Source Link': { url: entry.url },
+        }),
       },
     });
 
     // Use the actual URL from Notion API (includes workspace context)
     const url = (response as { url?: string }).url || `https://notion.so/${response.id.replace(/-/g, '')}`;
     logger.debug('Work Queue entry created', { id: response.id, feedId, url });
+
+    // Append analysis content to Work Queue page body if provided
+    // This makes the task actionable with full context
+    if (entry.analysisContent) {
+      await appendAnalysisToWorkQueue(response.id, entry.analysisContent, entry);
+    }
+
     return { id: response.id, url };
   } catch (error) {
     logger.error('Failed to create Work Queue entry', { error, entry: entry.entry });
     throw error;
+  }
+}
+
+/**
+ * Append analysis content to a Work Queue page
+ *
+ * Focused on actionable context for task execution
+ */
+async function appendAnalysisToWorkQueue(
+  pageId: string,
+  analysis: NonNullable<AuditEntry['analysisContent']>,
+  entry: AuditEntry
+): Promise<void> {
+  try {
+    const blocks: Array<{
+      object: 'block';
+      type: string;
+      [key: string]: unknown;
+    }> = [];
+
+    // Add context header
+    blocks.push({
+      object: 'block',
+      type: 'heading_2',
+      heading_2: {
+        rich_text: [{ type: 'text', text: { content: 'Context' } }],
+      },
+    });
+
+    // Add summary/analysis as callout (strip markdown for Notion)
+    if (analysis.summary) {
+      blocks.push({
+        object: 'block',
+        type: 'callout',
+        callout: {
+          rich_text: [{ type: 'text', text: { content: prepareForNotion(analysis.summary) } }],
+          icon: { type: 'emoji', emoji: '📝' },
+        },
+      });
+    }
+
+    // Add key points as a quick reference
+    if (analysis.keyPoints && analysis.keyPoints.length > 0) {
+      blocks.push({
+        object: 'block',
+        type: 'heading_3',
+        heading_3: {
+          rich_text: [{ type: 'text', text: { content: 'Key Points' } }],
+        },
+      });
+
+      for (const point of analysis.keyPoints.slice(0, 5)) {
+        blocks.push({
+          object: 'block',
+          type: 'bulleted_list_item',
+          bulleted_list_item: {
+            rich_text: [{ type: 'text', text: { content: stripMarkdown(point) } }],
+          },
+        });
+      }
+    }
+
+    // Add suggested actions as to-dos (the main work items)
+    if (analysis.suggestedActions && analysis.suggestedActions.length > 0) {
+      blocks.push({
+        object: 'block',
+        type: 'heading_3',
+        heading_3: {
+          rich_text: [{ type: 'text', text: { content: 'Tasks' } }],
+        },
+      });
+
+      for (const action of analysis.suggestedActions) {
+        blocks.push({
+          object: 'block',
+          type: 'to_do',
+          to_do: {
+            rich_text: [{ type: 'text', text: { content: action } }],
+            checked: false,
+          },
+        });
+      }
+    }
+
+    // Add source URL bookmark
+    if (entry.url) {
+      blocks.push({
+        object: 'block',
+        type: 'heading_3',
+        heading_3: {
+          rich_text: [{ type: 'text', text: { content: 'Source' } }],
+        },
+      });
+
+      blocks.push({
+        object: 'block',
+        type: 'bookmark',
+        bookmark: {
+          url: entry.url,
+        },
+      });
+    }
+
+    // Append blocks to Work Queue page
+    if (blocks.length > 0) {
+      await notion.blocks.children.append({
+        block_id: pageId,
+        children: blocks as Parameters<typeof notion.blocks.children.append>[0]['children'],
+      });
+
+      logger.info('Analysis content appended to Work Queue page', {
+        pageId,
+        blockCount: blocks.length,
+      });
+    }
+  } catch (error) {
+    // Non-fatal: page was created, just couldn't add context
+    logger.warn('Failed to append analysis to Work Queue page', {
+      pageId,
+      error: error instanceof Error ? error.message : String(error),
+    });
   }
 }
 
@@ -306,7 +788,23 @@ export async function createAuditTrail(entry: AuditEntry): Promise<AuditResult |
       workQueueUrl: workQueue.url,
     };
   } catch (error) {
-    logger.error('Failed to create audit trail', { error });
+    // Log detailed error for debugging
+    const errorMessage = error instanceof Error ? error.message : String(error);
+    const errorBody = (error as { body?: string })?.body;
+
+    logger.error('Failed to create audit trail', {
+      error: errorMessage,
+      errorBody,
+      entry: entry.entry,
+      pillar: entry.pillar,
+      requestType: entry.requestType,
+    });
+
+    // If the error is about unknown property, provide guidance
+    if (errorMessage.includes('property') || errorBody?.includes('property')) {
+      logger.warn('Notion property error - some properties may not exist in the database schema');
+    }
+
     return null;
   }
 }

@@ -553,10 +553,25 @@ async function processDocument(
     };
   }
 
-  // For other documents (docx, xlsx), try to describe
+  // For image files sent as documents (PNG, JPG, etc.), use Gemini Vision
+  if (mimeType.startsWith('image/') ||
+      attachment.fileName?.toLowerCase().endsWith('.png') ||
+      attachment.fileName?.toLowerCase().endsWith('.jpg') ||
+      attachment.fileName?.toLowerCase().endsWith('.jpeg') ||
+      attachment.fileName?.toLowerCase().endsWith('.gif') ||
+      attachment.fileName?.toLowerCase().endsWith('.webp')) {
+    logger.info('Document is an image, routing to Gemini Vision', {
+      fileName: attachment.fileName,
+      mimeType,
+    });
+    return await processImageDocument(buffer, attachment, mimeType);
+  }
+
+  // For other documents (docx, xlsx, etc.), describe what we received
+  // These need specialized parsers that we don't have yet
   return {
     type: 'document',
-    description: `Document received: ${attachment.fileName} (${formatFileSize(attachment.fileSize || 0)}). Format: ${mimeType}. Consider downloading for full analysis.`,
+    description: `Document received: ${attachment.fileName} (${formatFileSize(attachment.fileSize || 0)}). Format: ${mimeType}. This file format requires manual review - download to analyze.`,
     metadata: {
       fileName: attachment.fileName,
       mimeType,
@@ -564,6 +579,87 @@ async function processDocument(
     },
     processingTime: 0,
   };
+}
+
+/**
+ * Process image file sent as document with Gemini Vision
+ */
+async function processImageDocument(
+  buffer: Buffer,
+  attachment: AttachmentInfo,
+  mimeType: string
+): Promise<MediaContext> {
+  const client = getGemini();
+
+  // Normalize MIME type for Gemini
+  const geminiMimeType = mimeType.startsWith('image/')
+    ? mimeType as 'image/jpeg' | 'image/png' | 'image/gif' | 'image/webp'
+    : 'image/png'; // Default to PNG for unknown image types
+
+  // Build contextual prompt
+  let prompt = 'Analyze this image/document thoroughly. Describe:\n';
+  prompt += '1. What type of content this is (screenshot, diagram, document, photo, etc.)\n';
+  prompt += '2. Extract ALL visible text (OCR) - be comprehensive\n';
+  prompt += '3. Key information, data points, or actionable items\n';
+  prompt += '4. If it\'s a research paper/article, summarize the main points\n';
+  prompt += '5. If it\'s a UI/screenshot, describe what interface or app is shown\n';
+  prompt += '6. Any relevant metadata (dates, names, numbers, URLs)\n\n';
+  prompt += 'Be thorough - this content will be used to create actionable tasks.';
+
+  if (attachment.caption) {
+    prompt += `\n\nUser provided context: "${attachment.caption}"`;
+  }
+
+  try {
+    const response = await client.models.generateContent({
+      model: 'gemini-2.0-flash',
+      contents: [
+        {
+          role: 'user',
+          parts: [
+            {
+              inlineData: {
+                mimeType: geminiMimeType,
+                data: buffer.toString('base64'),
+              },
+            },
+            { text: prompt },
+          ],
+        },
+      ],
+    });
+
+    const description = response.text || 'Image document processed but no description generated.';
+
+    logger.info('Image document analyzed with Gemini', {
+      fileName: attachment.fileName,
+      descriptionLength: description.length,
+    });
+
+    return {
+      type: 'document', // Keep as document type since that's how it was sent
+      description,
+      metadata: {
+        fileName: attachment.fileName,
+        mimeType,
+        fileSize: attachment.fileSize,
+        analyzedAsImage: true,
+      },
+      processingTime: 0,
+    };
+  } catch (error) {
+    logger.error('Gemini image document processing failed', { error, fileName: attachment.fileName });
+    return {
+      type: 'document',
+      description: `Image document received: ${attachment.fileName} (${formatFileSize(attachment.fileSize || 0)}). Vision analysis failed - please try again or download to review manually.`,
+      metadata: {
+        fileName: attachment.fileName,
+        mimeType,
+        fileSize: attachment.fileSize,
+      },
+      processingTime: 0,
+    };
+  }
 }
 
 /**
