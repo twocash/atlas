@@ -153,6 +153,7 @@ interface GeminiResponse {
   text: string;
   citations: Array<{ url: string; title: string }>;
   groundingMetadata?: unknown;
+  groundingUsed?: boolean; // True if grounding evidence was found
 }
 
 let _geminiClient: GeminiClient | null = null;
@@ -181,9 +182,11 @@ async function getGeminiClient(): Promise<GeminiClient> {
       // New SDK: @google/genai
       const { GoogleGenAI } = genaiModule;
       const ai = new GoogleGenAI({ apiKey });
+      console.log("[Research] Using NEW SDK (@google/genai)");
 
       _geminiClient = {
         generateContent: async (prompt: string, maxTokens: number): Promise<GeminiResponse> => {
+          console.log("[Research] Calling Gemini with Google Search grounding...");
           const response = await ai.models.generateContent({
             model: "gemini-2.0-flash",
             contents: prompt,
@@ -194,8 +197,22 @@ async function getGeminiClient(): Promise<GeminiClient> {
           });
 
           // Extract grounding metadata from response
-          const groundingMetadata = response.candidates?.[0]?.groundingMetadata;
+          const candidate = response.candidates?.[0];
+          const groundingMetadata = candidate?.groundingMetadata;
+
+          // DEBUG: Log full grounding structure
+          console.log("[Research] Grounding metadata keys:", groundingMetadata ? Object.keys(groundingMetadata) : "null");
+          console.log("[Research] Candidate finishReason:", candidate?.finishReason);
+
           const groundingChunks = (groundingMetadata as any)?.groundingChunks || [];
+          const searchEntryPoint = (groundingMetadata as any)?.searchEntryPoint;
+          const webSearchQueries = (groundingMetadata as any)?.webSearchQueries || [];
+
+          console.log("[Research] Web search queries:", webSearchQueries);
+          console.log("[Research] Grounding chunks count:", groundingChunks.length);
+          if (searchEntryPoint) {
+            console.log("[Research] Search entry point present:", !!searchEntryPoint.renderedContent);
+          }
 
           const citations: Array<{ url: string; title: string }> = [];
           for (const chunk of groundingChunks) {
@@ -207,10 +224,22 @@ async function getGeminiClient(): Promise<GeminiClient> {
             }
           }
 
+          // Check if grounding was actually used (Gemini 2.0 has different structure)
+          const groundingSupports = (groundingMetadata as any)?.groundingSupports || [];
+
+          // Gemini 2.0 uses groundingSupports instead of groundingChunks
+          // If groundingSupports exists, grounding DID run even if we don't have URLs
+          if (groundingSupports.length > 0) {
+            console.log("[Research] Grounding confirmed via groundingSupports:", groundingSupports.length, "segments");
+          } else if (webSearchQueries.length === 0 && citations.length === 0) {
+            console.warn("[Research] WARNING: No grounding evidence found - results may be from training data!");
+          }
+
           return {
             text: response.text || "",
             citations,
             groundingMetadata,
+            groundingUsed: groundingSupports.length > 0 || citations.length > 0,
           };
         },
       };
@@ -218,9 +247,11 @@ async function getGeminiClient(): Promise<GeminiClient> {
       // Legacy SDK: @google/generative-ai
       const { GoogleGenerativeAI } = genaiModule;
       const genAI = new GoogleGenerativeAI(apiKey);
+      console.log("[Research] Using LEGACY SDK (@google/generative-ai)");
 
       _geminiClient = {
         generateContent: async (prompt: string, maxTokens: number): Promise<GeminiResponse> => {
+          console.log("[Research] Calling Gemini with Google Search grounding (legacy)...");
           // For legacy SDK with Gemini 2.0, use google_search (not googleSearchRetrieval)
           const model = genAI.getGenerativeModel({
             model: "gemini-2.0-flash",
@@ -234,9 +265,19 @@ async function getGeminiClient(): Promise<GeminiClient> {
           const response = result.response;
 
           // Extract grounding citations
-          const groundingMetadata = response.candidates?.[0]?.groundingMetadata;
+          const candidate = response.candidates?.[0];
+          const groundingMetadata = candidate?.groundingMetadata;
+
+          // DEBUG: Log full grounding structure
+          console.log("[Research] Grounding metadata keys:", groundingMetadata ? Object.keys(groundingMetadata as object) : "null");
+          console.log("[Research] Candidate finishReason:", candidate?.finishReason);
+
           const groundingChunks = (groundingMetadata as any)?.groundingChunks ||
                                   (groundingMetadata as any)?.groundingChuncks || []; // Typo in some SDK versions
+          const webSearchQueries = (groundingMetadata as any)?.webSearchQueries || [];
+
+          console.log("[Research] Web search queries:", webSearchQueries);
+          console.log("[Research] Grounding chunks count:", groundingChunks.length);
 
           const citations: Array<{ url: string; title: string }> = [];
           for (const chunk of groundingChunks) {
@@ -248,10 +289,21 @@ async function getGeminiClient(): Promise<GeminiClient> {
             }
           }
 
+          // Check if grounding was actually used (Gemini 2.0 has different structure)
+          const groundingSupports = (groundingMetadata as any)?.groundingSupports || [];
+
+          // Gemini 2.0 uses groundingSupports instead of groundingChunks
+          if (groundingSupports.length > 0) {
+            console.log("[Research] Grounding confirmed via groundingSupports:", groundingSupports.length, "segments");
+          } else if (webSearchQueries.length === 0 && citations.length === 0) {
+            console.warn("[Research] WARNING: No grounding evidence found - results may be from training data!");
+          }
+
           return {
             text: response.text(),
             citations,
             groundingMetadata,
+            groundingUsed: groundingSupports.length > 0 || citations.length > 0,
           };
         },
       };
@@ -389,11 +441,26 @@ Provide your response in this exact JSON format:
   "findings": [
     {
       "claim": "Specific fact or insight discovered",
-      "source": "Name of the source",
-      "url": "https://source-url.com"${depth === "deep" ? ',\n      "author": "Author Name if available",\n      "date": "Publication date if available"' : ""}
+      "source": "Name of the publication or website",
+      "url": "<THE_ACTUAL_URL_FROM_YOUR_SEARCH>"${depth === "deep" ? ',\n      "author": "Author Name if available",\n      "date": "Publication date if available"' : ""}
     }
   ],
-  "sources": ["https://url1.com", "https://url2.com"]${depth === "deep" ? ',\n  "bibliography": ["Chicago-style citation 1", "Chicago-style citation 2"]' : ""}
+  "sources": ["<REAL_URL_1>", "<REAL_URL_2>", "..."]${depth === "deep" ? ',\n  "bibliography": ["Chicago-style citation 1", "Chicago-style citation 2"]' : ""}
+}
+\`\`\`
+
+## CRITICAL: Source Integrity
+
+**EVERY URL must be a real URL from your Google Search results.**
+- Do NOT use placeholder URLs like "url1.com", "example.com", or "source-url.com"
+- Do NOT fabricate URLs - only include URLs that Google Search actually returned
+- If Google Search returns NO relevant results for this query, respond with:
+\`\`\`json
+{
+  "error": "NO_SEARCH_RESULTS",
+  "summary": "Google Search did not return relevant results for this query. The topic may be too niche, misspelled, or not well-indexed.",
+  "findings": [],
+  "sources": []
 }
 \`\`\`
 
@@ -557,6 +624,28 @@ export async function executeResearch(
       depth
     );
 
+    // CHECK: Did parsing detect hallucination?
+    const isHallucinated = researchResult.summary.startsWith("Research FAILED:");
+    if (isHallucinated) {
+      console.error("[Research Agent] Hallucination detected, returning failure");
+      return {
+        success: false,
+        output: {
+          ...researchResult,
+          rawResponse: response.text,
+          hallucinationDetected: true,
+        },
+        summary: researchResult.summary,
+        artifacts: [],
+        metrics: {
+          durationMs: Date.now() - startTime,
+          apiCalls,
+          tokensUsed: Math.ceil(prompt.length / 4) + Math.ceil(response.text.length / 4),
+          retries: 0,
+        },
+      };
+    }
+
     // Validate source count for deep research
     if (depth === "deep" && researchResult.sources.length < depthCfg.minSources) {
       console.warn(
@@ -610,6 +699,65 @@ export async function executeResearch(
 }
 
 /**
+ * Validate that sources are real URLs, not template placeholders
+ * Catches hallucination when Gemini's grounding fails
+ */
+function detectHallucination(
+  sources: string[],
+  citations: Array<{ url: string; title: string }>,
+  findings: Array<{ url?: string; source?: string }>
+): { isHallucinated: boolean; reason: string } {
+  // Pattern 1: Template placeholder URLs
+  const placeholderPatterns = [
+    /^https?:\/\/url\d+\.com/i,           // url1.com, url2.com
+    /^https?:\/\/source-url\.com/i,       // source-url.com
+    /^https?:\/\/example\.com/i,          // example.com (unless intentional)
+    /^https?:\/\/.*placeholder/i,         // anything with "placeholder"
+  ];
+
+  const placeholderUrls = sources.filter(url =>
+    placeholderPatterns.some(pattern => pattern.test(url))
+  );
+
+  if (placeholderUrls.length > 0) {
+    return {
+      isHallucinated: true,
+      reason: `Template placeholder URLs detected: ${placeholderUrls.slice(0, 3).join(', ')}`,
+    };
+  }
+
+  // Pattern 2: Zero grounding citations + generic sources
+  if (citations.length === 0) {
+    const hasUnspecifiedSources = findings.some(f =>
+      f.source?.toLowerCase().includes('unspecified') ||
+      f.url === 'unavailable' ||
+      f.url === ''
+    );
+
+    if (hasUnspecifiedSources) {
+      return {
+        isHallucinated: true,
+        reason: 'Google Search grounding returned 0 citations and findings have unspecified sources',
+      };
+    }
+  }
+
+  // Pattern 3: All findings have identical placeholder sources
+  const uniqueSourceUrls = new Set(
+    findings.map(f => f.url).filter(url => url && url.length > 0)
+  );
+
+  if (findings.length > 3 && uniqueSourceUrls.size === 0) {
+    return {
+      isHallucinated: true,
+      reason: 'All findings have empty or missing URLs despite research completing',
+    };
+  }
+
+  return { isHallucinated: false, reason: '' };
+}
+
+/**
  * Parse Gemini's response into structured ResearchResult
  *
  * HANDLES: Malformed JSON from Gemini (incomplete arrays, multiple JSON blocks, etc.)
@@ -623,6 +771,7 @@ function parseResearchResponse(
 ): ResearchResult {
   console.log("[Research] === PARSING RESPONSE ===");
   console.log("[Research] Raw text length:", text.length);
+  console.log("[Research] Grounding citations:", citations.length);
 
   // STRATEGY 1: Try to parse JSON first (most reliable if it works)
   let parsedJson: any = null;
@@ -632,10 +781,24 @@ function parseResearchResponse(
     const jsonText = jsonMatch ? jsonMatch[1] : text;
 
     // Try to find and parse the JSON object
-    const jsonObjectMatch = jsonText.match(/\{[\s\S]*"summary"[\s\S]*\}/);
+    const jsonObjectMatch = jsonText.match(/\{[\s\S]*(?:"summary"|"error")[\s\S]*\}/);
     if (jsonObjectMatch) {
       parsedJson = JSON.parse(jsonObjectMatch[0]);
       console.log("[Research] Successfully parsed JSON, summary length:", parsedJson.summary?.length || 0);
+
+      // CHECK: Did the model report an error (no search results)?
+      if (parsedJson.error === "NO_SEARCH_RESULTS") {
+        console.error("[Research] Model reported NO_SEARCH_RESULTS");
+        // ALWAYS start with "Research FAILED:" to ensure failure detection works
+        return {
+          summary: `Research FAILED: ${parsedJson.summary || "Google Search returned no relevant results for this query."}`,
+          findings: [],
+          sources: [],
+          query: config.query,
+          focus: config.focus,
+          depth,
+        };
+      }
     }
   } catch (e) {
     console.log("[Research] JSON parse failed, falling back to regex:", (e as Error).message);
@@ -743,7 +906,22 @@ function parseResearchResponse(
     }
   }
 
-  // If we got a summary, we succeeded
+  // HALLUCINATION CHECK: Validate before returning "success"
+  const hallucinationCheck = detectHallucination(sources, citations, findings);
+  if (hallucinationCheck.isHallucinated) {
+    console.error("[Research] HALLUCINATION DETECTED:", hallucinationCheck.reason);
+    // Return error result instead of fake content
+    return {
+      summary: `Research FAILED: ${hallucinationCheck.reason}. Google Search grounding did not return real results for this query. The topic may be too niche, misspelled, or not well-indexed.`,
+      findings: [],
+      sources: [],
+      query: config.query,
+      focus: config.focus,
+      depth,
+    };
+  }
+
+  // If we got a summary and passed hallucination check, we succeeded
   if (summary.length > 50) {
     console.log("[Research] SUCCESS via regex extraction");
     return {
