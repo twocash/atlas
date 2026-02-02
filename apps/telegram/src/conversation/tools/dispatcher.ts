@@ -47,8 +47,8 @@ export const DISPATCHER_TOOL: Anthropic.Tool = {
       },
       category: {
         type: 'string',
-        enum: ['research', 'dev_bug', 'content'],
-        description: 'research: for deep dives and information gathering. dev_bug: for broken code/tools (routes to Pit Crew). content: for writing/drafting.',
+        enum: ['research', 'dev_bug', 'feature', 'content'],
+        description: 'research: for deep dives and information gathering. dev_bug: for broken code/tools (routes to Pit Crew). feature: for new capabilities/integrations (routes to Pit Crew). content: for writing/drafting.',
       },
       title: {
         type: 'string',
@@ -85,7 +85,7 @@ export async function handleSubmitTicket(
   input: Record<string, unknown>
 ): Promise<{ success: boolean; result: unknown; error?: string }> {
   const reasoning = input.reasoning as string;
-  const category = input.category as 'research' | 'dev_bug' | 'content';
+  const category = input.category as 'research' | 'dev_bug' | 'feature' | 'content';
   const title = input.title as string;
   const description = input.description as string;
   const priority = input.priority as 'P0' | 'P1' | 'P2';
@@ -95,9 +95,10 @@ export async function handleSubmitTicket(
   logger.info('[Dispatcher] Routing ticket', { category, title, priority, requireReview });
   logger.info('[Dispatcher] Reasoning', { reasoning: reasoning.substring(0, 200) });
 
-  // ROUTE 1: Engineering (Pit Crew MCP)
-  if (category === 'dev_bug') {
-    return await routeToPitCrew({ title, description, priority });
+  // ROUTE 1: Engineering (Pit Crew MCP) - bugs AND features
+  if (category === 'dev_bug' || category === 'feature') {
+    const ticketType = category === 'feature' ? 'feature' : 'bug';
+    return await routeToPitCrew({ title, description, priority, ticketType });
   }
 
   // ROUTE 2: Operations (Work Queue / Research Worker)
@@ -120,8 +121,9 @@ async function routeToPitCrew(params: {
   title: string;
   description: string;
   priority: 'P0' | 'P1' | 'P2';
+  ticketType: 'bug' | 'feature';
 }): Promise<{ success: boolean; result: unknown; error?: string }> {
-  const { title, description, priority } = params;
+  const { title, description, priority, ticketType } = params;
 
   // Check if Pit Crew MCP is connected
   const mcpStatus = getMcpStatus();
@@ -130,12 +132,12 @@ async function routeToPitCrew(params: {
   if (!pitCrewStatus || pitCrewStatus.status !== 'connected') {
     logger.warn('[Dispatcher] Pit Crew MCP not connected, falling back to direct Notion');
     // Fallback: Create directly in Dev Pipeline via Notion SDK
-    return await createDirectDevPipelineItem({ title, description, priority });
+    return await createDirectDevPipelineItem({ title, description, priority, ticketType });
   }
 
   try {
     const result = await executeMcpTool('mcp__pit_crew__dispatch_work', {
-      type: 'bug',
+      type: ticketType,
       title,
       context: description,
       priority,
@@ -181,6 +183,7 @@ async function routeToPitCrew(params: {
       };
     }
 
+    const typeLabel = ticketType === 'feature' ? 'Feature' : 'Bug';
     return {
       success: true,
       result: {
@@ -188,7 +191,8 @@ async function routeToPitCrew(params: {
         url: parsed.notion_url,
         status: 'Dispatched',
         handler: 'Pit Crew',
-        message: `Bug dispatched to Pit Crew: ${title}`,
+        type: typeLabel,
+        message: `${typeLabel} dispatched to Pit Crew: ${title}`,
       },
     };
   } catch (err) {
@@ -212,17 +216,21 @@ async function createDirectDevPipelineItem(params: {
   title: string;
   description: string;
   priority: 'P0' | 'P1' | 'P2';
+  ticketType: 'bug' | 'feature';
 }): Promise<{ success: boolean; result: unknown; error?: string }> {
-  const { title, description, priority } = params;
+  const { title, description, priority, ticketType } = params;
 
   try {
     const notion = getNotionClient();
+
+    // Map ticket type to Notion select value
+    const typeLabel = ticketType === 'feature' ? 'Feature' : 'Bug';
 
     const response = await notion.pages.create({
       parent: { database_id: DEV_PIPELINE_DATABASE_ID },
       properties: {
         'Discussion': { title: [{ text: { content: title } }] },
-        'Type': { select: { name: 'Bug' } },
+        'Type': { select: { name: typeLabel } },
         'Priority': { select: { name: priority } },
         'Status': { select: { name: 'Dispatched' } },
         'Requestor': { select: { name: 'Atlas [Telegram]' } },
@@ -241,7 +249,8 @@ async function createDirectDevPipelineItem(params: {
         url,
         status: 'Dispatched',
         handler: 'Pit Crew',
-        message: `Bug created in Dev Pipeline (direct): ${title}`,
+        type: typeLabel,
+        message: `${typeLabel} created in Dev Pipeline (direct): ${title}`,
       },
     };
   } catch (err) {
@@ -288,7 +297,7 @@ async function routeToWorkQueue(params: {
     // Build properties
     const properties: Record<string, unknown> = {
       'Task': { title: [{ text: { content: title } }] },
-      'Status': { status: { name: initialStatus } },
+      'Status': { select: { name: initialStatus } },
       'Priority': { select: { name: priority } },
       'Type': { select: { name: typeMap[category] || 'Research' } },
       'Pillar': { select: { name: pillar } },
