@@ -28,15 +28,10 @@ console.log("NOTION_API_KEY:", process.env.NOTION_API_KEY ? "SET" : "MISSING");
 // Test queries - one should succeed, one should fail
 const TEST_QUERIES = [
   {
-    query: "TypeScript refactoring best practices 2024",
+    query: "GitHub Copilot pricing plans and features 2024",
     expectSuccess: true,
-    reason: "Common topic with many real sources"
+    reason: "Very mainstream topic with tons of real sources"
   },
-  // {
-  //   query: "openclaw agent skills for claude code",
-  //   expectSuccess: false,
-  //   reason: "Gibberish/made-up topic"
-  // }
 ];
 
 async function runSpike() {
