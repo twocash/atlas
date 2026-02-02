@@ -13,11 +13,19 @@
     "test:dispatcher": "bun test test/dispatcher.test.ts",
     "test:e2e": "bun run src/health/test-runner.ts",
     "health": "bun run src/health/test-runner.ts",
+    "preflight:spike": "bun run src/health/critical-path-spike.ts",
     "test:notion": "bun run src/test-notion.ts",
     "test:claude": "bun run src/test-claude.ts",
+    "spike": "powershell -ExecutionPolicy Bypass -File ./run-spike.ps1",
     "validate:schema": "bun run scripts/validate-db-schema.ts",
     "preflight": "bun run scripts/preflight-check.ts",
-    "preflight:full": "bun run scripts/preflight-check.ts && bun test"
+    "preflight:full": "bun run scripts/preflight-check.ts && bun test",
+    "preflight:deploy": "bun run scripts/preflight-check.ts && bun run src/health/critical-path-spike.ts",
+    "wq:analyze": "bun run scripts/work-queue-cleanup.ts --phase=1",
+    "wq:cleanup": "bun run scripts/work-queue-cleanup.ts --all",
+    "wq:cleanup:dry": "bun run scripts/work-queue-cleanup.ts --all --dry-run",
+    "wq:refactor-titles": "bun run scripts/refactor-titles.ts",
+    "wq:refactor-titles:dry": "bun run scripts/refactor-titles.ts --dry-run"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.39.0",
@@ -37,7 +45,8 @@
     "sharp": "^0.33.5",
     "simple-git": "^3.27.0",
     "xlsx": "^0.18.5",
-    "yaml": "^2.3.4"
+    "yaml": "^2.3.4",
+    "zod": "^4.3.6"
   },
   "devDependencies": {
     "@types/bun": "latest",

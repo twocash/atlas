@@ -5,7 +5,7 @@
  * Usage: bun run src/health/test-runner.ts
  */
 
-import { runHealthChecks, formatHealthReport } from './index';
+import { runHealthChecks, formatHealthReport, runCriticalPathSpikes } from './index';
 
 interface TestResult {
   name: string;

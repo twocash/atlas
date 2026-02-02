@@ -8,6 +8,9 @@
 // Export the notion-check module for direct access
 export { checkNotionAccess, formatHealthCheck, ensureNotionAccess } from './notion-check';
 
+// Export the critical path spike tests
+export { runCriticalPathSpikes } from './critical-path-spike';
+
 import { Client } from '@notionhq/client';
 import Anthropic from '@anthropic-ai/sdk';
 import { readFile, access } from 'fs/promises';
