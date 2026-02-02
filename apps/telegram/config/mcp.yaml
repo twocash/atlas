@@ -39,7 +39,7 @@ servers:
     timeout: 30000
     reconnectDelay: 5000
     maxReconnectAttempts: 3
-    disabled: true
+    disabled: true  # PERMANENTLY DISABLED: Claude passes wrong param format (string vs object)
 
   # Example: Add more MCP servers here
   # memory:

@@ -18,10 +18,81 @@ import { getAllTools, executeTool } from './tools';
 import { recordUsage } from './stats';
 import { maybeHandleAsContentShare, triggerMediaConfirmation, triggerInstantClassification } from './content-flow';
 import type { ClassificationResult } from './types';
+import { logAction, isFeatureEnabled } from '../skills';
 
 // Feature flag for content confirmation keyboard (Universal Content Analysis)
 // Enabled by default - set ATLAS_CONTENT_CONFIRM=false to disable
 const CONTENT_CONFIRM_ENABLED = process.env.ATLAS_CONTENT_CONFIRM !== 'false';
+
+/**
+ * ANTI-HALLUCINATION: Fix fabricated Notion URLs in Claude's response
+ *
+ * Claude often ignores EXACT_URL_FOR_USER markers and fabricates similar-looking URLs.
+ * This function:
+ * 1. Extracts actual URLs from tool results
+ * 2. Replaces any fabricated Notion URLs with the real ones
+ * 3. Appends the URL if Claude omitted it entirely
+ */
+function fixHallucinatedUrls(responseText: string, toolContexts: ToolContext[]): string {
+  // Extract actual URLs from tool results (most recent first)
+  const actualUrls: string[] = [];
+  for (let i = toolContexts.length - 1; i >= 0; i--) {
+    const ctx = toolContexts[i];
+    // Tool result structure: { success: boolean; result: unknown; error?: string }
+    const toolResult = ctx.result as { success?: boolean; result?: unknown } | undefined;
+    if (toolResult?.success) {
+      const result = toolResult.result as Record<string, unknown> | undefined;
+      if (result?.url && typeof result.url === 'string') {
+        actualUrls.push(result.url);
+      }
+      if (result?.feedUrl && typeof result.feedUrl === 'string') {
+        actualUrls.push(result.feedUrl);
+      }
+    }
+  }
+
+  if (actualUrls.length === 0) {
+    return responseText; // No URLs to fix
+  }
+
+  // Regex to match Notion URLs (various formats Claude might fabricate)
+  const notionUrlPattern = /https?:\/\/(?:www\.)?notion\.so\/[^\s\)\]>]+/gi;
+
+  const matches = responseText.match(notionUrlPattern);
+
+  // CASE 1: No Notion URLs in response, but tool returned one - append it
+  if (!matches || matches.length === 0) {
+    logger.info('URL MISSING: Claude omitted URL, appending actual', {
+      actualUrls,
+    });
+    // Append the primary URL
+    return `${responseText}\n\n📎 ${actualUrls[0]}`;
+  }
+
+  // CASE 2: Claude included Notion URLs - check if they're real or fabricated
+  const uniqueMatches = [...new Set(matches)];
+  const isHallucinated = uniqueMatches.some(m => !actualUrls.includes(m));
+
+  if (isHallucinated) {
+    logger.warn('HALLUCINATION DETECTED: Fixing fabricated Notion URLs', {
+      claudeSaid: uniqueMatches,
+      actualUrls,
+    });
+
+    // Replace ALL Notion URLs with the primary actual URL
+    // (If multiple tools returned URLs, use the most recent one)
+    let fixedText = responseText;
+    for (const match of uniqueMatches) {
+      if (!actualUrls.includes(match)) {
+        // This is a fabricated URL - replace with actual
+        fixedText = fixedText.split(match).join(actualUrls[0]);
+      }
+    }
+    return fixedText;
+  }
+
+  return responseText; // URLs are correct
+}
 
 // Log feature status on module load
 logger.info('Content confirmation keyboard', { enabled: CONTENT_CONFIRM_ENABLED });
@@ -375,7 +446,12 @@ export async function handleConversation(ctx: Context): Promise<void> {
     const textContent = response.content.find(
       (block): block is Anthropic.TextBlock => block.type === 'text'
     );
-    const responseText = textContent?.text.trim() || "Done.";
+    let responseText = textContent?.text.trim() || "Done.";
+
+    // ANTI-HALLUCINATION: Post-process to fix fabricated URLs
+    // Claude ignores EXACT_URL_FOR_USER markers, so we must replace any Notion URLs
+    // in its response with the actual URLs from tool results
+    responseText = fixHallucinatedUrls(responseText, toolContexts);
 
     // Build version with tool context for conversation history
     // This helps maintain context across turns when tools were used
@@ -447,6 +523,25 @@ export async function handleConversation(ctx: Context): Promise<void> {
     const actionTaken = !!auditResult || toolsUsed.length > 0 || !!mediaContext;
     await setReaction(ctx, actionTaken ? REACTIONS.DONE : REACTIONS.CHAT);
 
+    // Log action for skill pattern detection (Phase 1)
+    // Non-blocking - failures don't affect user experience
+    if (isFeatureEnabled('skillLogging')) {
+      logAction({
+        messageText,
+        pillar: classification.pillar,
+        requestType: classification.requestType,
+        actionType: toolsUsed.length > 0 ? 'tool' : (mediaContext ? 'media' : 'chat'),
+        toolsUsed,
+        userId,
+        confidence: classification.confidence,
+        keywords: classification.keywords,
+        workType: classification.workType,
+        contentType: mediaContext ? mediaContext.type as 'image' | 'document' | 'video' | 'audio' : undefined,
+      }).catch(err => {
+        logger.warn('Skill action logging failed (non-fatal)', { error: err });
+      });
+    }
+
     logger.info('Conversation response sent', {
       userId,
       pillar: classification.pillar,
@@ -455,6 +550,7 @@ export async function handleConversation(ctx: Context): Promise<void> {
       toolIterations: iterations,
       auditCreated: !!auditResult,
       actionTaken,
+      skillLogging: isFeatureEnabled('skillLogging'),
     });
 
   } catch (error) {

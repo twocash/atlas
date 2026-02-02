@@ -19,9 +19,66 @@ import { verifySystemIntegrity } from "./health/integrity";
 import { runVoiceHealthCheck } from "./health/voice-check";
 import { initScheduler, stopScheduler, type ScheduledTask } from "./scheduler";
 import { initMcp, shutdownMcp } from "./mcp";
+import { existsSync, writeFileSync, unlinkSync, readFileSync } from "fs";
+import { join } from "path";
+
+// Process lock file to prevent multiple instances
+const LOCK_FILE = join(process.cwd(), 'data', '.atlas.lock');
+
+function acquireLock(): boolean {
+  try {
+    if (existsSync(LOCK_FILE)) {
+      const content = readFileSync(LOCK_FILE, 'utf-8');
+      const { pid, startedAt } = JSON.parse(content);
+
+      // Check if the process is still running (Unix-style check won't work on Windows)
+      // Instead, check if lock is stale (> 5 minutes old without update)
+      const lockAge = Date.now() - new Date(startedAt).getTime();
+      const STALE_THRESHOLD = 5 * 60 * 1000; // 5 minutes
+
+      if (lockAge < STALE_THRESHOLD) {
+        logger.error('Another Atlas instance is already running!', {
+          existingPid: pid,
+          startedAt,
+          lockAge: `${Math.round(lockAge / 1000)}s`
+        });
+        return false;
+      }
+
+      logger.warn('Stale lock file found, overwriting', { existingPid: pid, lockAge: `${Math.round(lockAge / 1000)}s` });
+    }
+
+    // Write lock file
+    writeFileSync(LOCK_FILE, JSON.stringify({
+      pid: process.pid,
+      startedAt: new Date().toISOString(),
+    }));
+
+    return true;
+  } catch (err) {
+    logger.error('Failed to acquire lock', { error: err });
+    return false;
+  }
+}
+
+function releaseLock(): void {
+  try {
+    if (existsSync(LOCK_FILE)) {
+      unlinkSync(LOCK_FILE);
+    }
+  } catch (err) {
+    logger.warn('Failed to release lock', { error: err });
+  }
+}
 
 async function main() {
   logger.info("Starting Atlas Telegram Bot...");
+
+  // Prevent multiple instances
+  if (!acquireLock()) {
+    logger.error('STARTUP ABORTED: Another instance is running. Kill it first with: taskkill /f /im bun.exe');
+    process.exit(1);
+  }
 
   // Run health checks (exits if critical failures)
   await healthCheckOrDie();
@@ -56,6 +113,7 @@ async function main() {
     stopScheduler();
     await shutdownMcp();
     await bot.stop();
+    releaseLock();
     process.exit(0);
   };
 
