@@ -419,10 +419,19 @@ async function appendResearchResultsToPage(
           parts.push("\n");
         }
 
-        // ALL findings with full detail
-        if (parsed.findings && parsed.findings.length > 0) {
+        // Use RESOLVED URLs from structured output if available
+        // The research agent resolves redirect URLs, but rawResponse has originals
+        const findingsToUse = researchOutput?.findings?.length > 0
+          ? researchOutput.findings
+          : parsed.findings || [];
+        const sourcesToUse = researchOutput?.sources?.length > 0
+          ? researchOutput.sources
+          : parsed.sources || [];
+
+        // ALL findings with full detail (using resolved URLs)
+        if (findingsToUse.length > 0) {
           parts.push("\n## Key Findings\n");
-          parsed.findings.forEach((f: any, i: number) => {
+          findingsToUse.forEach((f: any, i: number) => {
             parts.push(`\n### ${i + 1}. ${cleanText(f.claim)}\n`);
             if (f.source) parts.push(`**Source:** ${f.source}\n`);
             if (f.url) parts.push(`**URL:** ${f.url}\n`);
@@ -431,10 +440,10 @@ async function appendResearchResultsToPage(
           });
         }
 
-        // ALL sources
-        if (parsed.sources && parsed.sources.length > 0) {
+        // ALL sources (using resolved URLs)
+        if (sourcesToUse.length > 0) {
           parts.push("\n## Sources\n");
-          parsed.sources.forEach((s: string, i: number) => {
+          sourcesToUse.forEach((s: string, i: number) => {
             parts.push(`${i + 1}. ${s}\n`);
           });
         }
@@ -577,24 +586,53 @@ async function appendResearchResultsToPage(
 
             markdown = "## Research Summary\n\n" + summaryText;
 
-            // Try to extract findings too
-            const findingsMatch = cleaned.match(/"findings"\s*:\s*\[([\s\S]*?)\]\s*,\s*"sources"/);
+            // Try to extract findings with FULL detail (claim, source, url)
+            const findingsMatch = cleaned.match(/"findings"\s*:\s*\[([\s\S]*?)\]\s*(?:,\s*"sources"|,\s*"bibliography"|\s*\})/);
             if (findingsMatch) {
-              const claimPattern = /"claim"\s*:\s*"((?:[^"\\]|\\.)*)"/g;
+              // Extract each finding object with claim, source, and url
+              const findingPattern = /\{\s*"claim"\s*:\s*"((?:[^"\\]|\\.)*)"\s*(?:,\s*"source"\s*:\s*"((?:[^"\\]|\\.)*)"\s*)?(?:,\s*"url"\s*:\s*"((?:[^"\\]|\\.)*)"\s*)?\s*[,}]/g;
               let match;
-              const claims: string[] = [];
-              while ((match = claimPattern.exec(findingsMatch[1])) !== null) {
+              const findings: Array<{ claim: string; source?: string; url?: string }> = [];
+              while ((match = findingPattern.exec(findingsMatch[1])) !== null) {
                 const claim = match[1]
                   .replace(/\\n/g, "\n")
                   .replace(/\\"/g, '"')
                   .replace(/\[cite:\s*[\d,\s]+\]/g, "")
                   .trim();
-                if (claim.length > 10) claims.push(claim);
+                if (claim.length > 10) {
+                  findings.push({
+                    claim,
+                    source: match[2]?.replace(/\\"/g, '"').trim(),
+                    url: match[3]?.trim(),
+                  });
+                }
               }
-              if (claims.length > 0) {
+              if (findings.length > 0) {
                 markdown += "\n\n## Key Findings\n\n";
-                claims.forEach((c, i) => {
-                  markdown += `${i + 1}. ${c}\n\n`;
+                findings.forEach((f, i) => {
+                  markdown += `### ${i + 1}. ${f.claim}\n`;
+                  if (f.source) markdown += `**Source:** ${f.source}\n`;
+                  if (f.url) markdown += `**URL:** ${f.url}\n`;
+                  markdown += "\n";
+                });
+              }
+            }
+
+            // Try to extract sources array
+            const sourcesMatch = cleaned.match(/"sources"\s*:\s*\[([\s\S]*?)\]/);
+            if (sourcesMatch) {
+              const urlPattern = /"(https?:\/\/[^"]+)"/g;
+              let match;
+              const sources: string[] = [];
+              while ((match = urlPattern.exec(sourcesMatch[1])) !== null) {
+                if (!sources.includes(match[1])) {
+                  sources.push(match[1]);
+                }
+              }
+              if (sources.length > 0) {
+                markdown += "\n## Sources\n\n";
+                sources.forEach((s, i) => {
+                  markdown += `${i + 1}. ${s}\n`;
                 });
               }
             }

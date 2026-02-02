@@ -142,6 +142,115 @@ const DEPTH_CONFIG: Record<ResearchDepth, DepthConfig> = {
 };
 
 // ==========================================
+// URL Resolution for Gemini Grounding Redirects
+// ==========================================
+
+/**
+ * Gemini's Google Search grounding returns redirect URLs like:
+ * https://vertexaisearch.cloud.google.com/grounding-api-redirect/XXXXX
+ *
+ * These need to be resolved to get the actual source URLs.
+ */
+const GROUNDING_REDIRECT_PATTERN = /^https?:\/\/vertexaisearch\.cloud\.google\.com\/grounding-api-redirect\//;
+
+/**
+ * Resolve a single Gemini grounding redirect URL to its actual destination
+ */
+async function resolveRedirectUrl(url: string): Promise<string> {
+  if (!GROUNDING_REDIRECT_PATTERN.test(url)) {
+    return url; // Not a redirect URL, return as-is
+  }
+
+  try {
+    // Use HEAD request to follow redirects without downloading content
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 5000); // 5s timeout
+
+    const response = await fetch(url, {
+      method: 'HEAD',
+      redirect: 'follow',
+      signal: controller.signal,
+    });
+
+    clearTimeout(timeout);
+
+    // The final URL after following redirects
+    return response.url || url;
+  } catch (error) {
+    console.log(`[Research] Failed to resolve redirect URL: ${url.substring(0, 80)}...`, error);
+    return url; // Return original on error
+  }
+}
+
+/**
+ * Resolve all redirect URLs in sources and findings arrays
+ */
+async function resolveAllRedirectUrls(
+  sources: string[],
+  findings: Array<{ claim: string; source: string; url: string; relevance: number }>
+): Promise<{
+  resolvedSources: string[];
+  resolvedFindings: Array<{ claim: string; source: string; url: string; relevance: number }>;
+}> {
+  console.log("[Research] Resolving redirect URLs...");
+
+  // Collect all unique URLs to resolve
+  const urlsToResolve = new Set<string>();
+  for (const s of sources) {
+    if (GROUNDING_REDIRECT_PATTERN.test(s)) {
+      urlsToResolve.add(s);
+    }
+  }
+  for (const f of findings) {
+    if (f.url && GROUNDING_REDIRECT_PATTERN.test(f.url)) {
+      urlsToResolve.add(f.url);
+    }
+  }
+
+  if (urlsToResolve.size === 0) {
+    console.log("[Research] No redirect URLs to resolve");
+    return { resolvedSources: sources, resolvedFindings: findings };
+  }
+
+  console.log(`[Research] Resolving ${urlsToResolve.size} redirect URLs...`);
+
+  // Resolve all URLs in parallel (with concurrency limit)
+  const urlArray = Array.from(urlsToResolve);
+  const resolvedMap = new Map<string, string>();
+
+  // Process in batches of 5 to avoid overwhelming the server
+  const batchSize = 5;
+  for (let i = 0; i < urlArray.length; i += batchSize) {
+    const batch = urlArray.slice(i, i + batchSize);
+    const results = await Promise.all(batch.map(resolveRedirectUrl));
+    batch.forEach((url, idx) => {
+      resolvedMap.set(url, results[idx]);
+    });
+  }
+
+  // Log resolution results
+  let resolved = 0;
+  for (const [original, actual] of resolvedMap) {
+    if (original !== actual) {
+      resolved++;
+      console.log(`[Research] Resolved: ${actual.substring(0, 60)}...`);
+    }
+  }
+  console.log(`[Research] Successfully resolved ${resolved}/${urlsToResolve.size} URLs`);
+
+  // Apply resolutions to sources
+  const resolvedSources = sources.map(s => resolvedMap.get(s) || s);
+
+  // Apply resolutions to findings
+  const resolvedFindings = findings.map(f => ({
+    ...f,
+    url: f.url ? (resolvedMap.get(f.url) || f.url) : f.url,
+  }));
+
+  return { resolvedSources, resolvedFindings };
+}
+
+// ==========================================
 // Gemini Client with Google Search Grounding
 // ==========================================
 
@@ -616,8 +725,8 @@ export async function executeResearch(
 
     await registry.updateProgress(agent.id, 75, "Synthesizing findings");
 
-    // Parse research result from response
-    const researchResult = parseResearchResponse(
+    // Parse research result from response (async for URL resolution)
+    const researchResult = await parseResearchResponse(
       response.text,
       response.citations,
       config,
@@ -763,12 +872,12 @@ function detectHallucination(
  * HANDLES: Malformed JSON from Gemini (incomplete arrays, multiple JSON blocks, etc.)
  * Uses regex extraction as primary method since Gemini often returns broken JSON.
  */
-function parseResearchResponse(
+async function parseResearchResponse(
   text: string,
   citations: Array<{ url: string; title: string }>,
   config: ResearchConfig,
   depth: ResearchDepth
-): ResearchResult {
+): Promise<ResearchResult> {
   console.log("[Research] === PARSING RESPONSE ===");
   console.log("[Research] Raw text length:", text.length);
   console.log("[Research] Grounding citations:", citations.length);
@@ -906,8 +1015,11 @@ function parseResearchResponse(
     }
   }
 
+  // RESOLVE REDIRECT URLs: Convert Gemini grounding redirects to actual URLs
+  const { resolvedSources, resolvedFindings } = await resolveAllRedirectUrls(sources, findings);
+
   // HALLUCINATION CHECK: Validate before returning "success"
-  const hallucinationCheck = detectHallucination(sources, citations, findings);
+  const hallucinationCheck = detectHallucination(resolvedSources, citations, resolvedFindings);
   if (hallucinationCheck.isHallucinated) {
     console.error("[Research] HALLUCINATION DETECTED:", hallucinationCheck.reason);
     // Return error result instead of fake content
@@ -926,8 +1038,8 @@ function parseResearchResponse(
     console.log("[Research] SUCCESS via regex extraction");
     return {
       summary,
-      findings,
-      sources,
+      findings: resolvedFindings,
+      sources: resolvedSources,
       query: config.query,
       focus: config.focus,
       depth,
@@ -941,8 +1053,8 @@ function parseResearchResponse(
     console.log("[Research] Found prose before JSON");
     return {
       summary: proseMatch[1].trim(),
-      findings,
-      sources,
+      findings: resolvedFindings,
+      sources: resolvedSources,
       query: config.query,
       focus: config.focus,
       depth,
@@ -953,13 +1065,13 @@ function parseResearchResponse(
   console.log("[Research] FALLBACK - minimal extraction");
   return {
     summary: summary || "Research completed. See findings below.",
-    findings: findings.length > 0 ? findings : citations.map((c) => ({
+    findings: resolvedFindings.length > 0 ? resolvedFindings : citations.map((c) => ({
       claim: `Reference: ${c.title}`,
       source: c.title,
       url: c.url,
       relevance: 80,
     })),
-    sources: sources.length > 0 ? sources : citations.map((c) => c.url).filter(Boolean),
+    sources: resolvedSources.length > 0 ? resolvedSources : citations.map((c) => c.url).filter(Boolean),
     query: config.query,
     focus: config.focus,
     depth,
