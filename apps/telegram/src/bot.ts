@@ -14,6 +14,8 @@ import { getModelOverride, setModelOverride, MODEL_SHORTCUTS, getModelDisplayNam
 import { handleAgentCommand } from "./agent-handler";
 import { initBriefings, type BriefingSystem } from "./briefing";
 import { getHelpText } from "./commands/help";
+import { handleHealthCommand } from "./commands/health";
+import { initWorker, runWorkerCycle, startPolling, stopPolling, formatWorkerStatus } from "./worker";
 import { handleConversation, clearConversation } from "./conversation";
 import { formatStatsMessage, detectPatterns } from "./conversation/stats";
 import type { AtlasContext } from "./types";
@@ -167,6 +169,46 @@ export function createBot(): Bot<AtlasContext> {
     } catch (error) {
       logger.error("Error handling agent command", { error });
       await ctx.reply("Agent command failed. Check logs.");
+    }
+  });
+
+  // Health command - comprehensive system health check
+  bot.command("health", async (ctx) => {
+    try {
+      await handleHealthCommand(ctx);
+    } catch (error) {
+      logger.error("Error running health check", { error });
+      await ctx.reply("Health check failed. Check logs.");
+    }
+  });
+
+  // Work command - trigger worker to pick up tasks
+  bot.command("work", async (ctx) => {
+    const args = ctx.message?.text?.split(" ").slice(1).join(" ").toLowerCase().trim();
+
+    try {
+      if (args === "status") {
+        await ctx.replyWithChatAction("typing");
+        const status = await formatWorkerStatus();
+        await ctx.reply(status, { parse_mode: "HTML" });
+      } else if (args === "start") {
+        await ctx.replyWithChatAction("typing");
+        await ctx.reply("🚀 Starting worker polling...");
+        const result = await startPolling();
+        await ctx.reply(result, { parse_mode: "HTML" });
+      } else if (args === "stop") {
+        const result = stopPolling();
+        await ctx.reply(result);
+      } else {
+        // Default: run one cycle
+        await ctx.replyWithChatAction("typing");
+        await ctx.reply("\u23F3 Running worker cycle...");
+        const result = await runWorkerCycle();
+        await ctx.reply(result, { parse_mode: "HTML" });
+      }
+    } catch (error) {
+      logger.error("Error handling work command", { error });
+      await ctx.reply("Work command failed. Check logs.");
     }
   });
 
@@ -331,6 +373,10 @@ export async function startBot(bot: Bot<AtlasContext>): Promise<void> {
   briefingSystem = initBriefings(bot.api, primaryUserId);
   briefingSystem.start();
   logger.info("Briefing system initialized", { userId: primaryUserId });
+
+  // Initialize worker integration (for /work command notifications)
+  initWorker(bot.api, primaryUserId);
+  logger.info("Worker integration initialized", { userId: primaryUserId });
 
   // Start polling
   await bot.start({
