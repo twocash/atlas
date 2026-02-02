@@ -37,3 +37,16 @@ coverage/
 
 # Bun
 bun.lockb
+
+# Windows artifacts
+nul
+
+# Audit/data files that may contain sensitive info
+apps/telegram/data/audit/
+apps/telegram/logs/
+*.audit.json
+
+# Spike test outputs
+packages/agents/scripts/spike-output.md
+packages/agents/scripts/pipeline-audit.json
+apps/telegram/scripts/*.json

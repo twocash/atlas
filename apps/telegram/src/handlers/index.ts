@@ -13,6 +13,7 @@ import { handleStatusIntent } from "./status";
 import { handleLookupIntent } from "./lookup";
 import { handleActionIntent, handleActionCallback, cleanupPendingActions } from "./action";
 import { handleChatIntent, clearConversationHistory } from "./chat";
+import { handleVoiceCallback } from "./voice-callback";
 import { logger } from "../logger";
 import { audit } from "../audit";
 import { updateState, getState, updateHeartbeat } from "../atlas-system";
@@ -100,6 +101,12 @@ export async function routeCallback(ctx: Context): Promise<void> {
 
   logger.debug("Routing callback", { data });
 
+  // Voice selection callbacks
+  if (data.startsWith("voice:")) {
+    await handleVoiceCallback(ctx);
+    return;
+  }
+
   // Action callbacks
   if (data.startsWith("action_")) {
     await handleActionCallback(ctx, data);
@@ -136,4 +143,5 @@ export {
   handleActionIntent,
   handleActionCallback,
   handleChatIntent,
+  handleVoiceCallback,
 };

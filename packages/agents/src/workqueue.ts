@@ -340,6 +340,7 @@ async function appendResearchResultsToPage(
     bibliography?: string[];
     query?: string;
     depth?: string;
+    rawResponse?: string; // Full Gemini output - use this for page body
   } | undefined;
 
   // Build metadata header blocks manually (these aren't from markdown)
@@ -368,15 +369,262 @@ async function appendResearchResultsToPage(
 
   // Convert research results to Notion-safe Markdown, then to blocks
   let contentBlocks: any[] = [];
-  if (researchOutput?.summary || researchOutput?.findings?.length || researchOutput?.sources?.length) {
-    // Format research data as Notion-safe Markdown
-    const markdown = formatResearchAsMarkdown({
-      summary: researchOutput.summary || result.summary || "",
-      findings: researchOutput.findings || [],
-      sources: researchOutput.sources || [],
-      query: researchOutput.query || "",
+  let markdown = "";
+
+  // Log what we have to work with
+  console.log("[WorkQueue] Content analysis:", {
+    pageId,
+    summaryLength: researchOutput?.summary?.length || 0,
+    findingsCount: researchOutput?.findings?.length || 0,
+    sourcesCount: researchOutput?.sources?.length || 0,
+    rawResponseLength: researchOutput?.rawResponse?.length || 0,
+  });
+
+  // LOSSLESS DELIVERY: Use the FULL rawResponse - this is the complete research report
+  // The user wants 100% of what Gemini generated, not a truncated summary
+  if (researchOutput?.rawResponse && researchOutput.rawResponse.length > 500) {
+    console.log("[WorkQueue] Using FULL rawResponse for lossless delivery", {
+      pageId,
+      rawResponseLength: researchOutput.rawResponse.length,
     });
 
+    // Extract content from JSON if it's JSON formatted
+    let fullContent = researchOutput.rawResponse;
+
+    // Try to parse JSON and extract ALL content
+    // Helper to clean text of citation markers and escape sequences
+    const cleanText = (text: string) => text
+      .replace(/\[cite:\s*[\d,\s]+\]/g, "") // Remove [cite: N] markers
+      .replace(/\\n/g, "\n")               // Convert escaped newlines
+      .replace(/\\"/g, '"')                // Convert escaped quotes
+      .replace(/\\\\/g, "\\")              // Convert escaped backslashes
+      .trim();
+
+    let jsonParsed = false;
+    try {
+      const jsonMatch = fullContent.match(/```json\s*([\s\S]*?)\s*```/);
+      const jsonText = jsonMatch ? jsonMatch[1] : fullContent;
+      const jsonObjectMatch = jsonText.match(/\{[\s\S]*\}/);
+
+      if (jsonObjectMatch) {
+        const parsed = JSON.parse(jsonObjectMatch[0]);
+
+        // Build FULL markdown from ALL JSON fields
+        const parts: string[] = [];
+
+        // Full summary - no truncation, but clean it
+        if (parsed.summary) {
+          parts.push("## Executive Summary\n");
+          parts.push(cleanText(parsed.summary));
+          parts.push("\n");
+        }
+
+        // ALL findings with full detail
+        if (parsed.findings && parsed.findings.length > 0) {
+          parts.push("\n## Key Findings\n");
+          parsed.findings.forEach((f: any, i: number) => {
+            parts.push(`\n### ${i + 1}. ${cleanText(f.claim)}\n`);
+            if (f.source) parts.push(`**Source:** ${f.source}\n`);
+            if (f.url) parts.push(`**URL:** ${f.url}\n`);
+            if (f.author) parts.push(`**Author:** ${f.author}\n`);
+            if (f.date) parts.push(`**Date:** ${f.date}\n`);
+          });
+        }
+
+        // ALL sources
+        if (parsed.sources && parsed.sources.length > 0) {
+          parts.push("\n## Sources\n");
+          parsed.sources.forEach((s: string, i: number) => {
+            parts.push(`${i + 1}. ${s}\n`);
+          });
+        }
+
+        // Full bibliography - clean each entry
+        if (parsed.bibliography && parsed.bibliography.length > 0) {
+          parts.push("\n## Bibliography\n");
+          parsed.bibliography.forEach((b: string) => {
+            parts.push(`- ${cleanText(b)}\n`);
+          });
+        }
+
+        markdown = parts.join("\n");
+        jsonParsed = true;
+        console.log("[WorkQueue] Extracted FULL content from JSON", {
+          pageId,
+          markdownLength: markdown.length,
+          summaryLength: parsed.summary?.length || 0,
+          findingsCount: parsed.findings?.length || 0,
+        });
+      }
+    } catch (e) {
+      console.log("[WorkQueue] JSON parse failed", { error: (e as Error).message });
+      jsonParsed = false;
+    }
+
+    // LOSSLESS FALLBACK: If JSON parsing failed, try harder to extract content
+    if (!jsonParsed) {
+      console.log("[WorkQueue] JSON failed - attempting recovery", {
+        pageId,
+        rawContentLength: fullContent.length,
+      });
+
+      // First, clean the raw content thoroughly
+      let cleaned = fullContent
+        // Remove markdown code fences
+        .replace(/^```json\s*/gm, "")
+        .replace(/^```\s*/gm, "")
+        .replace(/```$/gm, "")
+        // Convert escaped newlines to real newlines
+        .replace(/\\n/g, "\n")
+        // Strip citation markers [cite: N] or [cite: N, M]
+        .replace(/\[cite:\s*[\d,\s]+\]/g, "")
+        // Normalize whitespace
+        .replace(/\n{3,}/g, "\n\n")
+        .trim();
+
+      // Gemini sometimes returns duplicate JSON - extract ONLY the first complete JSON object
+      const firstJsonMatch = cleaned.match(/^\{[\s\S]*?"bibliography"[\s\S]*?\]/);
+      if (firstJsonMatch) {
+        // Find where this first JSON ends (after the closing bracket of sources/bibliography array)
+        const jsonEndMatch = cleaned.match(/("bibliography"\s*:\s*\[[^\]]*\]|\s*"sources"\s*:\s*\[[^\]]*\])\s*\}/);
+        if (jsonEndMatch && jsonEndMatch.index !== undefined) {
+          const endPos = jsonEndMatch.index + jsonEndMatch[0].length;
+          cleaned = cleaned.substring(0, endPos);
+          console.log("[WorkQueue] Extracted first JSON block, trimmed from", fullContent.length, "to", cleaned.length);
+        }
+      }
+
+      // Try lenient JSON parse
+      if (cleaned.trim().startsWith("{")) {
+        try {
+          let cleanedJson = cleaned
+            .replace(/,\s*}/g, "}") // Remove trailing commas before }
+            .replace(/,\s*]/g, "]") // Remove trailing commas before ]
+            .replace(/[\x00-\x1F\x7F]/g, " "); // Remove control characters
+
+          const parsed = JSON.parse(cleanedJson);
+
+          // Build comprehensive markdown from all available fields
+          const parts: string[] = [];
+
+          // Helper to clean text of any remaining citation markers and escaped chars
+          const cleanText = (text: string) => text
+            .replace(/\[cite:\s*[\d,\s]+\]/g, "")
+            .replace(/\\n/g, "\n")
+            .replace(/\\"/g, '"')
+            .replace(/\\\\/g, "\\")
+            .trim();
+
+          if (parsed.summary) {
+            parts.push("## Executive Summary\n");
+            parts.push(cleanText(parsed.summary));
+            parts.push("\n");
+          }
+
+          if (parsed.findings && parsed.findings.length > 0) {
+            parts.push("\n## Key Findings\n");
+            parsed.findings.forEach((f: any, i: number) => {
+              parts.push(`\n### ${i + 1}. ${cleanText(f.claim)}\n`);
+              if (f.evidence) parts.push(`${cleanText(f.evidence)}\n`);
+              if (f.source) parts.push(`**Source:** ${f.source}\n`);
+              if (f.url) parts.push(`**URL:** ${f.url}\n`);
+              if (f.author) parts.push(`**Author:** ${f.author}\n`);
+              if (f.date) parts.push(`**Date:** ${f.date}\n`);
+            });
+          }
+
+          if (parsed.analysis) {
+            parts.push("\n## Analysis\n");
+            parts.push(cleanText(parsed.analysis));
+            parts.push("\n");
+          }
+
+          if (parsed.sources && parsed.sources.length > 0) {
+            parts.push("\n## Sources\n");
+            parsed.sources.forEach((s: string, i: number) => {
+              parts.push(`${i + 1}. ${s}\n`);
+            });
+          }
+
+          if (parsed.bibliography && parsed.bibliography.length > 0) {
+            parts.push("\n## Bibliography\n");
+            parsed.bibliography.forEach((b: string) => {
+              parts.push(`- ${cleanText(b)}\n`);
+            });
+          }
+
+          markdown = parts.join("\n");
+          console.log("[WorkQueue] Lenient JSON parse succeeded", {
+            pageId,
+            markdownLength: markdown.length,
+          });
+        } catch (e2) {
+          // JSON parse completely failed - extract prose instead of dumping raw JSON
+          console.log("[WorkQueue] Lenient JSON parse failed, extracting prose", {
+            pageId,
+            error: (e2 as Error).message,
+          });
+
+          // Extract the summary text from the JSON string if possible
+          const summaryMatch = cleaned.match(/"summary"\s*:\s*"((?:[^"\\]|\\.)*)"/);
+          if (summaryMatch) {
+            const summaryText = summaryMatch[1]
+              .replace(/\\n/g, "\n")
+              .replace(/\\"/g, '"')
+              .replace(/\\\\/g, "\\")
+              .replace(/\[cite:\s*[\d,\s]+\]/g, "")
+              .trim();
+
+            markdown = "## Research Summary\n\n" + summaryText;
+
+            // Try to extract findings too
+            const findingsMatch = cleaned.match(/"findings"\s*:\s*\[([\s\S]*?)\]\s*,\s*"sources"/);
+            if (findingsMatch) {
+              const claimPattern = /"claim"\s*:\s*"((?:[^"\\]|\\.)*)"/g;
+              let match;
+              const claims: string[] = [];
+              while ((match = claimPattern.exec(findingsMatch[1])) !== null) {
+                const claim = match[1]
+                  .replace(/\\n/g, "\n")
+                  .replace(/\\"/g, '"')
+                  .replace(/\[cite:\s*[\d,\s]+\]/g, "")
+                  .trim();
+                if (claim.length > 10) claims.push(claim);
+              }
+              if (claims.length > 0) {
+                markdown += "\n\n## Key Findings\n\n";
+                claims.forEach((c, i) => {
+                  markdown += `${i + 1}. ${c}\n\n`;
+                });
+              }
+            }
+
+            console.log("[WorkQueue] Extracted prose from JSON strings", {
+              pageId,
+              markdownLength: markdown.length,
+            });
+          } else {
+            // Absolute fallback - just note that parsing failed
+            markdown = "## Research Results\n\n*Research completed but output formatting failed. Raw data available in logs.*";
+            console.log("[WorkQueue] Could not extract any usable content", { pageId });
+          }
+        }
+      }
+    }
+  }
+
+  // Fallback: Use structured data if rawResponse not available at all
+  if (!markdown && (researchOutput?.summary || researchOutput?.findings?.length)) {
+    console.log("[WorkQueue] Using structured fallback (no rawResponse)", { pageId });
+    markdown = formatResearchAsMarkdown({
+      summary: researchOutput?.summary || result.summary || "",
+      findings: researchOutput?.findings || [],
+      sources: researchOutput?.sources || [],
+      query: researchOutput?.query || "",
+    });
+  }
+
+  if (markdown) {
     console.log("[WorkQueue] Generated markdown", {
       pageId,
       markdownLength: markdown.length,

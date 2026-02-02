@@ -352,14 +352,28 @@ function buildResearchPrompt(config: ResearchConfig): string {
   const depthCfg = DEPTH_CONFIG[depth];
   const voiceInstructions = getVoiceInstructions(config);
 
+  // DEBUG: Log voice injection
+  console.log("[Research] buildResearchPrompt voice config:", {
+    voice: config.voice,
+    hasVoiceInstructions: !!config.voiceInstructions,
+    voiceInstructionsLength: config.voiceInstructions?.length || 0,
+    injectedVoiceLength: voiceInstructions.length,
+    voicePreview: voiceInstructions.substring(0, 200),
+  });
+
+  // VOICE FIRST: Put voice/style instructions at the TOP so the model adopts the persona
+  // before processing the task. This is critical for voice injection to work.
   const basePrompt = `You are Atlas Research Agent, an autonomous research assistant with access to Google Search.
+
+## STYLE GUIDELINES (CRITICAL - ADOPT THIS VOICE THROUGHOUT)
+${voiceInstructions}
 
 ## Research Task
 Query: "${config.query}"
 ${config.focus ? `Focus Area: ${config.focus}` : ""}
 Depth: ${depth} — ${depthCfg.description}
 Target Sources: ${config.maxSources || depthCfg.targetSources}+
-${voiceInstructions}
+
 ## Instructions
 
 Use Google Search to find current, authoritative information about this topic.
@@ -523,6 +537,16 @@ export async function executeResearch(
     const response = await gemini.generateContent(prompt, depthCfg.maxTokens);
     apiCalls++;
 
+    // DEBUG: Log raw response for troubleshooting
+    console.log("[Research] ========== GEMINI RAW RESPONSE ==========");
+    console.log("[Research] Text length:", response.text?.length || 0);
+    console.log("[Research] Text preview (first 1000 chars):", response.text?.substring(0, 1000));
+    console.log("[Research] Citations count:", response.citations?.length || 0);
+    if (response.citations?.length > 0) {
+      console.log("[Research] First 3 citations:", response.citations.slice(0, 3));
+    }
+    console.log("[Research] ============================================");
+
     await registry.updateProgress(agent.id, 75, "Synthesizing findings");
 
     // Parse research result from response
@@ -550,11 +574,14 @@ export async function executeResearch(
       retries: 0,
     };
 
-    // Build agent result
+    // Build agent result - include FULL raw response for lossless capture
     const result: AgentResult = {
       success: true,
-      output: researchResult,
-      summary: researchResult.summary.substring(0, 500),
+      output: {
+        ...researchResult,
+        rawResponse: response.text, // Preserve complete Gemini output
+      },
+      summary: researchResult.summary.substring(0, 500), // Brief preview for Notes field
       artifacts: researchResult.sources,
       metrics,
     };
@@ -584,6 +611,9 @@ export async function executeResearch(
 
 /**
  * Parse Gemini's response into structured ResearchResult
+ *
+ * HANDLES: Malformed JSON from Gemini (incomplete arrays, multiple JSON blocks, etc.)
+ * Uses regex extraction as primary method since Gemini often returns broken JSON.
  */
 function parseResearchResponse(
   text: string,
@@ -591,84 +621,167 @@ function parseResearchResponse(
   config: ResearchConfig,
   depth: ResearchDepth
 ): ResearchResult {
-  // Try to extract JSON from the response
-  const jsonMatch = text.match(/```json\s*([\s\S]*?)\s*```/);
+  console.log("[Research] === PARSING RESPONSE ===");
+  console.log("[Research] Raw text length:", text.length);
 
-  if (jsonMatch) {
-    try {
-      const parsed = JSON.parse(jsonMatch[1]);
+  // STRATEGY 1: Try to parse JSON first (most reliable if it works)
+  let parsedJson: any = null;
+  try {
+    // Extract JSON block if present
+    const jsonMatch = text.match(/```json\s*([\s\S]*?)\s*```/);
+    const jsonText = jsonMatch ? jsonMatch[1] : text;
 
-      // Merge grounding citations with parsed findings
-      const findings: ResearchFinding[] = parsed.findings || [];
+    // Try to find and parse the JSON object
+    const jsonObjectMatch = jsonText.match(/\{[\s\S]*"summary"[\s\S]*\}/);
+    if (jsonObjectMatch) {
+      parsedJson = JSON.parse(jsonObjectMatch[0]);
+      console.log("[Research] Successfully parsed JSON, summary length:", parsedJson.summary?.length || 0);
+    }
+  } catch (e) {
+    console.log("[Research] JSON parse failed, falling back to regex:", (e as Error).message);
+  }
 
-      // Add any citations from grounding that aren't in findings
-      for (const citation of citations) {
-        const exists = findings.some((f) => f.url === citation.url);
-        if (!exists && citation.url) {
-          findings.push({
-            claim: `Source: ${citation.title}`,
-            source: citation.title,
-            url: citation.url,
-            relevance: 80,
-          });
+  // Use parsed JSON if available
+  let summary = "";
+  if (parsedJson?.summary) {
+    summary = parsedJson.summary
+      .replace(/\[cite:\s*[\d,\s]+\]/g, '') // Remove [cite: N] or [cite: 1, 2] markers
+      .trim();
+    console.log("[Research] Using JSON-parsed summary, length:", summary.length);
+  } else {
+    // STRATEGY 2: Fall back to regex extraction
+    // This regex handles escaped characters in JSON strings
+    const summaryMatch = text.match(/"summary"\s*:\s*"((?:[^"\\]|\\.)*)"/);
+    if (summaryMatch) {
+      summary = summaryMatch[1]
+        .replace(/\\n/g, '\n')
+        .replace(/\\"/g, '"')
+        .replace(/\\\\/g, '\\')
+        .replace(/\[cite:\s*[\d,\s]+\]/g, '') // Remove [cite: N] or [cite: 1, 2] markers
+        .trim();
+      console.log("[Research] Extracted summary via regex, length:", summary.length);
+    }
+  }
+
+  // Extract findings - use parsed JSON or fall back to regex
+  const findings: ResearchFinding[] = [];
+  if (parsedJson?.findings && Array.isArray(parsedJson.findings)) {
+    for (const f of parsedJson.findings) {
+      if (f.claim) {
+        findings.push({
+          claim: String(f.claim).replace(/\[cite:\s*\d+\]/g, '').trim(),
+          source: String(f.source || ''),
+          url: String(f.url || ''),
+          author: f.author,
+          date: f.date,
+          relevance: 90,
+        });
+      }
+    }
+    console.log("[Research] Using JSON-parsed findings:", findings.length);
+  } else {
+    // Fall back to regex extraction
+    const findingsBlockMatch = text.match(/"findings"\s*:\s*\[([\s\S]*?)(?:\]\s*,|\]\s*\}|\]\s*```)/);
+    if (findingsBlockMatch) {
+      const findingPattern = /\{\s*"claim"\s*:\s*"((?:[^"\\]|\\.)*)"\s*,\s*"source"\s*:\s*"((?:[^"\\]|\\.)*)"\s*,\s*"url"\s*:\s*"((?:[^"\\]|\\.)*)"/g;
+      let match;
+      while ((match = findingPattern.exec(findingsBlockMatch[1])) !== null) {
+        findings.push({
+          claim: match[1].replace(/\\"/g, '"').replace(/\[cite:\s*\d+\]/g, '').trim(),
+          source: match[2].replace(/\\"/g, '"'),
+          url: match[3],
+          relevance: 90,
+        });
+      }
+      console.log("[Research] Extracted findings via regex:", findings.length);
+    }
+  }
+
+  // Extract sources - use parsed JSON or fall back to regex
+  const sources: string[] = [];
+  if (parsedJson?.sources && Array.isArray(parsedJson.sources)) {
+    for (const s of parsedJson.sources) {
+      if (s && typeof s === 'string' && !sources.includes(s)) {
+        sources.push(s);
+      }
+    }
+    console.log("[Research] Using JSON-parsed sources:", sources.length);
+  } else {
+    const sourcesBlockMatch = text.match(/"sources"\s*:\s*\[([\s\S]*?)(?:\]|\n\s*```)/);
+    if (sourcesBlockMatch) {
+      const urlPattern = /"(https?:\/\/[^"]+)"/g;
+      let match;
+      while ((match = urlPattern.exec(sourcesBlockMatch[1])) !== null) {
+        if (!sources.includes(match[1])) {
+          sources.push(match[1]);
         }
       }
-
-      // Collect all unique source URLs
-      const sources = [
-        ...new Set([
-          ...(parsed.sources || []),
-          ...citations.map((c) => c.url).filter(Boolean),
-        ]),
-      ];
-
-      return {
-        summary: parsed.summary || text,
-        findings,
-        sources,
-        query: config.query,
-        focus: config.focus,
-        depth,
-        bibliography: parsed.bibliography,
-      };
-    } catch {
-      // JSON parsing failed, fall through to text extraction
+      console.log("[Research] Extracted sources via regex:", sources.length);
     }
   }
 
-  // Try to parse as raw JSON (no code block)
-  try {
-    const parsed = JSON.parse(text);
-    if (parsed.summary && parsed.findings) {
-      return {
-        summary: parsed.summary,
-        findings: parsed.findings || [],
-        sources: [
-          ...new Set([
-            ...(parsed.sources || []),
-            ...citations.map((c) => c.url).filter(Boolean),
-          ]),
-        ],
-        query: config.query,
-        focus: config.focus,
-        depth,
-        bibliography: parsed.bibliography,
-      };
+  // Add grounding citations if we didn't get enough findings
+  if (findings.length === 0) {
+    for (const citation of citations) {
+      if (citation.url) {
+        findings.push({
+          claim: `Reference: ${citation.title}`,
+          source: citation.title,
+          url: citation.url,
+          relevance: 80,
+        });
+      }
     }
-  } catch {
-    // Not valid JSON
   }
 
-  // Fallback: use text as summary, citations as sources
+  // Add citation URLs to sources if we didn't extract any
+  if (sources.length === 0) {
+    for (const citation of citations) {
+      if (citation.url && !sources.includes(citation.url)) {
+        sources.push(citation.url);
+      }
+    }
+  }
+
+  // If we got a summary, we succeeded
+  if (summary.length > 50) {
+    console.log("[Research] SUCCESS via regex extraction");
+    return {
+      summary,
+      findings,
+      sources,
+      query: config.query,
+      focus: config.focus,
+      depth,
+    };
+  }
+
+  // Last resort: Try to extract any prose before the JSON
+  console.log("[Research] Trying prose extraction...");
+  const proseMatch = text.match(/^([\s\S]*?)(?:```json|\{"summary")/);
+  if (proseMatch && proseMatch[1].trim().length > 50) {
+    console.log("[Research] Found prose before JSON");
+    return {
+      summary: proseMatch[1].trim(),
+      findings,
+      sources,
+      query: config.query,
+      focus: config.focus,
+      depth,
+    };
+  }
+
+  // Absolute fallback - return something useful
+  console.log("[Research] FALLBACK - minimal extraction");
   return {
-    summary: text,
-    findings: citations.map((c) => ({
+    summary: summary || "Research completed. See findings below.",
+    findings: findings.length > 0 ? findings : citations.map((c) => ({
       claim: `Reference: ${c.title}`,
       source: c.title,
       url: c.url,
       relevance: 80,
     })),
-    sources: citations.map((c) => c.url).filter(Boolean),
+    sources: sources.length > 0 ? sources : citations.map((c) => c.url).filter(Boolean),
     query: config.query,
     focus: config.focus,
     depth,

@@ -6,33 +6,22 @@
  */
 
 import type { Context } from "grammy";
+import { InlineKeyboard } from "grammy";
 import { logger } from "./logger";
-import { markdownToHtml } from "./formatting";
+import { listVoices, loadVoice } from "./voice-manager";
+import { store } from "./pending-research";
+import {
+  registry,
+  runResearchAgentWithNotifications,
+  sendCompletionNotification,
+} from "./services/research-executor";
 
 // Import from @atlas/agents package (relative path for now until package is linked)
 import {
-  AgentRegistry,
-  runResearchAgent,
-  wireAgentToWorkQueue,
   createResearchWorkItem,
-  getNotionPageUrl,
-  type Agent,
-  type AgentEvent,
   type ResearchConfig,
-  type ResearchResult,
   type ResearchDepth,
 } from "../../../packages/agents/src";
-
-// ==========================================
-// Agent Registry Instance
-// ==========================================
-
-// Global registry for this bot instance
-const registry = new AgentRegistry();
-
-// Track Telegram contexts for notifications
-const notificationContexts: Map<string, { chatId: number; bot: Context["api"] }> =
-  new Map();
 
 
 // ==========================================
@@ -106,8 +95,9 @@ async function handleResearchCommand(
         "  --light        Quick overview (2-3 sources, ~2k tokens)\n" +
         "  --standard     Thorough analysis (5-8 sources, ~8k tokens) [default]\n" +
         "  --deep         Academic rigor (10+ sources, ~25k tokens, Chicago citations)\n" +
-        '  --focus "area" Narrow focus\n\n' +
-        'Example:\n/agent research "AI coding assistant pricing" --deep'
+        '  --focus "area" Narrow focus\n' +
+        "  --voice <id>   Writing voice (grove, consulting, linkedin, personal)\n\n" +
+        'Example:\n/agent research "AI coding assistant pricing" --deep --voice grove'
     );
     return;
   }
@@ -134,11 +124,71 @@ async function handleResearchCommand(
   const focusMatch = normalizedArgs.match(/--focus\s+["']?([^"'\s]+)["']?/);
   const focus = focusMatch ? focusMatch[1] : undefined;
 
+  // Parse voice option
+  const voiceMatch = normalizedArgs.match(/--voice\s+["']?([^"'\s]+)["']?/);
+  const requestedVoice = voiceMatch?.[1]?.toLowerCase();
+
+  // Store context for notifications
+  const chatId = ctx.chat?.id;
+  if (!chatId) return;
+
+  const userId = ctx.from?.id || 0;
+
+  // If no voice specified, show interactive selection
+  if (!requestedVoice) {
+    logger.info("No voice specified, loading voice profiles...");
+    const voices = await listVoices();
+    logger.info("Voice profiles loaded", { count: voices.length, voices: voices.map(v => v.id) });
+    if (voices.length > 0) {
+      // Generate unique request ID
+      const requestId = crypto.randomUUID().slice(0, 8);
+
+      // Store pending research request
+      store(requestId, {
+        chatId,
+        userId,
+        query: query.trim(),
+        depth,
+        focus,
+        timestamp: Date.now(),
+      });
+
+      // Build inline keyboard with voice options
+      const keyboard = new InlineKeyboard();
+      voices.forEach((v, i) => {
+        keyboard.text(v.name, `voice:${requestId}:${v.id}`);
+        if ((i + 1) % 2 === 0) keyboard.row(); // 2 buttons per row
+      });
+      keyboard.row().text("❌ Cancel", `voice:${requestId}:cancel`);
+
+      await ctx.reply(
+        `🎙️ Select a voice for this research:\n\n` +
+          `Query: "${query.trim()}"\n` +
+          `Depth: ${depth}` +
+          `${focus ? `\nFocus: ${focus}` : ""}`,
+        { reply_markup: keyboard }
+      );
+      return; // Wait for callback
+    }
+  }
+
+  // Voice specified (or no voice files exist) - proceed with execution
+  let voiceInstructions: string | undefined;
+  if (requestedVoice) {
+    const loaded = await loadVoice(requestedVoice);
+    voiceInstructions = loaded ?? undefined; // Convert null to undefined
+    if (!voiceInstructions) {
+      await ctx.reply(`⚠️ Voice '${requestedVoice}' not found. Using default.`);
+    }
+  }
+
   // Build config
   const config: ResearchConfig = {
     query: query.trim(),
     depth,
     focus,
+    voice: voiceInstructions ? "custom" : undefined,
+    voiceInstructions,
   };
 
   // Depth descriptions for user feedback
@@ -147,10 +197,6 @@ async function handleResearchCommand(
     standard: "Thorough analysis (~8k tokens, 5-8 sources)",
     deep: "Academic rigor (~25k tokens, 10+ sources, Chicago citations)",
   };
-
-  // Store context for notifications
-  const chatId = ctx.chat?.id;
-  if (!chatId) return;
 
   try {
     // Create a new Work Queue item for this research
@@ -161,12 +207,14 @@ async function handleResearchCommand(
     });
 
     // Acknowledge with Notion link
+    const voiceLabel = requestedVoice ? ` with <b>${requestedVoice}</b> voice` : "";
     await ctx.reply(
-      `🔬 Starting research agent...\n\n` +
+      `🔬 Starting research agent${voiceLabel}...\n\n` +
         `Query: "${config.query}"\n` +
         `Depth: ${depth} — ${depthDescriptions[depth]}\n` +
         `${focus ? `Focus: ${focus}\n` : ""}` +
-        `\n📝 Notion: ${notionUrl}`
+        `\n📝 Notion: ${notionUrl}`,
+      { parse_mode: "HTML" }
     );
 
     // Spawn and run the research agent
@@ -178,187 +226,12 @@ async function handleResearchCommand(
     );
 
     // Send completion notification with Notion link
-    await sendCompletionNotification(ctx, agent, result, notionUrl);
+    await sendCompletionNotification(ctx.api, chatId, agent, result, notionUrl);
   } catch (error) {
     const errorMessage =
       error instanceof Error ? error.message : "Unknown error";
     logger.error("Research agent failed", { error });
     await ctx.reply(`❌ Research failed: ${errorMessage}`);
-  }
-}
-
-/**
- * Run research agent with Telegram notifications
- */
-async function runResearchAgentWithNotifications(
-  config: ResearchConfig,
-  chatId: number,
-  api: Context["api"],
-  workItemId?: string
-): Promise<{ agent: Agent; result: any }> {
-  // Spawn the agent
-  const agent = await registry.spawn({
-    type: "research",
-    name: `Research: ${config.query.substring(0, 50)}`,
-    instructions: JSON.stringify(config),
-    priority: "P1",
-    workItemId,
-  });
-
-  // Store notification context
-  notificationContexts.set(agent.id, { chatId, bot: api });
-
-  // Subscribe to progress events for Telegram updates
-  const subscription = registry.subscribeToEvents(
-    agent.id,
-    ["progress"],
-    async (event: AgentEvent) => {
-      const data = event.data as { progress: number; activity?: string };
-      // Only send updates at key milestones to avoid spam
-      if (data.progress === 50 || data.progress === 90) {
-        try {
-          await api.sendMessage(
-            chatId,
-            `📊 Research ${data.progress}%: ${data.activity || "working..."}`
-          );
-        } catch (e) {
-          // Ignore notification errors
-        }
-      }
-    }
-  );
-
-  // Wire to Work Queue if we have an item ID
-  if (workItemId) {
-    try {
-      logger.info("Wiring agent to Work Queue", { agentId: agent.id, workItemId });
-      await wireAgentToWorkQueue(agent, registry);
-      logger.info("Work Queue wiring complete", { agentId: agent.id });
-    } catch (error) {
-      logger.error("Failed to wire to Work Queue", { error, agentId: agent.id, workItemId });
-      // Continue anyway - research can still run
-    }
-  } else {
-    logger.warn("No workItemId provided, skipping Work Queue wiring", { agentId: agent.id });
-  }
-
-  // Start and execute
-  logger.info("Starting agent execution", { agentId: agent.id });
-  await registry.start(agent.id);
-
-  try {
-    // Import and run the actual research
-    logger.info("Importing research module...", { agentId: agent.id });
-    const { executeResearch } = await import(
-      "../../../packages/agents/src/agents/research"
-    );
-    logger.info("Executing research...", { agentId: agent.id, query: config.query });
-    const result = await executeResearch(config, agent, registry);
-    logger.info("Research execution complete", { agentId: agent.id, success: result.success });
-
-    // Complete or fail
-    if (result.success) {
-      logger.info("Marking agent as complete", { agentId: agent.id, hasSummary: !!result.summary });
-      await registry.complete(agent.id, result);
-      logger.info("Agent marked complete, event should fire", { agentId: agent.id });
-    } else {
-      logger.warn("Research failed, marking agent as failed", { agentId: agent.id, summary: result.summary });
-      await registry.fail(agent.id, result.summary || "Research failed", true);
-    }
-
-    // Cleanup
-    subscription.unsubscribe();
-    notificationContexts.delete(agent.id);
-
-    const finalAgent = await registry.status(agent.id);
-    logger.info("Agent final status", { agentId: agent.id, status: finalAgent?.status });
-    return { agent: finalAgent || agent, result };
-  } catch (error) {
-    const errorMessage =
-      error instanceof Error ? error.message : "Unknown error";
-    const errorStack = error instanceof Error ? error.stack : undefined;
-    logger.error("Research execution threw exception", {
-      agentId: agent.id,
-      error: errorMessage,
-      stack: errorStack
-    });
-    await registry.fail(agent.id, errorMessage, true);
-    subscription.unsubscribe();
-    notificationContexts.delete(agent.id);
-
-    const finalAgent = await registry.status(agent.id);
-    return {
-      agent: finalAgent || agent,
-      result: { success: false, summary: errorMessage },
-    };
-  }
-}
-
-/**
- * Send completion notification to Telegram
- */
-async function sendCompletionNotification(
-  ctx: Context,
-  agent: Agent,
-  result: any,
-  notionUrl?: string
-): Promise<void> {
-  if (result.success) {
-    const researchResult = result.output as ResearchResult | undefined;
-
-    let message = `✅ Research complete!\n\n`;
-
-    if (researchResult?.summary) {
-      // Truncate summary for Telegram and convert markdown to HTML
-      const rawSummary =
-        researchResult.summary.length > 500
-          ? researchResult.summary.substring(0, 500) + "..."
-          : researchResult.summary;
-      const summary = markdownToHtml(rawSummary);
-      message += `📝 Summary:\n${summary}\n\n`;
-    }
-
-    if (researchResult?.findings && researchResult.findings.length > 0) {
-      message += `🔍 Key Findings:\n`;
-      researchResult.findings.slice(0, 5).forEach((f, i) => {
-        const claim = markdownToHtml(f.claim);
-        message += `${i + 1}. ${claim}\n   [${f.source}]\n`;
-      });
-      message += "\n";
-    }
-
-    if (researchResult?.sources && researchResult.sources.length > 0) {
-      message += `📚 Sources: ${researchResult.sources.length} found\n`;
-    }
-
-    // Show bibliography count for deep research
-    if (researchResult?.bibliography && researchResult.bibliography.length > 0) {
-      message += `📖 Bibliography: ${researchResult.bibliography.length} citations (Chicago style)\n`;
-    }
-
-    if (result.metrics) {
-      const duration = Math.round(result.metrics.durationMs / 1000);
-      message += `\n⏱ Completed in ${duration}s`;
-      if (result.metrics.tokensUsed) {
-        message += ` (${result.metrics.tokensUsed} tokens)`;
-      }
-    }
-
-    // Always include Notion link for easy access
-    if (notionUrl) {
-      message += `\n\n📝 Full results: ${notionUrl}`;
-    }
-
-    await ctx.reply(message);
-  } else {
-    let errorMessage = `❌ Research failed\n\n` +
-      `Error: ${result.summary || agent.error || "Unknown error"}`;
-
-    if (notionUrl) {
-      errorMessage += `\n\n📝 Details: ${notionUrl}`;
-    }
-
-    await ctx.reply(errorMessage);
   }
 }
 
@@ -461,7 +334,7 @@ async function handleTestCommand(ctx: Context): Promise<void> {
     // Create a new Work Queue item for the test
     const { pageId: workItemId, url: notionUrl } = await createResearchWorkItem({
       query: config.query,
-      depth: config.depth,
+      depth: "light", // Hardcoded for test command
       focus: config.focus,
     });
 
@@ -481,7 +354,7 @@ async function handleTestCommand(ctx: Context): Promise<void> {
       workItemId
     );
 
-    await sendCompletionNotification(ctx, agent, result, notionUrl);
+    await sendCompletionNotification(ctx.api, chatId, agent, result, notionUrl);
   } catch (error) {
     const errorMessage =
       error instanceof Error ? error.message : "Unknown error";
@@ -504,18 +377,25 @@ async function sendAgentHelp(ctx: Context): Promise<void> {
       `/agent research "query"\n` +
       `/agent research "query" --light\n` +
       `/agent research "query" --deep\n` +
-      `/agent research "query" --focus "pricing"\n\n` +
+      `/agent research "query" --focus "pricing"\n` +
+      `/agent research "query" --voice grove\n\n` +
       `Research depths:\n` +
       `  --light    Quick (2-3 sources)\n` +
       `  --standard Default (5-8 sources)\n` +
       `  --deep     Academic (10+ sources)\n\n` +
+      `Voice options:\n` +
+      `  --voice grove      Technical thought leadership\n` +
+      `  --voice consulting Executive/recommendations\n` +
+      `  --voice linkedin   Punchy, shareable\n` +
+      `  --voice personal   Reflective, growth-focused\n` +
+      `  (omit for interactive selection)\n\n` +
       `Manage agents:\n` +
       `/agent status - List running agents\n` +
       `/agent cancel <id> - Stop an agent\n\n` +
       `Test:\n` +
       `/agent test - Run integration test\n\n` +
       `Example:\n` +
-      `/agent research "AI coding assistant pricing" --deep`
+      `/agent research "AI coding assistant pricing" --deep --voice grove`
   );
 }
 
