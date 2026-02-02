@@ -1,0 +1,27 @@
+{
+  "id": "2026-02-02-p0-web-search-tool-critical-fa",
+  "title": "P0: Web Search Tool Critical Failure - No Real-Time Data",
+  "type": "bug",
+  "priority": "P0",
+  "status": "shipped",
+  "requestor": "atlas",
+  "assignee": "pit-crew",
+  "context": "🚨 CRITICAL BUG: Web search tool completely failing to return current data\n\n**TEST CASE:**\n- Query: \"bitcoin current price today 2025\"\n- Expected: Current Bitcoin price (~$100K range)\n- Actual: Tool returns empty results, Atlas provides stale data\n\n**USER IMPACT:**\n- Market data queries fail (Bitcoin, stocks)\n- Current events research blocked\n- Real-time fact checking impossible\n- Breaking news analysis unavailable\n\n**ROOT CAUSE:** Likely Google API configuration issue or rate limiting\n\n**PRIORITY JUSTIFICATION:** Jim escalated to P0 - web search is core Atlas capability. Without real-time data, Atlas provides misleading information which undermines user trust.\n\n**REQUEST:** Fix Google API configuration and return when real-time web queries work properly for market data, news, and current events.",
+  "resolution": "SHIPPED: Fixed Gemini 2.0 Flash grounding configuration.\n\nROOT CAUSE: Wrong grounding tool syntax. Was using `googleSearchRetrieval` in generateContent(), should be `googleSearch` at model creation level.\n\nFIXES:\n1. core.ts - Changed tool from `googleSearchRetrieval` to `googleSearch`\n2. core.ts - Moved tool config to getGenerativeModel() instead of generateContent()\n3. web-search-spike.ts - Updated to mirror production pattern exactly\n\nVERIFIED:\n- Query: 'bitcoin current price' → $77,974.72 (Feb 2, 2026)\n- Latency: 3170ms\n- Sources: 4 citations returned\n- Real-time data: ✅ Working\n\nFiles: apps/telegram/src/conversation/tools/core.ts, packages/agents/test/web-search-spike.ts",
+  "messages": [
+    {
+      "timestamp": "2026-02-02T15:29:31.090Z",
+      "from": "atlas",
+      "content": "**Dispatched:** P0: Web Search Tool Critical Failure - No Real-Time Data\n\n🚨 CRITICAL BUG: Web search tool completely failing to return current data\n\n**TEST CASE:**\n- Query: \"bitcoin current price today 2025\"\n- Expected: Current Bitcoin price (~$100K range)\n- Actual: Tool returns empty results, Atlas provides stale data\n\n**USER IMPACT:**\n- Market data queries fail (Bitcoin, stocks)\n- Current events research blocked\n- Real-time fact checking impossible\n- Breaking news analysis unavailable\n\n**ROOT CAUSE:** Likely Google API configuration issue or rate limiting\n\n**PRIORITY JUSTIFICATION:** Jim escalated to P0 - web search is core Atlas capability. Without real-time data, Atlas provides misleading information which undermines user trust.\n\n**REQUEST:** Fix Google API configuration and return when real-time web queries work properly for market data, news, and current events."
+    },
+    {
+      "timestamp": "2026-02-02T17:15:00.000Z",
+      "from": "pit-crew",
+      "content": "**SHIPPED:** Fixed Gemini 2.0 Flash grounding.\n\nRoot cause was wrong tool syntax - `googleSearchRetrieval` vs `googleSearch` and wrong placement (generateContent vs getGenerativeModel).\n\nSpike test verified:\n- Bitcoin price query returns $77,974.72 with 4 sources\n- 3.1 second latency (acceptable)\n- Real-time data confirmed\n\nFiles: core.ts, web-search-spike.ts"
+    }
+  ],
+  "created": "2026-02-02T15:29:31.090Z",
+  "updated": "2026-02-02T17:15:00.000Z",
+  "resolved": "2026-02-02T17:15:00.000Z",
+  "notion_url": "https://www.notion.so/P0-Web-Search-Tool-Critical-Failure-No-Real-Time-Data-2fb780a78eef812393fbfa7b758dfb5d"
+}

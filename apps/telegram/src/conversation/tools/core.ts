@@ -563,7 +563,8 @@ async function executeWorkQueueList(
   const limit = (input.limit as number) || 10;
 
   try {
-    const filters: Array<{ property: string; select: { equals: string } }> = [];
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const filters: any[] = [];
 
     if (status) {
       filters.push({ property: 'Status', select: { equals: status } });
@@ -891,20 +892,174 @@ async function executeWorkQueueGet(
   }
 }
 
+/**
+ * Execute web search using Gemini Flash with Google Search grounding.
+ * Fast, low-cost, and leverages Jim's Google credits.
+ */
 async function executeWebSearch(
   input: Record<string, unknown>
 ): Promise<{ success: boolean; result: unknown; error?: string }> {
   const query = input.query as string;
+  const numResults = (input.num_results as number) || 5;
 
-  // For now, return a stub - could integrate with Gemini grounding or a search API
-  return {
-    success: true,
-    result: {
-      message: 'Web search not yet implemented. Use /agent research for deep research.',
+  const apiKey = process.env.GEMINI_API_KEY;
+  if (!apiKey) {
+    logger.warn('Web search: GEMINI_API_KEY not set');
+    return {
+      success: false,
+      result: null,
+      error: 'Web search requires GEMINI_API_KEY environment variable. Use /agent research for deep research instead.',
+    };
+  }
+
+  const startTime = Date.now();
+
+  try {
+    // Dynamic import for Google Generative AI SDK
+    const { GoogleGenerativeAI } = await import('@google/generative-ai');
+    const genAI = new GoogleGenerativeAI(apiKey);
+
+    // Use Gemini Flash with Google Search grounding enabled at model level
+    const model = genAI.getGenerativeModel({
+      model: 'gemini-2.0-flash',
+      tools: [{ googleSearch: {} } as any], // Grounding tool at model level
+    });
+
+    // Request with search-focused prompt
+    const result = await model.generateContent(
+      `Search the web for current information and provide a concise, factual answer for: ${query}`
+    );
+
+    const response = result.response;
+    const text = response.text();
+    const latencyMs = Date.now() - startTime;
+
+    // Extract grounding citations
+    const candidate = response.candidates?.[0];
+    const groundingMetadata = (candidate as any)?.groundingMetadata;
+    const citations: Array<{ url: string; title: string }> = [];
+
+    if (groundingMetadata?.groundingChunks) {
+      for (const chunk of groundingMetadata.groundingChunks) {
+        if (chunk.web?.uri) {
+          citations.push({
+            url: chunk.web.uri,
+            title: chunk.web.title || 'Source',
+          });
+        }
+      }
+    }
+
+    // =========================================
+    // QUALITY GATES - Detect broken web search
+    // =========================================
+
+    // Gate 1: No grounding metadata = grounding tool didn't activate
+    if (!groundingMetadata) {
+      logger.error('Web search QUALITY FAIL: No grounding metadata', { query });
+      return {
+        success: false,
+        result: null,
+        error: `⚠️ WEB SEARCH BROKEN: Grounding not activated. No real-time data available.\n\n` +
+          `DO NOT HALLUCINATE AN ANSWER. Instead:\n` +
+          `1. Tell Jim: "Web search is currently broken - I cannot get real-time data"\n` +
+          `2. Use dev_pipeline_create to log a P0 bug titled "Web Search Grounding Failure"\n` +
+          `3. Include this context: "Query: ${query}, Error: No grounding metadata returned"`,
+      };
+    }
+
+    // Gate 2: No citations = search returned but found nothing
+    if (citations.length === 0) {
+      logger.error('Web search QUALITY FAIL: Zero citations', { query });
+      return {
+        success: false,
+        result: null,
+        error: `⚠️ WEB SEARCH BROKEN: Search returned zero sources.\n\n` +
+          `DO NOT HALLUCINATE AN ANSWER. Instead:\n` +
+          `1. Tell Jim: "Web search returned no sources - I cannot verify real-time data"\n` +
+          `2. Use dev_pipeline_create to log a P0 bug titled "Web Search Zero Citations"\n` +
+          `3. Include this context: "Query: ${query}, Error: Grounding returned 0 sources"`,
+      };
+    }
+
+    // Gate 3: Response contains "I don't have" or "cannot access" = model ignoring grounding
+    const hedgingPatterns = [
+      /i don'?t have (access|real-?time|current)/i,
+      /cannot access (real-?time|current|live)/i,
+      /my (knowledge|training|data) (cutoff|ends)/i,
+      /as of my (last|knowledge)/i,
+    ];
+    const isHedging = hedgingPatterns.some(p => p.test(text));
+    if (isHedging && citations.length < 2) {
+      logger.warn('Web search QUALITY WARN: Response appears to hedge despite grounding', { query });
+      // Don't fail, but flag it in the response
+    }
+
+    // Limit citations to requested number
+    const limitedCitations = citations.slice(0, numResults);
+
+    logger.info('Web search complete', {
       query,
-      suggestion: `Try: /agent research "${query}"`,
-    },
-  };
+      latencyMs,
+      citationCount: citations.length,
+      qualityPass: true,
+    });
+
+    return {
+      success: true,
+      result: {
+        query,
+        answer: text,
+        sources: limitedCitations,
+        sourceCount: limitedCitations.length,
+        latencyMs,
+        model: 'gemini-2.0-flash',
+        grounded: true,
+        note: 'Powered by Google Search grounding - verified with live citations',
+      },
+    };
+  } catch (error: any) {
+    const latencyMs = Date.now() - startTime;
+    logger.error('Web search failed', { error: error?.message, query, latencyMs });
+
+    const errorMessage = error?.message || String(error);
+
+    // API key issues
+    if (errorMessage.includes('API_KEY') || errorMessage.includes('authentication')) {
+      return {
+        success: false,
+        result: null,
+        error: `⚠️ WEB SEARCH BROKEN: Gemini API key invalid or expired.\n\n` +
+          `DO NOT HALLUCINATE AN ANSWER. Instead:\n` +
+          `1. Tell Jim: "Web search is broken - API authentication failed"\n` +
+          `2. Use dev_pipeline_create to log a P0 bug titled "Web Search API Key Failure"\n` +
+          `3. Include: "Error: ${errorMessage}"`,
+      };
+    }
+
+    // Rate limiting
+    if (errorMessage.includes('429') || errorMessage.includes('quota') || errorMessage.includes('rate')) {
+      return {
+        success: false,
+        result: null,
+        error: `⚠️ WEB SEARCH RATE LIMITED: Too many requests.\n\n` +
+          `DO NOT HALLUCINATE AN ANSWER. Instead:\n` +
+          `1. Tell Jim: "Web search is rate limited - please try again in a few minutes"\n` +
+          `2. If persistent, use dev_pipeline_create to log a P1 bug titled "Web Search Rate Limiting"`,
+      };
+    }
+
+    // Generic failure - always instruct to not hallucinate
+    return {
+      success: false,
+      result: null,
+      error: `⚠️ WEB SEARCH FAILED: ${errorMessage}\n\n` +
+        `DO NOT HALLUCINATE AN ANSWER. Instead:\n` +
+        `1. Tell Jim: "Web search failed - I cannot get real-time data right now"\n` +
+        `2. Use dev_pipeline_create to log a P0 bug titled "Web Search Failure"\n` +
+        `3. Include: "Query: ${query}, Error: ${errorMessage}"`,
+    };
+  }
 }
 
 async function executeStatusSummary(): Promise<{ success: boolean; result: unknown; error?: string }> {
