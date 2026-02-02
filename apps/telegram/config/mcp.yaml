@@ -26,6 +26,11 @@ servers:
   # Supports: read, create, update pages/blocks/databases
   # Source: https://github.com/makenotion/notion-mcp-server
   # Docs: https://developers.notion.com/docs/mcp
+  #
+  # DISABLED: 2026-02-02 - Atlas uses native @notionhq/client SDK exclusively.
+  # The MCP plugin has different parameter schemas that confuse Claude and
+  # can cause fabricated success responses. Native SDK is tested and verified.
+  # See: P0 BUG "Notion MCP Plugin Fabricates Success"
   notion:
     command: "npx"
     args: ["-y", "@notionhq/notion-mcp-server"]
@@ -34,7 +39,7 @@ servers:
     timeout: 30000
     reconnectDelay: 5000
     maxReconnectAttempts: 3
-    disabled: false
+    disabled: true
 
   # Example: Add more MCP servers here
   # memory:
