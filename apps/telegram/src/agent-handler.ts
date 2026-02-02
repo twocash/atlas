@@ -115,17 +115,23 @@ async function handleResearchCommand(
   const query = queryMatch[1] || queryMatch[2] || queryMatch[0];
 
   // Parse depth option
+  // Normalize dashes: mobile keyboards often convert -- to em-dash (—) or en-dash (–)
+  const normalizedArgs = argsText
+    .replace(/—/g, "--")  // em-dash → --
+    .replace(/–/g, "--")  // en-dash → --
+    .replace(/-(?=[a-z])/g, "--"); // single dash before word → -- (e.g., -deep → --deep)
+
   let depth: ResearchDepth = "standard"; // default
-  if (argsText.includes("--light")) {
+  if (normalizedArgs.includes("--light")) {
     depth = "light";
-  } else if (argsText.includes("--deep")) {
+  } else if (normalizedArgs.includes("--deep")) {
     depth = "deep";
-  } else if (argsText.includes("--standard")) {
+  } else if (normalizedArgs.includes("--standard")) {
     depth = "standard";
   }
 
-  // Parse focus option
-  const focusMatch = argsText.match(/--focus\s+["']?([^"'\s]+)["']?/);
+  // Parse focus option (use normalized args)
+  const focusMatch = normalizedArgs.match(/--focus\s+["']?([^"'\s]+)["']?/);
   const focus = focusMatch ? focusMatch[1] : undefined;
 
   // Build config

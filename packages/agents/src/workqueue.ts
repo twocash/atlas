@@ -16,6 +16,11 @@ import type {
   AgentEvent,
   AgentResult,
 } from "./types";
+import {
+  convertMarkdownToNotionBlocks,
+  batchBlocksForApi,
+  formatResearchAsMarkdown,
+} from "./notion-markdown";
 
 // ==========================================
 // Configuration
@@ -286,7 +291,17 @@ export async function syncAgentComplete(
   });
 
   // Write research results to page body as markdown blocks
-  await appendResearchResultsToPage(workItemId, agent, result);
+  try {
+    await appendResearchResultsToPage(workItemId, agent, result);
+  } catch (error: any) {
+    console.error("[WorkQueue] CRITICAL: appendResearchResultsToPage failed", {
+      workItemId,
+      error: error?.message || error,
+      stack: error?.stack,
+    });
+    // Try fallback comment
+    await writeResearchFallbackComment(workItemId, result, error?.message || "Unknown error");
+  }
 }
 
 /**
@@ -302,147 +317,247 @@ async function appendResearchResultsToPage(
     agentId: agent.id,
     hasSummary: !!result?.summary,
     summaryLength: result?.summary?.length || 0,
+    hasOutput: !!result?.output,
+    outputType: typeof result?.output,
   });
+
+  // DIAGNOSTIC: Log full result structure
+  console.log("[WorkQueue] DIAGNOSTIC - result.output:", {
+    hasOutput: !!result?.output,
+    outputKeys: result?.output ? Object.keys(result.output as object) : [],
+    summaryLength: (result?.output as any)?.summary?.length || 0,
+    findingsCount: (result?.output as any)?.findings?.length || 0,
+    sourcesCount: (result?.output as any)?.sources?.length || 0,
+  });
+
   const notion = getNotionClient();
 
-  // Build blocks for the page content
-  const blocks: Array<{
-    object: "block";
-    type: string;
-    [key: string]: unknown;
-  }> = [];
+  // Get full research output
+  const researchOutput = result.output as {
+    summary?: string;
+    findings?: Array<{ claim: string; source: string; url: string }>;
+    sources?: string[];
+    bibliography?: string[];
+    query?: string;
+    depth?: string;
+  } | undefined;
 
-  // Header with timestamp
-  blocks.push({
-    object: "block",
-    type: "heading_2",
-    heading_2: {
-      rich_text: [{ type: "text", text: { content: `Research Results` } }],
+  // Build metadata header blocks manually (these aren't from markdown)
+  const headerBlocks: any[] = [
+    {
+      object: "block",
+      type: "heading_2",
+      heading_2: {
+        rich_text: [{ type: "text", text: { content: "Research Results" } }],
+      },
     },
-  });
-
-  // Metadata callout
-  const metaText = `Agent: ${agent.type} | Completed: ${formatDate(agent.completedAt || new Date())}${result.metrics ? ` | ${Math.round(result.metrics.durationMs / 1000)}s` : ""}`;
-  blocks.push({
-    object: "block",
-    type: "callout",
-    callout: {
-      rich_text: [{ type: "text", text: { content: metaText } }],
-      icon: { type: "emoji", emoji: "🤖" },
+    {
+      object: "block",
+      type: "callout",
+      callout: {
+        rich_text: [{
+          type: "text",
+          text: {
+            content: `Agent: ${agent.type} | Completed: ${formatDate(agent.completedAt || new Date())}${result.metrics ? ` | ${Math.round(result.metrics.durationMs / 1000)}s` : ""}`,
+          },
+        }],
+        icon: { type: "emoji", emoji: "🤖" },
+      },
     },
-  });
+  ];
 
-  // Summary section
-  if (result.summary) {
-    blocks.push({
+  // Convert research results to Notion-safe Markdown, then to blocks
+  let contentBlocks: any[] = [];
+  if (researchOutput?.summary || researchOutput?.findings?.length || researchOutput?.sources?.length) {
+    // Format research data as Notion-safe Markdown
+    const markdown = formatResearchAsMarkdown({
+      summary: researchOutput.summary || result.summary || "",
+      findings: researchOutput.findings || [],
+      sources: researchOutput.sources || [],
+      query: researchOutput.query || "",
+    });
+
+    console.log("[WorkQueue] Generated markdown", {
+      pageId,
+      markdownLength: markdown.length,
+      preview: markdown.substring(0, 300),
+    });
+
+    // Convert Markdown to Notion blocks using martian + our limits shim
+    const conversion = convertMarkdownToNotionBlocks(markdown);
+
+    console.log("[WorkQueue] Markdown conversion result", {
+      pageId,
+      blockCount: conversion.blocks.length,
+      stats: conversion.stats,
+      warnings: conversion.warnings,
+    });
+
+    contentBlocks = conversion.blocks;
+  }
+
+  // Add bibliography section if present (deep research)
+  if (researchOutput?.bibliography && researchOutput.bibliography.length > 0) {
+    contentBlocks.push({
       object: "block",
       type: "heading_3",
       heading_3: {
-        rich_text: [{ type: "text", text: { content: "Summary" } }],
+        rich_text: [{ type: "text", text: { content: "Bibliography" } }],
       },
     });
 
-    // Split summary into paragraphs
-    const summaryParagraphs = result.summary.split("\n\n").filter(Boolean);
-    for (const para of summaryParagraphs.slice(0, 5)) {
-      blocks.push({
+    for (const citation of researchOutput.bibliography) {
+      contentBlocks.push({
         object: "block",
         type: "paragraph",
         paragraph: {
-          rich_text: [{ type: "text", text: { content: truncateText(para, 2000) } }],
+          rich_text: [{ type: "text", text: { content: truncateText(citation, 1900) } }],
         },
       });
     }
   }
 
-  // Findings section (for research results)
-  const researchOutput = result.output as {
-    findings?: Array<{ claim: string; source: string; url: string }>;
-    sources?: string[];
-  } | undefined;
-
-  if (researchOutput?.findings && researchOutput.findings.length > 0) {
-    blocks.push({
+  // Add metadata footer
+  if (researchOutput?.query || researchOutput?.depth) {
+    contentBlocks.push({
       object: "block",
-      type: "heading_3",
-      heading_3: {
-        rich_text: [{ type: "text", text: { content: "Key Findings" } }],
+      type: "callout",
+      callout: {
+        rich_text: [{
+          type: "text",
+          text: { content: `Query: "${researchOutput.query || 'N/A'}" | Depth: ${researchOutput.depth || 'standard'}` },
+        }],
+        icon: { type: "emoji", emoji: "📋" },
+        color: "gray_background",
       },
     });
-
-    for (const finding of researchOutput.findings.slice(0, 10)) {
-      // Each finding as a bulleted list item with source link
-      const findingText = finding.url
-        ? `${finding.claim}`
-        : finding.claim;
-
-      blocks.push({
-        object: "block",
-        type: "bulleted_list_item",
-        bulleted_list_item: {
-          rich_text: [
-            { type: "text", text: { content: findingText } },
-            ...(finding.source
-              ? [
-                  { type: "text", text: { content: " — " } },
-                  {
-                    type: "text",
-                    text: {
-                      content: finding.source,
-                      link: finding.url ? { url: finding.url } : null,
-                    },
-                    annotations: { italic: true },
-                  },
-                ]
-              : []),
-          ],
-        },
-      });
-    }
   }
 
-  // Sources section
-  if (researchOutput?.sources && researchOutput.sources.length > 0) {
-    blocks.push({
-      object: "block",
-      type: "heading_3",
-      heading_3: {
-        rich_text: [{ type: "text", text: { content: "Sources" } }],
-      },
-    });
-
-    for (const source of researchOutput.sources.slice(0, 10)) {
-      blocks.push({
-        object: "block",
-        type: "bulleted_list_item",
-        bulleted_list_item: {
-          rich_text: [
-            {
-              type: "text",
-              text: { content: source, link: { url: source } },
-            },
-          ],
-        },
-      });
-    }
-  }
-
-  // Divider at end
-  blocks.push({
+  // Add divider at end
+  contentBlocks.push({
     object: "block",
     type: "divider",
     divider: {},
   });
 
-  // Append blocks to page
+  // Combine all blocks
+  const allBlocks = [...headerBlocks, ...contentBlocks];
+
+  // Batch blocks to respect Notion API limits (100 blocks per request)
+  const batches = batchBlocksForApi(allBlocks);
+
+  console.log("[WorkQueue] Appending blocks to page", {
+    pageId,
+    totalBlocks: allBlocks.length,
+    batches: batches.length,
+  });
+
   try {
-    await notion.blocks.children.append({
-      block_id: pageId,
-      children: blocks as any,
+    // Append each batch with retry logic
+    let totalAppended = 0;
+    for (let i = 0; i < batches.length; i++) {
+      const batch = batches[i];
+      let retries = 3;
+      let lastError: Error | null = null;
+
+      while (retries > 0) {
+        try {
+          const appendResult = await notion.blocks.children.append({
+            block_id: pageId,
+            children: batch as any,
+          });
+          totalAppended += appendResult.results?.length || 0;
+          break; // Success, exit retry loop
+        } catch (error: any) {
+          lastError = error;
+          retries--;
+
+          // Check if it's a rate limit error
+          if (error?.code === "rate_limited" && retries > 0) {
+            console.log("[WorkQueue] Rate limited, waiting before retry...", {
+              pageId,
+              batch: i + 1,
+              retriesLeft: retries,
+            });
+            await new Promise((r) => setTimeout(r, 1000 * (4 - retries))); // Exponential backoff
+            continue;
+          }
+
+          // For validation errors, log details but don't retry
+          if (error?.code === "validation_error") {
+            console.error("[WorkQueue] Validation error in batch", {
+              pageId,
+              batch: i + 1,
+              error: error?.message,
+              body: error?.body,
+              blockTypes: batch.map((b: any) => b.type),
+            });
+            throw error; // Throw to trigger fallback
+          }
+
+          if (retries === 0) {
+            throw error;
+          }
+        }
+      }
+
+      if (lastError && retries === 0) {
+        throw lastError;
+      }
+    }
+
+    console.log("[WorkQueue] Successfully appended all blocks", {
+      pageId,
+      totalAppended,
+      batches: batches.length,
     });
-  } catch (error) {
-    console.error("[WorkQueue] Failed to append blocks to page:", error);
-    // Don't throw - page properties were already updated
+  } catch (error: any) {
+    console.error("[WorkQueue] Failed to append blocks, using fallback", {
+      pageId,
+      error: error?.message || error,
+    });
+    // FALLBACK: Write summary as comment so research isn't lost
+    await writeResearchFallbackComment(pageId, result, error?.message || "Unknown error");
+  }
+}
+
+/**
+ * FALLBACK: Write research summary as comment if blocks fail
+ * This ensures we never lose research results
+ */
+async function writeResearchFallbackComment(
+  pageId: string,
+  result: AgentResult,
+  error: string
+): Promise<void> {
+  const notion = getNotionClient();
+  const researchOutput = result.output as { summary?: string } | undefined;
+  const summary = researchOutput?.summary || result.summary;
+
+  if (!summary) return;
+
+  try {
+    // Truncate error to keep total under 2000 chars
+    // Format: "[Fallback: {error}]\n\n{summary}"
+    // Reserve ~100 chars for prefix, rest for summary
+    const shortError = error.length > 80 ? error.substring(0, 77) + "..." : error;
+    const prefix = `[Fallback: ${shortError}]\n\n`;
+    const maxSummary = 2000 - prefix.length - 10; // 10 char buffer
+
+    await notion.comments.create({
+      parent: { page_id: pageId },
+      rich_text: [
+        {
+          type: "text",
+          text: {
+            content: `${prefix}${truncateText(summary, maxSummary)}`,
+          },
+        },
+      ],
+    });
+    console.log("[WorkQueue] Fallback: wrote summary as comment", { pageId });
+  } catch (commentError) {
+    console.error("[WorkQueue] Fallback comment also failed:", commentError);
   }
 }
 
@@ -665,6 +780,93 @@ function extractRichText(page: unknown, propName: string): string | undefined {
 function truncateText(text: string, maxLength: number): string {
   if (text.length <= maxLength) return text;
   return text.substring(0, maxLength - 3) + "...";
+}
+
+/**
+ * Split text into chunks that fit Notion's block size limit
+ */
+function splitTextIntoChunks(text: string, maxLength: number): string[] {
+  if (text.length <= maxLength) return [text];
+
+  const chunks: string[] = [];
+  let remaining = text;
+
+  while (remaining.length > 0) {
+    if (remaining.length <= maxLength) {
+      chunks.push(remaining);
+      break;
+    }
+
+    // Try to split at sentence boundary
+    let splitIndex = remaining.lastIndexOf('. ', maxLength);
+    if (splitIndex === -1 || splitIndex < maxLength / 2) {
+      // Try splitting at word boundary
+      splitIndex = remaining.lastIndexOf(' ', maxLength);
+    }
+    if (splitIndex === -1 || splitIndex < maxLength / 2) {
+      // Force split at maxLength
+      splitIndex = maxLength;
+    }
+
+    chunks.push(remaining.substring(0, splitIndex + 1).trim());
+    remaining = remaining.substring(splitIndex + 1).trim();
+  }
+
+  return chunks;
+}
+
+/**
+ * Validate HTTP/HTTPS URL
+ */
+function isValidHttpUrl(str: string): boolean {
+  if (!str) return false;
+  try {
+    const url = new URL(str);
+    return url.protocol === 'http:' || url.protocol === 'https:';
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * Sanitize summary text for professional Notion display
+ * Removes any JSON artifacts, escape sequences, and code block markers
+ */
+function sanitizeSummaryForDisplay(text: string): string {
+  if (!text) return "";
+
+  let cleaned = text;
+
+  // Remove markdown code block markers
+  cleaned = cleaned.replace(/```json\s*/gi, '');
+  cleaned = cleaned.replace(/```\s*/g, '');
+
+  // Remove JSON object wrappers if the summary starts with them
+  if (cleaned.trim().startsWith('{')) {
+    // Try to extract just the summary value from JSON
+    const summaryMatch = cleaned.match(/"summary"\s*:\s*"([\s\S]*?)(?:"\s*,\s*"findings"|"\s*})/);
+    if (summaryMatch) {
+      cleaned = summaryMatch[1];
+    }
+  }
+
+  // Clean escape sequences
+  cleaned = cleaned
+    .replace(/\\n\\n/g, '\n\n')
+    .replace(/\\n/g, '\n')
+    .replace(/\\"/g, '"')
+    .replace(/\\t/g, ' ')
+    .replace(/\\\\/g, '\\');
+
+  // Remove any remaining JSON-like patterns
+  cleaned = cleaned.replace(/"findings"\s*:\s*\[[\s\S]*$/g, ''); // Truncate at findings array
+  cleaned = cleaned.replace(/^\s*\{\s*"summary"\s*:\s*"/g, '');  // Remove opening JSON
+  cleaned = cleaned.replace(/"\s*,\s*"findings".*$/gs, '');      // Remove trailing JSON
+
+  // Clean up whitespace
+  cleaned = cleaned.replace(/\n{3,}/g, '\n\n').trim();
+
+  return cleaned;
 }
 
 /**

@@ -8,11 +8,14 @@
     "typecheck": "tsc --noEmit",
     "test": "bun test",
     "test:worker": "bun test test/worker-logic.test.ts",
-    "worker": "bun run src/worker.ts"
+    "worker": "bun run src/worker.ts",
+    "spike:research": "bun run scripts/spike-research.ts",
+    "test:e2e:research": "bun run test/research-e2e.spike.ts"
   },
   "dependencies": {
     "@google/generative-ai": "^0.21.0",
-    "@notionhq/client": "^2.2.14"
+    "@notionhq/client": "^2.2.14",
+    "@tryfabric/martian": "^1.2.4"
   },
   "devDependencies": {
     "@types/bun": "latest",
