@@ -1,0 +1,27 @@
+{
+  "id": "2026-02-02-work-queue-update-tool-failing",
+  "title": "work_queue_update Tool Failing - Missing Properties",
+  "type": "bug",
+  "priority": "P0",
+  "status": "shipped",
+  "requestor": "atlas",
+  "assignee": "pit-crew",
+  "context": "CRITICAL BUG: The work_queue_update tool is completely non-functional. When attempting to update Work Queue items (like marking tasks \"Done\"), the tool fails to update core properties.\n\nREPRODUCTION STEPS:\n1. Call work_queue_update with status=\"Done\" and resolution_notes\n2. Tool appears to succeed but doesn't actually update the item\n3. Item remains in original status despite \"successful\" tool response\n\nUSER IMPACT:\nAs a user, I expect work tools to be working when system checks return healthy status like:\n✅ Atlas Bot Status\nUser: jimcalhoun  \nNotion: ✓ Connected\nClaude: ✓ Connected\nSession: Active\n\nBut it's frustrating because critical functionality is really blocked. The system reports everything is fine, but I can't complete basic task management operations. This creates a false sense of system health when core workflows are broken.\n\nTECHNICAL DETAILS:\n- Tool returns success but properties don't update in Notion\n- Affects status changes, resolution notes, and other core fields\n- Makes task completion workflow completely unusable\n- May be related to Notion API integration or property mapping",
+  "resolution": "INVESTIGATION COMPLETE: work_queue_update tool is WORKING correctly. Status/date updates are being applied (verified: Research test item has Status=Done, Completed=2026-02-02). The real issue is URL HALLUCINATION - Claude fabricates Notion URLs in responses instead of using actual URLs from tool results. FIX: Enhanced anti-hallucination formatting in handler.ts - URLs now placed LAST in tool results with stronger warnings.",
+  "messages": [
+    {
+      "timestamp": "2026-02-02T14:22:10.342Z",
+      "from": "atlas",
+      "content": "**Dispatched:** work_queue_update Tool Failing - Missing Properties\n\nCRITICAL BUG: The work_queue_update tool is completely non-functional. When attempting to update Work Queue items (like marking tasks \"Done\"), the tool fails to update core properties.\n\nREPRODUCTION STEPS:\n1. Call work_queue_update with status=\"Done\" and resolution_notes\n2. Tool appears to succeed but doesn't actually update the item\n3. Item remains in original status despite \"successful\" tool response\n\nUSER IMPACT:\nAs a user, I expect work tools to be working when system checks return healthy status like:\n✅ Atlas Bot Status\nUser: jimcalhoun  \nNotion: ✓ Connected\nClaude: ✓ Connected\nSession: Active\n\nBut it's frustrating because critical functionality is really blocked. The system reports everything is fine, but I can't complete basic task management operations. This creates a false sense of system health when core workflows are broken.\n\nTECHNICAL DETAILS:\n- Tool returns success but properties don't update in Notion\n- Affects status changes, resolution notes, and other core fields\n- Makes task completion workflow completely unusable\n- May be related to Notion API integration or property mapping"
+    },
+    {
+      "timestamp": "2026-02-02T14:45:00.000Z",
+      "from": "pit-crew",
+      "content": "**SHIPPED:** Investigation Complete\n\nRoot Cause Analysis:\n1. work_queue_update IS WORKING - verified Status=Done, Completed dates being set correctly\n2. The REAL issue is URL HALLUCINATION - Claude fabricates Notion URLs in responses\n3. Users see fake URLs, click them, get 404, think the tool failed\n\nFix Applied:\n- Enhanced anti-hallucination formatting in handler.ts\n- URLs now placed LAST in tool results (recency bias helps)\n- Stronger visual warnings around EXACT URLs\n\nFiles: apps/telegram/src/conversation/handler.ts"
+    }
+  ],
+  "created": "2026-02-02T14:22:10.342Z",
+  "updated": "2026-02-02T14:45:00.000Z",
+  "resolved": "2026-02-02T14:45:00.000Z",
+  "notion_url": "https://www.notion.so/work_queue_update-Tool-Failing-Missing-Properties-2fb780a78eef816d9904ccc91a0509c7"
+}

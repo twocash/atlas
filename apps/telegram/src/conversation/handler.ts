@@ -267,12 +267,20 @@ export async function handleConversation(ctx: Context): Promise<void> {
           const feedUrl = resultObj?.feedUrl as string | undefined;
 
           if (url || feedUrl) {
-            // CRITICAL: Make URLs impossible to miss - Claude was hallucinating them
-            let urlBlock = '\n\n🔗 MANDATORY URLs (copy EXACTLY - do NOT fabricate):\n';
-            if (url) urlBlock += `   ITEM URL: ${url}\n`;
-            if (feedUrl) urlBlock += `   FEED URL: ${feedUrl}\n`;
-            urlBlock += '\n⚠️ Use these EXACT URLs in your response. If you use any other URL, you are HALLUCINATING.\n\n';
-            toolResultContent = `✅ SUCCESS${urlBlock}Full result:\n${JSON.stringify(result)}`;
+            // CRITICAL: Put URLs LAST - Claude hallucinates less with recent context
+            // Also use EXACT_URL_* naming to make it crystal clear
+            const jsonResult = JSON.stringify(result, null, 2);
+            let urlBlock = '\n\n════════════════════════════════════════\n';
+            urlBlock += '⚠️ MANDATORY - COPY EXACTLY - NO FABRICATION ⚠️\n';
+            urlBlock += '════════════════════════════════════════\n';
+            if (url) urlBlock += `EXACT_URL_FOR_USER: ${url}\n`;
+            if (feedUrl) urlBlock += `EXACT_FEED_URL: ${feedUrl}\n`;
+            urlBlock += '════════════════════════════════════════\n';
+            urlBlock += 'If you display ANY Notion URL other than EXACT_URL_FOR_USER,\n';
+            urlBlock += 'you are LYING to the user. Use ONLY the URL above.\n';
+            urlBlock += '════════════════════════════════════════';
+            // Put JSON first, URLS LAST (recency bias helps)
+            toolResultContent = `✅ SUCCESS\n\nResult data:\n${jsonResult}${urlBlock}`;
           } else {
             toolResultContent = JSON.stringify(result);
           }

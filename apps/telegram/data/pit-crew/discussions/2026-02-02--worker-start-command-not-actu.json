@@ -1,0 +1,28 @@
+{
+  "id": "2026-02-02--worker-start-command-not-actu",
+  "title": "/worker start command not actually polling Work Queue",
+  "type": "bug",
+  "priority": "P1",
+  "status": "shipped",
+  "requestor": "atlas",
+  "assignee": "pit-crew",
+  "context": "BUG REPORT: The /worker start command in Telegram claims to start polling the Work Queue every 2 minutes but does not actually function.\n\nSYMPTOMS:\n- Command responds with success message in Telegram UI\n- Claims polling is enabled every 2 minutes\n- No actual Work Queue polling occurs\n- Worker remains inactive despite \"started\" status\n\nEXPECTED BEHAVIOR:\n- /worker start should initiate actual Work Queue polling\n- Should check queue every 2 minutes as advertised\n- Should process available tasks automatically\n- Should provide real status feedback\n\nDEBUGGING NEEDED:\n- Verify polling loop implementation\n- Check if timer/interval is actually created\n- Validate Work Queue connection during polling\n- Ensure proper error handling and logging\n\nIMPACT: Atlas cannot auto-process Work Queue items, requiring manual intervention for all task execution.\n\nPRIORITY: P1 - Core Atlas functionality broken",
+  "resolution": "Fixed in commit 08bd82e - startPolling() now runs immediate first cycle instead of waiting 2 minutes. Root cause: setInterval was created but no immediate cycle was run, so users had to wait 2 min to see any activity.",
+  "messages": [
+    {
+      "timestamp": "2026-02-02T04:47:06.199Z",
+      "from": "atlas",
+      "content": "**Dispatched:** /worker start command not actually polling Work Queue\n\nBUG REPORT: The /worker start command in Telegram claims to start polling the Work Queue every 2 minutes but does not actually function.\n\nSYMPTOMS:\n- Command responds with success message in Telegram UI\n- Claims polling is enabled every 2 minutes\n- No actual Work Queue polling occurs\n- Worker remains inactive despite \"started\" status\n\nEXPECTED BEHAVIOR:\n- /worker start should initiate actual Work Queue polling\n- Should check queue every 2 minutes as advertised\n- Should process available tasks automatically\n- Should provide real status feedback\n\nDEBUGGING NEEDED:\n- Verify polling loop implementation\n- Check if timer/interval is actually created\n- Validate Work Queue connection during polling\n- Ensure proper error handling and logging\n\nIMPACT: Atlas cannot auto-process Work Queue items, requiring manual intervention for all task execution.\n\nPRIORITY: P1 - Core Atlas functionality broken"
+    },
+    {
+      "timestamp": "2026-02-02T05:10:00.000Z",
+      "from": "pit-crew",
+      "content": "**SHIPPED:** Fixed in commit 08bd82e\n\nRoot Cause: startPolling() created setInterval but did NOT run immediate first cycle. Users had to wait 2 minutes.\n\nFix Applied:\n1. Made startPolling() async\n2. Added immediate first cycle execution\n3. Added typing indicator + progress messages\n4. Added logging for cycle start/completion\n5. Returns first cycle result in confirmation\n\nFiles: apps/telegram/src/worker/index.ts, apps/telegram/src/bot.ts"
+    }
+  ],
+  "created": "2026-02-02T04:47:06.199Z",
+  "updated": "2026-02-02T05:10:00.000Z",
+  "resolved": "2026-02-02T05:10:00.000Z",
+  "commit": "08bd82e",
+  "notion_url": "https://www.notion.so/worker-start-command-not-actually-polling-Work-Queue-2fb780a78eef81328304cbc16f690579"
+}
