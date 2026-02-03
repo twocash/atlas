@@ -32,6 +32,80 @@ console.log("Atlas Orchestrator Initialized")
 // Open side panel when extension icon is clicked
 chrome.sidePanel?.setPanelBehavior?.({ openPanelOnActionClick: true })
 
+// =============================================================================
+// CONTEXT MENU: "Send to Atlas"
+// =============================================================================
+
+const ATLAS_STATUS_SERVER = "http://localhost:3847"
+
+// Create context menu on install/update
+chrome.runtime.onInstalled.addListener(() => {
+  // Page context menu (right-click on page)
+  chrome.contextMenus.create({
+    id: "atlas-capture-page",
+    title: "Send to Atlas",
+    contexts: ["page"],
+  })
+
+  // Selection context menu (right-click on selected text)
+  chrome.contextMenus.create({
+    id: "atlas-capture-selection",
+    title: "Send to Atlas",
+    contexts: ["selection"],
+  })
+
+  // Link context menu (right-click on a link)
+  chrome.contextMenus.create({
+    id: "atlas-capture-link",
+    title: "Send Link to Atlas",
+    contexts: ["link"],
+  })
+
+  console.log("Atlas: Context menus created")
+})
+
+// Handle context menu clicks
+chrome.contextMenus.onClicked.addListener(async (info, tab) => {
+  const url = info.menuItemId === "atlas-capture-link"
+    ? info.linkUrl
+    : info.pageUrl || tab?.url
+
+  if (!url) {
+    console.error("Atlas: No URL to capture")
+    return
+  }
+
+  const selectedText = info.selectionText || undefined
+  const title = tab?.title || url
+
+  console.log("Atlas: Capturing page", { url, title, selectedText: selectedText?.substring(0, 100) })
+
+  try {
+    const response = await fetch(`${ATLAS_STATUS_SERVER}/capture`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        url,
+        title,
+        selectedText,
+        pillar: "Personal", // Default pillar - could be made configurable
+      }),
+    })
+
+    const result = await response.json()
+
+    if (result.ok) {
+      console.log("Atlas: Page captured successfully")
+      // Could show a notification here
+    } else {
+      console.error("Atlas: Capture failed", result.error)
+    }
+  } catch (err) {
+    console.error("Atlas: Failed to send to Atlas", err)
+    // Atlas backend might be offline
+  }
+})
+
 // Keepalive alarm (backup for heartbeat port)
 chrome.alarms.create("atlas-keepalive", { periodInMinutes: ALARM_KEEPALIVE_MINUTES })
 chrome.alarms.onAlarm.addListener((alarm) => {

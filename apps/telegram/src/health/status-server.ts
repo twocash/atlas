@@ -160,14 +160,181 @@ app.get('/debug/skills', async (c) => {
   }
 });
 
+// =============================================================================
+// PAGE CAPTURE ENDPOINT (Chrome Extension → Atlas)
+// =============================================================================
+
+interface CaptureRequest {
+  url: string;
+  title?: string;
+  pillar?: string;
+  selectedText?: string;
+}
+
+// Queue for captures (processed async)
+const captureQueue: CaptureRequest[] = [];
+let processingCapture = false;
+
+app.post('/capture', async (c) => {
+  try {
+    const body = await c.req.json() as CaptureRequest;
+
+    if (!body.url) {
+      return c.json({ ok: false, error: 'URL is required' }, 400);
+    }
+
+    logger.info('Page capture received', { url: body.url, title: body.title, pillar: body.pillar });
+
+    // Push activity for UI feedback
+    pushActivity('page-capture', 'received', 'running', [`Capturing: ${body.title || body.url}`]);
+
+    // Add to queue
+    captureQueue.push(body);
+
+    // Start processing if not already
+    if (!processingCapture) {
+      processCaptureQueue();
+    }
+
+    return c.json({
+      ok: true,
+      message: 'Page queued for capture',
+      url: body.url,
+    });
+  } catch (err) {
+    logger.error('Capture endpoint error', { error: err });
+    return c.json({ ok: false, error: String(err) }, 500);
+  }
+});
+
+async function processCaptureQueue() {
+  if (processingCapture || captureQueue.length === 0) return;
+
+  processingCapture = true;
+
+  while (captureQueue.length > 0) {
+    const capture = captureQueue.shift()!;
+
+    try {
+      await processCapture(capture);
+    } catch (err) {
+      logger.error('Capture processing failed', { url: capture.url, error: err });
+      pushActivity('page-capture', 'error', 'error', [String(err)]);
+    }
+  }
+
+  processingCapture = false;
+}
+
+async function processCapture(capture: CaptureRequest) {
+  const { url, title, pillar = 'Personal', selectedText } = capture;
+
+  pushActivity('page-capture', 'creating-entries', 'running', ['Creating Feed and Work Queue entries...']);
+
+  try {
+    // Import Notion client
+    const { Client } = await import('@notionhq/client');
+    const notion = new Client({ auth: process.env.NOTION_API_KEY });
+
+    // Database IDs (canonical)
+    const FEED_DB = '90b2b33f-4b44-4b42-870f-8d62fb8cbf18';
+    const WORK_QUEUE_DB = '3d679030-b76b-43bd-92d8-1ac51abb4a28';
+
+    const entryTitle = title || url;
+    const capturedAt = new Date().toISOString();
+
+    // Create Feed entry
+    const feedEntry = await notion.pages.create({
+      parent: { database_id: FEED_DB },
+      properties: {
+        'Entry': { title: [{ text: { content: entryTitle } }] },
+        'Pillar': { select: { name: pillar } },
+        'Source': { url: url },
+        'Request Type': { select: { name: 'Research' } },
+        'Extraction Status': { select: { name: 'pending' } },
+      },
+    });
+
+    // Create Work Queue entry
+    const wqEntry = await notion.pages.create({
+      parent: { database_id: WORK_QUEUE_DB },
+      properties: {
+        'Item': { title: [{ text: { content: entryTitle } }] },
+        'Pillar': { select: { name: pillar } },
+        'Status': { select: { name: 'Captured' } },
+        'Type': { select: { name: 'Research' } },
+        'Priority': { select: { name: 'P2' } },
+      },
+    });
+
+    // Add source URL to Work Queue page body
+    await notion.blocks.children.append({
+      block_id: wqEntry.id,
+      children: [
+        {
+          type: 'callout',
+          callout: {
+            icon: { emoji: '🔗' },
+            color: 'blue_background',
+            rich_text: [{ type: 'text', text: { content: `Source: `, link: null } }, { type: 'text', text: { content: url, link: { url } } }],
+          },
+        },
+        ...(selectedText ? [{
+          type: 'quote' as const,
+          quote: {
+            rich_text: [{ type: 'text' as const, text: { content: selectedText.substring(0, 2000) } }],
+          },
+        }] : []),
+      ],
+    });
+
+    pushActivity('page-capture', 'entries-created', 'success', ['Feed and Work Queue entries created']);
+
+    // Now trigger skill execution for rich extraction
+    pushActivity('page-capture', 'extracting', 'running', ['Running content extraction...']);
+
+    const { getSkillRegistry, initializeSkillRegistry } = await import('../skills/registry');
+    const { executeSkill } = await import('../skills/executor');
+
+    // Ensure registry is initialized
+    await initializeSkillRegistry();
+    const registry = getSkillRegistry();
+
+    // Find matching skill (url-extract will match if no domain-specific skill)
+    const match = registry.findBestMatch(url, { pillar: pillar as any });
+
+    if (match) {
+      logger.info('Executing skill for capture', { skill: match.skill.name, url });
+
+      await executeSkill(match.skill, {
+        url,
+        pillar,
+        feedId: feedEntry.id,
+        workQueueId: wqEntry.id,
+        depth: 'standard',
+      });
+
+      pushActivity('page-capture', 'complete', 'success', [`Captured and analyzed: ${title || url}`]);
+    } else {
+      pushActivity('page-capture', 'complete', 'success', [`Captured (no extraction skill matched): ${url}`]);
+    }
+
+  } catch (err) {
+    logger.error('Capture processing error', { url, error: err });
+    pushActivity('page-capture', 'error', 'error', [`Failed: ${String(err)}`]);
+    throw err;
+  }
+}
+
 // Root endpoint
 app.get('/', (c) => {
   return c.json({
     service: 'Atlas Status Server',
-    version: '1.0.0',
+    version: '1.1.0',
     endpoints: {
       '/status': 'GET - Full status with activities',
       '/health': 'GET - Simple health check',
+      '/capture': 'POST - Capture page from Chrome extension',
     },
   });
 });

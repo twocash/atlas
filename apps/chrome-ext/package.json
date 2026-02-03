@@ -34,7 +34,8 @@
       "tabs",
       "alarms",
       "scripting",
-      "activeTab"
+      "activeTab",
+      "contextMenus"
     ],
     "side_panel": {
       "default_path": "sidepanel.html"
@@ -43,7 +44,8 @@
       "https://www.linkedin.com/*",
       "https://api.notion.com/*",
       "https://api.phantombuster.com/*",
-      "https://phantombuster.s3.amazonaws.com/*"
+      "https://phantombuster.s3.amazonaws.com/*",
+      "http://localhost:3847/*"
     ]
   }
 }
