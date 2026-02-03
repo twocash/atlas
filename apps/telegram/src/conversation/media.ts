@@ -905,6 +905,179 @@ export function buildMediaContext(media: MediaContext, attachment: AttachmentInf
   return context;
 }
 
+/**
+ * Extract structured analysis content from MediaContext for Notion page body
+ * This transforms Gemini's raw analysis into actionable, pillar-framed content
+ */
+export function buildAnalysisContent(
+  media: MediaContext,
+  attachment: AttachmentInfo,
+  pillar: Pillar
+): NonNullable<import('./audit').AuditEntry['analysisContent']> {
+  // Extract key points from Gemini's description
+  // Look for numbered lists, bullet points, or sentence patterns
+  const keyPoints = extractKeyPoints(media.description);
+
+  // Generate pillar-framed suggested actions
+  const suggestedActions = generateSuggestedActions(media, pillar, keyPoints);
+
+  // Build professional summary framed for the pillar
+  const summary = buildPillarFramedSummary(media, pillar, attachment);
+
+  return {
+    summary,
+    fullText: media.extractedText || undefined,
+    keyPoints: keyPoints.length > 0 ? keyPoints : undefined,
+    suggestedActions: suggestedActions.length > 0 ? suggestedActions : undefined,
+    metadata: {
+      'Media Type': media.type,
+      'Source': attachment.fileName || attachment.type,
+      'Size': attachment.fileSize ? formatFileSize(attachment.fileSize) : 'Unknown',
+      'Pillar': pillar,
+      'Processing Time': `${media.processingTime}ms`,
+      ...(attachment.width && attachment.height && {
+        'Dimensions': `${attachment.width}x${attachment.height}`,
+      }),
+      ...(attachment.duration && {
+        'Duration': formatDuration(attachment.duration),
+      }),
+      ...(media.archivedPath && {
+        'Archived': media.archivedPath,
+      }),
+    },
+  };
+}
+
+/**
+ * Extract key points from Gemini's analysis
+ */
+function extractKeyPoints(description: string): string[] {
+  const points: string[] = [];
+
+  // Match numbered lists (1. 2. 3.)
+  const numberedMatches = description.match(/^\d+[.)]\s*(.+)$/gm);
+  if (numberedMatches) {
+    points.push(...numberedMatches.map(m => m.replace(/^\d+[.)]\s*/, '').trim()));
+  }
+
+  // Match bullet points (- or *)
+  const bulletMatches = description.match(/^[-*]\s+(.+)$/gm);
+  if (bulletMatches) {
+    points.push(...bulletMatches.map(m => m.replace(/^[-*]\s+/, '').trim()));
+  }
+
+  // If no structured points found, extract sentences that look actionable
+  if (points.length === 0) {
+    const sentences = description.split(/[.!?]+/).filter(s => s.trim().length > 20);
+    // Take first 5 meaningful sentences as key points
+    points.push(...sentences.slice(0, 5).map(s => s.trim()));
+  }
+
+  // Dedupe and limit
+  return [...new Set(points)].slice(0, 8);
+}
+
+/**
+ * Generate suggested actions based on media type and pillar
+ */
+function generateSuggestedActions(
+  media: MediaContext,
+  pillar: Pillar,
+  _keyPoints: string[]  // Reserved for future use: semantic action generation from key points
+): string[] {
+  const actions: string[] = [];
+
+  // Pillar-specific action framing
+  const pillarFrames: Record<Pillar, string[]> = {
+    'Personal': [
+      'Review for personal insights or learning opportunities',
+      'Consider how this relates to health/wellness goals',
+      'Archive for future reference in personal growth',
+    ],
+    'The Grove': [
+      'Analyze for potential Grove content or research',
+      'Consider implications for AI/architecture work',
+      'Extract patterns for technical documentation',
+    ],
+    'Consulting': [
+      'Review for client deliverable opportunities',
+      'Consider relevance to active consulting projects',
+      'Identify actionable items for client work',
+    ],
+    'Home/Garage': [
+      'Review for project planning or reference',
+      'Consider impact on home/garage projects',
+      'Archive for future project documentation',
+    ],
+  };
+
+  // Add pillar-specific actions
+  const pillarActions = pillarFrames[pillar] || pillarFrames['The Grove'];
+
+  // Media type specific actions
+  if (media.type === 'image') {
+    if (media.description.toLowerCase().includes('text') ||
+        media.description.toLowerCase().includes('ocr')) {
+      actions.push('Extract and organize OCR text for reference');
+    }
+    if (media.description.toLowerCase().includes('receipt') ||
+        media.description.toLowerCase().includes('invoice')) {
+      actions.push('Log expense or financial item');
+    }
+    if (media.description.toLowerCase().includes('screenshot')) {
+      actions.push('Review UI/interface for potential improvements');
+    }
+  } else if (media.type === 'document') {
+    actions.push('Review document content and extract key information');
+    if (media.description.toLowerCase().includes('contract') ||
+        media.description.toLowerCase().includes('agreement')) {
+      actions.push('Flag for legal review or action items');
+    }
+  } else if (media.type === 'audio' || media.type === 'video') {
+    actions.push('Review transcription for action items');
+    if (media.description.toLowerCase().includes('meeting') ||
+        media.description.toLowerCase().includes('call')) {
+      actions.push('Extract meeting notes and follow-ups');
+    }
+  }
+
+  // Add general pillar action
+  actions.push(pillarActions[0]);
+
+  // Dedupe and limit
+  return [...new Set(actions)].slice(0, 5);
+}
+
+/**
+ * Build a professional summary framed for the pillar context
+ */
+function buildPillarFramedSummary(
+  media: MediaContext,
+  pillar: Pillar,
+  attachment: AttachmentInfo
+): string {
+  const pillarContext: Record<Pillar, string> = {
+    'Personal': 'personal development context',
+    'The Grove': 'Grove AI venture context',
+    'Consulting': 'consulting/client work context',
+    'Home/Garage': 'home improvement context',
+  };
+
+  const context = pillarContext[pillar] || 'general context';
+
+  // Build summary from first substantial paragraph of description
+  const firstParagraph = media.description.split('\n\n')[0] || media.description;
+  const truncated = firstParagraph.length > 300
+    ? firstParagraph.slice(0, 300) + '...'
+    : firstParagraph;
+
+  // Frame it
+  const typeLabel = media.type.charAt(0).toUpperCase() + media.type.slice(1);
+  const fileName = attachment.fileName ? ` (${attachment.fileName})` : '';
+
+  return `${typeLabel}${fileName} received and analyzed in ${context}. ${truncated}`;
+}
+
 // Helpers
 function formatDuration(seconds: number): string {
   if (seconds < 60) return `${seconds}s`;

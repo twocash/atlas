@@ -12,7 +12,7 @@ import { formatMessage } from '../formatting';
 import { getConversation, updateConversation, buildMessages, type ToolContext } from './context';
 import { buildSystemPrompt } from './prompt';
 import { detectAttachment, buildAttachmentPrompt } from './attachments';
-import { processMedia, buildMediaContext, type Pillar } from './media';
+import { processMedia, buildMediaContext, buildAnalysisContent, type Pillar } from './media';
 import { createAuditTrail, type AuditEntry } from './audit';
 import { getAllTools, executeTool } from './tools';
 import { recordUsage } from './stats';
@@ -590,6 +590,16 @@ export async function handleConversation(ctx: Context): Promise<void> {
       hasAttachment,
       attachmentType: hasAttachment ? attachment.type : undefined,
       tokenCount: totalTokens,
+      // CRITICAL: Wire media analysis to Notion page body (Vision Processing Fix)
+      // This enables image analysis to be written as rich content in Feed/WQ pages
+      ...(mediaContext && {
+        contentType: mediaContext.type as 'image' | 'document' | 'video' | 'audio',
+        analysisContent: buildAnalysisContent(
+          mediaContext,
+          attachment,
+          classification.pillar as Pillar
+        ),
+      }),
     };
 
     const auditResult = await createAuditTrail(auditEntry);
