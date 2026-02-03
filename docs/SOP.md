@@ -378,4 +378,121 @@ Task: Investigate caching options
 
 ---
 
+## SOP-007: Notion Page Body Communication Standard
+
+**Effective:** 2026-02-03
+**Scope:** All Notion pages used for collaboration (Pit Crew, Work Queue, Feed)
+
+### Rule
+
+**Substantive content MUST go in the page BODY. Metadata fields are for metadata only.**
+
+This enables:
+- Easy reading and scanning by Jim, Atlas, and Pit Crew
+- Structured discussions with proper formatting
+- Rich context for problem-solving
+- Searchable, navigable content
+
+### What Goes Where
+
+| Location | Content Type | Examples |
+|----------|--------------|----------|
+| **Page Body** | Substantive content | Requirements, analysis, discussions, verification notes, code snippets, decisions |
+| **Status Property** | Workflow state | Dispatched, In Progress, Closed |
+| **Priority Property** | Urgency level | P0, P1, P2 |
+| **Type Property** | Classification | Bug, Feature, Research |
+| **Assignee Property** | Who owns it | Atlas, Pit Crew, Jim |
+
+### Body Structure Standards
+
+Every substantive update to a Notion page should include:
+
+```markdown
+## 📋 Section Header
+
+Clear description of what this section covers.
+
+### Subsection (if needed)
+
+| Column 1 | Column 2 | Column 3 |
+|----------|----------|----------|
+| Data     | Data     | Data     |
+
+**Key Points:**
+- Bullet point 1
+- Bullet point 2
+
+> Callout for important context or quotes
+
+```code blocks for technical content```
+```
+
+### Verification/Closure Format
+
+When closing or verifying an item:
+
+```markdown
+---
+
+## 🔧 Pit Crew Verification — [DATE]
+
+> ✅ **VERIFIED FIXED** or ❌ **INVALID** or 📋 **TRIAGED**
+
+**Evidence:**
+- What was checked
+- What was found
+- Links to commits/PRs if applicable
+
+**Resolution:** Brief summary of outcome
+
+**Status → [New Status]**
+```
+
+### Anti-Patterns
+
+❌ **Don't** put requirements in a "Notes" property field
+❌ **Don't** stuff discussions into a "Thread" text property
+❌ **Don't** use properties for long-form content
+❌ **Don't** leave page body empty with all content in properties
+❌ **Don't** write unstructured walls of text
+
+### Good Examples
+
+**Requirements in body:**
+```markdown
+## 📋 Requirements
+
+| # | Requirement | Status |
+|---|-------------|--------|
+| 1 | Feature does X | ✅ Done |
+| 2 | Feature handles Y | ⬜ Pending |
+
+### Acceptance Criteria
+- [ ] Criterion 1
+- [ ] Criterion 2
+```
+
+**Triage notes in body:**
+```markdown
+## 📋 Triage Assessment
+
+| Attribute | Value |
+|-----------|-------|
+| **Complexity** | Medium |
+| **Dependencies** | Component X |
+| **Value** | High |
+
+**Decision:** Moving to backlog for Q2.
+```
+
+### Rationale
+
+- **Jim** can quickly scan structured content in Notion
+- **Atlas** can read and understand context for follow-up work
+- **Pit Crew** has full requirements without hunting through properties
+- **Search** works better on body content than property values
+- **History** is preserved as the page evolves
+
+---
+
 *SOPs are living documents. Update as patterns emerge.*
