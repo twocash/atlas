@@ -1269,6 +1269,23 @@ async function executeWebFetch(
       textLength: text.length,
     });
 
+    // For skills: return success=false if content is too short for meaningful analysis
+    // This allows skill conditionals to fall back to browser automation
+    const MIN_CONTENT_LENGTH = 100;
+    if (extractText && text.length < MIN_CONTENT_LENGTH) {
+      logger.info('Web fetch content too short for analysis', {
+        url,
+        textLength: text.length,
+        minRequired: MIN_CONTENT_LENGTH,
+      });
+      return {
+        success: false,
+        result: { url, textLength: text.length, latencyMs, reason: 'content_too_short' },
+        text,
+        error: `Content too short (${text.length} chars) - likely JS-rendered page`,
+      };
+    }
+
     return {
       success: true,
       result: { url, textLength: text.length, latencyMs },
