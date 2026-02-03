@@ -20,6 +20,7 @@ import {
 import { readFile, writeFile, mkdir, readdir } from 'fs/promises';
 import { join } from 'path';
 import { Client } from '@notionhq/client';
+import { convertMarkdownToNotionBlocks } from '@atlas/shared/notion';
 
 // === NOTION CLIENT ===
 // Re-enabled for guaranteed URL return (Neuro-Link Sprint)
@@ -113,105 +114,35 @@ function generateId(title: string): string {
  * The NOTION_API_KEY must be set in the MCP server's environment.
  */
 /**
- * Parse context into structured sections for page body
- * Handles both raw text and Atlas-formatted context with **headers**
- */
-function parseContextSections(context: string): { analysis?: string; specification?: string; raw?: string } {
-  // Try to extract Atlas Analysis section
-  const analysisMatch = context.match(/\*\*Atlas Analysis:\*\*\s*([\s\S]*?)(?=\*\*Task Specification:|$)/i);
-  const specMatch = context.match(/\*\*Task Specification:\*\*\s*([\s\S]*?)$/i);
-
-  if (analysisMatch || specMatch) {
-    return {
-      analysis: analysisMatch?.[1]?.trim(),
-      specification: specMatch?.[1]?.trim(),
-    };
-  }
-
-  // No structured sections - use raw content
-  return { raw: context };
-}
-
-/**
  * Build Notion blocks for page body content
- * Creates properly formatted, editable content
+ * Uses the shared markdown-to-blocks converter for high-fidelity formatting
  */
 function buildPageBodyBlocks(context: string): Array<{
   object: 'block';
   type: string;
   [key: string]: unknown;
 }> {
-  const blocks: Array<{ object: 'block'; type: string; [key: string]: unknown }> = [];
-  const sections = parseContextSections(context);
+  // Convert markdown to proper Notion blocks using shared converter
+  const result = convertMarkdownToNotionBlocks(context);
 
-  if (sections.analysis) {
-    blocks.push({
-      object: 'block',
-      type: 'heading_2',
-      heading_2: {
-        rich_text: [{ type: 'text', text: { content: '🤖 Atlas Analysis' } }],
-      },
-    });
-    blocks.push({
-      object: 'block',
-      type: 'callout',
-      callout: {
-        rich_text: [{ type: 'text', text: { content: sections.analysis.substring(0, 2000) } }],
-        icon: { type: 'emoji', emoji: '💡' },
-      },
-    });
+  if (result.warnings.length > 0) {
+    console.error('[PitCrew] Markdown conversion warnings:', result.warnings);
   }
 
-  if (sections.specification) {
-    blocks.push({
-      object: 'block',
-      type: 'heading_2',
-      heading_2: {
-        rich_text: [{ type: 'text', text: { content: '📋 Task Specification' } }],
-      },
-    });
-    // Split specification into paragraphs for better readability
-    const paragraphs = sections.specification.split(/\n\n+/).filter(p => p.trim());
-    for (const para of paragraphs.slice(0, 10)) { // Limit to 10 paragraphs
-      blocks.push({
-        object: 'block',
-        type: 'paragraph',
-        paragraph: {
-          rich_text: [{ type: 'text', text: { content: para.substring(0, 2000) } }],
-        },
-      });
-    }
-  }
+  // Cast blocks to the expected format (they're compatible)
+  const blocks: Array<{ object: 'block'; type: string; [key: string]: unknown }> =
+    result.blocks.map(block => ({
+      object: 'block' as const,
+      ...block,
+    }));
 
-  if (sections.raw) {
-    blocks.push({
-      object: 'block',
-      type: 'heading_2',
-      heading_2: {
-        rich_text: [{ type: 'text', text: { content: '📝 Context' } }],
-      },
-    });
-    // Split raw content into paragraphs
-    const paragraphs = sections.raw.split(/\n\n+/).filter(p => p.trim());
-    for (const para of paragraphs.slice(0, 15)) { // Limit to 15 paragraphs
-      blocks.push({
-        object: 'block',
-        type: 'paragraph',
-        paragraph: {
-          rich_text: [{ type: 'text', text: { content: para.substring(0, 2000) } }],
-        },
-      });
-    }
-  }
-
-  // Add divider before work section
+  // Add standard footer sections
   blocks.push({
     object: 'block',
     type: 'divider',
     divider: {},
   });
 
-  // Add placeholder for Pit Crew work
   blocks.push({
     object: 'block',
     type: 'heading_2',
@@ -219,11 +150,16 @@ function buildPageBodyBlocks(context: string): Array<{
       rich_text: [{ type: 'text', text: { content: '🔧 Pit Crew Work' } }],
     },
   });
+
   blocks.push({
     object: 'block',
     type: 'paragraph',
     paragraph: {
-      rich_text: [{ type: 'text', text: { content: '(Pit Crew will document implementation notes here)' }, annotations: { italic: true, color: 'gray' } }],
+      rich_text: [{
+        type: 'text',
+        text: { content: '(Pit Crew will document implementation notes here)' },
+        annotations: { italic: true, color: 'gray' }
+      }],
     },
   });
 

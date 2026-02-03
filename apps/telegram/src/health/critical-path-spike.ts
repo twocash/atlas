@@ -694,6 +694,108 @@ async function testSkillsSystem(): Promise<SpikeTestResult[]> {
 }
 
 // ==========================================
+// CRITICAL PATH 7: Notion Formatting Pipeline
+// ==========================================
+
+async function testNotionFormatting(): Promise<SpikeTestResult[]> {
+  const results: SpikeTestResult[] = [];
+
+  // Test 7.1: Shared package loads
+  results.push(await runSpikeTest('Formatting: Shared package loads', async () => {
+    const { convertMarkdownToNotionBlocks } = await import('@atlas/shared/notion');
+    if (!convertMarkdownToNotionBlocks) {
+      throw new Error('convertMarkdownToNotionBlocks not exported');
+    }
+    return { details: { exported: true } };
+  }));
+
+  // Test 7.2: Basic markdown converts to blocks
+  results.push(await runSpikeTest('Formatting: Markdown → Blocks', async () => {
+    const { convertMarkdownToNotionBlocks } = await import('@atlas/shared/notion');
+
+    const result = convertMarkdownToNotionBlocks(`
+## Test Header
+
+**Bold text** and *italic text*
+
+- Bullet 1
+- Bullet 2
+
+\`\`\`javascript
+const code = 'block';
+\`\`\`
+    `.trim());
+
+    if (result.blocks.length < 3) {
+      throw new Error(`Expected 3+ blocks, got ${result.blocks.length}`);
+    }
+
+    // Verify block types present
+    const types = result.blocks.map(b => b.type);
+    const hasHeader = types.includes('heading_2');
+    const hasBullets = types.includes('bulleted_list_item');
+    const hasCode = types.includes('code');
+
+    return {
+      details: {
+        totalBlocks: result.blocks.length,
+        hasHeader,
+        hasBullets,
+        hasCode,
+        warnings: result.warnings,
+      },
+    };
+  }));
+
+  // Test 7.3: Callout directives work
+  results.push(await runSpikeTest('Formatting: Callout directives', async () => {
+    const { convertMarkdownToNotionBlocks } = await import('@atlas/shared/notion');
+
+    const result = convertMarkdownToNotionBlocks(`
+:::callout type=tip title="Pro Tip"
+This is a callout with custom styling.
+:::
+    `.trim());
+
+    const hasCallout = result.blocks.some(b => b.type === 'callout');
+    if (!hasCallout) {
+      throw new Error('Callout directive not converted to callout block');
+    }
+
+    return {
+      details: {
+        directivesProcessed: result.stats.directivesProcessed,
+        hasCallout,
+      },
+    };
+  }));
+
+  // Test 7.4: Text chunking works
+  results.push(await runSpikeTest('Formatting: Long text chunking', async () => {
+    const { convertMarkdownToNotionBlocks } = await import('@atlas/shared/notion');
+
+    // Create a 3000+ char paragraph (exceeds 2000 limit)
+    const longText = 'A'.repeat(3000);
+    const result = convertMarkdownToNotionBlocks(longText);
+
+    // Should be chunked into multiple paragraphs
+    if (result.blocks.length < 2) {
+      throw new Error('Long text was not chunked into multiple blocks');
+    }
+
+    return {
+      details: {
+        inputLength: longText.length,
+        outputBlocks: result.blocks.length,
+        chunkedParagraphs: result.stats.chunkedParagraphs,
+      },
+    };
+  }));
+
+  return results;
+}
+
+// ==========================================
 // Main Runner
 // ==========================================
 
@@ -715,6 +817,7 @@ export async function runCriticalPathSpikes(): Promise<SpikeReport> {
     { name: '4. MCP Integration', fn: testMcpIntegration },
     { name: '5. Tool Infrastructure', fn: testToolInfrastructure },
     { name: '6. Skills System', fn: testSkillsSystem },
+    { name: '7. Notion Formatting', fn: testNotionFormatting },
   ];
 
   for (const path of paths) {

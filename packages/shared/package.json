@@ -6,19 +6,36 @@
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
   "exports": {
-    ".": "./dist/index.js",
-    "./mcp": "./dist/mcp/index.js",
-    "./chrome-extension-api": "./dist/chrome-extension-api.js"
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    },
+    "./mcp": {
+      "types": "./dist/mcp/index.d.ts",
+      "import": "./dist/mcp/index.js"
+    },
+    "./chrome-extension-api": {
+      "types": "./dist/chrome-extension-api.d.ts",
+      "import": "./dist/chrome-extension-api.js"
+    },
+    "./notion": {
+      "types": "./dist/notion/index.d.ts",
+      "import": "./dist/notion/index.js"
+    }
   },
   "scripts": {
     "build": "tsc",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "test": "bun test"
   },
   "dependencies": {
     "@modelcontextprotocol/sdk": "^0.5.0",
+    "@notionhq/client": "^2.2.14",
+    "@tryfabric/martian": "^1.2.4",
     "yaml": "^2.3.4"
   },
   "devDependencies": {
+    "@types/bun": "latest",
     "@types/node": "^20.10.0",
     "typescript": "^5.3.0"
   }

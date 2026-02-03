@@ -13,12 +13,14 @@
     "test:e2e:research": "bun run test/research-e2e.spike.ts"
   },
   "dependencies": {
+    "@atlas/shared": "workspace:*",
     "@google/generative-ai": "^0.21.0",
     "@notionhq/client": "^2.2.14",
     "@tryfabric/martian": "^1.2.4"
   },
   "devDependencies": {
     "@types/bun": "latest",
+    "dotenv": "^17.2.3",
     "typescript": "^5.3.3"
   },
   "author": "Jim Calhoun",

@@ -12,6 +12,7 @@
 
 import type Anthropic from '@anthropic-ai/sdk';
 import { Client } from '@notionhq/client';
+import { convertMarkdownToNotionBlocks } from '@atlas/shared/notion';
 import { logger } from '../../logger';
 import { executeMcpTool, isMcpTool, getMcpStatus } from '../../mcp';
 
@@ -341,6 +342,46 @@ async function createDirectDevPipelineItem(params: {
     // Map ticket type to Notion select value
     const typeLabel = ticketType === 'feature' ? 'Feature' : 'Bug';
 
+    // Build markdown content for high-fidelity conversion
+    const markdownContent = `## 🤖 Atlas Analysis
+
+${reasoning}
+
+## 📋 Task Specification
+
+${description}`;
+
+    // Convert markdown to Notion blocks using shared converter
+    const conversionResult = convertMarkdownToNotionBlocks(markdownContent);
+
+    if (conversionResult.warnings.length > 0) {
+      logger.warn('[Dispatcher] Markdown conversion warnings', { warnings: conversionResult.warnings });
+    }
+
+    // Add footer blocks
+    const children = [
+      ...conversionResult.blocks,
+      {
+        object: 'block' as const,
+        type: 'divider' as const,
+        divider: {},
+      },
+      {
+        object: 'block' as const,
+        type: 'heading_2' as const,
+        heading_2: {
+          rich_text: [{ type: 'text' as const, text: { content: '🔧 Pit Crew Work' } }],
+        },
+      },
+      {
+        object: 'block' as const,
+        type: 'paragraph' as const,
+        paragraph: {
+          rich_text: [{ type: 'text' as const, text: { content: '(Pit Crew will document implementation notes here)' }, annotations: { italic: true, color: 'gray' as const } }],
+        },
+      },
+    ];
+
     const response = await notion.pages.create({
       parent: { database_id: DEV_PIPELINE_DATABASE_ID },
       properties: {
@@ -354,57 +395,8 @@ async function createDirectDevPipelineItem(params: {
         'Thread': { rich_text: [{ text: { content: 'See page body for full context.' } }] },
         'Dispatched': { date: { start: new Date().toISOString().split('T')[0] } },
       },
-      // CRITICAL: Write content to PAGE BODY for editing/review
-      children: [
-        {
-          object: 'block',
-          type: 'heading_2',
-          heading_2: {
-            rich_text: [{ type: 'text', text: { content: '🤖 Atlas Analysis' } }],
-          },
-        },
-        {
-          object: 'block',
-          type: 'callout',
-          callout: {
-            rich_text: [{ type: 'text', text: { content: reasoning.substring(0, 2000) } }],
-            icon: { type: 'emoji', emoji: '💡' },
-          },
-        },
-        {
-          object: 'block',
-          type: 'heading_2',
-          heading_2: {
-            rich_text: [{ type: 'text', text: { content: '📋 Task Specification' } }],
-          },
-        },
-        {
-          object: 'block',
-          type: 'paragraph',
-          paragraph: {
-            rich_text: [{ type: 'text', text: { content: description.substring(0, 2000) } }],
-          },
-        },
-        {
-          object: 'block',
-          type: 'divider',
-          divider: {},
-        },
-        {
-          object: 'block',
-          type: 'heading_2',
-          heading_2: {
-            rich_text: [{ type: 'text', text: { content: '🔧 Pit Crew Work' } }],
-          },
-        },
-        {
-          object: 'block',
-          type: 'paragraph',
-          paragraph: {
-            rich_text: [{ type: 'text', text: { content: '(Pit Crew will document implementation notes here)' }, annotations: { italic: true, color: 'gray' } }],
-          },
-        },
-      ],
+      // CRITICAL: Write content to PAGE BODY with high-fidelity formatting
+      children: children as any,
     });
 
     const url = (response as { url?: string }).url || `https://notion.so/${response.id.replace(/-/g, '')}`;
