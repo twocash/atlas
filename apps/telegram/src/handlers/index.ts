@@ -17,6 +17,7 @@ import { handleVoiceCallback } from "./voice-callback";
 import { handleContentCallback } from "./content-callback";
 import { handleDispatchCallback } from "./dispatch-callback";
 import { handleNotionCallback, handleNotionStatusUpdate } from "./notion-callback";
+import { handleSkillCallback, isSkillCallback } from "./skill-callback";
 import { isContentCallback } from "../conversation/content-confirm";
 import { isDispatchCallback } from "../conversation/dispatch-choice";
 import { isNotionCallback } from "../conversation/notion-url";
@@ -133,6 +134,12 @@ export async function routeCallback(ctx: Context): Promise<void> {
   // Dispatch routing choice callbacks (low-confidence routing)
   if (isDispatchCallback(data)) {
     await handleDispatchCallback(ctx);
+    return;
+  }
+
+  // Skill approval/rejection callbacks (Phase 3)
+  if (isSkillCallback(data)) {
+    await handleSkillCallback(ctx as any);
     return;
   }
 

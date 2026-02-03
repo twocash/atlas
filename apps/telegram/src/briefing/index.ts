@@ -70,6 +70,30 @@ export function initBriefings(api: Api, chatId: number): BriefingSystem {
     try {
       logger.info(`Fetching briefing data for ${label} briefing`);
 
+      // Run pattern detection on morning briefings (Phase 3)
+      if (label === "morning") {
+        try {
+          const { detectPatterns, queueProposals } = await import("../skills");
+          const { isFeatureEnabled } = await import("../config/features");
+
+          if (isFeatureEnabled("patternDetection")) {
+            logger.info("Running daily pattern detection");
+            const result = await detectPatterns();
+
+            if (result.proposals.length > 0) {
+              await queueProposals(result.proposals);
+              logger.info("Pattern detection complete", {
+                patterns: result.stats.patternsFound,
+                proposals: result.stats.proposalsGenerated,
+              });
+            }
+          }
+        } catch (error) {
+          // Non-fatal - don't block briefing
+          logger.warn("Pattern detection failed, continuing with briefing", { error });
+        }
+      }
+
       // Fetch all data from Notion
       const data = await fetchBriefingData();
 

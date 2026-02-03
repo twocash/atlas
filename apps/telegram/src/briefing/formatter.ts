@@ -68,6 +68,11 @@ export function formatBriefing(data: BriefingData, briefingTime: BriefingTime): 
     sections.push(`📥 FEED (pending): ${data.feedPendingCount} item${data.feedPendingCount === 1 ? "" : "s"}`);
   }
 
+  // Pending skill proposals (if any)
+  if (data.pendingSkills && data.pendingSkills > 0) {
+    sections.push(`🔧 SKILLS: ${data.pendingSkills} pending proposal${data.pendingSkills === 1 ? "" : "s"}\n   /skills pending to review`);
+  }
+
   // If nothing to report
   if (sections.length === 1) {
     sections.push("✨ All clear! No blocked items, nothing due soon.");

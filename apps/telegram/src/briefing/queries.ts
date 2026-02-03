@@ -47,6 +47,7 @@ export interface BriefingData {
   active: BriefingItem[];
   completedYesterday: BriefingItem[];
   feedPendingCount: number;
+  pendingSkills?: number;
   // DEPRECATED: Use feedPendingCount instead
   inboxCount: number;
   queriedAt: Date;
@@ -238,16 +239,31 @@ export async function getFeedPendingCount(): Promise<number> {
 export const getInboxCount = getFeedPendingCount;
 
 /**
+ * Get pending skill proposals count
+ */
+async function getPendingSkillsCount(): Promise<number> {
+  try {
+    const { getQueueStats } = await import("../skills/approval-queue");
+    const stats = await getQueueStats();
+    return stats.pending;
+  } catch {
+    // Skills system may not be initialized
+    return 0;
+  }
+}
+
+/**
  * Fetch all briefing data in parallel
  */
 export async function fetchBriefingData(): Promise<BriefingData> {
-  const [blocked, dueThisWeek, active, completedYesterday, feedPendingCount] =
+  const [blocked, dueThisWeek, active, completedYesterday, feedPendingCount, pendingSkills] =
     await Promise.all([
       getBlockedItems(),
       getDueThisWeek(),
       getActiveItems(),
       getCompletedYesterday(),
       getFeedPendingCount(),
+      getPendingSkillsCount(),
     ]);
 
   return {
@@ -256,6 +272,7 @@ export async function fetchBriefingData(): Promise<BriefingData> {
     active,
     completedYesterday,
     feedPendingCount,
+    pendingSkills,
     inboxCount: feedPendingCount, // Legacy alias
     queriedAt: new Date(),
   };
