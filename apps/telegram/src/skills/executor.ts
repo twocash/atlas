@@ -219,12 +219,21 @@ function resolveVariables(
 
         case 'step': {
           const stepResult = context.steps[key];
-          if (!stepResult?.output) return '';
-          if (subkey) {
+          if (!stepResult) return '';
+
+          // Handle special step result fields (not in output)
+          if (subkey === 'success') return String(stepResult.success);
+          if (subkey === 'error') return stepResult.error || '';
+          if (subkey === 'executionTimeMs') return String(stepResult.executionTimeMs);
+
+          // Access output fields
+          if (subkey && stepResult.output) {
             const output = stepResult.output as Record<string, unknown>;
             return String(output[subkey] ?? '');
           }
-          return String(stepResult.output);
+
+          // Return full output if no subkey
+          return stepResult.output ? String(stepResult.output) : '';
         }
 
         case 'context':
