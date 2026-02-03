@@ -19,6 +19,7 @@ import { verifySystemIntegrity } from "./health/integrity";
 import { runVoiceHealthCheck } from "./health/voice-check";
 import { initScheduler, stopScheduler, type ScheduledTask } from "./scheduler";
 import { initMcp, shutdownMcp } from "./mcp";
+import { startStatusServer, stopStatusServer } from "./health/status-server";
 import { existsSync, writeFileSync, unlinkSync, readFileSync } from "fs";
 import { join } from "path";
 
@@ -104,6 +105,13 @@ async function main() {
     logger.warn("MCP initialization failed (non-fatal)", { error: err.message });
   });
 
+  // Start status server for Chrome extension heartbeat
+  try {
+    startStatusServer(3847);
+  } catch (err) {
+    logger.warn("Status server failed to start (non-fatal)", { error: err });
+  }
+
   // Create and start the bot
   const bot = createBot();
   
@@ -111,6 +119,7 @@ async function main() {
   const shutdown = async (signal: string) => {
     logger.info(`Received ${signal}, shutting down gracefully...`);
     stopScheduler();
+    stopStatusServer();
     await shutdownMcp();
     await bot.stop();
     releaseLock();

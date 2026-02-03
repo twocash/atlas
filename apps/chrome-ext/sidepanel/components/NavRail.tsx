@@ -7,9 +7,10 @@ interface NavRailProps {
   onSelect: (view: ViewId) => void
   hasActiveTask: boolean
   inboxCount?: number
+  atlasConnected?: boolean
 }
 
-export function NavRail({ activeView, onSelect, hasActiveTask, inboxCount = 3 }: NavRailProps) {
+export function NavRail({ activeView, onSelect, hasActiveTask, inboxCount = 3, atlasConnected = false }: NavRailProps) {
   return (
     <div className="w-14 flex flex-col items-center py-4 bg-gray-50 border-r border-gray-200 gap-6 flex-shrink-0">
 
@@ -79,6 +80,8 @@ export function NavRail({ activeView, onSelect, hasActiveTask, inboxCount = 3 }:
         label="Atlas"
         active={activeView === "atlas"}
         onClick={() => onSelect("atlas")}
+        badge={true}
+        badgeColor={atlasConnected ? "green" : "gray"}
       >
         {/* Atlas Icon - Robot */}
         <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round">
@@ -117,9 +120,10 @@ interface NavButtonProps {
   children: React.ReactNode
   badge?: boolean
   badgeCount?: number
+  badgeColor?: "green" | "gray" | "blue"
 }
 
-function NavButton({ id, label, active, onClick, children, badge, badgeCount }: NavButtonProps) {
+function NavButton({ id, label, active, onClick, children, badge, badgeCount, badgeColor }: NavButtonProps) {
   return (
     <button
       onClick={onClick}
@@ -138,6 +142,8 @@ function NavButton({ id, label, active, onClick, children, badge, badgeCount }: 
             <span className="absolute -top-1 -right-1 min-w-[18px] h-[18px] bg-blue-500 text-white text-[9px] font-bold rounded-full flex items-center justify-center px-1">
               {badgeCount > 99 ? '99+' : badgeCount}
             </span>
+          ) : badgeColor === "gray" ? (
+            <span className="absolute top-1 right-1 w-2.5 h-2.5 bg-gray-400 border-2 border-white rounded-full" />
           ) : (
             <span className="absolute top-1 right-1 w-2.5 h-2.5 bg-green-500 border-2 border-white rounded-full">
               <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-green-400 opacity-75"></span>

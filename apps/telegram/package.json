@@ -39,6 +39,7 @@
     "csv-parse": "^5.6.0",
     "dotenv": "^16.3.1",
     "grammy": "^1.21.1",
+    "hono": "^4.11.7",
     "openai": "^4.104.0",
     "pdf-parse": "^1.1.1",
     "playwright": "^1.58.1",

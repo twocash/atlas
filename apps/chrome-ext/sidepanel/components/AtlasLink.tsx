@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react'
+import React, { useState, useEffect, useRef, useCallback } from 'react'
 
 interface AtlasActivity {
   id: string
@@ -9,53 +9,75 @@ interface AtlasActivity {
   detail?: string
 }
 
+// Status server URL (Telegram bot exposes this)
+const STATUS_SERVER_URL = 'http://localhost:3847'
+const POLL_INTERVAL = 2000 // 2 seconds
+
 export function AtlasLink() {
   const [activities, setActivities] = useState<AtlasActivity[]>([])
   const [connected, setConnected] = useState(false)
   const [currentSkill, setCurrentSkill] = useState<string | null>(null)
+  const lastSeenTimestampRef = useRef<number>(0)
 
+  // Poll the status server for updates
+  const pollStatus = useCallback(async () => {
+    try {
+      const res = await fetch(`${STATUS_SERVER_URL}/status`)
+      if (!res.ok) throw new Error('Status server error')
+
+      const data = await res.json()
+      setConnected(data.connected)
+      setCurrentSkill(data.currentSkill)
+
+      // Convert server activities to our format, filtering out already-seen ones
+      const newActivities: AtlasActivity[] = data.activities
+        .filter((a: { timestamp: number }) => a.timestamp > lastSeenTimestampRef.current)
+        .map((a: { skill: string; step: string; status: string; logs?: string[]; timestamp: number }) => ({
+          id: `${a.timestamp}-${a.step}`,
+          skill: a.skill,
+          step: a.step,
+          status: a.status as AtlasActivity['status'],
+          timestamp: new Date(a.timestamp),
+          detail: a.logs?.join(', ')
+        }))
+
+      if (newActivities.length > 0) {
+        // Update last seen timestamp
+        const maxTimestamp = Math.max(...newActivities.map(a => a.timestamp.getTime()))
+        lastSeenTimestampRef.current = maxTimestamp
+
+        // Merge new activities
+        setActivities(prev => [...prev, ...newActivities].slice(-50))
+      }
+    } catch {
+      setConnected(false)
+      setCurrentSkill(null)
+    }
+  }, [])
+
+  // Polling effect
   useEffect(() => {
-    // Listen for HUD updates from Atlas
-    const handler = (msg: { type: string; data?: { skill: string; step: string; status: string; logs?: string[] } }) => {
-      if (msg.type === 'atlas:skill:update') {
-        const { skill, step, status, logs } = msg.data || {}
+    // Initial poll
+    pollStatus()
 
-        // Track current skill
-        if (status === 'running' && !currentSkill) {
-          setCurrentSkill(skill || null)
-        } else if (status === 'success' || status === 'error') {
-          // Skill completed - keep showing for a moment
-          setTimeout(() => setCurrentSkill(null), 2000)
-        }
+    // Set up interval
+    const interval = setInterval(pollStatus, POLL_INTERVAL)
 
-        setActivities(prev => [...prev.slice(-49), {
-          id: crypto.randomUUID(),
-          skill: skill || 'unknown',
-          step: step || 'unknown',
-          status: (status as AtlasActivity['status']) || 'running',
-          timestamp: new Date(),
-          detail: logs?.join(', ')
-        }])
+    return () => clearInterval(interval)
+  }, [pollStatus])
 
-        setConnected(true)
-      } else if (msg.type === 'atlas:pong') {
-        setConnected(true)
+  // Also listen for Chrome runtime messages (for emergency stop relay)
+  useEffect(() => {
+    const handler = (msg: { type: string }) => {
+      if (msg.type === 'atlas:pong') {
+        // Background script responded - we don't need this for connection status anymore
+        // since we poll the HTTP server, but keep for compatibility
       }
     }
 
     chrome.runtime.onMessage.addListener(handler)
-
-    // Check connection status
-    chrome.runtime.sendMessage({ type: 'atlas:ping' }, response => {
-      if (chrome.runtime.lastError) {
-        setConnected(false)
-      } else if (response?.ok) {
-        setConnected(true)
-      }
-    })
-
     return () => chrome.runtime.onMessage.removeListener(handler)
-  }, [currentSkill])
+  }, [])
 
   const handleEmergencyStop = () => {
     chrome.runtime.sendMessage({ type: 'atlas:emergency_stop' })

@@ -11,6 +11,7 @@ import { logger } from '../logger';
 import { isFeatureEnabled } from '../config/features';
 import { getSkillRegistry } from './registry';
 import { logAction } from './action-log';
+import { pushActivity } from '../health/status-server';
 import {
   type SkillDefinition,
   type ProcessStep,
@@ -28,28 +29,16 @@ import type { Pillar } from '../conversation/types';
 // =============================================================================
 
 /**
- * Check if the Claude-in-Chrome MCP is available for browser automation
- * Returns true if the extension is responsive
+ * Check if browser automation is available
+ * Uses Playwright (native) - always available if installed
  */
 async function checkBrowserAutomationAvailable(): Promise<boolean> {
   try {
-    const { isMcpTool, executeMcpTool } = await import('../mcp');
-
-    // Check if tabs_context_mcp tool exists and responds
-    if (!isMcpTool('mcp__claude-in-chrome__tabs_context_mcp')) {
-      return false;
-    }
-
-    // Try to get tabs context with short timeout
-    const result = await Promise.race([
-      executeMcpTool('mcp__claude-in-chrome__tabs_context_mcp', {}),
-      new Promise<{ success: boolean }>((resolve) =>
-        setTimeout(() => resolve({ success: false }), 3000)
-      )
-    ]);
-
-    return result.success;
+    // Playwright is a native dependency, check if it's importable
+    const playwright = await import('playwright');
+    return !!playwright.chromium;
   } catch {
+    logger.warn('Playwright not available for browser automation');
     return false;
   }
 }
@@ -108,11 +97,11 @@ function checkStop(): void {
 }
 
 /**
- * Log HUD update (for now, just logs - real-time HUD requires dedicated MCP tool)
+ * Log HUD update and push to status server for Chrome extension polling
  *
- * NOTE: Real-time HUD updates require the claude-in-chrome MCP to expose an
- * update_hud tool. Until then, updates are logged but not pushed to browser.
- * The AtlasLink component can poll via tabs_context_mcp if needed.
+ * The status server (localhost:3847) provides an HTTP bridge that the
+ * Chrome extension polls to get real-time skill execution updates.
+ * @see health/status-server.ts
  */
 function logHudUpdate(
   skill: string,
@@ -121,14 +110,20 @@ function logHudUpdate(
   logs?: string[]
 ): void {
   logger.info('Skill step', { skill, step, status, logs });
+  pushActivity(skill, step, status, logs || []);
 }
 
 /**
- * Check if a tool is a browser automation tool (claude-in-chrome)
+ * Check if a tool is a browser automation tool
+ * Supports both Playwright-based tools (native) and legacy chrome MCP tools
  */
 function isBrowserAutomationTool(toolName: string): boolean {
-  return toolName.startsWith('mcp__claude-in-chrome__') ||
-         toolName.startsWith('claude-in-chrome__');
+  // New Playwright-based tools (native)
+  if (toolName.startsWith('browser_')) return true;
+  // Legacy chrome MCP tools (for backwards compatibility)
+  if (toolName.startsWith('mcp__claude-in-chrome__')) return true;
+  if (toolName.startsWith('claude-in-chrome__')) return true;
+  return false;
 }
 
 // =============================================================================

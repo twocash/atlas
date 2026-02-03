@@ -55,10 +55,15 @@ class ErrorBoundary extends Component<{ children: React.ReactNode }, { hasError:
   }
 }
 
+// Status server URL for Atlas connection check
+const ATLAS_STATUS_URL = 'http://localhost:3847/status'
+const ATLAS_POLL_INTERVAL = 3000 // 3 seconds (slightly slower than AtlasLink)
+
 function SidePanelInner() {
   const [queue] = useQueueState()
   const [commentsState, { replaceAllComments }] = useCommentsState()
   const [view, setView] = useState<ViewId>("outreach")
+  const [atlasConnected, setAtlasConnected] = useState(false)
   const portRef = useRef<chrome.runtime.Port | null>(null)
   const didAutoSwitch = useRef(false)
 
@@ -102,6 +107,27 @@ function SidePanelInner() {
     return () => { if (interval) clearInterval(interval); portRef.current?.disconnect() }
   }, [])
 
+  // 3. Atlas Status Polling (for NavRail badge)
+  useEffect(() => {
+    const checkAtlas = async () => {
+      try {
+        const res = await fetch(ATLAS_STATUS_URL)
+        if (res.ok) {
+          const data = await res.json()
+          setAtlasConnected(data.connected === true)
+        } else {
+          setAtlasConnected(false)
+        }
+      } catch {
+        setAtlasConnected(false)
+      }
+    }
+
+    checkAtlas()
+    const interval = setInterval(checkAtlas, ATLAS_POLL_INTERVAL)
+    return () => clearInterval(interval)
+  }, [])
+
   const isRunning = queue?.status === "running"
   const inboxCount = commentsState.comments.filter((c) => c.status === 'needs_reply' && !c.hiddenLocally).length
 
@@ -113,6 +139,7 @@ function SidePanelInner() {
         onSelect={setView}
         hasActiveTask={isRunning}
         inboxCount={inboxCount}
+        atlasConnected={atlasConnected}
       />
 
       {/* MAIN CONTENT */}
