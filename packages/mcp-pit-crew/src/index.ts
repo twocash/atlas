@@ -111,7 +111,125 @@ function generateId(title: string): string {
  *
  * The NOTION_API_KEY must be set in the MCP server's environment.
  */
-async function syncToNotion(discussion: Discussion): Promise<string | null> {
+/**
+ * Parse context into structured sections for page body
+ * Handles both raw text and Atlas-formatted context with **headers**
+ */
+function parseContextSections(context: string): { analysis?: string; specification?: string; raw?: string } {
+  // Try to extract Atlas Analysis section
+  const analysisMatch = context.match(/\*\*Atlas Analysis:\*\*\s*([\s\S]*?)(?=\*\*Task Specification:|$)/i);
+  const specMatch = context.match(/\*\*Task Specification:\*\*\s*([\s\S]*?)$/i);
+
+  if (analysisMatch || specMatch) {
+    return {
+      analysis: analysisMatch?.[1]?.trim(),
+      specification: specMatch?.[1]?.trim(),
+    };
+  }
+
+  // No structured sections - use raw content
+  return { raw: context };
+}
+
+/**
+ * Build Notion blocks for page body content
+ * Creates properly formatted, editable content
+ */
+function buildPageBodyBlocks(context: string): Array<{
+  object: 'block';
+  type: string;
+  [key: string]: unknown;
+}> {
+  const blocks: Array<{ object: 'block'; type: string; [key: string]: unknown }> = [];
+  const sections = parseContextSections(context);
+
+  if (sections.analysis) {
+    blocks.push({
+      object: 'block',
+      type: 'heading_2',
+      heading_2: {
+        rich_text: [{ type: 'text', text: { content: '🤖 Atlas Analysis' } }],
+      },
+    });
+    blocks.push({
+      object: 'block',
+      type: 'callout',
+      callout: {
+        rich_text: [{ type: 'text', text: { content: sections.analysis.substring(0, 2000) } }],
+        icon: { type: 'emoji', emoji: '💡' },
+      },
+    });
+  }
+
+  if (sections.specification) {
+    blocks.push({
+      object: 'block',
+      type: 'heading_2',
+      heading_2: {
+        rich_text: [{ type: 'text', text: { content: '📋 Task Specification' } }],
+      },
+    });
+    // Split specification into paragraphs for better readability
+    const paragraphs = sections.specification.split(/\n\n+/).filter(p => p.trim());
+    for (const para of paragraphs.slice(0, 10)) { // Limit to 10 paragraphs
+      blocks.push({
+        object: 'block',
+        type: 'paragraph',
+        paragraph: {
+          rich_text: [{ type: 'text', text: { content: para.substring(0, 2000) } }],
+        },
+      });
+    }
+  }
+
+  if (sections.raw) {
+    blocks.push({
+      object: 'block',
+      type: 'heading_2',
+      heading_2: {
+        rich_text: [{ type: 'text', text: { content: '📝 Context' } }],
+      },
+    });
+    // Split raw content into paragraphs
+    const paragraphs = sections.raw.split(/\n\n+/).filter(p => p.trim());
+    for (const para of paragraphs.slice(0, 15)) { // Limit to 15 paragraphs
+      blocks.push({
+        object: 'block',
+        type: 'paragraph',
+        paragraph: {
+          rich_text: [{ type: 'text', text: { content: para.substring(0, 2000) } }],
+        },
+      });
+    }
+  }
+
+  // Add divider before work section
+  blocks.push({
+    object: 'block',
+    type: 'divider',
+    divider: {},
+  });
+
+  // Add placeholder for Pit Crew work
+  blocks.push({
+    object: 'block',
+    type: 'heading_2',
+    heading_2: {
+      rich_text: [{ type: 'text', text: { content: '🔧 Pit Crew Work' } }],
+    },
+  });
+  blocks.push({
+    object: 'block',
+    type: 'paragraph',
+    paragraph: {
+      rich_text: [{ type: 'text', text: { content: '(Pit Crew will document implementation notes here)' }, annotations: { italic: true, color: 'gray' } }],
+    },
+  });
+
+  return blocks;
+}
+
+async function syncToNotion(discussion: Discussion): Promise<{ url: string; pageId: string } | null> {
   if (!process.env.NOTION_API_KEY) {
     console.error('[PitCrew] ERROR: NOTION_API_KEY not set - cannot sync to Notion');
     return null;
@@ -136,6 +254,9 @@ async function syncToNotion(discussion: Discussion): Promise<string | null> {
       'closed': 'Closed',
     };
 
+    // Build page body blocks from context
+    const bodyBlocks = buildPageBodyBlocks(discussion.context);
+
     const response = await notion.pages.create({
       parent: { database_id: DEV_PIPELINE_DATABASE_ID },
       properties: {
@@ -145,15 +266,18 @@ async function syncToNotion(discussion: Discussion): Promise<string | null> {
         'Status': { select: { name: statusMap[discussion.status] || 'Dispatched' } },
         'Requestor': { select: { name: discussion.requestor === 'atlas' ? 'Atlas [Telegram]' : discussion.requestor } },
         'Handler': { select: { name: 'Pit Crew' } },
-        'Thread': { rich_text: [{ text: { content: discussion.context.substring(0, 2000) } }] },
+        // Thread property now just holds a brief summary, not the full context
+        'Thread': { rich_text: [{ text: { content: `See page body for full context. Discussion ID: ${discussion.id}` } }] },
         'Dispatched': { date: { start: new Date().toISOString().split('T')[0] } },
       },
+      // CRITICAL: Add content to PAGE BODY, not just properties
+      children: bodyBlocks,
     });
 
     // Use actual URL from API response
     const url = (response as { url?: string }).url || `https://notion.so/${response.id.replace(/-/g, '')}`;
-    console.error(`[PitCrew] Synced to Notion: ${url}`);
-    return url;
+    console.error(`[PitCrew] Synced to Notion with page body: ${url}`);
+    return { url, pageId: response.id };
   } catch (error) {
     console.error('[PitCrew] Notion sync FAILED:', error);
     return null;
@@ -275,9 +399,9 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
 
       // 2. SYNC TO NOTION (MANDATORY - Neuro-Link Protocol)
       // If this fails, we return an error so Atlas knows the dispatch is incomplete
-      const notionUrl = await syncToNotion(discussion);
+      const notionResult = await syncToNotion(discussion);
 
-      if (!notionUrl) {
+      if (!notionResult) {
         // CRITICAL: Return error if Notion sync failed
         // Atlas should NOT confirm dispatch without a trackable URL
         return {
@@ -293,7 +417,7 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
       }
 
       // Update local record with Notion URL
-      discussion.notion_url = notionUrl;
+      discussion.notion_url = notionResult.url;
       await saveDiscussion(discussion);
 
       return {
@@ -302,7 +426,8 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
           text: JSON.stringify({
             success: true,
             discussion_id: id,
-            notion_url: notionUrl,
+            notion_url: notionResult.url,
+            notion_page_id: notionResult.pageId,
             message: `Dispatched to Pit Crew: ${args?.title}`,
           }),
         }],

@@ -213,7 +213,7 @@ async function routeToPitCrew(
     }
   }
 
-  // Fallback: Create directly in Dev Pipeline
+  // Fallback: Create directly in Dev Pipeline with page body content
   try {
     const notion = getNotionClient();
     const typeLabel = ticketType === 'feature' ? 'Feature' : 'Bug';
@@ -227,15 +227,60 @@ async function routeToPitCrew(
         'Status': { select: { name: 'Dispatched' } },
         'Requestor': { select: { name: 'Atlas [Telegram]' } },
         'Handler': { select: { name: 'Pit Crew' } },
-        'Thread': {
-          rich_text: [{
-            text: {
-              content: `**Atlas Analysis:**\n${pending.reasoning}\n\n**Task Specification:**\n${pending.description}`.substring(0, 2000)
-            }
-          }]
-        },
+        'Thread': { rich_text: [{ text: { content: 'See page body for full context.' } }] },
         'Dispatched': { date: { start: new Date().toISOString().split('T')[0] } },
       },
+      // Write content to PAGE BODY for editing/review
+      children: [
+        {
+          object: 'block',
+          type: 'heading_2',
+          heading_2: {
+            rich_text: [{ type: 'text', text: { content: '🤖 Atlas Analysis' } }],
+          },
+        },
+        {
+          object: 'block',
+          type: 'callout',
+          callout: {
+            rich_text: [{ type: 'text', text: { content: pending.reasoning.substring(0, 2000) } }],
+            icon: { type: 'emoji', emoji: '💡' },
+          },
+        },
+        {
+          object: 'block',
+          type: 'heading_2',
+          heading_2: {
+            rich_text: [{ type: 'text', text: { content: '📋 Task Specification' } }],
+          },
+        },
+        {
+          object: 'block',
+          type: 'paragraph',
+          paragraph: {
+            rich_text: [{ type: 'text', text: { content: pending.description.substring(0, 2000) } }],
+          },
+        },
+        {
+          object: 'block',
+          type: 'divider',
+          divider: {},
+        },
+        {
+          object: 'block',
+          type: 'heading_2',
+          heading_2: {
+            rich_text: [{ type: 'text', text: { content: '🔧 Pit Crew Work' } }],
+          },
+        },
+        {
+          object: 'block',
+          type: 'paragraph',
+          paragraph: {
+            rich_text: [{ type: 'text', text: { content: '(Pit Crew will document implementation notes here)' }, annotations: { italic: true, color: 'gray' } }],
+          },
+        },
+      ],
     });
 
     const url = (response as { url?: string }).url || `https://notion.so/${response.id.replace(/-/g, '')}`;
