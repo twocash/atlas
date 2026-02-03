@@ -48,3 +48,10 @@ data/stats.json
 data/temp/
 data/exports/
 
+# Runtime state files
+data/.atlas.lock
+data/media/
+data/pit-crew/
+data/schedules/
+data/workspace/
+
