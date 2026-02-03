@@ -22,6 +22,7 @@ export async function executeSaveAndFollow(
 
   let savedToList = false
   let followed = false
+  let acceptedInvite = false
 
   try {
     // --- Step 1: Save ---
@@ -39,13 +40,19 @@ export async function executeSaveAndFollow(
     // --- Step 2: Follow ---
     followed = await doFollow(logs)
 
-    // --- Step 3: Scrape profile text ---
+    // Pause before checking for invite
+    await delay(getRandomDelay(500, 1000))
+
+    // --- Step 3: Accept connection invite if pending ---
+    acceptedInvite = await acceptConnectionInvite(logs)
+
+    // --- Step 4: Scrape profile text ---
     const scrapedText = scrapeProfileText(pageType)
     if (scrapedText) {
       logs.push(`Scraped ${scrapedText.length} chars of profile text`)
     }
 
-    // --- Step 4: Capture Sales Navigator URL if on Sales Nav page ---
+    // --- Step 5: Capture Sales Navigator URL if on Sales Nav page ---
     let salesNavUrl: string | undefined
     if (pageType === "sales_nav") {
       salesNavUrl = window.location.href
@@ -53,9 +60,10 @@ export async function executeSaveAndFollow(
     }
 
     return {
-      success: savedToList || followed, // Success if either action worked
+      success: savedToList || followed || acceptedInvite, // Success if any action worked
       savedToList,
       followed,
+      acceptedInvite,
       logs,
       scrapedText,
       salesNavUrl,
@@ -78,14 +86,28 @@ export async function executeSaveAndFollow(
 
 async function saveSalesNav(segment: Segment, logs: string[]): Promise<boolean> {
   logs.push("Looking for Save button (Sales Nav)...")
+
+  // FIRST: Check if already saved before clicking anything
+  const alreadySavedIndicator = document.querySelector('[aria-label*="Saved"]')
+  if (alreadySavedIndicator) {
+    logs.push("Already saved in Sales Navigator — skipping")
+    return true
+  }
+
+  // Also check for "Saved" button text
+  const allButtons = document.querySelectorAll('button')
+  for (const btn of allButtons) {
+    const text = btn.textContent?.trim().toLowerCase() || ''
+    const ariaLabel = btn.getAttribute('aria-label')?.toLowerCase() || ''
+    if ((text === 'saved' || ariaLabel.includes('saved')) && !text.includes('save to')) {
+      logs.push("Already saved (button state) — skipping")
+      return true
+    }
+  }
+
   const saveBtn = await waitForElement(SELECTORS.saveButton)
 
   if (!saveBtn) {
-    const alreadySaved = document.querySelector('[aria-label*="Saved"]')
-    if (alreadySaved) {
-      logs.push("Already saved — skipping")
-      return true
-    }
     logs.push("Save button not found (Sales Nav)")
     return false
   }
@@ -124,7 +146,27 @@ async function saveSalesNav(segment: Segment, logs: string[]): Promise<boolean> 
 async function saveRegularProfile(logs: string[]): Promise<boolean> {
   logs.push("Looking for 'Save in Sales Navigator' button...")
 
-  // Try the aria-label selectors first
+  // FIRST: Check if already saved (before trying to click anything)
+  // Look for button with "Saved" text (not "Save in Sales Navigator")
+  const allButtons = document.querySelectorAll('button')
+  for (const btn of allButtons) {
+    const text = btn.textContent?.trim().toLowerCase() || ''
+    // "Saved in Sales Navigator" or just "Saved" = already saved
+    // "Save in Sales Navigator" = not saved yet
+    if (text === 'saved' || text === 'saved in sales navigator') {
+      logs.push("Already saved in Sales Navigator — skipping")
+      return true
+    }
+  }
+
+  // Also check aria-label for "Saved" state
+  const savedByAria = document.querySelector('[aria-label*="Saved"][aria-label*="Sales Navigator"]')
+  if (savedByAria) {
+    logs.push("Already saved (aria-label) — skipping")
+    return true
+  }
+
+  // Try the aria-label selectors
   let saveBtn = await waitForElement(SELECTORS.saveInSalesNavButton, 3000)
 
   // Fallback: search by visible text
@@ -133,16 +175,15 @@ async function saveRegularProfile(logs: string[]): Promise<boolean> {
   }
 
   if (!saveBtn) {
-    // Check if already saved
-    const alreadySaved =
-      document.querySelector('[aria-label*="Saved"]') ||
-      await waitForElementByText("Saved", ["button", "a", "span"], 1000)
-    if (alreadySaved) {
-      logs.push("Already saved — skipping")
-      return true
-    }
     logs.push("'Save in Sales Navigator' button not found")
     return false
+  }
+
+  // Double-check the button text before clicking
+  const btnText = saveBtn.textContent?.trim().toLowerCase() || ''
+  if (btnText.includes('saved') && !btnText.includes('save in')) {
+    logs.push("Button shows 'Saved' state — skipping")
+    return true
   }
 
   logs.push("Clicking 'Save in Sales Navigator'...")
@@ -203,6 +244,49 @@ async function doFollow(logs: string[]): Promise<boolean> {
   await humanClick(followBtn)
   logs.push("Followed")
   return true
+}
+
+// --- Accept Connection Invite ---
+
+async function acceptConnectionInvite(logs: string[]): Promise<boolean> {
+  logs.push("Checking for pending connection invite...")
+
+  // Look for Accept button (they sent us a connection request)
+  // Common patterns:
+  // - Button with text "Accept"
+  // - Button with aria-label containing "Accept"
+  // - Button in a pending invite section
+
+  // Method 1: Find button by exact text "Accept"
+  const allButtons = document.querySelectorAll('button')
+  for (const btn of allButtons) {
+    const text = btn.textContent?.trim().toLowerCase() || ''
+    const ariaLabel = btn.getAttribute('aria-label')?.toLowerCase() || ''
+
+    if (text === 'accept' || ariaLabel.includes('accept invitation') || ariaLabel.includes('accept connection')) {
+      logs.push("Found Accept button — clicking...")
+      await humanClick(btn)
+      await delay(getRandomDelay(1000, 2000))
+      logs.push("Accepted connection invite!")
+      return true
+    }
+  }
+
+  // Method 2: Check for pending invite indicator + Accept button
+  const pendingSection = document.querySelector('[class*="pending"], [class*="invitation"]')
+  if (pendingSection) {
+    const acceptBtn = pendingSection.querySelector('button')
+    if (acceptBtn && acceptBtn.textContent?.trim().toLowerCase().includes('accept')) {
+      logs.push("Found Accept in pending section — clicking...")
+      await humanClick(acceptBtn)
+      await delay(getRandomDelay(1000, 2000))
+      logs.push("Accepted connection invite!")
+      return true
+    }
+  }
+
+  logs.push("No pending invite found")
+  return false
 }
 
 // --- Profile Scraping ---

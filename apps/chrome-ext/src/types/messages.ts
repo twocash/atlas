@@ -36,6 +36,7 @@ export interface ActionResultMessage {
   success: boolean
   savedToList: boolean
   followed: boolean
+  acceptedInvite?: boolean
   error?: string
   errorType?: LeadResult["errorType"]
   logs: string[]
