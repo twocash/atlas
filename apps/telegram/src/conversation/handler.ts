@@ -590,8 +590,10 @@ export async function handleConversation(ctx: Context): Promise<void> {
       hasAttachment,
       attachmentType: hasAttachment ? attachment.type : undefined,
       tokenCount: totalTokens,
-      // CRITICAL: Wire media analysis to Notion page body (Vision Processing Fix)
-      // This enables image analysis to be written as rich content in Feed/WQ pages
+      // Vision Processing Fix (0225379)
+      // Bug: https://notion.so/2fc780a78eef81ad9c03dac5b062d7a2
+      // Without this wiring, Gemini's MediaContext never reached Notion page bodies.
+      // Now image analysis appears as structured content (summary, key points, actions).
       ...(mediaContext && {
         contentType: mediaContext.type as 'image' | 'document' | 'video' | 'audio',
         analysisContent: buildAnalysisContent(

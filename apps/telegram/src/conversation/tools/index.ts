@@ -23,6 +23,9 @@ export { WORKSPACE_TOOLS, executeWorkspaceTools } from './workspace';
 export { SELF_MOD_TOOLS, executeSelfModTools } from './self-mod';
 export { OPERATOR_TOOLS, executeOperatorTools } from './operator';
 
+// Browser automation (Playwright-based)
+export { BROWSER_TOOLS, executeBrowserTools, closeBrowser } from './browser';
+
 import type Anthropic from '@anthropic-ai/sdk';
 import { CORE_TOOLS, executeCoreTools } from './core';
 import { DISPATCHER_TOOLS, executeDispatcherTools } from './dispatcher';
@@ -30,6 +33,7 @@ import { AGENT_TOOLS, executeAgentTools } from './agents';
 import { WORKSPACE_TOOLS, executeWorkspaceTools } from './workspace';
 import { SELF_MOD_TOOLS, executeSelfModTools } from './self-mod';
 import { OPERATOR_TOOLS, executeOperatorTools } from './operator';
+import { BROWSER_TOOLS, executeBrowserTools } from './browser';
 import { getMcpTools, isMcpTool, executeMcpTool } from '../../mcp';
 
 /**
@@ -49,6 +53,7 @@ const NATIVE_TOOLS: Anthropic.Tool[] = [
   ...WORKSPACE_TOOLS,
   ...SELF_MOD_TOOLS,
   ...OPERATOR_TOOLS,
+  ...BROWSER_TOOLS,     // Playwright-based browser automation
   ...AGENT_TOOLS,       // DEPRECATED: dispatch_research, etc.
 ];
 
@@ -104,6 +109,10 @@ export async function executeTool(
 
   const operatorResult = await executeOperatorTools(toolName, input);
   if (operatorResult !== null) return operatorResult;
+
+  // Browser automation tools (Playwright-based)
+  const browserResult = await executeBrowserTools(toolName, input);
+  if (browserResult !== null) return browserResult;
 
   // Legacy agent tools (deprecated but still functional)
   const agentResult = await executeAgentTools(toolName, input);
