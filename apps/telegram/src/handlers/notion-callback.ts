@@ -19,6 +19,7 @@ import {
 } from '../conversation/notion-url';
 import { createAuditTrail, type AuditEntry } from '../conversation/audit';
 import { addToConversationContext } from '../conversation/context-manager';
+import { safeAnswerCallback, safeAcknowledgeCallback } from '../utils/telegram-helpers';
 
 /**
  * Handle Notion callback queries
@@ -34,13 +35,17 @@ export async function handleNotionCallback(ctx: Context): Promise<void> {
   }
 
   const [, requestId, action] = parts;
-  await ctx.answerCallbackQuery();
 
   const pending = getPendingNotionAction(requestId);
   if (!pending) {
-    await ctx.answerCallbackQuery({ text: 'Request expired. Please share the link again.' });
+    await safeAnswerCallback(ctx, 'Request expired. Please share the link again.', {
+      fallbackMessage: '⏱️ That request expired. Please share the link again.'
+    });
     return;
   }
+
+  // Acknowledge the callback
+  await safeAcknowledgeCallback(ctx);
 
   const { pageInfo } = pending;
 

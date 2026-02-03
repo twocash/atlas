@@ -9,6 +9,7 @@
 import { Bot, InlineKeyboard } from "grammy";
 import { logger } from "./logger";
 import { audit } from "./audit";
+import { safeAnswerCallback } from "./utils/telegram-helpers";
 import { routeMessage, routeCallback, cleanupAll, clearUserSession } from "./handlers";
 import { getModelOverride, setModelOverride, MODEL_SHORTCUTS, getModelDisplayName, clearSession } from "./session";
 import { handleAgentCommand } from "./agent-handler";
@@ -368,7 +369,10 @@ export function createBot(): Bot<AtlasContext> {
       await routeCallback(ctx);
     } catch (error) {
       logger.error("Error handling callback", { error });
-      await ctx.answerCallbackQuery({ text: "Error processing. Try again." });
+      // Use safe answer to handle expired callbacks gracefully
+      await safeAnswerCallback(ctx, "Error processing. Try again.", {
+        fallbackMessage: "⚠️ Error processing that request. Please try again."
+      });
     }
   });
 

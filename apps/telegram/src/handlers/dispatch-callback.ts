@@ -13,6 +13,7 @@ import {
   removePendingDispatch,
   parseDispatchCallbackData,
 } from '../conversation/dispatch-choice';
+import { safeAnswerCallback } from '../utils/telegram-helpers';
 
 // Import dispatcher routing functions directly
 import { Client } from '@notionhq/client';
@@ -53,7 +54,9 @@ export async function handleDispatchCallback(ctx: Context): Promise<void> {
   // Get pending dispatch
   const pending = getPendingDispatch(requestId);
   if (!pending) {
-    await ctx.answerCallbackQuery({ text: 'Request expired. Please try again.' });
+    await safeAnswerCallback(ctx, 'Request expired. Please try again.', {
+      fallbackMessage: '⏱️ That request expired. Please try again.'
+    });
     try {
       await ctx.deleteMessage();
     } catch {
