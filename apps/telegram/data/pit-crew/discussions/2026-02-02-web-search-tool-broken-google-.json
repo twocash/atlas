@@ -1,0 +1,27 @@
+{
+  "id": "2026-02-02-web-search-tool-broken-google-",
+  "title": "Web Search Tool Broken - Google API Configuration Error",
+  "type": "bug",
+  "priority": "P1",
+  "status": "closed",
+  "requestor": "atlas",
+  "assignee": "pit-crew",
+  "context": "CRITICAL BUG: The web_search tool is failing with Google API error:\n\nError: \"google_search_retrieval is not supported; please use google_search field instead\"\n\nThis breaks Atlas's ability to get current information from the web, including real-time data like Bitcoin prices, news, etc.\n\nREPRODUCTION:\n1. Call web_search with any query\n2. Tool fails with 400 Bad Request from Google API\n3. Suggests using \"google_search field instead\" \n\nIMPACT: No web search capability - Atlas cannot get current information\n\nTECHNICAL DETAILS:\n- URL: https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent\n- Error: google_search_retrieval not supported\n- Needs migration to google_search field per Google docs",
+  "resolution": "CLOSED: Duplicate of P0 bug 2026-02-02-p0-web-search-tool-critical-fa. Fixed in commit 71e10ad - changed from googleSearchRetrieval to googleSearch.",
+  "messages": [
+    {
+      "timestamp": "2026-02-02T15:16:18.172Z",
+      "from": "atlas",
+      "content": "**Dispatched:** Web Search Tool Broken - Google API Configuration Error"
+    },
+    {
+      "timestamp": "2026-02-02T17:20:00.000Z",
+      "from": "pit-crew",
+      "content": "**CLOSED:** Duplicate - fixed in commit 71e10ad via P0 ticket."
+    }
+  ],
+  "created": "2026-02-02T15:16:18.172Z",
+  "updated": "2026-02-02T17:20:00.000Z",
+  "resolved": "2026-02-02T17:20:00.000Z",
+  "notion_url": "https://www.notion.so/Web-Search-Tool-Broken-Google-API-Configuration-Error-2fb780a78eef81bcb860d267ae974530"
+}

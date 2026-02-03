@@ -1,0 +1,25 @@
+{
+  "id": "2026-02-02-bug-login-button-misaligned-on",
+  "title": "BUG: Login Button Misaligned on Mobile",
+  "type": "bug",
+  "priority": "P1",
+  "status": "closed",
+  "requestor": "atlas",
+  "assignee": "pit-crew",
+  "context": "**BUG REPORT: Mobile UI Issue**\n\n**Problem:** Login button is misaligned on mobile devices, affecting user experience and accessibility.\n\n**Impact:** \n- Poor mobile UX\n- Potential accessibility issues\n- Unprofessional appearance on mobile\n\n**Expected:** Login button should be properly aligned and responsive across mobile devices.\n\n**Device Context:** Mobile browsers (specific device/browser details needed from user testing)\n\n**Priority Justification:** P1 - Mobile-first user experience is critical for Atlas adoption.",
+  "messages": [
+    {
+      "timestamp": "2026-02-02T22:53:46.816Z",
+      "from": "atlas",
+      "content": "**Dispatched:** BUG: Login Button Misaligned on Mobile\n\n**BUG REPORT: Mobile UI Issue**\n\n**Problem:** Login button is misaligned on mobile devices, affecting user experience and accessibility.\n\n**Impact:** \n- Poor mobile UX\n- Potential accessibility issues\n- Unprofessional appearance on mobile\n\n**Expected:** Login button should be properly aligned and responsive across mobile devices.\n\n**Device Context:** Mobile browsers (specific device/browser details needed from user testing)\n\n**Priority Justification:** P1 - Mobile-first user experience is critical for Atlas adoption."
+    },
+    {
+      "timestamp": "2026-02-03T12:30:00.000Z",
+      "from": "pit-crew",
+      "content": "**┌─────────────────────────────────────────────────────────────────┐\n│  ❌ INVALID - CLOSING                                            │\n└─────────────────────────────────────────────────────────────────┘**\n\n**ASSESSMENT:**\nAtlas is a **Telegram bot** + Chrome extension. There is no:\n- Login button\n- Mobile web UI\n- Browser-based login flow\n\n**Atlas Components:**\n- `apps/telegram/` - Telegram bot (no login UI)\n- `apps/chrome-ext/` - Chrome extension (browser extension, not mobile)\n\n**CONCLUSION:** This appears to be a test/placeholder bug or misrouted ticket.\nNo actionable fix possible - Atlas has no mobile web login UI.\n\n**Status → closed** (invalid/not applicable)"
+    }
+  ],
+  "created": "2026-02-02T22:53:46.816Z",
+  "updated": "2026-02-03T12:30:00.000Z",
+  "notion_url": "https://www.notion.so/BUG-Login-Button-Misaligned-on-Mobile-2fb780a78eef81f79586ced92752b97a"
+}

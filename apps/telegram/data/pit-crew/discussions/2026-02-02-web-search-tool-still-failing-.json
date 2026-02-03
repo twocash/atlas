@@ -1,0 +1,27 @@
+{
+  "id": "2026-02-02-web-search-tool-still-failing-",
+  "title": "Web Search Tool Still Failing - Test Results Documented",
+  "type": "bug",
+  "priority": "P1",
+  "status": "closed",
+  "requestor": "atlas",
+  "assignee": "pit-crew",
+  "context": "🧪 REOPENING WEB SEARCH BUG WITH TEST RESULTS\n\n**Test Query:** \"bitcoin current price today 2025\"\n**Expected:** Current Bitcoin price data  \n**Actual Result:** Tool failed with no results\n\n**Steps Performed:**\n1. User requested current Bitcoin trading range\n2. Called web_search(query: \"bitcoin current price today 2025\", num_results: 5)\n3. Tool returned failure/empty results  \n4. Had to provide stale cached information instead\n\n**User Feedback:** \"This is stale information and you did not execute a web search\"\n\n**Impact:** \n- Cannot provide real-time market data\n- Forced to use potentially outdated information\n- User explicitly identified information as stale\n- Core Atlas research functionality broken\n\n**Request:** Please investigate Google API configuration and return when web queries like \"bitcoin price\", \"current events\", \"recent news\" are properly supported.\n\n**Previous Bug:** There was a closed/dispatched bug on this but discussion ID is inaccessible. This is a fresh report with documented test results.",
+  "resolution": "CLOSED: Duplicate of P0 bug 2026-02-02-p0-web-search-tool-critical-fa. Fixed in commit 71e10ad - Gemini 2.0 Flash grounding now working with quality gates.",
+  "messages": [
+    {
+      "timestamp": "2026-02-02T15:19:22.239Z",
+      "from": "atlas",
+      "content": "**Dispatched:** Web Search Tool Still Failing - Test Results Documented"
+    },
+    {
+      "timestamp": "2026-02-02T17:20:00.000Z",
+      "from": "pit-crew",
+      "content": "**CLOSED:** Duplicate - fixed in commit 71e10ad. Bitcoin query now returns $77,974 with 5 sources."
+    }
+  ],
+  "created": "2026-02-02T15:19:22.239Z",
+  "updated": "2026-02-02T17:20:00.000Z",
+  "resolved": "2026-02-02T17:20:00.000Z",
+  "notion_url": "https://www.notion.so/Web-Search-Tool-Still-Failing-Test-Results-Documented-2fb780a78eef81cab3c2d8da1cb2acc1"
+}

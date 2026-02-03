@@ -1,0 +1,26 @@
+{
+  "id": "2026-02-03-feature-fast-track-skill-devel",
+  "title": "FEATURE: Fast-Track Skill Development Pipeline",
+  "type": "feature",
+  "priority": "P1",
+  "status": "backlog",
+  "requestor": "atlas",
+  "assignee": "pit-crew",
+  "context": "**FAST-TRACK SKILL DEVELOPMENT PIPELINE**\n\n**🎯 VISION:**\nEnable rapid skill creation through streamlined Jim ↔ Atlas collaboration. When Jim has a skill idea, Atlas can immediately draft a feature request and we can fast-track new capabilities into the skills infrastructure.\n\n**🚀 CURRENT SKILLS INFRASTRUCTURE ANALYSIS:**\n\n**📁 EXISTING ARCHITECTURE:**\n- **Skills Directory:** `data/skills/` with structured folders\n- **Skill Format:** SKILL.md with YAML frontmatter (name, description, trigger, created)\n- **Active Skills:** 2 production skills + 10 development/archived skills\n- **Voices System:** Specialized output styles in `skills/voices/`\n- **Skill Tools:** `create_skill`, `list_skills`, `read_skill` for management\n\n**🔧 SKILL STRUCTURE PATTERN:**\n```yaml\n---\nname: skill-name\ndescription: What this skill does\ntrigger: Phrases that activate it\ncreated: ISO timestamp\n---\n\n# Instructions\nStep-by-step workflow\n```\n\n**💡 FAST-TRACK WORKFLOW CONCEPT:**\n\n**CURRENT FLOW (SLOW):**\n1. Jim: \"I want a skill for X\"\n2. Atlas: \"Let me think about that...\"\n3. Manual back-and-forth on requirements\n4. Eventually create skill\n5. Test and iterate\n\n**PROPOSED FAST-TRACK FLOW:**\n1. **Jim:** \"Fast-track skill: [idea]\"\n2. **Atlas:** Auto-creates feature request with:\n   - Skill name suggestion\n   - Trigger phrases\n   - Implementation outline\n   - Integration points\n3. **Jim:** Reviews/approves in Pit Crew discussion\n4. **Atlas:** Implements skill immediately\n5. **Both:** Test and iterate in real-time\n\n**🎯 TECHNICAL REQUIREMENTS:**\n\n**1. SKILL TEMPLATE GENERATOR:**\n- Auto-generate skill structure from concept\n- Suggest appropriate trigger phrases\n- Map to existing infrastructure patterns\n- Include voice/output style recommendations\n\n**2. RAPID PROTOTYPING:**\n- Create draft skill in `temp/` for testing\n- Quick validation before moving to production\n- Rollback capability if skill fails\n\n**3. INTEGRATION HOOKS:**\n- Auto-wire to existing Atlas workflows\n- Connect to Feed 2.0 classification\n- Link to Work Queue routing\n- Integrate with MCP dispatch patterns\n\n**4. COLLABORATIVE REFINEMENT:**\n- Jim can edit skill specs in Notion\n- Atlas can iterate based on feedback\n- Version tracking for skill evolution\n\n**🌟 STRATEGIC BENEFITS:**\n- **Rapid capability expansion** - new skills in minutes, not hours\n- **Lower barrier to experimentation** - try ideas quickly\n- **Collaborative development** - Jim's vision + Atlas's implementation\n- **Skills as competitive advantage** - unique workflows become reusable assets\n\n**🔄 SUCCESS METRICS:**\n- Time from idea to working skill < 10 minutes\n- Skill success rate (% that become permanent)\n- Usage frequency of fast-tracked skills\n- Jim satisfaction with collaboration speed\n\n**💡 FIRST USE CASE:**\nTest with a simple skill like \"weekly-planning\" or \"meeting-prep\" to validate the fast-track workflow before scaling to complex capabilities.\n\nThis transforms skill development from \"engineering project\" to \"collaborative conversation\" - exactly the kind of rapid iteration that makes Atlas truly adaptive! 🚀",
+  "messages": [
+    {
+      "timestamp": "2026-02-03T02:52:19.395Z",
+      "from": "atlas",
+      "content": "**Dispatched:** FEATURE: Fast-Track Skill Development Pipeline\n\n[Full context in ticket body]"
+    },
+    {
+      "timestamp": "2026-02-03T12:30:00.000Z",
+      "from": "pit-crew",
+      "content": "**📋 TRIAGED → BACKLOG**\n\nWell-specified feature request. Moving to backlog for future sprint.\n\n**Complexity:** Medium\n**Dependencies:** Skills infrastructure (exists)\n**Value:** High - accelerates capability development"
+    }
+  ],
+  "created": "2026-02-03T02:52:19.395Z",
+  "updated": "2026-02-03T12:30:00.000Z",
+  "notion_url": "https://www.notion.so/FEATURE-Fast-Track-Skill-Development-Pipeline-2fc780a78eef812f96a0da39b91d9095",
+  "notion_page_id": "2fc780a7-8eef-812f-96a0-da39b91d9095"
+}

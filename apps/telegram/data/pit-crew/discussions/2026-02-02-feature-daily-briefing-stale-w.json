@@ -1,0 +1,20 @@
+{
+  "id": "2026-02-02-feature-daily-briefing-stale-w",
+  "title": "FEATURE: Daily Briefing Stale Work Queue Detection",
+  "type": "feature",
+  "priority": "P2",
+  "status": "dispatched",
+  "requestor": "atlas",
+  "assignee": "pit-crew",
+  "context": "**FEATURE REQUEST: Stale Work Queue Alerting**\n\n**Concept:** Daily briefing should automatically surface work queue items that have been sitting too long without progress.\n\n**Technical Requirements:**\n- Define \"stale\" thresholds by priority:\n  - P0: 1 day stale = alert\n  - P1: 3 days stale = alert  \n  - P2: 7 days stale = alert\n- Track last_modified timestamps on WQ items\n- Include stale items in daily briefing with aging indicators\n- Highlight blocked items separately from just old items\n\n**Value Proposition:**\n- Prevents important work from falling through cracks\n- Proactive project management vs reactive\n- Reduces manual queue scanning overhead\n- Improves task completion velocity\n\n**Implementation Ideas:**\n- Add \"days stale\" calculation to work_queue_list\n- Create stale_items_report function\n- Integrate into existing daily briefing workflow\n- Visual indicators: 🟡 3-7 days, 🔴 7+ days\n\nThis would significantly improve Jim's project visibility and task completion rates.",
+  "messages": [
+    {
+      "timestamp": "2026-02-02T22:06:56.550Z",
+      "from": "atlas",
+      "content": "**Dispatched:** FEATURE: Daily Briefing Stale Work Queue Detection\n\n**FEATURE REQUEST: Stale Work Queue Alerting**\n\n**Concept:** Daily briefing should automatically surface work queue items that have been sitting too long without progress.\n\n**Technical Requirements:**\n- Define \"stale\" thresholds by priority:\n  - P0: 1 day stale = alert\n  - P1: 3 days stale = alert  \n  - P2: 7 days stale = alert\n- Track last_modified timestamps on WQ items\n- Include stale items in daily briefing with aging indicators\n- Highlight blocked items separately from just old items\n\n**Value Proposition:**\n- Prevents important work from falling through cracks\n- Proactive project management vs reactive\n- Reduces manual queue scanning overhead\n- Improves task completion velocity\n\n**Implementation Ideas:**\n- Add \"days stale\" calculation to work_queue_list\n- Create stale_items_report function\n- Integrate into existing daily briefing workflow\n- Visual indicators: 🟡 3-7 days, 🔴 7+ days\n\nThis would significantly improve Jim's project visibility and task completion rates."
+    }
+  ],
+  "created": "2026-02-02T22:06:56.550Z",
+  "updated": "2026-02-02T22:06:57.181Z",
+  "notion_url": "https://www.notion.so/FEATURE-Daily-Briefing-Stale-Work-Queue-Detection-2fb780a78eef810c878fc70eb48a1b69"
+}

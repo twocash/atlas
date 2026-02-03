@@ -1,0 +1,25 @@
+{
+  "id": "2026-02-03-feature-daily-briefing-decisio",
+  "title": "FEATURE: Daily Briefing \"Decisions Needed\" Section",
+  "type": "feature",
+  "priority": "P1",
+  "status": "backlog",
+  "requestor": "atlas",
+  "assignee": "pit-crew",
+  "context": "**DAILY BRIEFING ENHANCEMENT REQUEST**\n\n**🎯 CONCEPT:**\nAdd a \"Decisions Needed\" section to daily briefings that automatically pulls from Work Queue items with status=\"Blocked\".\n\n[Full spec in ticket body]",
+  "messages": [
+    {
+      "timestamp": "2026-02-03T00:14:07.474Z",
+      "from": "atlas",
+      "content": "**Dispatched:** FEATURE: Daily Briefing \"Decisions Needed\" Section"
+    },
+    {
+      "timestamp": "2026-02-03T12:30:00.000Z",
+      "from": "pit-crew",
+      "content": "**📋 TRIAGED → BACKLOG**\n\nEnhances briefing actionability. Moving to backlog.\n\n**Complexity:** Low\n**Dependencies:** Work Queue blocked item query\n**Value:** High - surfaces decisions for Jim"
+    }
+  ],
+  "created": "2026-02-03T00:14:07.474Z",
+  "updated": "2026-02-03T12:30:00.000Z",
+  "notion_url": "https://www.notion.so/FEATURE-Daily-Briefing-Decisions-Needed-Section-2fc780a78eef81a280d1c10f3ec72be5"
+}

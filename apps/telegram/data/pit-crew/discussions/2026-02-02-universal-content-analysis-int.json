@@ -1,0 +1,25 @@
+{
+  "id": "2026-02-02-universal-content-analysis-int",
+  "title": "Universal Content Analysis Integration",
+  "type": "feature",
+  "priority": "P0",
+  "status": "in-progress",
+  "requestor": "atlas",
+  "assignee": "pit-crew",
+  "context": "FEATURE REQUEST: Universal Media Analysis for ALL Telegram shares\n\nEXPANDED REQUIREMENTS:\n\nUniversal Media Analysis for ALL Telegram shares:\n- URLs: Extract content from any platform (Threads, Twitter, LinkedIn, YouTube, articles, etc.)\n- Images: OCR, scene analysis, document extraction  \n- Videos: Transcription, scene description, key moments\n- Audio: Full transcription with speaker identification\n- Documents: Text extraction, summarization, key data points\n- Files: Content analysis based on type\n\nTechnical Scope:\n- Auto-detect content type from Telegram shares\n- Route to appropriate analysis engine (web scraping, vision AI, transcription)\n- Extract actionable insights and context\n- Proper Feed classification with full content understanding\n- No manual intervention required\n\nWorkflow: Jim shares → Atlas analyzes → Feed populated with rich context → Ready for action\n\nThis replaces the narrow Threads-only request with comprehensive content analysis for any media Jim shares through Telegram.",
+  "messages": [
+    {
+      "timestamp": "2026-02-02T05:24:32.398Z",
+      "from": "atlas",
+      "content": "**Dispatched:** Universal Content Analysis Integration\n\nFEATURE REQUEST: Universal Media Analysis for ALL Telegram shares\n\nEXPANDED REQUIREMENTS:\n\nUniversal Media Analysis for ALL Telegram shares:\n- URLs: Extract content from any platform (Threads, Twitter, LinkedIn, YouTube, articles, etc.)\n- Images: OCR, scene analysis, document extraction  \n- Videos: Transcription, scene description, key moments\n- Audio: Full transcription with speaker identification\n- Documents: Text extraction, summarization, key data points\n- Files: Content analysis based on type\n\nTechnical Scope:\n- Auto-detect content type from Telegram shares\n- Route to appropriate analysis engine (web scraping, vision AI, transcription)\n- Extract actionable insights and context\n- Proper Feed classification with full content understanding\n- No manual intervention required\n\nWorkflow: Jim shares → Atlas analyzes → Feed populated with rich context → Ready for action\n\nThis replaces the narrow Threads-only request with comprehensive content analysis for any media Jim shares through Telegram."
+    },
+    {
+      "timestamp": "2026-02-03T12:15:00.000Z",
+      "from": "pit-crew",
+      "content": "**┌─────────────────────────────────────────────────────────────────┐\n│  🔄 IN PROGRESS - P0 FEATURE                                    │\n└─────────────────────────────────────────────────────────────────┘**\n\n**SCOPE ASSESSMENT:**\n\n| Content Type | Engine | Status |\n|--------------|--------|--------|\n| URLs | Web scraping + Jina | 🟡 Partial |\n| Images | Claude Vision | 🟡 Partial |\n| Videos | Transcription API | ⬜ Not started |\n| Audio | Whisper/Deepgram | ⬜ Not started |\n| Documents | PDF/Office parsing | ⬜ Not started |\n\n**EXISTING FOUNDATION:**\n- ✅ URL content extraction working\n- ✅ Claude Vision available for images\n- ✅ Feed classification pipeline operational\n\n**NEXT STEPS:**\n1. Video transcription integration (YouTube, direct uploads)\n2. Audio transcription for voice messages\n3. Document parsing for PDFs/Office files\n4. Unified content router\n\n**Status → in-progress** (Feature work ongoing)"
+    }
+  ],
+  "created": "2026-02-02T05:24:32.398Z",
+  "updated": "2026-02-03T12:15:00.000Z",
+  "notion_url": "https://www.notion.so/Universal-Content-Analysis-Integration-2fb780a78eef81b9b1bae4da786b9c71"
+}

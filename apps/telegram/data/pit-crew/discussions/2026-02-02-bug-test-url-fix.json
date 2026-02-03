@@ -1,0 +1,20 @@
+{
+  "id": "2026-02-02-bug-test-url-fix",
+  "title": "BUG: Test URL Fix",
+  "type": "bug",
+  "priority": "P2",
+  "status": "dispatched",
+  "requestor": "atlas",
+  "assignee": "pit-crew",
+  "context": "**TEST BUG REPORT**\n\nThis is a test bug to verify URL generation and tracking in the Atlas Dev Pipeline.\n\n**Expected:** Proper Notion URL should be generated and accessible\n**Actual:** Need to verify URL integrity in dev pipeline workflow\n**Impact:** Testing pipeline functionality\n\n**Environment:** Atlas Dev Pipeline integration test",
+  "messages": [
+    {
+      "timestamp": "2026-02-02T23:06:19.422Z",
+      "from": "atlas",
+      "content": "**Dispatched:** BUG: Test URL Fix\n\n**TEST BUG REPORT**\n\nThis is a test bug to verify URL generation and tracking in the Atlas Dev Pipeline.\n\n**Expected:** Proper Notion URL should be generated and accessible\n**Actual:** Need to verify URL integrity in dev pipeline workflow\n**Impact:** Testing pipeline functionality\n\n**Environment:** Atlas Dev Pipeline integration test"
+    }
+  ],
+  "created": "2026-02-02T23:06:19.422Z",
+  "updated": "2026-02-02T23:06:19.732Z",
+  "notion_url": "https://www.notion.so/BUG-Test-URL-Fix-2fb780a78eef81b580cccaebbe4d5d78"
+}

@@ -1,0 +1,25 @@
+{
+  "id": "2026-02-03-feature-feed-entries-link-to-s",
+  "title": "FEATURE: Feed Entries Link to Source Telegram Messages",
+  "type": "feature",
+  "priority": "P1",
+  "status": "backlog",
+  "requestor": "atlas",
+  "assignee": "pit-crew",
+  "context": "**TRACEABILITY ENHANCEMENT REQUEST**\n\n**🎯 PROBLEM:**\n- Feed entries exist in isolation with no link back to source\n- No way to trace back to original Telegram conversation\n- Lost context when reviewing Feed items later\n- Can't see follow-up discussion or clarifications\n\n**🚀 SOLUTION:**\nStore Telegram message ID in Feed entries and create clickable deep links back to source message.\n\n**📱 IMPLEMENTATION:**\n1. Capture `message.message_id` when processing Telegram inputs\n2. Store as new property in Feed 2.0: `telegram_message_id`\n3. Generate deep link: `t.me/c/[chat_id]/[message_id]`\n4. Display as clickable link in Feed entry\n\n**🌟 BENEFITS:**\n- Complete audit trail from Notion back to Telegram\n- Context preservation across platforms\n- Decision archaeology - see how ideas evolved\n- Bidirectional workflow between capture and organization\n\n**🔧 TECHNICAL NOTES:**\n- Telegram provides message IDs automatically in webhook\n- Deep links work across all Telegram clients\n- Minimal storage overhead (just an integer ID)\n- Enables future workflow integrations",
+  "messages": [
+    {
+      "timestamp": "2026-02-03T00:22:18.137Z",
+      "from": "atlas",
+      "content": "**Dispatched:** FEATURE: Feed Entries Link to Source Telegram Messages"
+    },
+    {
+      "timestamp": "2026-02-03T12:30:00.000Z",
+      "from": "pit-crew",
+      "content": "**📋 TRIAGED → BACKLOG**\n\nSimple but valuable traceability feature. Moving to backlog.\n\n**Complexity:** Low\n**Dependencies:** Feed 2.0 schema update\n**Value:** Medium - improves audit trail"
+    }
+  ],
+  "created": "2026-02-03T00:22:18.137Z",
+  "updated": "2026-02-03T12:30:00.000Z",
+  "notion_url": "https://www.notion.so/FEATURE-Feed-Entries-Link-to-Source-Telegram-Messages-2fc780a78eef81eda36ae81af6a0f9ec"
+}

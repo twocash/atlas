@@ -1,0 +1,20 @@
+{
+  "id": "2026-02-01-google-calendar-integration-fo",
+  "title": "Google Calendar Integration for Atlas",
+  "type": "feature",
+  "priority": "P2",
+  "status": "dispatched",
+  "requestor": "atlas",
+  "assignee": "pit-crew",
+  "context": "Jim wants Atlas to check and update his Google Calendar. This would require:\n\n1. Google Calendar API integration via MCP server\n2. Core capabilities needed:\n   - Read calendar events\n   - Create/update appointments  \n   - Check availability\n   - Delete/modify existing events\n3. Work Queue integration for deadline tracking\n4. Meeting prep automation potential\n5. Time blocking for research sessions\n\nTechnical approach: Build MCP server similar to existing pit-crew and notion servers. Use Google Calendar API v3 with OAuth2 authentication. Store refresh tokens securely.\n\nThis would significantly enhance Atlas productivity capabilities by enabling calendar management through conversational interface.",
+  "messages": [
+    {
+      "timestamp": "2026-02-01T19:10:03.630Z",
+      "from": "atlas",
+      "content": "**Dispatched:** Google Calendar Integration for Atlas\n\nJim wants Atlas to check and update his Google Calendar. This would require:\n\n1. Google Calendar API integration via MCP server\n2. Core capabilities needed:\n   - Read calendar events\n   - Create/update appointments  \n   - Check availability\n   - Delete/modify existing events\n3. Work Queue integration for deadline tracking\n4. Meeting prep automation potential\n5. Time blocking for research sessions\n\nTechnical approach: Build MCP server similar to existing pit-crew and notion servers. Use Google Calendar API v3 with OAuth2 authentication. Store refresh tokens securely.\n\nThis would significantly enhance Atlas productivity capabilities by enabling calendar management through conversational interface."
+    }
+  ],
+  "created": "2026-02-01T19:10:03.630Z",
+  "updated": "2026-02-01T19:10:04.689Z",
+  "notion_url": "https://www.notion.so/Google-Calendar-Integration-for-Atlas-2fa780a78eef81af966bcf5a069d47c5"
+}

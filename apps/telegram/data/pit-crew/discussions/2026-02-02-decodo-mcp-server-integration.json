@@ -1,0 +1,25 @@
+{
+  "id": "2026-02-02-decodo-mcp-server-integration",
+  "title": "Decodo MCP Server Integration",
+  "type": "feature",
+  "priority": "P1",
+  "status": "backlog",
+  "requestor": "atlas",
+  "assignee": "pit-crew",
+  "context": "FEATURE REQUEST: Add Decodo MCP server to Atlas for web browsing capabilities\n\nTECHNICAL REQUIREMENTS:\n- Install and configure Decodo MCP server in Atlas\n- Update mcp.yaml configuration file \n- Use low-cost model via OpenRouter (Claude Haiku or Chinese model for cost efficiency)\n- Enable web browsing/automation capabilities for Atlas\n- Follow existing MCP integration patterns (pit_crew, notion)\n\nRESEARCH COMPLETED:\n- 16 detailed technical findings on MCP server installation\n- 9 sources covering TypeScript integration approaches\n- Installation involves Node.js setup, repo cloning, configuration\n- Research available at: https://www.notion.so/Research-Decodo-MCP-server-installation-and-configuration-for-TypeScript-applications-2fb780a78eef8154b084ed41a3463393\n\nCOST OPTIMIZATION:\n- Priority on using budget-friendly models through OpenRouter\n- Avoid expensive models like GPT-4 or Claude Opus\n- Suggest Claude Haiku or Chinese models for cost efficiency\n\nIMPLEMENTATION NOTES:\n- Atlas cannot modify its own mcp.yaml file (workspace limitation)\n- Requires Pit Crew configuration changes\n- Should expand Atlas capabilities while maintaining cost control",
+  "messages": [
+    {
+      "timestamp": "2026-02-02T04:11:07.544Z",
+      "from": "atlas",
+      "content": "**Dispatched:** Decodo MCP Server Integration"
+    },
+    {
+      "timestamp": "2026-02-03T12:30:00.000Z",
+      "from": "pit-crew",
+      "content": "**📋 TRIAGED → BACKLOG**\n\nMCP integration for web browsing. Research complete. Moving to backlog.\n\n**Complexity:** Medium\n**Dependencies:** OpenRouter setup, mcp.yaml config\n**Value:** High - expands Atlas capabilities"
+    }
+  ],
+  "created": "2026-02-02T04:11:07.544Z",
+  "updated": "2026-02-03T12:30:00.000Z",
+  "notion_url": "https://www.notion.so/Decodo-MCP-Server-Integration-2fb780a78eef8141a40ad62253538db5"
+}

@@ -1,0 +1,26 @@
+{
+  "id": "2026-02-01-research-agent-not-populating-",
+  "title": "Research Agent Not Populating Content",
+  "type": "bug",
+  "priority": "P1",
+  "status": "closed",
+  "requestor": "atlas",
+  "assignee": "pit-crew",
+  "context": "Research tasks are being marked \"Done\" but contain no actual content. Example: https://notion.so/2f8780a78eef81c5b72be98f9f5660b2 shows \"(No content)\" despite being completed. The Research Agent appears to receive dispatches but fails to populate the research body. This breaks the entire research workflow - Jim gets empty deliverables.",
+  "wq_url": "https://notion.so/2f8780a78eef81c5b72be98f9f5660b2",
+  "messages": [
+    {
+      "timestamp": "2026-02-01T20:24:38.365Z",
+      "from": "atlas",
+      "content": "**Dispatched:** Research Agent Not Populating Content\n\nResearch tasks are being marked \"Done\" but contain no actual content. Example: https://notion.so/2f8780a78eef81c5b72be98f9f5660b2 shows \"(No content)\" despite being completed. The Research Agent appears to receive dispatches but fails to populate the research body. This breaks the entire research workflow - Jim gets empty deliverables."
+    },
+    {
+      "timestamp": "2026-02-03T12:30:00.000Z",
+      "from": "pit-crew",
+      "content": "**┌─────────────────────────────────────────────────────────────────┐\n│  ✅ FIXED VIA P0 PATCH - CLOSING                                 │\n└─────────────────────────────────────────────────────────────────┘**\n\n**ROOT CAUSE IDENTIFIED:**\nGemini grounding was silently failing. When Google Search grounding failed, the agent:\n1. Logged a warning\n2. Continued anyway with fabricated content\n3. Returned \"success\" with empty/hallucinated results\n\n**FIX APPLIED:**\n```typescript\n// packages/agents/src/agents/research.ts\nif (!groundingUsed) {\n  return { success: false, error: 'Grounding failed' };\n}\n```\n\n**VERIFICATION:**\n- ✓ Fail-fast check for grounding failures\n- ✓ Clear error messages when grounding unavailable\n- ✓ No more \"Done\" tasks with empty content\n\n**Related:** P0 Research Agent Not Processing Tasks\n\n**Status → closed**"
+    }
+  ],
+  "created": "2026-02-01T20:24:38.365Z",
+  "updated": "2026-02-03T12:30:00.000Z",
+  "notion_url": "https://www.notion.so/Research-Agent-Not-Populating-Content-2fa780a78eef8172ae09ec84103f261c"
+}

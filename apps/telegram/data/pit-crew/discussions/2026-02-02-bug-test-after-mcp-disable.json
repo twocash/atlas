@@ -1,0 +1,20 @@
+{
+  "id": "2026-02-02-bug-test-after-mcp-disable",
+  "title": "BUG: Test after MCP disable",
+  "type": "bug",
+  "priority": "P2",
+  "status": "dispatched",
+  "requestor": "atlas",
+  "assignee": "pit-crew",
+  "context": "**TEST BUG REPORT**\n\nThis is a test bug to verify the dev pipeline workflow after MCP has been disabled. Testing to ensure:\n\n1. Bug dispatch still works correctly\n2. Notion URLs are generated properly\n3. Discussion threads are created in Atlas Dev Pipeline\n4. Pit Crew can receive and process the request\n\n**Expected Behavior:** Bug should be created successfully with proper tracking URL\n\n**Test Context:** Verifying system functionality post-MCP configuration changes",
+  "messages": [
+    {
+      "timestamp": "2026-02-02T23:25:57.085Z",
+      "from": "atlas",
+      "content": "**Dispatched:** BUG: Test after MCP disable\n\n**TEST BUG REPORT**\n\nThis is a test bug to verify the dev pipeline workflow after MCP has been disabled. Testing to ensure:\n\n1. Bug dispatch still works correctly\n2. Notion URLs are generated properly\n3. Discussion threads are created in Atlas Dev Pipeline\n4. Pit Crew can receive and process the request\n\n**Expected Behavior:** Bug should be created successfully with proper tracking URL\n\n**Test Context:** Verifying system functionality post-MCP configuration changes"
+    }
+  ],
+  "created": "2026-02-02T23:25:57.085Z",
+  "updated": "2026-02-02T23:25:58.066Z",
+  "notion_url": "https://www.notion.so/BUG-Test-after-MCP-disable-2fb780a78eef81aa8cc8c3daedf240ee"
+}

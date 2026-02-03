@@ -1,0 +1,25 @@
+{
+  "id": "2026-02-02-video-chunking-script-fails-fi",
+  "title": "Video Chunking Script Fails - File Not Found",
+  "type": "bug",
+  "priority": "P1",
+  "status": "backlog",
+  "requestor": "atlas",
+  "assignee": "pit-crew",
+  "context": "BUG: Video chunking automation fails when processing large video files for transcription.\n\nREPRODUCTION STEPS:\n1. User sends large video file (>400MB) via Telegram\n2. Atlas attempts to chunk video using chunk_video_win.ts script\n3. Script fails with \"No video files found\" error\n4. Video transcription workflow blocked\n\nERROR OUTPUT:\nNo video files found in /workspaces/atlas/data/media/Personal\nScript searched for: *.mp4, *.avi, *.mov, *.mkv, *.webm\n\nEXPECTED BEHAVIOR:\n- Script should locate downloaded video file\n- Split into manageable chunks (<50MB each)\n- Enable transcription of large video files\n\nTECHNICAL INVESTIGATION NEEDED:\n- Verify video download location from Telegram\n- Check file format compatibility\n- Ensure proper media directory structure\n- Test with various video formats and sizes\n\nIMPACT: Blocks transcription workflow for large video files, forcing manual chunking workaround.",
+  "messages": [
+    {
+      "timestamp": "2026-02-02T14:22:19.351Z",
+      "from": "atlas",
+      "content": "**Dispatched:** Video Chunking Script Fails - File Not Found"
+    },
+    {
+      "timestamp": "2026-02-03T12:30:00.000Z",
+      "from": "pit-crew",
+      "content": "**📋 TRIAGED → BACKLOG**\n\n**ASSESSMENT:**\nNo `chunk_video_win.ts` script exists in codebase.\nThis is actually a **missing feature** disguised as a bug.\n\n**SCOPE:**\n- Create video chunking utility\n- Integrate with Telegram file downloads\n- Support multiple video formats\n- Enable large file transcription workflow\n\n**Complexity:** Medium\n**Dependencies:** ffmpeg, Telegram file handling\n**Value:** Medium - enables video transcription"
+    }
+  ],
+  "created": "2026-02-02T14:22:19.351Z",
+  "updated": "2026-02-03T12:30:00.000Z",
+  "notion_url": "https://www.notion.so/Video-Chunking-Script-Fails-File-Not-Found-2fb780a78eef812aa274cdae2999f840"
+}
