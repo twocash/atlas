@@ -65,7 +65,7 @@ function applySimpleHeuristics(
     return makeResult("The Grove", "Build", 95, "Explicit #atlas tag");
   }
   if (text.includes("#home") || text.includes("#garage")) {
-    return makeResult("Home", "Task", 95, "Explicit #home tag");
+    return makeResult("Home/Garage", "Task", 95, "Explicit #home tag");
   }
   if (text.includes("#personal")) {
     return makeResult("Personal", "Reference", 95, "Explicit #personal tag");
@@ -88,7 +88,7 @@ function applySimpleHeuristics(
     return makeResult("The Grove", "Content", 80, "LinkedIn content");
   }
   if (url.includes("homedepot") || url.includes("lowes")) {
-    return makeResult("Home", "Task", 95, "Home improvement store");
+    return makeResult("Home/Garage", "Task", 95, "Home improvement store");
   }
 
   // Keyword-based heuristics
@@ -96,7 +96,7 @@ function applySimpleHeuristics(
     return makeResult("The Grove", "Research", 70, "Grove-related keywords detected");
   }
   if (containsHomeKeywords(text)) {
-    return makeResult("Home", "Task", 70, "Home-related keywords detected");
+    return makeResult("Home/Garage", "Task", 70, "Home-related keywords detected");
   }
   if (containsPersonalKeywords(text)) {
     return makeResult("Personal", "Reference", 70, "Personal keywords detected");

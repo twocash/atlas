@@ -57,7 +57,7 @@ ${sparksContext}
 
 You are classifying a spark (raw input) from Jim. Analyze the content and return a JSON classification with these fields:
 
-- pillar: One of "The Grove", "Personal", "Consulting", "Home"
+- pillar: One of "The Grove", "Personal", "Consulting", "Home/Garage"
 - intent: One of "Research", "Catalog", "Build", "Content", "Reference", "Task", "Question"
 - confidence: Number 0-100 representing classification confidence
 - reasoning: Brief explanation (1-2 sentences) of why you classified this way

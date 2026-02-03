@@ -1023,7 +1023,7 @@ export async function isBrowserAutomationReady(): Promise<boolean> {
  */
 export interface ContextualExtractionParams {
   url: string;
-  pillar: string;
+  pillar: Pillar;
   feedId?: string;
   workQueueId?: string;
   userId: number;

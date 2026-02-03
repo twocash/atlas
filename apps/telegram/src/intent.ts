@@ -74,7 +74,7 @@ function extractPillar(text: string): Pillar | undefined {
   if (/\b(grove|ai|research|venture)\b/.test(lowerText)) return "The Grove";
   if (/\b(personal|health|relationship|growth|finance)\b/.test(lowerText)) return "Personal";
   if (/\b(consult|client|drumwave|take ?flight)\b/.test(lowerText)) return "Consulting";
-  if (/\b(home|garage|house|vehicle)\b/.test(lowerText)) return "Home";
+  if (/\b(home|garage|house|vehicle)\b/.test(lowerText)) return "Home/Garage";
 
   return undefined;
 }

@@ -130,7 +130,9 @@ app.get('/debug/skills', async (c) => {
     const registry = getSkillRegistry();
 
     const url = c.req.query('url') || 'https://www.threads.com/test';
-    const pillar = c.req.query('pillar') || 'Personal';
+    const pillarInput = c.req.query('pillar') || 'Personal';
+    // Cast to Pillar type for registry matching (debug endpoint, no validation needed)
+    const pillar = pillarInput as 'The Grove' | 'Personal' | 'Consulting' | 'Home/Garage';
 
     // Get all enabled skills
     const skills = registry.getEnabled().map(s => ({

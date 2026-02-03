@@ -123,7 +123,7 @@ function generateQuickClarification(
       { text: "A) Grove", data: "pillar_grove", pillar: "The Grove", intent: classification.intent },
       { text: "B) Personal", data: "pillar_personal", pillar: "Personal", intent: classification.intent },
       { text: "C) Consulting", data: "pillar_consulting", pillar: "Consulting", intent: classification.intent },
-      { text: "D) Home", data: "pillar_home", pillar: "Home", intent: classification.intent },
+      { text: "D) Home/Garage", data: "pillar_home", pillar: "Home/Garage", intent: classification.intent },
     ],
   };
 }
@@ -145,7 +145,7 @@ function generateMustAsk(
       { text: "Grove research", data: "type_grove_research", pillar: "The Grove", intent: "Research" },
       { text: "Grove tool eval", data: "type_grove_build", pillar: "The Grove", intent: "Build" },
       { text: "Personal", data: "type_personal", pillar: "Personal", intent: "Reference" },
-      { text: "Home project", data: "type_home", pillar: "Home", intent: "Task" },
+      { text: "Home/Garage project", data: "type_home", pillar: "Home/Garage", intent: "Task" },
       { text: "Consulting", data: "type_consulting", pillar: "Consulting", intent: "Task" },
       { text: "✗ Dismiss", data: "dismiss" },
     ],
@@ -162,7 +162,7 @@ export function generatePillarChangeOptions(): { question: string; options: Clar
       { text: "The Grove", data: "set_pillar_grove", pillar: "The Grove" },
       { text: "Personal", data: "set_pillar_personal", pillar: "Personal" },
       { text: "Consulting", data: "set_pillar_consulting", pillar: "Consulting" },
-      { text: "Home", data: "set_pillar_home", pillar: "Home" },
+      { text: "Home/Garage", data: "set_pillar_home", pillar: "Home/Garage" },
     ],
   };
 }
@@ -223,7 +223,7 @@ export function parseCallbackData(data: string): {
       "grove": "The Grove",
       "personal": "Personal",
       "consulting": "Consulting",
-      "home": "Home",
+      "home": "Home/Garage",
     };
     const key = data.replace("pillar_", "").replace("set_pillar_", "");
     return { action: "set_pillar", pillar: pillarMap[key] };
@@ -264,7 +264,7 @@ export function parseCallbackData(data: string): {
       "type_grove_research": { pillar: "The Grove", intent: "Research" },
       "type_grove_build": { pillar: "The Grove", intent: "Build" },
       "type_personal": { pillar: "Personal", intent: "Reference" },
-      "type_home": { pillar: "Home", intent: "Task" },
+      "type_home": { pillar: "Home/Garage", intent: "Task" },
       "type_consulting": { pillar: "Consulting", intent: "Task" },
     };
     const mapping = typeMap[data];

@@ -63,7 +63,7 @@ export interface ClarificationOption {
 /**
  * The four life pillars
  */
-export type Pillar = "Personal" | "The Grove" | "Consulting" | "Home";
+export type Pillar = "Personal" | "The Grove" | "Consulting" | "Home/Garage";
 
 /**
  * Intent classification
