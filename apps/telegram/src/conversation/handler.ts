@@ -32,14 +32,30 @@ const CONTENT_CONFIRM_ENABLED = process.env.ATLAS_CONTENT_CONFIRM !== 'false';
  * 1. Extracts actual URLs from tool results
  * 2. Replaces any fabricated Notion URLs with the real ones
  * 3. Appends the URL if Claude omitted it entirely
+ * 4. CRITICAL: If a dispatch tool FAILED, strip any Notion URLs Claude fabricated
  */
 function fixHallucinatedUrls(responseText: string, toolContexts: ToolContext[]): string {
+  // Check for dispatch tools that FAILED (submit_ticket, work_queue_create, etc.)
+  const dispatchToolNames = ['submit_ticket', 'work_queue_create', 'mcp__pit_crew__dispatch_work'];
+  let dispatchFailed = false;
+  let failureError = '';
+
   // Extract actual URLs from tool results (most recent first)
   const actualUrls: string[] = [];
   for (let i = toolContexts.length - 1; i >= 0; i--) {
     const ctx = toolContexts[i];
     // Tool result structure: { success: boolean; result: unknown; error?: string }
-    const toolResult = ctx.result as { success?: boolean; result?: unknown } | undefined;
+    const toolResult = ctx.result as { success?: boolean; result?: unknown; error?: string } | undefined;
+
+    // Track if a dispatch tool failed
+    if (dispatchToolNames.includes(ctx.name)) {
+      if (!toolResult?.success) {
+        dispatchFailed = true;
+        failureError = toolResult?.error || 'Dispatch failed';
+        logger.error('DISPATCH TOOL FAILED', { tool: ctx.name, error: failureError });
+      }
+    }
+
     if (toolResult?.success) {
       const result = toolResult.result as Record<string, unknown> | undefined;
       if (result?.url && typeof result.url === 'string') {
@@ -48,6 +64,27 @@ function fixHallucinatedUrls(responseText: string, toolContexts: ToolContext[]):
       if (result?.feedUrl && typeof result.feedUrl === 'string') {
         actualUrls.push(result.feedUrl);
       }
+    }
+  }
+
+  // CRITICAL CASE: Dispatch tool failed but Claude may have fabricated a success URL
+  // Strip ALL Notion URLs from response and add warning
+  if (dispatchFailed && actualUrls.length === 0) {
+    const notionUrlPattern = /https?:\/\/(?:www\.)?notion\.so\/[^\s\)\]>]+/gi;
+    const matches = responseText.match(notionUrlPattern);
+
+    if (matches && matches.length > 0) {
+      logger.error('HALLUCINATION ON FAILURE: Claude fabricated URL despite tool failure', {
+        fabricatedUrls: matches,
+        error: failureError,
+      });
+
+      // Strip the fabricated URLs and add error notice
+      let fixedText = responseText;
+      for (const match of matches) {
+        fixedText = fixedText.split(match).join('[DISPATCH FAILED]');
+      }
+      return `${fixedText}\n\n⚠️ **Dispatch failed:** ${failureError}`;
     }
   }
 
