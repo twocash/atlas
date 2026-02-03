@@ -94,6 +94,37 @@ export function OutreachView() {
     setLeads(leads.map((l) => (l.id === leadId ? { ...l, selected: !l.selected } : l)))
   }
 
+  const handleSelectAll = (selected: boolean) => {
+    setLeads(leads.map((l) => ({ ...l, selected })))
+  }
+
+  const handleSelectBatch = (count: number) => {
+    // Select first N unselected leads (or all if count >= remaining)
+    let remaining = count
+    setLeads(leads.map((l) => {
+      if (!l.selected && remaining > 0) {
+        remaining--
+        return { ...l, selected: true }
+      }
+      return l
+    }))
+  }
+
+  const handleDismiss = async (leadIds: string[]) => {
+    // Remove from local list
+    setLeads(leads.filter((l) => !leadIds.includes(l.id)))
+
+    // Mark as processed in Notion (set Connection Status to "Dismissed")
+    try {
+      await chrome.runtime.sendMessage({
+        name: "DISMISS_CONTACTS",
+        body: { pageIds: leadIds.map((id) => leads.find((l) => l.id === id)?.notionPageId).filter(Boolean) },
+      })
+    } catch (e) {
+      console.error("Failed to dismiss contacts in Notion:", e)
+    }
+  }
+
   // Auto-transition to summary when queue completes
   useEffect(() => {
     if (mode === "running" && queue?.status === "completed") {
@@ -154,7 +185,13 @@ export function OutreachView() {
         </div>
 
         <div className="flex-1 overflow-y-auto">
-          <ReviewList leads={leads} onToggle={handleToggleLead} />
+          <ReviewList
+            leads={leads}
+            onToggle={handleToggleLead}
+            onSelectAll={handleSelectAll}
+            onSelectBatch={handleSelectBatch}
+            onDismiss={handleDismiss}
+          />
         </div>
 
         <div className="p-4 border-t border-gray-200 bg-gray-50">

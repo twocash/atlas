@@ -1051,6 +1051,33 @@ export async function markContactsAsFailed(
   return updated
 }
 
+/**
+ * Dismiss contacts from outreach workflow.
+ * Sets Connection Status to "Dismissed" so they won't appear in future queries.
+ */
+export async function dismissContacts(pageIds: string[]): Promise<number> {
+  let dismissed = 0
+  const today = new Date().toISOString().slice(0, 10)
+
+  for (const pageId of pageIds) {
+    try {
+      await updatePage(pageId, {
+        'Connection Status': select('Dismissed'),
+        'Last Active': date(today),
+      })
+      dismissed++
+      await debugLog('orchestrator', `✓ Dismissed contact ${pageId}`)
+      await delay(300) // Rate limit
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : String(e)
+      await debugLog('orchestrator', `Failed to dismiss ${pageId}: ${msg}`)
+    }
+  }
+
+  await debugLog('orchestrator', `Dismissed ${dismissed}/${pageIds.length} contacts`)
+  return dismissed
+}
+
 // --- Helpers ---
 
 function delay(ms: number): Promise<void> {

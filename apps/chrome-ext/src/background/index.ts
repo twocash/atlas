@@ -331,6 +331,20 @@ chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
     return true
   }
 
+  if (message.name === "DISMISS_CONTACTS") {
+    const { pageIds } = message.body || {}
+    ;(async () => {
+      try {
+        const { dismissContacts } = await import("~src/lib/sync-engine")
+        const result = await dismissContacts(pageIds || [])
+        sendResponse({ ok: true, dismissed: result })
+      } catch (error) {
+        sendResponse({ ok: false, error: String(error) })
+      }
+    })()
+    return true
+  }
+
   if (message.name === "AUTO_SYNC_QUEUE_RESULTS") {
     ;(async () => {
       try {
@@ -461,6 +475,7 @@ async function pollContainerStatus(postId: string, containerId: string) {
 
   // Start polling after a short delay
   setTimeout(poll, 5000)
+}
 
 // --- Heartbeat Port ---
 
