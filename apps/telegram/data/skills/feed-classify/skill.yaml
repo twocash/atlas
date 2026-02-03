@@ -1,0 +1,42 @@
+# Feed Classification Skill
+# Tier 0: Read-only operation (classification query)
+
+name: feed-classify
+version: 1.0.0
+description: Classify input text and return pillar/type without creating entries
+
+triggers:
+  - type: pattern
+    value: "classify|categorize|what pillar"
+  - type: keyword
+    value: "classify"
+
+inputs:
+  text:
+    type: string
+    required: true
+    description: The text to classify
+
+outputs:
+  - type: data
+    description: Classification result with pillar and type
+
+process:
+  type: tool_sequence
+  timeout: 10000
+  steps:
+    - id: classify
+      tool: claude_classify
+      inputs:
+        text: "$input.text"
+        returnOnly: true
+      onError: fail
+
+# Tier 0: Read-only, no entries created
+tier: 0
+
+enabled: true
+tags:
+  - utility
+  - classification
+  - tier0

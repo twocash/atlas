@@ -1,0 +1,62 @@
+# Grove Research Quick Skill
+# Tier 1: Creates Feed + Work Queue entries
+
+name: grove-research-quick
+version: 1.0.0
+description: Quick dispatch for Grove research requests
+
+triggers:
+  - type: pillar
+    value: "The Grove"
+  - type: pattern
+    value: "research|look into|investigate|analyze"
+  - type: keyword
+    value: "ai|llm|claude|gpt|agent"
+
+inputs:
+  topic:
+    type: string
+    required: true
+    description: The research topic
+
+outputs:
+  - type: feed_entry
+    description: Feed entry logging the research request
+  - type: work_queue_item
+    description: Work queue item for tracking
+
+process:
+  type: tool_sequence
+  timeout: 30000
+  steps:
+    - id: log_to_feed
+      tool: notion_create
+      inputs:
+        database: feed
+        properties:
+          Entry: "Research: $input.topic"
+          Pillar: "The Grove"
+          Request Type: "Research"
+          Status: "Routed"
+      onError: fail
+
+    - id: create_work_item
+      tool: notion_create
+      inputs:
+        database: workqueue
+        properties:
+          Task: "Research: $input.topic"
+          Type: "Research"
+          Status: "Captured"
+          Pillar: "The Grove"
+          Priority: "P2"
+      onError: continue
+
+# Auto-calculated as Tier 1 (creates entries)
+# tier: 1
+
+enabled: true
+tags:
+  - grove
+  - research
+  - quick

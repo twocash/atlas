@@ -1,0 +1,393 @@
+/**
+ * Atlas Skill System - Action Logging
+ *
+ * Logs all Atlas actions to Feed 2.0 with intent hashes and pattern fields
+ * for future skill detection. This is Phase 1 of the skill-centric architecture.
+ *
+ * Every action flows through here when ATLAS_SKILL_LOGGING=true
+ */
+
+import { Client } from '@notionhq/client';
+import { logger } from '../logger';
+import { isFeatureEnabled } from '../config/features';
+import { generateIntentHash, type IntentHashResult } from './intent-hash';
+import type { Pillar, RequestType } from '../conversation/types';
+
+// Initialize Notion client
+const notion = new Client({ auth: process.env.NOTION_API_KEY });
+
+// Feed 2.0 database ID (canonical - from CLAUDE.md)
+const FEED_DATABASE_ID = '90b2b33f-4b44-4b42-870f-8d62fb8cbf18';
+
+/**
+ * Action types for logging
+ */
+export type ActionType =
+  | 'classify'    // Classification/routing
+  | 'query'       // Data queries
+  | 'create'      // Creates entries
+  | 'update'      // Updates entries
+  | 'delete'      // Deletes/archives
+  | 'dispatch'    // Agent dispatch
+  | 'tool'        // Tool execution
+  | 'chat'        // Conversational response
+  | 'media'       // Media processing
+  | 'extract';    // Content extraction
+
+/**
+ * Input for logging an action
+ */
+export interface ActionLogInput {
+  /** The user's original message */
+  messageText: string;
+
+  /** Classification pillar */
+  pillar: Pillar;
+
+  /** Classification request type */
+  requestType: RequestType;
+
+  /** Type of action performed */
+  actionType: ActionType;
+
+  /** Tools used during this action */
+  toolsUsed: string[];
+
+  /** User ID */
+  userId: number;
+
+  /** Classification confidence (0-1) */
+  confidence: number;
+
+  /** Whether user confirmed/adjusted classification */
+  classificationConfirmed?: boolean;
+  classificationAdjusted?: boolean;
+
+  /** What Atlas originally suggested (if adjusted) */
+  originalSuggestion?: string;
+
+  /** Execution time in milliseconds */
+  executionTimeMs?: number;
+
+  /** Optional entry summary (falls back to messageText) */
+  entrySummary?: string;
+
+  /** Optional content type for media/URL shares */
+  contentType?: 'image' | 'document' | 'url' | 'video' | 'audio';
+
+  /** Optional source domain for URLs */
+  contentSource?: string;
+
+  /** Keywords from classification */
+  keywords?: string[];
+
+  /** Work type description */
+  workType?: string;
+}
+
+/**
+ * Result of action logging
+ */
+export interface ActionLogResult {
+  /** Whether logging was attempted (feature flag) */
+  attempted: boolean;
+
+  /** Whether logging succeeded */
+  success: boolean;
+
+  /** Intent hash generated */
+  intentHash: IntentHashResult | null;
+
+  /** Feed entry ID (if created) */
+  feedId?: string;
+
+  /** Error message (if failed) */
+  error?: string;
+}
+
+/**
+ * Log an action to Feed 2.0 with intent hash for pattern detection
+ *
+ * This is the main entry point for skill action logging.
+ * Only logs when ATLAS_SKILL_LOGGING=true
+ *
+ * @param input - Action details to log
+ * @returns Result with intent hash and feed entry ID
+ */
+export async function logAction(input: ActionLogInput): Promise<ActionLogResult> {
+  // Check feature flag
+  if (!isFeatureEnabled('skillLogging')) {
+    logger.debug('Skill logging disabled, skipping action log');
+    return {
+      attempted: false,
+      success: false,
+      intentHash: null,
+    };
+  }
+
+  // Generate intent hash
+  const intentHash = generateIntentHash(input.messageText);
+
+  try {
+    // Build Feed entry properties
+    const entrySummary = input.entrySummary || input.messageText.substring(0, 100);
+
+    // Core properties (always set)
+    const properties: Record<string, unknown> = {
+      'Entry': {
+        title: [{ text: { content: entrySummary } }],
+      },
+      'Pillar': {
+        select: { name: input.pillar || 'The Grove' },
+      },
+      'Request Type': {
+        select: { name: input.requestType },
+      },
+      'Source': {
+        select: { name: 'Telegram' },
+      },
+      'Author': {
+        select: { name: 'Atlas [Telegram]' },
+      },
+      'Confidence': {
+        number: input.confidence,
+      },
+      'Status': {
+        select: { name: 'Routed' },
+      },
+      'Date': {
+        date: { start: new Date().toISOString() },
+      },
+    };
+
+    // Optional core fields
+    if (input.keywords && input.keywords.length > 0) {
+      properties['Keywords'] = {
+        multi_select: input.keywords.slice(0, 5).map(k => ({ name: k })),
+      };
+    }
+
+    if (input.workType) {
+      properties['Work Type'] = {
+        rich_text: [{ text: { content: input.workType } }],
+      };
+    }
+
+    // Create the base Feed entry
+    const response = await notion.pages.create({
+      parent: { database_id: FEED_DATABASE_ID },
+      properties: properties as Parameters<typeof notion.pages.create>[0]['properties'],
+    });
+
+    const feedId = response.id;
+    logger.debug('Base Feed entry created for action log', { feedId });
+
+    // Now update with pattern-specific fields
+    // These are in a separate update to be resilient to schema differences
+    const patternProps: Record<string, unknown> = {};
+
+    // Intent Hash - core field for pattern matching
+    patternProps['Intent Hash'] = {
+      rich_text: [{ text: { content: intentHash.hash } }],
+    };
+
+    // Action Type
+    patternProps['Action Type'] = {
+      select: { name: input.actionType },
+    };
+
+    // Tools Used
+    if (input.toolsUsed.length > 0) {
+      patternProps['Tools Used'] = {
+        rich_text: [{ text: { content: input.toolsUsed.join(', ') } }],
+      };
+    }
+
+    // Classification tracking
+    if (input.classificationConfirmed !== undefined) {
+      patternProps['Classification Confirmed'] = {
+        checkbox: input.classificationConfirmed,
+      };
+    }
+
+    if (input.classificationAdjusted !== undefined) {
+      patternProps['Classification Adjusted'] = {
+        checkbox: input.classificationAdjusted,
+      };
+    }
+
+    if (input.originalSuggestion) {
+      patternProps['Original Suggestion'] = {
+        rich_text: [{ text: { content: input.originalSuggestion } }],
+      };
+    }
+
+    // Execution time
+    if (input.executionTimeMs !== undefined) {
+      patternProps['Execution Time'] = {
+        number: input.executionTimeMs,
+      };
+    }
+
+    // Content analysis fields
+    if (input.contentType) {
+      patternProps['Content Type'] = {
+        select: { name: input.contentType },
+      };
+    }
+
+    if (input.contentSource) {
+      patternProps['Content Source'] = {
+        rich_text: [{ text: { content: input.contentSource } }],
+      };
+    }
+
+    // Update with pattern fields (non-fatal if some don't exist)
+    try {
+      await notion.pages.update({
+        page_id: feedId,
+        properties: patternProps as Parameters<typeof notion.pages.update>[0]['properties'],
+      });
+      logger.debug('Pattern fields added to Feed entry', {
+        feedId,
+        intentHash: intentHash.hash,
+        actionType: input.actionType,
+      });
+    } catch (updateError) {
+      // Non-fatal: base entry exists, pattern fields may not all exist in schema
+      logger.warn('Some pattern fields not added (properties may not exist in Notion)', {
+        feedId,
+        intentHash: intentHash.hash,
+        error: updateError instanceof Error ? updateError.message : String(updateError),
+        attemptedFields: Object.keys(patternProps),
+      });
+    }
+
+    logger.info('Action logged to Feed 2.0', {
+      feedId,
+      intentHash: intentHash.hash,
+      actionType: input.actionType,
+      pillar: input.pillar,
+      requestType: input.requestType,
+      toolsUsed: input.toolsUsed,
+    });
+
+    return {
+      attempted: true,
+      success: true,
+      intentHash,
+      feedId,
+    };
+
+  } catch (error) {
+    const errorMessage = error instanceof Error ? error.message : String(error);
+
+    logger.error('Failed to log action to Feed 2.0', {
+      error: errorMessage,
+      intentHash: intentHash.hash,
+      actionType: input.actionType,
+    });
+
+    return {
+      attempted: true,
+      success: false,
+      intentHash,
+      error: errorMessage,
+    };
+  }
+}
+
+/**
+ * Log a classification action (convenience wrapper)
+ */
+export async function logClassification(
+  messageText: string,
+  pillar: Pillar,
+  requestType: RequestType,
+  confidence: number,
+  userId: number,
+  options?: {
+    keywords?: string[];
+    workType?: string;
+    confirmed?: boolean;
+    adjusted?: boolean;
+    originalSuggestion?: string;
+    executionTimeMs?: number;
+  }
+): Promise<ActionLogResult> {
+  return logAction({
+    messageText,
+    pillar,
+    requestType,
+    actionType: 'classify',
+    toolsUsed: [],
+    userId,
+    confidence,
+    keywords: options?.keywords,
+    workType: options?.workType,
+    classificationConfirmed: options?.confirmed,
+    classificationAdjusted: options?.adjusted,
+    originalSuggestion: options?.originalSuggestion,
+    executionTimeMs: options?.executionTimeMs,
+  });
+}
+
+/**
+ * Log a tool execution action (convenience wrapper)
+ */
+export async function logToolExecution(
+  messageText: string,
+  pillar: Pillar,
+  requestType: RequestType,
+  toolsUsed: string[],
+  userId: number,
+  confidence: number,
+  executionTimeMs?: number
+): Promise<ActionLogResult> {
+  return logAction({
+    messageText,
+    pillar,
+    requestType,
+    actionType: 'tool',
+    toolsUsed,
+    userId,
+    confidence,
+    executionTimeMs,
+  });
+}
+
+/**
+ * Log a media processing action (convenience wrapper)
+ */
+export async function logMediaAction(
+  messageText: string,
+  pillar: Pillar,
+  contentType: 'image' | 'document' | 'url' | 'video' | 'audio',
+  userId: number,
+  options?: {
+    contentSource?: string;
+    toolsUsed?: string[];
+    executionTimeMs?: number;
+  }
+): Promise<ActionLogResult> {
+  return logAction({
+    messageText,
+    pillar,
+    requestType: 'Process',
+    actionType: 'media',
+    toolsUsed: options?.toolsUsed || [],
+    userId,
+    confidence: 0.8,
+    contentType,
+    contentSource: options?.contentSource,
+    executionTimeMs: options?.executionTimeMs,
+  });
+}
+
+/**
+ * Get intent hash for a message (without logging)
+ * Useful for pattern matching and deduplication
+ */
+export function getIntentHash(messageText: string): IntentHashResult {
+  return generateIntentHash(messageText);
+}

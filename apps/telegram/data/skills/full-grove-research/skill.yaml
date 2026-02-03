@@ -1,0 +1,80 @@
+# Full Grove Research Skill
+# Tier 2: Composes multiple skills (Phase 4 example)
+#
+# This skill demonstrates skill composition:
+# 1. First classifies the input to confirm it's Grove-related
+# 2. Then dispatches to grove-research-quick for logging/tracking
+# 3. Finally formats a summary response
+#
+# Composition rules enforced:
+# - Can only invoke skills of equal or lower tier
+# - Circular dependencies are detected and blocked
+# - Max composition depth: 3 levels
+
+name: full-grove-research
+version: 1.0.0
+description: Full research workflow with classification, dispatch, and summary
+
+triggers:
+  - type: pillar
+    value: "The Grove"
+  - type: pattern
+    value: "full research|deep dive|comprehensive research"
+  - type: keyword
+    value: "full research"
+    minConfidence: 0.8
+
+inputs:
+  query:
+    type: string
+    required: true
+    description: The research query
+  depth:
+    type: string
+    required: false
+    default: "standard"
+    description: Research depth (quick, standard, deep)
+
+outputs:
+  - type: feed_entry
+    description: Feed entry from classification step
+  - type: work_queue_item
+    description: Work queue item from dispatch step
+  - type: message
+    description: Summary of dispatched research
+
+process:
+  type: skill_composition
+  timeout: 60000
+  steps:
+    # Step 1: Classify input (Tier 0 skill)
+    - id: classify
+      skill: feed-classify
+      inputs:
+        text: "$input.query"
+      onError: continue
+
+    # Step 2: Dispatch to quick research (Tier 1 skill)
+    - id: dispatch
+      skill: grove-research-quick
+      inputs:
+        topic: "$input.query"
+      onError: fail
+
+    # Step 3: Format summary (tool step, not skill)
+    - id: format
+      tool: format_response
+      inputs:
+        template: "Research dispatched: $input.query\nDepth: $input.depth\nTracking via Work Queue."
+      onError: continue
+
+# Tier 2: Composes 2+ skills (classified automatically, can override)
+tier: 2
+
+enabled: true
+tags:
+  - grove
+  - research
+  - composition
+  - tier2
+  - phase4
