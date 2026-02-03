@@ -81,6 +81,9 @@ export {
   executeSkillByName,
   executeSkillWithApproval,
   isBrowserAutomationReady,
+  // Contextual extraction (pillar-aware)
+  triggerContextualExtraction,
+  type ContextualExtractionParams,
   // Stop control
   requestStop,
   startExecution,

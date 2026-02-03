@@ -403,6 +403,63 @@ export const CORE_TOOLS: Anthropic.Tool[] = [
       required: [],
     },
   },
+  // ==========================================
+  // Skill Execution Tools (Contextual Extraction)
+  // ==========================================
+  {
+    name: 'claude_analyze',
+    description: 'Analyze content with Claude using a custom prompt. Used by skills for pillar-aware content analysis.',
+    input_schema: {
+      type: 'object' as const,
+      properties: {
+        content: {
+          type: 'string',
+          description: 'Content to analyze',
+        },
+        systemPrompt: {
+          type: 'string',
+          description: 'Analysis instructions for Claude',
+        },
+      },
+      required: ['content', 'systemPrompt'],
+    },
+  },
+  {
+    name: 'telegram_send',
+    description: 'Send a message to a Telegram chat. Used by skills for notifications.',
+    input_schema: {
+      type: 'object' as const,
+      properties: {
+        chatId: {
+          type: 'number',
+          description: 'Telegram chat ID to send to',
+        },
+        message: {
+          type: 'string',
+          description: 'Message text to send',
+        },
+      },
+      required: ['chatId', 'message'],
+    },
+  },
+  {
+    name: 'notion_update',
+    description: 'Update properties on an existing Notion page. Used by skills to enrich Feed entries.',
+    input_schema: {
+      type: 'object' as const,
+      properties: {
+        pageId: {
+          type: 'string',
+          description: 'Notion page ID to update',
+        },
+        properties: {
+          type: 'object',
+          description: 'Properties to update (key-value pairs)',
+        },
+      },
+      required: ['pageId', 'properties'],
+    },
+  },
 ];
 
 /**
@@ -442,6 +499,13 @@ export async function executeCoreTools(
     // Changelog
     case 'get_changelog':
       return await executeGetChangelog(input);
+    // Skill execution tools (Contextual Extraction)
+    case 'claude_analyze':
+      return await executeClaudeAnalyze(input);
+    case 'telegram_send':
+      return await executeTelegramSend(input);
+    case 'notion_update':
+      return await executeNotionUpdate(input);
     default:
       return null; // Not a core tool
   }
@@ -1664,6 +1728,177 @@ async function executeGetChangelog(
     };
   } catch (error: any) {
     logger.error('Get changelog failed', { error });
+    return {
+      success: false,
+      result: null,
+      error: `Notion error: ${error?.code || 'unknown'} - ${error?.message || String(error)}`,
+    };
+  }
+}
+
+// ==========================================
+// SKILL EXECUTION TOOLS (Contextual Extraction)
+// ==========================================
+
+/**
+ * Analyze content with Claude using a custom prompt.
+ * Used by skills for pillar-aware content analysis (e.g., Grove = research value, Consulting = intel).
+ */
+async function executeClaudeAnalyze(
+  input: Record<string, unknown>
+): Promise<{ success: boolean; result: unknown; error?: string }> {
+  const content = input.content as string;
+  const systemPrompt = input.systemPrompt as string;
+
+  if (!content || !systemPrompt) {
+    return {
+      success: false,
+      result: null,
+      error: 'Both content and systemPrompt are required',
+    };
+  }
+
+  try {
+    // Dynamic import to avoid circular dependencies
+    const Anthropic = (await import('@anthropic-ai/sdk')).default;
+    const anthropic = new Anthropic();
+
+    const response = await anthropic.messages.create({
+      model: 'claude-sonnet-4-20250514',
+      max_tokens: 1000,
+      system: systemPrompt,
+      messages: [{ role: 'user', content: content.substring(0, 8000) }],
+    });
+
+    const textContent = response.content.find(c => c.type === 'text');
+    const result = textContent ? textContent.text : '';
+
+    logger.info('Claude analysis complete', { inputLength: content.length, outputLength: result.length });
+
+    return {
+      success: true,
+      result,
+    };
+  } catch (error: any) {
+    logger.error('Claude analysis failed', { error: error?.message });
+    return {
+      success: false,
+      result: null,
+      error: `Claude API error: ${error?.message || String(error)}`,
+    };
+  }
+}
+
+/**
+ * Send a message to a Telegram chat.
+ * Used by skills for notifications (e.g., "Extraction complete").
+ *
+ * NOTE: This requires access to the bot instance. Skills should pass telegramChatId
+ * in their inputs. The actual send is done via a callback stored at initialization.
+ */
+let _telegramSendCallback: ((chatId: number, message: string) => Promise<void>) | null = null;
+
+/**
+ * Register the Telegram send callback (called during bot initialization)
+ */
+export function registerTelegramSendCallback(
+  callback: (chatId: number, message: string) => Promise<void>
+): void {
+  _telegramSendCallback = callback;
+  logger.info('Telegram send callback registered');
+}
+
+async function executeTelegramSend(
+  input: Record<string, unknown>
+): Promise<{ success: boolean; result: unknown; error?: string }> {
+  const chatId = input.chatId as number;
+  const message = input.message as string;
+
+  if (!chatId || !message) {
+    return {
+      success: false,
+      result: null,
+      error: 'Both chatId and message are required',
+    };
+  }
+
+  if (!_telegramSendCallback) {
+    logger.warn('Telegram send callback not registered');
+    return {
+      success: false,
+      result: null,
+      error: 'Telegram send not available (bot not initialized)',
+    };
+  }
+
+  try {
+    await _telegramSendCallback(chatId, message);
+    logger.info('Telegram message sent', { chatId, messageLength: message.length });
+
+    return {
+      success: true,
+      result: { sent: true, chatId },
+    };
+  } catch (error: any) {
+    logger.error('Telegram send failed', { error: error?.message, chatId });
+    return {
+      success: false,
+      result: null,
+      error: `Telegram error: ${error?.message || String(error)}`,
+    };
+  }
+}
+
+/**
+ * Update properties on an existing Notion page.
+ * Used by skills to enrich Feed entries (e.g., Extraction Status, Depth).
+ */
+async function executeNotionUpdate(
+  input: Record<string, unknown>
+): Promise<{ success: boolean; result: unknown; error?: string }> {
+  const pageId = input.pageId as string;
+  const properties = input.properties as Record<string, unknown>;
+
+  if (!pageId || !properties) {
+    return {
+      success: false,
+      result: null,
+      error: 'Both pageId and properties are required',
+    };
+  }
+
+  try {
+    // Convert simple key-value to Notion property format
+    const notionProperties: Record<string, unknown> = {};
+
+    for (const [key, value] of Object.entries(properties)) {
+      if (typeof value === 'string') {
+        // Assume select for Status/Depth fields, rich_text otherwise
+        if (key.toLowerCase().includes('status') || key.toLowerCase().includes('depth')) {
+          notionProperties[key] = { select: { name: value } };
+        } else {
+          notionProperties[key] = { rich_text: [{ text: { content: value } }] };
+        }
+      } else if (typeof value === 'number') {
+        notionProperties[key] = { number: value };
+      } else if (typeof value === 'boolean') {
+        notionProperties[key] = { checkbox: value };
+      }
+    }
+
+    await notion.pages.update({
+      page_id: pageId,
+      properties: notionProperties as any,
+    });
+
+    logger.info('Notion page updated', { pageId, properties: Object.keys(properties) });
+
+    return {
+      success: true,
+      result: { pageId, updated: Object.keys(properties) },
+    };
+  } catch (error: any) {
+    logger.error('Notion update failed', { error: error?.message, pageId });
     return {
       success: false,
       result: null,

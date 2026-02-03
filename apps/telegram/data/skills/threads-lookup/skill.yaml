@@ -1,13 +1,14 @@
-# Threads Post Lookup Skill
-# Tier 1: Read-only browser automation + Feed entry
+# Threads Post Lookup Skill - Pillar-Aware Contextual Extraction
+# Tier 1: Browser automation + Feed enrichment
+# v2.0.0: Hardened selectors, pillar-conditional depth, always_run cleanup
 
 name: threads-lookup
-version: 1.0.0
-description: Look up and analyze a Threads post
+version: 2.0.0
+description: Pillar-aware Threads extraction with resilient selectors
 
 triggers:
   - type: pattern
-    value: "threads\\.net"
+    value: "threads\\.(net|com)"
   - type: keyword
     value: "threads post"
 
@@ -16,79 +17,190 @@ inputs:
     type: string
     required: true
     description: Threads post URL
+  pillar:
+    type: string
+    required: false
+    description: Life domain (The Grove, Consulting, Personal, Home/Garage)
+  depth:
+    type: string
+    required: false
+    default: "standard"
+    description: Extraction depth (shallow, standard, deep)
+  feedId:
+    type: string
+    required: false
+    description: Feed entry ID to update with extraction results
+  workQueueId:
+    type: string
+    required: false
+    description: Work Queue entry ID if applicable
+  telegramChatId:
+    type: number
+    required: false
+    description: Chat ID for sending completion notification
 
 outputs:
   - type: feed_entry
-    description: Analyzed post content logged to Feed
+    description: Enriched post content logged to Feed
+  - type: data
+    description: Extracted links and analysis
 
 process:
   type: tool_sequence
-  timeout: 60000
+  timeout: 120000
   steps:
-    # Open new tab with the Threads URL
+    # Open new tab with the Threads URL (capture tabId for cleanup)
     - id: open_tab
       tool: mcp__claude-in-chrome__tabs_create_mcp
       inputs:
         url: "$input.url"
       onError: fail
 
-    # Wait for content to load (Threads SPA)
+    # Wait for content - HARDENED with role-based + text heuristics
     - id: wait_for_content
       tool: mcp__claude-in-chrome__javascript_tool
       inputs:
         tabId: "$step.open_tab.tabId"
         code: |
           await new Promise((resolve, reject) => {
-            let attempts = 0;
-            const maxAttempts = 20;
+            const start = Date.now();
             const interval = setInterval(() => {
-              // Threads uses various containers - look for article or main content
-              const content = document.querySelector('article') ||
-                             document.querySelector('[role="main"]') ||
-                             document.querySelector('main');
-              if (content && content.innerText.length > 50) {
+              // Use role-based selector (more stable than obfuscated classes)
+              const main = document.querySelector('[role="main"]') || document.querySelector('article');
+              // Ensure it's not just a loading skeleton (check text length)
+              if (main && main.innerText.length > 100) {
                 clearInterval(interval);
                 resolve(true);
-              } else if (++attempts >= maxAttempts) {
+              }
+              if (Date.now() - start > 15000) {  // 15s timeout
                 clearInterval(interval);
-                reject(new Error('Threads content did not load'));
+                reject(new Error('Timeout waiting for Threads hydration'));
               }
             }, 500);
           });
       onError: fail
 
-    # Extract page text
+    # CONDITIONAL: Deep extraction for Grove pillar - expand replies
+    - id: deep_expand
+      condition: "$input.depth == 'deep'"
+      then:
+        - id: expand_replies
+          tool: mcp__claude-in-chrome__javascript_tool
+          inputs:
+            tabId: "$step.open_tab.tabId"
+            code: |
+              // Expand reply threads using accessibility roles
+              const buttons = document.querySelectorAll('[role="button"]');
+              for (const btn of buttons) {
+                const text = btn.innerText.toLowerCase();
+                if (text.includes('repl') || text.includes('view') || text.includes('more')) {
+                  btn.click();
+                  await new Promise(r => setTimeout(r, 500));
+                }
+              }
+              await new Promise(r => setTimeout(r, 1500));
+              return 'Expanded replies';
+          onError: continue
+
+    # CONDITIONAL: Extract external links for deep extraction
+    - id: deep_links
+      condition: "$input.depth == 'deep'"
+      then:
+        - id: extract_links
+          tool: mcp__claude-in-chrome__javascript_tool
+          inputs:
+            tabId: "$step.open_tab.tabId"
+            code: |
+              const links = Array.from(document.querySelectorAll('a[href]'))
+                .map(a => ({ text: a.innerText.substring(0, 50), href: a.href }))
+                .filter(l => l.href.startsWith('http') && !l.href.includes('threads.net'))
+                .slice(0, 10);
+              return JSON.stringify(links);
+          onError: continue
+
+    # Extract page text content (all depths)
     - id: extract_content
       tool: mcp__claude-in-chrome__get_page_text
       inputs:
         tabId: "$step.open_tab.tabId"
       onError: fail
 
-    # Log to Feed
-    - id: log_to_feed
-      tool: notion_create
-      inputs:
-        database: feed
-        properties:
-          Entry: "Threads: $step.extract_content"
-          Pillar: "$context.pillar"
-          Source: "$input.url"
-          Request Type: "Research"
-          Status: "Captured"
-      onError: continue
+    # CONDITIONAL: Grove analysis (research value)
+    - id: grove_analysis
+      condition: "$input.pillar == 'The Grove'"
+      then:
+        - id: analyze_grove
+          tool: claude_analyze
+          inputs:
+            content: "$step.extract_content"
+            systemPrompt: |
+              Analyze this Threads post for research value:
+              - Key arguments and claims made
+              - Evidence or sources cited
+              - External links worth following up
+              - Relevance to AI/LLM research, architecture, or Grove content strategy
+              - Notable quotes or insights worth capturing
 
-    # Cleanup tab
+              Be concise but thorough. Focus on actionable research value.
+          onError: continue
+
+    # CONDITIONAL: Consulting analysis (business intel)
+    - id: consulting_analysis
+      condition: "$input.pillar == 'Consulting'"
+      then:
+        - id: analyze_consulting
+          tool: claude_analyze
+          inputs:
+            content: "$step.extract_content"
+            systemPrompt: |
+              Scan this Threads post for business intelligence:
+              - Competitor mentions or comparisons
+              - Pricing or strategy signals
+              - Partnership or opportunity mentions
+              - Industry trends or shifts
+              - Client-relevant insights
+
+              Focus on actionable business intelligence.
+          onError: continue
+
+    # Update Feed entry with extraction results (if feedId provided)
+    - id: update_feed
+      condition: "$input.feedId"
+      then:
+        - id: enrich_feed
+          tool: notion_update
+          inputs:
+            pageId: "$input.feedId"
+            properties:
+              Extraction Status: "complete"
+              Extraction Depth: "$input.depth"
+          onError: continue
+
+    # NOTIFY USER for non-shallow extractions
+    - id: notify_user
+      condition: "$input.depth != 'shallow'"
+      then:
+        - id: send_notification
+          tool: telegram_send
+          inputs:
+            chatId: "$input.telegramChatId"
+            message: "Extraction complete ($input.depth): Analyzed Threads post"
+          onError: continue
+
+    # CLEANUP - runs even on error (always_run flag)
     - id: cleanup_tab
       tool: mcp__claude-in-chrome__javascript_tool
       inputs:
         tabId: "$step.open_tab.tabId"
-        code: "window.close();"
+        code: "window.close(); return 'Tab closed';"
       onError: continue
+      always_run: true
 
 enabled: true
 tier: 1
 tags:
   - social
   - threads
-  - research
+  - pillar-aware
+  - contextual-extraction
   - browser-automation

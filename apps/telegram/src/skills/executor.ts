@@ -720,59 +720,93 @@ export async function executeSkill(
     executionId: isTopLevel ? executionId : undefined,
   });
 
+  // Separate always_run steps for guaranteed cleanup
+  const regularSteps = skill.process.steps.filter(s => !(s as any).always_run);
+  const alwaysRunSteps = skill.process.steps.filter(s => (s as any).always_run);
+  let earlyFailure: SkillExecutionResult | null = null;
+
   try {
-    // Execute each step in sequence
-    for (const step of skill.process.steps) {
-      // Check for stop request before each step
-      checkStop();
-      const result = await executeStep(step, fullContext);
+    try {
+      // Execute regular steps in sequence
+      for (const step of regularSteps) {
+        // Check for stop request before each step
+        checkStop();
+        const result = await executeStep(step, fullContext);
 
-      // Track tools used
-      if ('tool' in step && step.tool) {
-        toolsUsed.push(step.tool);
-      }
+        // Track tools used
+        if ('tool' in step && step.tool) {
+          toolsUsed.push(step.tool);
+        }
 
-      // Store result
-      fullContext.steps[step.id] = result;
+        // Store result
+        fullContext.steps[step.id] = result;
 
-      // Handle errors
-      if (!result.success) {
-        const handled = await handleStepError(step, result, fullContext);
-        fullContext.steps[step.id] = handled;
+        // Handle errors
+        if (!result.success) {
+          const handled = await handleStepError(step, result, fullContext);
+          fullContext.steps[step.id] = handled;
 
-        if (!handled.success && step.onError !== 'continue') {
-          // Step failed and we should stop
-          const executionTime = Date.now() - startTime;
+          if (!handled.success && step.onError !== 'continue') {
+            // Step failed and we should stop - but still run cleanup
+            const executionTime = Date.now() - startTime;
 
-          // Update metrics
-          getSkillRegistry().updateMetrics(skill.name, false, executionTime);
+            // Update metrics
+            getSkillRegistry().updateMetrics(skill.name, false, executionTime);
 
-          // Log action
-          if (isFeatureEnabled('skillLogging')) {
-            logAction({
-              messageText: context.messageText,
-              pillar: context.pillar,
-              requestType: 'Process',
-              actionType: 'dispatch',
-              toolsUsed,
-              userId: context.userId,
-              confidence: 0,
+            // Log action
+            if (isFeatureEnabled('skillLogging')) {
+              logAction({
+                messageText: context.messageText,
+                pillar: context.pillar,
+                requestType: 'Process',
+                actionType: 'dispatch',
+                toolsUsed,
+                userId: context.userId,
+                confidence: 0,
+                executionTimeMs: executionTime,
+                entrySummary: `Skill failed: ${skill.name}`,
+              }).catch(() => { /* non-fatal */ });
+            }
+
+            // Store failure but continue to finally block for cleanup
+            earlyFailure = {
+              success: false,
+              skillName: skill.name,
+              tier: skill.tier,
+              error: `Step ${step.id} failed: ${handled.error}`,
+              stepResults: fullContext.steps,
               executionTimeMs: executionTime,
-              entrySummary: `Skill failed: ${skill.name}`,
-            }).catch(() => { /* non-fatal */ });
+              toolsUsed,
+            };
+            break;
           }
-
-          return {
-            success: false,
-            skillName: skill.name,
-            tier: skill.tier,
-            error: `Step ${step.id} failed: ${handled.error}`,
-            stepResults: fullContext.steps,
-            executionTimeMs: executionTime,
-            toolsUsed,
-          };
         }
       }
+    } finally {
+      // Run always_run steps even on error (for cleanup like closing tabs)
+      for (const step of alwaysRunSteps) {
+        try {
+          logger.debug('Running always_run cleanup step', { stepId: step.id });
+          const cleanupResult = await executeStep(step, fullContext);
+          fullContext.steps[step.id] = cleanupResult;
+          if ('tool' in step && step.tool) {
+            toolsUsed.push(step.tool);
+          }
+        } catch (cleanupError) {
+          logger.warn('Cleanup step failed (non-fatal)', { stepId: step.id, error: cleanupError });
+        }
+      }
+    }
+
+    // Return early failure if we had one
+    if (earlyFailure) {
+      // End execution tracking
+      if (isTopLevel) {
+        endExecution();
+      }
+      // Update step results with any cleanup results
+      earlyFailure.stepResults = fullContext.steps;
+      return earlyFailure;
     }
 
     // Success!
@@ -948,4 +982,104 @@ export async function executeSkillWithApproval(
  */
 export async function isBrowserAutomationReady(): Promise<boolean> {
   return checkBrowserAutomationAvailable();
+}
+
+/**
+ * Contextual Extraction Parameters
+ */
+export interface ContextualExtractionParams {
+  url: string;
+  pillar: string;
+  feedId?: string;
+  workQueueId?: string;
+  userId: number;
+  chatId?: number;
+  requestType?: string;
+}
+
+/**
+ * Trigger contextual extraction based on pillar
+ *
+ * This is the single entry point for pillar-aware skill execution.
+ * Call this after content is saved to Feed/Work Queue to trigger
+ * appropriate extraction depth based on the content's life domain.
+ *
+ * - The Grove: Deep extraction (expand replies, extract links, analyze for research)
+ * - Consulting: Standard extraction (business intel, competitor signals)
+ * - Personal/Home: Shallow extraction (quick snapshot)
+ *
+ * @param params - Extraction parameters including URL, pillar, and IDs
+ * @returns Promise that resolves when extraction completes (non-blocking recommended)
+ */
+export async function triggerContextualExtraction(
+  params: ContextualExtractionParams
+): Promise<SkillExecutionResult | null> {
+  const { url, pillar, feedId, workQueueId, userId, chatId, requestType } = params;
+
+  // Check if skill execution is enabled
+  if (!isFeatureEnabled('skillExecution')) {
+    logger.debug('Contextual extraction skipped: skillExecution feature disabled');
+    return null;
+  }
+
+  // Determine extraction depth from pillar
+  const depth = pillar === 'The Grove' ? 'deep'
+              : pillar === 'Consulting' ? 'standard'
+              : 'shallow';
+
+  // Find matching skill for this URL
+  const registry = getSkillRegistry();
+  const match = registry.findBestMatch(url, { pillar });
+
+  if (!match || match.score < 0.7) {
+    logger.debug('No matching extraction skill for URL', {
+      url,
+      pillar,
+      bestMatch: match ? { skill: match.skill.name, score: match.score } : null,
+    });
+    return null;
+  }
+
+  logger.info('Triggering contextual extraction', {
+    skill: match.skill.name,
+    pillar,
+    depth,
+    url: url.substring(0, 50),
+    feedId,
+  });
+
+  try {
+    const result = await executeSkillByName(match.skill.name, {
+      userId,
+      messageText: url,
+      pillar,
+      input: {
+        url,
+        pillar,
+        intent: requestType,
+        depth,
+        feedId,
+        workQueueId,
+        telegramChatId: chatId,
+      },
+    });
+
+    if (result.success) {
+      logger.info('Contextual extraction completed', {
+        skill: match.skill.name,
+        feedId,
+        executionTimeMs: result.executionTimeMs,
+      });
+    } else {
+      logger.warn('Contextual extraction failed', {
+        skill: match.skill.name,
+        error: result.error,
+      });
+    }
+
+    return result;
+  } catch (error) {
+    logger.error('Contextual extraction error', { error, url, pillar });
+    return null;
+  }
 }

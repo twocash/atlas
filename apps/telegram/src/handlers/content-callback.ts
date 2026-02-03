@@ -24,6 +24,7 @@ import { buildContentPayload } from '../conversation/content-router';
 import { type Pillar as MediaPillar } from '../conversation/media';
 import { getPatternSuggestion, recordClassificationFeedback } from '../conversation/content-patterns';
 import type { Pillar, RequestType } from '../conversation/types';
+import { logAction, isFeatureEnabled, triggerContextualExtraction } from '../skills';
 
 /**
  * Handle content confirmation callback queries
@@ -727,11 +728,55 @@ async function handleConfirm(
       await ctx.reply('Logged (links unavailable)');
     }
 
+    // Log action for skill pattern detection (Phase 1)
+    // Non-blocking - failures don't affect user experience
+    if (isFeatureEnabled('skillLogging')) {
+      logAction({
+        messageText: pending.originalText,
+        pillar: pending.pillar,
+        requestType: pending.requestType,
+        actionType: pending.attachmentInfo ? 'media' : 'extract',
+        toolsUsed: [],
+        userId: pending.userId,
+        confidence: 1.0,  // Human confirmed
+        classificationConfirmed: true,
+        classificationAdjusted: wasAdjusted,
+        originalSuggestion: pending.originalSuggestion,
+        contentType,
+        contentSource: pending.attachmentInfo?.fileName?.split('.').pop() || pending.analysis.source,
+        keywords: extractKeywords(pending),
+        workType: inferWorkType(pending),
+      }).catch(err => {
+        logger.warn('Skill action logging failed (non-fatal)', { error: err });
+      });
+    }
+
+    // ========================================
+    // CONTEXTUAL EXTRACTION (Pillar-Aware)
+    // ========================================
+    // Trigger pillar-aware extraction using the centralized function
+    if (result && pending.url) {
+      // Non-blocking: fire and forget
+      triggerContextualExtraction({
+        url: pending.url,
+        pillar: pending.pillar,
+        feedId: result.feedId,
+        workQueueId: result.workQueueId,
+        userId: pending.userId,
+        chatId: ctx.chat?.id,
+        requestType: pending.requestType,
+      }).catch(err => {
+        logger.warn('Contextual extraction error (non-fatal)', { error: err });
+      });
+    }
+
     logger.info('Content confirmed and logged', {
       requestId,
       pillar: pending.pillar,
       requestType: pending.requestType,
       feedId: result?.feedId,
+      skillLogging: isFeatureEnabled('skillLogging'),
+      skillExecution: isFeatureEnabled('skillExecution'),
     });
   } catch (error) {
     logger.error('Failed to create audit trail from confirmation', { error, requestId });

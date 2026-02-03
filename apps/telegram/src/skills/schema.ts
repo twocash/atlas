@@ -94,6 +94,7 @@ interface BaseStep {
   onError?: OnErrorBehavior;
   retryCount?: number;
   condition?: string; // Expression to evaluate
+  always_run?: boolean; // If true, runs even if previous steps failed (for cleanup)
 }
 
 /**
@@ -162,6 +163,7 @@ export const ProcessSchema = z.object({
     else: z.array(z.any()).optional(),
     onError: z.enum(['fail', 'continue', 'retry']).optional(),
     retryCount: z.number().int().min(1).max(5).optional(),
+    always_run: z.boolean().optional(), // Runs even if previous steps failed (for cleanup)
   })),
   timeout: z.number().int().positive().optional(),
 });

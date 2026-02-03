@@ -20,6 +20,7 @@ import { handleConversation, clearConversation } from "./conversation";
 import { formatStatsMessage, detectPatterns } from "./conversation/stats";
 import { handleSkillsCommand } from "./handlers/skill-callback";
 import { requestStop } from "./skills";
+import { registerTelegramSendCallback } from "./conversation/tools/core";
 import type { AtlasContext } from "./types";
 
 // Feature flag for conversational UX mode
@@ -382,6 +383,11 @@ export function createBot(): Bot<AtlasContext> {
 
   // Periodic cleanup of stale operations
   setInterval(() => cleanupAll(30), 5 * 60 * 1000);
+
+  // Register telegram_send tool callback for skill notifications
+  registerTelegramSendCallback(async (chatId: number, message: string) => {
+    await bot.api.sendMessage(chatId, message, { parse_mode: 'HTML' });
+  });
 
   return bot;
 }
