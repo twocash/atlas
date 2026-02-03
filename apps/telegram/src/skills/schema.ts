@@ -334,6 +334,9 @@ export interface SkillDefinition {
 
   /** Author (for generated skills) */
   author?: string;
+
+  /** Priority for matching (higher = more specific, wins ties). Default: 50 */
+  priority?: number;
 }
 
 /**

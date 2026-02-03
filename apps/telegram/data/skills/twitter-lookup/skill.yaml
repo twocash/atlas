@@ -99,6 +99,7 @@ process:
 
 enabled: true
 tier: 1
+priority: 100  # Domain-specific skills win over generic url-extract
 tags:
   - social
   - twitter

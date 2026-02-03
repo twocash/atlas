@@ -1,0 +1,205 @@
+# Generic URL Extraction Skill
+# Extracts and analyzes content from any URL
+# v1.0.0: Rich analysis with source links, appends to Work Queue
+
+name: url-extract
+version: 1.0.0
+description: Extract and analyze content from any URL with rich context
+
+triggers:
+  - type: pattern
+    value: "https?://"
+  - type: keyword
+    value: "url"
+
+# Lower priority than domain-specific skills (threads, twitter)
+priority: 10
+
+inputs:
+  url:
+    type: string
+    required: true
+    description: URL to extract content from
+  pillar:
+    type: string
+    required: false
+    description: Life domain (The Grove, Consulting, Personal, Home/Garage)
+  depth:
+    type: string
+    required: false
+    default: "standard"
+    description: Extraction depth (shallow, standard, deep)
+  feedId:
+    type: string
+    required: false
+    description: Feed entry ID to update with extraction results
+  workQueueId:
+    type: string
+    required: false
+    description: Work Queue entry ID if applicable
+  telegramChatId:
+    type: number
+    required: false
+    description: Chat ID for sending completion notification
+
+outputs:
+  - type: feed_entry
+    description: Enriched content logged to Feed
+  - type: data
+    description: Extracted content and analysis
+
+process:
+  type: tool_sequence
+  timeout: 60000
+  steps:
+    # Fetch URL content via HTTP
+    - id: http_fetch
+      tool: web_fetch
+      inputs:
+        url: "$input.url"
+        extractText: true
+        timeout: 20000
+      onError: continue
+
+    # Check if HTTP fetch succeeded
+    - id: check_http
+      condition: "$step.http_fetch.success == true"
+      then:
+        # Analyze the content
+        - id: analyze_content
+          tool: claude_analyze
+          inputs:
+            content: "$step.http_fetch.text"
+            systemPrompt: |
+              Analyze this web content. Source URL: $input.url
+
+              Format your response with these sections:
+
+              ## Source
+              [Original Content]($input.url)
+
+              ## Author/Publisher
+              Identify the author or publisher if visible
+
+              ## TL;DR
+              2-3 sentence summary of the main point or purpose.
+
+              ## Key Insights
+              - Insight 1: [detail]
+              - Insight 2: [detail]
+              - Insight 3: [detail]
+              (Extract the most valuable takeaways)
+
+              ## Referenced Links
+              Extract important external URLs mentioned in the content:
+              - [Link title](url) - brief context
+              (If no external links found, write "None found")
+
+              ## Relevance to $input.pillar
+              How this connects to the user's domain and why it matters.
+
+              ## Next Actions
+              1. Specific actionable step based on the content
+              2. Specific actionable step
+              3. Specific actionable step
+              (Make these contextual and concrete, not generic)
+
+              Be concise. Use markdown formatting.
+          onError: continue
+
+        # Update Feed status
+        - id: update_feed
+          tool: notion_update
+          inputs:
+            pageId: "$input.feedId"
+            properties:
+              Extraction Status: "complete"
+              Extraction Depth: "$input.depth"
+          onError: continue
+
+        # Append to Feed
+        - id: append_feed
+          tool: notion_append
+          inputs:
+            pageId: "$input.feedId"
+            heading: "Content Analysis"
+            callout: "Pillar: $input.pillar | Depth: $input.depth"
+            calloutEmoji: "📄"
+            content: "$step.analyze_content.output"
+          onError: continue
+
+        # Append to Work Queue (primary action location)
+        - id: append_workqueue
+          tool: notion_append
+          inputs:
+            pageId: "$input.workQueueId"
+            heading: "Content Analysis"
+            callout: "Pillar: $input.pillar | Depth: $input.depth"
+            calloutEmoji: "📄"
+            content: "$step.analyze_content.output"
+          onError: continue
+
+        # Notify user
+        - id: notify_success
+          tool: telegram_send
+          inputs:
+            chatId: "$input.telegramChatId"
+            message: |
+              Content extraction complete
+
+              $step.analyze_content.output
+          onError: continue
+
+      else:
+        # HTTP failed - mark as failed
+        - id: update_feed_failed
+          tool: notion_update
+          inputs:
+            pageId: "$input.feedId"
+            properties:
+              Extraction Status: "failed"
+              Extraction Depth: "$input.depth"
+          onError: continue
+
+        - id: append_failed
+          tool: notion_append
+          inputs:
+            pageId: "$input.feedId"
+            heading: "Content Analysis - Failed"
+            callout: "Could not extract content from this URL"
+            calloutEmoji: "⚠️"
+            content: |
+              **Extraction failed**
+
+              Unable to fetch content from this URL.
+
+              **Possible reasons:**
+              - Page requires authentication
+              - Site blocks automated access
+              - Network/connectivity issues
+              - Page is dynamic (requires JavaScript)
+
+              **Suggested Actions:**
+              1. Open the link manually to verify it's accessible
+              2. If valuable, copy the content manually
+              3. For JS-heavy sites, consider using browser automation
+          onError: continue
+
+        - id: notify_failed
+          tool: telegram_send
+          inputs:
+            chatId: "$input.telegramChatId"
+            message: |
+              Content extraction failed
+
+              Could not extract content from this URL. Please check the link manually.
+          onError: continue
+
+enabled: true
+tier: 2
+tags:
+  - content
+  - extraction
+  - pillar-aware
+  - contextual-extraction
+  - generic

@@ -154,6 +154,7 @@ function parseYamlSkill(content: string, filePath: string): SkillDefinition | nu
       metrics: createDefaultMetrics(),
       tags: data.tags,
       author: data.author,
+      priority: data.priority,
     };
 
     return skill;
@@ -497,8 +498,15 @@ export class SkillRegistry {
       }
     }
 
-    // Sort by score (highest first)
-    matches.sort((a, b) => b.score - a.score);
+    // Sort by score (highest first), then by priority (higher priority wins ties)
+    matches.sort((a, b) => {
+      const scoreDiff = b.score - a.score;
+      if (scoreDiff !== 0) return scoreDiff;
+      // On tie, higher priority wins (default 50)
+      const priorityA = a.skill.priority ?? 50;
+      const priorityB = b.skill.priority ?? 50;
+      return priorityB - priorityA;
+    });
 
     return matches;
   }
