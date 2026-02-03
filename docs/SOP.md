@@ -315,10 +315,13 @@ dispatched → in-progress → needs-approval → approved → deployed → clos
 - [ ] Page body has structured content (not Thread property)
 - [ ] Atlas Analysis section included
 - [ ] Task Specification is detailed enough for execution
+- [ ] **Breadcrumb sections included (SOP-008)** ← REQUIRED
 - [ ] Pit Crew Work section placeholder exists
 - [ ] Discussion ID returned for future messages
 - [ ] Notion URL returned for tracking
 ```
+
+**NOTE:** All dispatches MUST follow SOP-008 breadcrumbs protocol.
 
 ### Anti-Patterns
 
@@ -326,6 +329,7 @@ dispatched → in-progress → needs-approval → approved → deployed → clos
 ❌ **Don't** create multiple tickets for same issue (use post_message)
 ❌ **Don't** update status without context (add message explaining why)
 ❌ **Don't** skip the review step for complex features
+❌ **Don't** skip breadcrumb sections (User Value, Alternatives, Architecture Fit)
 
 ---
 
@@ -427,6 +431,20 @@ Clear description of what this section covers.
 ```code blocks for technical content```
 ```
 
+### Required Sections for Dev Pipeline Tickets
+
+Per SOP-008, all Dev Pipeline tickets MUST include:
+
+| Section | Required | Purpose |
+|---------|----------|---------|
+| **🤖 Atlas Analysis** | ✅ | Initial reasoning |
+| **📋 Task Specification** | ✅ | Requirements |
+| **🎯 User Value** | ✅ | Why this matters to Jim |
+| **🔀 Alternatives Considered** | ✅ | Options evaluated |
+| **🏛️ Architecture Fit** | ✅ | Integration points |
+| **🔧 Tech Debt** | If applicable | Known limitations |
+| **🔧 Pit Crew Work** | ✅ | Implementation notes |
+
 ### Verification/Closure Format
 
 When closing or verifying an item:
@@ -492,6 +510,124 @@ When closing or verifying an item:
 - **Pit Crew** has full requirements without hunting through properties
 - **Search** works better on body content than property values
 - **History** is preserved as the page evolves
+
+---
+
+## SOP-008: Agentic Breadcrumbs Protocol
+
+**Effective:** 2026-02-03
+**Scope:** All bug fixes, feature implementations, and Pit Crew dispatches
+
+### Overview
+
+Every bug fix and feature implementation MUST leave documentation breadcrumbs for future developers and agents. This enables:
+- Future agents to understand WHY changes were made, not just WHAT
+- Jim to review decisions without hunting through conversations
+- Patterns to emerge from documented alternatives
+- Tech debt to be tracked, not forgotten
+- Code changes to be traceable to user value
+
+### Rule 1: Code Comment Standard
+
+For bug fixes and significant changes, include a comment block:
+
+```typescript
+// Fix: Brief description of what was fixed
+// Ticket: https://notion.so/... OR discussion-id
+// Commit: abc1234
+```
+
+For features:
+```typescript
+// Feature: Brief description
+// Ticket: https://notion.so/...
+// Commit: abc1234
+```
+
+### Rule 2: Required Notion Ticket Sections
+
+Every Pit Crew dispatch MUST include these sections:
+
+| Section | Purpose |
+|---------|---------|
+| **🎯 User Value** | What this unlocks for Jim |
+| **🔀 Alternatives Considered** | Options evaluated with reasons for dismissal |
+| **🏛️ Architecture Fit** | How it integrates with existing systems |
+| **🔧 Tech Debt** | Known limitations, future work (if applicable) |
+
+### Rule 3: Closure Documentation
+
+**Bug Fix Closure:**
+```markdown
+## ✅ Resolution — [DATE]
+
+**Root Cause:** [What caused the bug]
+**Fix:** [What changed to fix it]
+**Files Changed:**
+- `path/to/file.ts` — [What was changed and why]
+- `path/to/other.ts` — [What was changed and why]
+**Commit:** [hash or PR link]
+```
+
+**Feature Closure:**
+```markdown
+## 🚀 Shipped — [DATE]
+
+**Implementation:** [Key implementation details]
+**Files Changed:**
+- `path/to/file.ts` — [What was added and why]
+- `path/to/other.ts` — [What was modified]
+**Commit/PR:** [hash or PR link]
+```
+
+### Dispatch Template
+
+Full template for Pit Crew dispatches (replaces basic template in SOP-005):
+
+```markdown
+## 🤖 Atlas Analysis
+> [Reasoning and analysis of the problem/feature]
+
+## 📋 Task Specification
+[Detailed requirements and acceptance criteria]
+
+## 🎯 User Value
+What this unlocks for Jim:
+- [Benefit 1]
+- [Benefit 2]
+
+## 🔀 Alternatives Considered
+| Option | Pros | Cons | Decision |
+|--------|------|------|----------|
+| [Alt 1] | ... | ... | Selected/Dismissed |
+| [Alt 2] | ... | ... | Selected/Dismissed |
+
+## 🏛️ Architecture Fit
+- [How it integrates with existing system]
+- [Patterns it follows]
+- [Dependencies it touches]
+
+## 🔧 Tech Debt (if applicable)
+- [ ] [Known limitation or future work item]
+- [ ] [Another item to address later]
+
+---
+
+## 🔧 Pit Crew Work
+(Implementation notes go here)
+```
+
+### Anti-Patterns
+
+❌ **Don't** skip the User Value section — every change should trace to user benefit
+❌ **Don't** omit Alternatives — document what you considered even if obvious
+❌ **Don't** leave Tech Debt undocumented — track it or fix it
+❌ **Don't** close tickets without Resolution/Shipped sections
+
+### Cross-References
+
+- **SOP-005:** All Pit Crew dispatches follow this breadcrumbs protocol
+- **SOP-007:** Page body structure must include breadcrumb sections
 
 ---
 

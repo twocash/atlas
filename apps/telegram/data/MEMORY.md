@@ -28,6 +28,19 @@ When Jim corrects a classification:
 3. Look for pattern - if corrected twice for same thing, add explicit rule
 4. Apply adjusted weighting going forward
 
+### Agentic Breadcrumbs Protocol (SOP-008)
+Every bug fix and feature MUST leave breadcrumbs:
+- **Code comments** linking to tickets (Notion URL or discussion ID)
+- **Notion records** with required sections:
+  - 🎯 User Value — what this unlocks for Jim
+  - 🔀 Alternatives Considered — options evaluated with dismissal reasons
+  - 🏛️ Architecture Fit — how it integrates with existing systems
+  - 🔧 Tech Debt — known limitations (if applicable)
+- **Closure documentation** with root cause (bugs) or implementation details (features)
+- **File lists** explaining what changed and why
+
+This enables future agents to understand WHY changes were made, not just WHAT.
+
 - CRITICAL ROUTING RULE: Research Agent bugs/issues go to Atlas Dev Pipeline (via Pit Crew), NOT Work Queue. Work Queue is for Jim's tasks. Dev Pipeline is for Atlas infrastructure issues. Research Agent is Atlas infrastructure, therefore = Dev Pipeline via Pit Crew dispatch.
 ## Corrections Log
 
@@ -37,7 +50,7 @@ When Jim corrects a classification:
 
 ---
 
-*Last updated: 2026-02-01*
+*Last updated: 2026-02-03*
 
 
 - 2026-01-31: CRITICAL - Never hallucinate Notion URLs. Only share actual URLs returned by work_queue_create and other tools. Jim needs seamless connectivity - fake links break his workflow. Always use real url/feedUrl fields from tool responses.
@@ -58,6 +71,7 @@ When Jim corrects a classification:
 ROOT CAUSE: Not properly reading work_queue_get results before responding. Must verify task title, description, and URL match what I'm claiming to execute.
 
 PREVENTION: Always cross-reference task ID, title, and URL from tool results before claiming any action.
+- 2026-02-01: ROUTING ERROR - Put Research Agent P0 bug in Work Queue instead of dispatching to Pit Crew for Dev Pipeline. Jim corrected: "pit crew activities go to the Atlas Dev Pipeline". Research Agent = Atlas infrastructure = Pit Crew territory, not Jim tasks.
 ## Anti-Hallucination Protocol
 
 **MANDATORY for all Notion/MCP operations:**
@@ -188,6 +202,7 @@ Standard format: [emoji] [brief description] → [actual URL from tool response]
 
 **MCP/Pit Crew dispatches:** ALWAYS include link to Atlas Dev Pipeline discussion page using the `notion_url` field from the tool response. Jim needs to monitor progress, provide feedback, and stay in the loop.
 
+- BUG LOGGING AUTONOMY: When Jim says "log a bug", Atlas should immediately dispatch to Pit Crew with full context reconstruction from recent conversation. No permission needed - just extract the issue, reproduce steps, and create comprehensive bug report in Dev Pipeline. Jim trusts Atlas to document technical issues properly from conversation context.
 ## Atlas Settings
 
 ### auto_create_sprouts

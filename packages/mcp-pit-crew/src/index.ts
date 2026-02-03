@@ -336,13 +336,42 @@ server.setRequestHandler(ListToolsRequestSchema, async () => ({
   tools: [
     {
       name: 'dispatch_work',
-      description: 'Dispatch a development request to Pit Crew. Creates a new discussion thread.',
+      description: `Dispatch a development request to Pit Crew. Creates a new discussion thread.
+
+**IMPORTANT: Follow SOP-008 Breadcrumbs Protocol**
+
+The context field MUST include these sections (markdown format):
+
+## 🤖 Atlas Analysis
+> [Your reasoning and analysis]
+
+## 📋 Task Specification
+[Detailed requirements and acceptance criteria]
+
+## 🎯 User Value
+What this unlocks for Jim:
+- [Benefit 1]
+- [Benefit 2]
+
+## 🔀 Alternatives Considered
+| Option | Pros | Cons | Decision |
+|--------|------|------|----------|
+| [Alt 1] | ... | ... | Selected/Dismissed |
+
+## 🏛️ Architecture Fit
+- [How it integrates]
+- [Patterns it follows]
+
+## 🔧 Tech Debt (if applicable)
+- [ ] [Known limitation]
+
+This enables future agents to understand WHY changes were made.`,
       inputSchema: {
         type: 'object',
         properties: {
           type: { type: 'string', enum: ['bug', 'feature', 'question', 'hotfix'] },
           title: { type: 'string', description: 'Brief title for the request' },
-          context: { type: 'string', description: 'Full context: what happened, what you tried, relevant code paths' },
+          context: { type: 'string', description: 'Full context with SOP-008 breadcrumb sections: Atlas Analysis, Task Specification, User Value, Alternatives Considered, Architecture Fit, and Tech Debt (if applicable)' },
           priority: { type: 'string', enum: ['P0', 'P1', 'P2'], default: 'P2' },
           wq_url: { type: 'string', description: 'Link to Work Queue item (optional)' },
         },
