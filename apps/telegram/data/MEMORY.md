@@ -118,6 +118,9 @@ Notion has TWO different ID types. Using the wrong one causes 404 errors.
 | **Work Queue 2.0** | `3d679030-b76b-43bd-92d8-1ac51abb4a28` | `6a8d9c43-b084-47b5-bc83-bc363640f2cd` |
 | **Feed 2.0** | `90b2b33f-4b44-4b42-870f-8d62fb8cbf18` | `a7493abb-804a-4759-b6ac-aeca62ae23b8` |
 | **Dev Pipeline** | `ce6fbf1b-ee30-433d-a9e6-b338552de7c9` | `1460539c-7002-447a-a8b7-17bba06c6559` |
+| **System Prompts** | `2fc780a7-8eef-8196-b29b-db4a6adfdc27` | N/A |
+
+**Note:** System Prompts stores prompt text in page body (rich formatted content), not as a property.
 
 **When to use which:**
 - `mcp__notion__API-query-data-source` → Use DATA SOURCE ID
@@ -344,6 +347,65 @@ Why this matters
 - `apps/telegram/data/skills/threads-lookup/skill.yaml` - v7.0.0 with Work Queue append
 - `apps/telegram/src/handlers/content-callback.ts` - Removed placeholder actions
 
+### 2026-02-03: MASTER BLASTER Quality Verification System
+
+**POWERFUL CAPABILITY:** Unified test verification with auto-bug creation.
+
+**Key Features:**
+1. **Single Command Verification** - `bun run verify` runs all test suites
+   - Unit tests (bun test)
+   - Smoke tests (smoke-test-all.ts)
+   - E2E tests (test-runner.ts)
+   - Integration tests (health checks, connectivity)
+
+2. **Auto-Bug Creation** - When features ship, test coverage bugs auto-created
+   - Triggered on `update_status → shipped/deployed`
+   - Only for type: feature or build
+   - Creates "Add test coverage for: [Feature]" bug
+   - Links to parent feature
+   - Controlled by `AUTO_CREATE_TEST_BUGS` env var (default: true)
+
+3. **Verification Modes:**
+   - `bun run verify` - Default: canary + unit + smoke + integration
+   - `bun run verify:quick` - Fast: unit tests only
+   - `bun run verify:full` - Full: all suites including E2E
+   - `bun run verify:canary` - Canary tests only (silent failure detection)
+
+4. **Canary Tests (Silent Failure Detection):**
+   - Detect "works but wrong" scenarios
+   - Verify system prompts contain critical phrases (SOUL, pillars, anti-hallucination)
+   - Check tools return real data, not empty fallbacks
+   - Validate skill registry loads with proper structures
+   - Catch MCP fallback scenarios
+   - Run FIRST in all verification modes
+
+5. **Pipeline E2E Tests (Full Pipeline Verification):**
+   - Run ACTUAL research through Gemini with grounding
+   - Verify output is fulsome (meets quality thresholds)
+   - Check for real URLs (not placeholder/template)
+   - Validate findings have proper structure
+   - **Notion Body Verification** (`--with-notion`):
+     - Creates test Work Queue item
+     - Writes research results to page body
+     - Verifies content landed (summary, findings, sources)
+     - Automatically archives test page when done
+   - NOT included in default verify (costs API tokens)
+   - Run with:
+     - `bun run verify:pipeline` - Research output quality only
+     - `bun run verify:pipeline:notion` - Include Notion body verification
+     - `bun run verify:pipeline:dry` - Validate setup without API calls
+
+4. **Telegram Skill:** `/verify` or "run tests", "quality check", "master blaster"
+
+**Exit Codes:**
+- 0 = All pass (proceed to human testing)
+- 1 = Failures (fix before proceeding)
+
+**SOP Integration:**
+- SOP-003 (Feature Shipping) now requires MASTER BLASTER
+- SOP-005 (Pit Crew) documents auto-bug creation
+- SOP-009 (Quality Gate Protocol) is the full specification
+
 ### 2026-02-03: Infrastructure Gaps Identified
 
 **Gaps for Standardization Sprint:**
@@ -354,6 +416,6 @@ Why this matters
 5. **Agent lifecycle thin** - Types defined but coordination unclear
 
 **Recommended SOPs:**
-- SOP-009: Skill Output Standard
-- SOP-010: Notion Template System
-- SOP-011: MCP Server Declaration in Skills
+- SOP-010: Skill Output Standard
+- SOP-011: Notion Template System
+- SOP-012: MCP Server Declaration in Skills

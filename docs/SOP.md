@@ -108,9 +108,11 @@ Before marking any Work Queue item as "Done":
 
 - [ ] Feature works in Telegram
 - [ ] Help system updated (SOP-001)
+- [ ] **Run MASTER BLASTER verification (`bun run verify`)** ← REQUIRED (SOP-009)
 - [ ] Notion Work Queue item updated with Output link
 - [ ] Tested on mobile (if applicable)
 - [ ] No console errors in bot logs
+- [ ] **Verify test coverage bug auto-created** (if Pit Crew feature)
 
 ---
 
@@ -322,6 +324,19 @@ dispatched → in-progress → needs-approval → approved → deployed → clos
 ```
 
 **NOTE:** All dispatches MUST follow SOP-008 breadcrumbs protocol.
+
+### Auto-Bug Creation on Ship
+
+When a feature or build is marked as `shipped` or `deployed`, the system automatically creates a "Test Coverage" bug in the Dev Pipeline. This ensures no feature ships without corresponding test coverage.
+
+**Behavior:**
+- Triggered automatically when `update_status` → `shipped` or `deployed`
+- Only for `type: feature` or `type: build` discussions
+- Creates linked bug: "Add test coverage for: [Feature Name]"
+- Links to parent feature for context
+- Can be disabled via `AUTO_CREATE_TEST_BUGS=false` env var
+
+**See:** SOP-009 for the full Quality Gate Protocol
 
 ### Anti-Patterns
 
@@ -628,6 +643,180 @@ What this unlocks for Jim:
 
 - **SOP-005:** All Pit Crew dispatches follow this breadcrumbs protocol
 - **SOP-007:** Page body structure must include breadcrumb sections
+
+---
+
+## SOP-009: Quality Gate Protocol (MASTER BLASTER)
+
+**Effective:** 2026-02-03
+**Scope:** All feature development, before human testing
+
+### Overview
+
+MASTER BLASTER is Atlas's unified quality verification system. It chains all test suites into a single command that MUST pass before any feature goes to human testing.
+
+**Vision:** Ship feature → Auto-bug for test coverage → Run MASTER BLASTER → Pass → Human testing
+
+### Rule: No Ship Without Verification
+
+**Every feature MUST pass `bun run verify` before marking as Done or Shipped.**
+
+This is a hard gate. Do not proceed to human testing with failing tests.
+
+### Commands
+
+```bash
+# Default: Unit + Smoke + Integration tests
+bun run verify
+
+# Quick: Unit tests only (fast feedback)
+bun run verify:quick
+
+# Full: All suites including E2E
+bun run verify:full
+```
+
+### Pre-Human Testing Checklist
+
+1. [ ] Feature code complete and committed
+2. [ ] Run `bun run verify` - ALL tests must pass
+3. [ ] If Pit Crew feature: Verify test coverage bug was auto-created
+4. [ ] Review MASTER BLASTER output for warnings
+5. [ ] Only then proceed to human testing
+
+### Test Suites
+
+| Suite | Command | What It Tests |
+|-------|---------|---------------|
+| **Canary Tests** | `scripts/canary-tests.ts` | Silent failures, degraded output |
+| **Unit Tests** | `bun test` | Individual functions/classes |
+| **Smoke Tests** | `scripts/smoke-test-all.ts` | All APIs, tools, integrations |
+| **E2E Tests** | `src/health/test-runner.ts` | End-to-end workflows |
+| **Integration** | Inline | Health checks, connectivity |
+
+### Canary Tests (Silent Failure Detection)
+
+**Purpose:** Detect "works but wrong" scenarios where the system appears functional but produces degraded or hallucinated output.
+
+**What Canaries Catch:**
+- System prompts that load but are missing critical content
+- Tools that return `success: true` but with empty/default data
+- Fallbacks that silently replace real data with placeholders
+- Missing identity phrases (SOUL content not properly injected)
+- Configuration drift (wrong database IDs, missing env vars)
+
+**Run Canaries Directly:**
+```bash
+bun run verify:canary
+```
+
+**Canaries are included in default and full verify modes.**
+
+### Pipeline E2E Tests (Full Pipeline Verification)
+
+**Purpose:** Verify pipelines produce **real, fulsome output** end-to-end, not just "success: true" with empty data.
+
+**What Pipeline Tests Verify:**
+- Research agent returns real results (not placeholder URLs)
+- Summary meets minimum quality thresholds
+- Findings have actual source citations
+- Grounding was used (not training data)
+- Output structure is complete
+- **Notion body verification** (with `--with-notion`):
+  - Creates test Work Queue item
+  - Writes research results to page body
+  - Verifies content landed correctly (summary, findings, sources)
+  - Automatically archives test page when done
+
+**Run Pipeline Tests:**
+```bash
+# Dry run - validate setup only (no API costs)
+bun run verify:pipeline:dry
+
+# Light research test (~$0.001, 3-10 seconds)
+bun run verify:pipeline
+
+# Include Notion body verification (creates/verifies/archives test page)
+bun run verify:pipeline:notion
+
+# Include standard depth test (~$0.01, 30-60 seconds)
+bun run verify:pipeline --standard
+
+# Full verification with both Notion and standard depth
+bun run verify:pipeline --with-notion --standard
+```
+
+**Quality Thresholds:**
+| Depth | Min Summary | Min Findings | Min Sources |
+|-------|-------------|--------------|-------------|
+| light | 100 chars | 2 | 2 |
+| standard | 500 chars | 5 | 4 |
+| deep | 1500 chars | 8 | 8 |
+
+**When to Run:**
+- Before major releases
+- After changes to research agent
+- When debugging "research works but output is empty"
+
+**NOT included in default verify** (costs API tokens).
+
+### On Test Failure
+
+1. **Fix the failing test** OR
+2. **If test is flaky/invalid:** Create bug to fix test
+3. **Re-run MASTER BLASTER**
+4. **Do NOT proceed** to human testing with failures
+
+### Auto-Bug Creation
+
+When a feature is shipped via Pit Crew (`update_status → shipped/deployed`):
+- System auto-creates: "Add test coverage for: [Feature Name]"
+- Links to parent feature
+- Type = "Test Coverage", Priority = P2
+- Controlled by `AUTO_CREATE_TEST_BUGS` env var (default: true)
+
+### Exit Codes
+
+- `0` = All tests passed (proceed to human testing)
+- `1` = Failures detected (fix before proceeding)
+
+### MASTER BLASTER Output Format
+
+```
+====================================
+   MASTER BLASTER VERIFICATION
+====================================
+
+[1/4] Running Unit Tests...
+  [PASS] 23 passed, 0 failed
+
+[2/4] Running Smoke Tests...
+  [PASS] 56 passed, 0 failed
+
+[3/4] Running E2E Tests...
+  [PASS] 12 passed, 0 failed
+
+[4/4] Running Integration Tests...
+  [PASS] 4 passed, 0 failed
+
+====================================
+   RESULT: ALL SYSTEMS GO
+====================================
+```
+
+### Integration with SOPs
+
+- **SOP-003:** Feature Shipping Checklist now requires MASTER BLASTER
+- **SOP-005:** Pit Crew ships auto-create test coverage bugs
+- **SOP-008:** Breadcrumbs include test coverage requirements
+
+### Telegram Skill
+
+```
+/verify        — Run MASTER BLASTER verification
+```
+
+Or say: "run tests", "quality check", "master blaster"
 
 ---
 

@@ -1,0 +1,98 @@
+# MASTER BLASTER Quality Verification Skill
+# Runs unified test suite to verify system health
+# Part of SOP-009: Quality Gate Protocol
+
+name: verify
+version: 1.0.0
+description: Run MASTER BLASTER unified quality verification
+
+triggers:
+  - type: phrase
+    value: "/verify"
+  - type: keyword
+    value: "run tests|quality check|master blaster|run verification|verify tests"
+  - type: pattern
+    value: "^(run\\s+)?tests?$"
+
+inputs:
+  mode:
+    type: string
+    required: false
+    default: "default"
+    description: Verification mode (quick, default, full)
+  telegramChatId:
+    type: number
+    required: false
+    description: Chat ID for sending results
+
+outputs:
+  - type: data
+    description: Verification results with pass/fail counts
+
+process:
+  type: tool_sequence
+  timeout: 300000  # 5 minutes max
+  steps:
+    # Notify user that verification is starting
+    - id: notify_start
+      tool: telegram_send
+      inputs:
+        chatId: "$input.telegramChatId"
+        message: |
+          🔬 **MASTER BLASTER starting...**
+
+          Mode: $input.mode
+          This may take a few minutes.
+      onError: continue
+
+    # Run the verification command
+    - id: run_verify
+      tool: bash_execute
+      inputs:
+        command: "cd C:/github/atlas/apps/telegram && bun run verify"
+        timeout: 240000
+      onError: continue
+
+    # Parse and report results
+    - id: analyze_results
+      tool: claude_analyze
+      inputs:
+        content: "$step.run_verify.output"
+        systemPrompt: |
+          Analyze this MASTER BLASTER test output and create a summary.
+
+          Format your response as:
+
+          ## MASTER BLASTER Results
+
+          **Status:** [PASS/FAIL]
+
+          ### Test Suites
+          - Unit Tests: X passed, Y failed
+          - Smoke Tests: X passed, Y failed
+          - Integration: X passed, Y failed
+
+          ### Summary
+          [Brief 1-2 sentence summary of results]
+
+          If there were failures, list the failed tests under a "Failures" section.
+      onError: continue
+
+    # Notify user with results
+    - id: notify_results
+      tool: telegram_send
+      inputs:
+        chatId: "$input.telegramChatId"
+        message: "$step.analyze_results.output"
+      onError: continue
+
+enabled: true
+tier: 0  # Instant execution (bash command)
+priority: 90
+tags:
+  - testing
+  - quality
+  - verification
+  - master-blaster
+  - sop-009
+author: Atlas

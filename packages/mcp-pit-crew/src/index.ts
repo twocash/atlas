@@ -27,6 +27,10 @@ import { convertMarkdownToNotionBlocks } from '@atlas/shared/notion';
 const notion = new Client({ auth: process.env.NOTION_API_KEY });
 const DEV_PIPELINE_DATABASE_ID = 'ce6fbf1b-ee30-433d-a9e6-b338552de7c9';
 
+// === AUTO-BUG CONFIGURATION ===
+// When enabled, automatically creates "Test Coverage" bugs when features are shipped
+const AUTO_CREATE_TEST_BUGS = process.env.AUTO_CREATE_TEST_BUGS !== 'false'; // Enabled by default
+
 // === CONFIGURATION ===
 
 const DATA_DIR = process.env.PIT_CREW_DATA_DIR || './data/pit-crew';
@@ -275,6 +279,73 @@ async function appendMessageToNotion(
   } catch (error) {
     console.error('[PitCrew] Failed to append message to Notion:', error);
     return false;
+  }
+}
+
+/**
+ * Auto-create a test coverage bug for a shipped feature
+ * Part of MASTER BLASTER Quality Verification System
+ */
+async function createTestCoverageBug(
+  featureTitle: string,
+  featureUrl: string,
+  discussionId: string
+): Promise<{ success: boolean; url?: string }> {
+  if (!process.env.NOTION_API_KEY || !AUTO_CREATE_TEST_BUGS) {
+    console.error('[PitCrew] Skipping auto-bug creation (disabled or no API key)');
+    return { success: false };
+  }
+
+  try {
+    const testBugContext = `## 🎯 Test Coverage Required
+
+This bug was auto-created when feature was shipped to ensure test coverage.
+
+## 📋 Parent Feature
+[${featureTitle}](${featureUrl})
+Discussion ID: ${discussionId}
+
+## ✅ Coverage Requirements
+- [ ] Unit tests for new functions/classes
+- [ ] Smoke test for happy path
+- [ ] E2E test for user-facing behavior
+- [ ] Edge cases and error handling
+
+## 🏁 Acceptance Criteria
+- All tests pass in MASTER BLASTER (\`bun run verify\`)
+- Coverage added to appropriate test file
+- Test names describe behavior, not implementation
+
+---
+
+## 🔧 Pit Crew Work
+(Implementation notes go here)
+`;
+
+    // Build page body blocks
+    const bodyBlocks = buildPageBodyBlocks(testBugContext);
+
+    const response = await notion.pages.create({
+      parent: { database_id: DEV_PIPELINE_DATABASE_ID },
+      properties: {
+        'Discussion': { title: [{ text: { content: `Add test coverage for: ${featureTitle}` } }] },
+        'Type': { select: { name: 'Test Coverage' } },
+        'Priority': { select: { name: 'P2' } },
+        'Status': { select: { name: 'Dispatched' } },
+        'Requestor': { select: { name: 'Atlas [Telegram]' } },
+        'Handler': { select: { name: 'Pit Crew' } },
+        'Thread': { rich_text: [{ text: { content: `Auto-created for: ${discussionId}` } }] },
+        'Dispatched': { date: { start: new Date().toISOString().split('T')[0] } },
+      },
+      children: bodyBlocks,
+    });
+
+    const url = (response as { url?: string }).url || `https://notion.so/${response.id.replace(/-/g, '')}`;
+    console.error(`[PitCrew] Auto-created test coverage bug: ${url}`);
+    return { success: true, url };
+  } catch (error) {
+    console.error('[PitCrew] Failed to create test coverage bug:', error);
+    return { success: false };
   }
 }
 
@@ -547,7 +618,8 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
       }
 
       const oldStatus = discussion.status;
-      discussion.status = args?.status as Discussion['status'];
+      const newStatus = args?.status as Discussion['status'];
+      discussion.status = newStatus;
       if (args?.output) {
         discussion.output = args?.output as string;
       }
@@ -567,12 +639,45 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
         await appendMessageToNotion(discussion.notion_page_id, statusMessage);
       }
 
+      // AUTO-BUG CREATION: When features are shipped, create test coverage bug
+      // Part of MASTER BLASTER Quality Verification System
+      let testBugUrl: string | undefined;
+      if (
+        AUTO_CREATE_TEST_BUGS &&
+        ['shipped', 'deployed'].includes(newStatus) &&
+        ['feature', 'build'].includes(discussion.type)
+      ) {
+        console.error(`[PitCrew] Feature shipped - creating test coverage bug for: ${discussion.title}`);
+        const testBugResult = await createTestCoverageBug(
+          discussion.title,
+          discussion.notion_url || '',
+          discussion.id
+        );
+        if (testBugResult.success) {
+          testBugUrl = testBugResult.url;
+          // Add message about auto-created bug
+          const autoBugMessage: Message = {
+            timestamp: new Date().toISOString(),
+            from: 'pit-crew',
+            content: `📋 **Auto-created test coverage bug:** [Add test coverage for: ${discussion.title}](${testBugUrl})`,
+          };
+          discussion.messages.push(autoBugMessage);
+          await saveDiscussion(discussion);
+
+          if (discussion.notion_page_id) {
+            await appendMessageToNotion(discussion.notion_page_id, autoBugMessage);
+          }
+        }
+      }
+
       return {
         content: [{ type: 'text', text: JSON.stringify({
           success: true,
           status: discussion.status,
           synced_to_notion: !!discussion.notion_page_id,
           notion_url: discussion.notion_url,
+          test_bug_created: !!testBugUrl,
+          test_bug_url: testBugUrl,
         }) }],
       };
     }
