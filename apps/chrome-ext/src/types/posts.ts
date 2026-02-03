@@ -2,7 +2,7 @@
  * Post monitoring and historical tracking types
  */
 
-export type PhantomSlot = 'A' | 'B' | null
+export type PhantomSlot = 'primary' | null
 
 export interface MonitoredPost {
   id: string                    // LinkedIn activity ID (extracted from URL)
@@ -28,24 +28,27 @@ export interface MonitoredPost {
 }
 
 /**
- * PhantomBuster phantom configurations
+ * PhantomBuster Configuration
  * Account: 2316148405398457
+ *
+ * WORKFLOW:
+ *   1. Post on LinkedIn
+ *   2. Paste URL in Google Sheet
+ *   3. Done - Phantom runs daily, catches new comments
+ *
+ * Console: https://phantombuster.com/2316148405398457/phantoms/7765431788333726/console
  */
+export const PB_PHANTOM_CONFIG = {
+  id: '7765431788333726',
+  name: 'LinkedIn Post Monitoring',
+  s3Folder: 'hfcE11I3fKeElihMNTvccg',
+  consoleUrl: 'https://phantombuster.com/2316148405398457/phantoms/7765431788333726/console',
+  setupUrl: 'https://phantombuster.com/2316148405398457/phantoms/7765431788333726/setup',
+} as const
+
+// Legacy export for backward compatibility during migration
 export const PB_PHANTOM_SLOTS = {
-  A: {
-    id: '5464281464072346',
-    name: 'Post Scraper A',
-    s3Folder: 'jtS7HbSonE1KJQH2XbGQyQ',  // Hardcoded fallback
-    setupUrl: 'https://phantombuster.com/2316148405398457/phantoms/5464281464072346/setup/step/select-source-to-scrape',
-    dashboardUrl: 'https://phantombuster.com/2316148405398457/phantoms/5464281464072346/dashboard',
-  },
-  B: {
-    id: '2175964471330352',
-    name: 'Post Scraper B',
-    s3Folder: 'zgLvBEbRM8lWYFab3pndag',  // Hardcoded fallback
-    setupUrl: 'https://phantombuster.com/2316148405398457/phantoms/2175964471330352/setup/step/select-source-to-scrape',
-    dashboardUrl: 'https://phantombuster.com/2316148405398457/phantoms/2175964471330352/dashboard',
-  },
+  A: PB_PHANTOM_CONFIG,
 } as const
 
 export interface PostsState {

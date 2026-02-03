@@ -6,7 +6,7 @@ import { Storage } from "@plasmohq/storage"
 import { STORAGE_KEYS } from "./storage"
 import { debugLog } from "./debug-log"
 import { PB_S3_BASE } from "~src/types/phantombuster"
-import { PB_PHANTOM_SLOTS } from "~src/types/posts"
+import { PB_PHANTOM_CONFIG } from "~src/types/posts"
 import { fetchAgentConfig, hasApiKey as hasPbApiKey } from "./phantombuster-api"
 import {
   NOTION_DBS,
@@ -37,6 +37,26 @@ import {
 import type { LinkedInComment, CommentAuthor } from "~src/types/comments"
 
 const storage = new Storage({ area: "local" })
+
+// --- Configuration ---
+
+/**
+ * Minimum characters for a comment to warrant a reply.
+ * Lowered from 50 to 15 - catch short but meaningful questions:
+ * - "DM sent" (7 chars) → Now caught
+ * - "Link broken?" (12 chars) → Now caught
+ * - "Can we chat?" (12 chars) → Now caught
+ *
+ * If someone typed more than a few characters, it deserves a glance.
+ * Takes 0.5s to dismiss but huge effort to recover a missed lead.
+ */
+const MIN_CHARS_FOR_REPLY = 15
+
+/**
+ * Days to look back when resurrecting comments that may have been
+ * incorrectly marked as "No Reply Needed" due to old 50-char threshold.
+ */
+const RESURRECTION_WINDOW_DAYS = 4
 
 // --- Sync State ---
 
@@ -105,23 +125,21 @@ async function fetchPBResults(agentId: string, s3FolderOverride?: string): Promi
 async function fetchAllPBLeads(): Promise<PBLead[]> {
   const allLeads: Record<string, PBLead> = {}
 
-  // Fetch from both phantom slots using hardcoded S3 folders
-  for (const slot of ['A', 'B'] as const) {
-    const config = PB_PHANTOM_SLOTS[slot]
-    await debugLog('orchestrator', `--- Fetching Slot ${slot} (${config.id}) ---`)
-    // Pass the hardcoded S3 folder directly to bypass API
-    const leads = await fetchPBResults(config.id, config.s3Folder)
-    await debugLog('orchestrator', `Slot ${slot}: ${leads.length} leads`)
+  // Single phantom: LinkedIn Post Monitoring (connected to Google Sheets)
+  // Workflow: Post on LinkedIn → Paste URL in Google Sheet → Done
+  const config = PB_PHANTOM_CONFIG
+  await debugLog('orchestrator', `--- Fetching ${config.name} (${config.id}) ---`)
+  const leads = await fetchPBResults(config.id, config.s3Folder || undefined)
+  await debugLog('orchestrator', `${config.name}: ${leads.length} leads`)
 
-    for (const lead of leads) {
-      const mid = lead.memberId || ''
-      if (mid && !allLeads[mid]) {
+  for (const lead of leads) {
+    const mid = lead.memberId || ''
+    if (mid && !allLeads[mid]) {
+      allLeads[mid] = lead
+    } else if (mid && allLeads[mid]) {
+      // Merge — keep the record with more data (comments)
+      if (lead.comments && !allLeads[mid]!.comments) {
         allLeads[mid] = lead
-      } else if (mid && allLeads[mid]) {
-        // Merge — keep the record with more data (comments)
-        if (lead.comments && !allLeads[mid]!.comments) {
-          allLeads[mid] = lead
-        }
       }
     }
   }
@@ -336,21 +354,84 @@ async function createEngagement(
   postPageId: string,
   engType: 'comment' | 'like',
   state: SyncState
-): Promise<string | null> {
+): Promise<{ id: string; isNew: boolean; wasUpdated: boolean } | null> {
   const memberId = lead.memberId || ''
   const postUrl = lead.postsUrl || ''
   const engKey = `${memberId}:${engType}:${postUrl}`
 
-  // ALWAYS check Notion first for existing engagement
-  const existing = await findEngagement(contactPageId, postPageId, engType)
-  if (existing) {
-    state.syncedEngagements[engKey] = existing.id
-    return existing.id
-  }
-
   const name = lead.fullName || `${lead.firstName || ''} ${lead.lastName || ''}`.trim()
   const commentText = lead.comments || ''
+  const pbDateStr = lead.lastCommentedAt || lead.timestamp || ''
+  const pbDate = pbDateStr.slice(0, 10) || new Date().toISOString().slice(0, 10)
 
+  // Check for existing engagement
+  const existing = await findEngagement(contactPageId, postPageId, engType)
+
+  if (existing) {
+    state.syncedEngagements[engKey] = existing.id
+
+    // For comments, check if PB has newer/different content OR if we should resurrect
+    if (engType === 'comment' && commentText) {
+      const props = existing.properties as Record<string, any>
+      const existingContent = props['Their Content']?.rich_text?.[0]?.plain_text || ''
+      const existingDate = props['Date']?.date?.start || ''
+      const existingStatus = props['Response Status']?.select?.name || ''
+
+      // Calculate resurrection window
+      const resurrectionCutoff = new Date()
+      resurrectionCutoff.setDate(resurrectionCutoff.getDate() - RESURRECTION_WINDOW_DAYS)
+      const engagementDate = new Date(existingDate || pbDate)
+      const isWithinResurrectionWindow = engagementDate >= resurrectionCutoff
+
+      // Check if this is a newer or different comment
+      const isNewerDate = pbDate > existingDate
+      const isDifferentContent = commentText !== existingContent && commentText.length > existingContent.length
+      const canBeReset = existingStatus !== 'Posted' && existingStatus !== 'Drafting'
+
+      // NEW: Resurrect comments that meet new threshold but were marked "No Reply Needed"
+      // This fixes the old 50-char threshold that missed short but meaningful comments
+      const shouldResurrect =
+        isWithinResurrectionWindow &&
+        commentText.length > MIN_CHARS_FOR_REPLY &&
+        existingStatus === 'No Reply Needed'
+
+      if (((isNewerDate || isDifferentContent) && canBeReset) || shouldResurrect) {
+        // Update with new comment content
+        const quality = commentText.length > MIN_CHARS_FOR_REPLY ? 'Substantive' : 'Brief'
+
+        try {
+          const updates: Record<string, unknown> = {
+            'Their Content': richText(commentText),
+            'Date': date(pbDate),
+            'Engagement Quality': select(quality),
+          }
+
+          // Reset to "Needs Reply" if substantive and not already posted/drafting
+          if (quality === 'Substantive' && canBeReset) {
+            updates['Response Status'] = select('Needs Reply')
+            if (shouldResurrect) {
+              console.log(`[Sync] Resurrected comment: ${name} - "${commentText.substring(0, 30)}..."`)
+            } else {
+              console.log(`[Sync] Reset to Needs Reply: ${name} (new comment detected)`)
+            }
+          }
+
+          if (lead.commentUrl) {
+            updates['Their Post URL'] = url(lead.commentUrl)
+          }
+
+          await updatePage(existing.id, updates)
+          return { id: existing.id, isNew: false, wasUpdated: true }
+        } catch (e) {
+          console.error(`[Sync] Failed to update engagement:`, e)
+        }
+      }
+    }
+
+    return { id: existing.id, isNew: false, wasUpdated: false }
+  }
+
+  // Create new engagement
   let engTitle: string
   let notionType: string
   let theirContent: string
@@ -361,7 +442,7 @@ async function createEngagement(
     engTitle = `${name} commented`
     notionType = 'Commented on Our Post'
     theirContent = commentText
-    quality = commentText.length > 50 ? 'Substantive' : 'Brief'
+    quality = commentText.length > MIN_CHARS_FOR_REPLY ? 'Substantive' : 'Brief'
     responseStatus = quality === 'Substantive' ? 'Needs Reply' : 'No Reply Needed'
   } else {
     engTitle = `${name} liked`
@@ -370,9 +451,6 @@ async function createEngagement(
     quality = 'Reaction-only'
     responseStatus = 'No Reply Needed'
   }
-
-  const dateStr = lead.lastCommentedAt || lead.timestamp || ''
-  const dateVal = dateStr.slice(0, 10) || new Date().toISOString().slice(0, 10)
 
   try {
     const properties: Record<string, unknown> = {
@@ -383,7 +461,7 @@ async function createEngagement(
       'Direction': select('Inbound'),
       'Engagement Quality': select(quality),
       'Response Status': select(responseStatus),
-      'Date': date(dateVal),
+      'Date': date(pbDate),
     }
 
     if (theirContent) {
@@ -397,7 +475,7 @@ async function createEngagement(
     const page = await createPage(NOTION_DBS.ENGAGEMENTS, properties)
     state.syncedEngagements[engKey] = page.id
     console.log(`[Sync] Created engagement: ${engTitle}`)
-    return page.id
+    return { id: page.id, isNew: true, wasUpdated: false }
   } catch (e) {
     console.error(`[Sync] Failed to create engagement:`, e)
     return null
@@ -412,12 +490,13 @@ export interface SyncResult {
   newContacts: number
   updatedContacts: number
   newEngagements: number
+  updatedEngagements: number
   errors: number
   commentsNeedingReply: LinkedInComment[]
 }
 
 export async function runFullSync(): Promise<SyncResult> {
-  await debugLog('orchestrator', 'Starting FULL SYNC (PB → Notion w/ dedup)...')
+  await debugLog('orchestrator', '🚀🚀🚀 SYNC V2 WITH COMMENT REFRESH 🚀🚀🚀')
 
   const result: SyncResult = {
     success: false,
@@ -425,6 +504,7 @@ export async function runFullSync(): Promise<SyncResult> {
     newContacts: 0,
     updatedContacts: 0,
     newEngagements: 0,
+    updatedEngagements: 0,
     errors: 0,
     commentsNeedingReply: [],
   }
@@ -480,19 +560,20 @@ export async function runFullSync(): Promise<SyncResult> {
       if (wasNew) result.newContacts++
       else result.updatedContacts++
 
-      // Create engagements (now with Notion-first check)
+      // Create engagements (now with Notion-first check + update detection)
       const postPageId = postPageIds[lead.postsUrl || '']
       if (!postPageId) continue
 
       if (lead.hasCommented === 'true') {
-        const engId = await createEngagement(lead, contactPageId, postPageId, 'comment', state)
-        if (engId) result.newEngagements++
+        const engResult = await createEngagement(lead, contactPageId, postPageId, 'comment', state)
+        if (engResult?.isNew) result.newEngagements++
+        else if (engResult?.wasUpdated) result.updatedEngagements++
         await delay(200)
       }
 
       if (lead.hasLiked === 'true') {
-        const engId = await createEngagement(lead, contactPageId, postPageId, 'like', state)
-        if (engId) result.newEngagements++
+        const engResult = await createEngagement(lead, contactPageId, postPageId, 'like', state)
+        if (engResult?.isNew) result.newEngagements++
         await delay(200)
       }
 
@@ -503,7 +584,8 @@ export async function runFullSync(): Promise<SyncResult> {
     }
 
     await saveSyncState(state)
-    await debugLog('orchestrator', `✓ Synced: ${result.newContacts} new, ${result.updatedContacts} updated`)
+    await debugLog('orchestrator', `✓ Synced: ${result.newContacts} new contacts, ${result.updatedContacts} updated contacts`)
+    await debugLog('orchestrator', `✓ Engagements: ${result.newEngagements} new, ${result.updatedEngagements} refreshed to Needs Reply`)
 
     // 4. Fetch comments
     result.commentsNeedingReply = await fetchCommentsNeedingReply()
@@ -826,7 +908,8 @@ export async function enrichContactsFromCSV(csvLeads: Array<Record<string, strin
 // --- Outreach Notion Integration ---
 
 /**
- * Get pending contact counts for each segment
+ * Get pending contact counts for each segment.
+ * Only counts contacts that have NOT been processed via Save+Follow.
  */
 export async function getSegmentPendingCounts(): Promise<Record<string, number>> {
   const segments = [
@@ -844,6 +927,8 @@ export async function getSegmentPendingCounts(): Promise<Record<string, number>>
         and: [
           { property: 'Sales Nav List Status', select: { equals: segment } },
           { property: 'Connection Status', select: { equals: 'Not Connected' } },
+          // Exclude any already processed (have Follow Date)
+          { property: 'Follow Date', date: { is_empty: true } },
         ],
       })
       counts[segment] = contacts.length
@@ -857,7 +942,14 @@ export async function getSegmentPendingCounts(): Promise<Record<string, number>>
 }
 
 /**
- * Fetch contacts for a specific segment that need processing
+ * Fetch contacts for a specific segment that need processing.
+ *
+ * IMPORTANT: Only returns contacts that have NOT been processed yet.
+ * Filters out:
+ * - Connection Status = 'Following' (already followed)
+ * - Connection Status = 'Connected' (already connected)
+ * - Connection Status = 'Failed Outreach' (automation failed)
+ * - Any contact with a Follow Date set (processed via Save+Follow)
  */
 export async function fetchContactsBySegment(salesNavStatus: string): Promise<NotionPage[]> {
   try {
@@ -865,6 +957,8 @@ export async function fetchContactsBySegment(salesNavStatus: string): Promise<No
       and: [
         { property: 'Sales Nav List Status', select: { equals: salesNavStatus } },
         { property: 'Connection Status', select: { equals: 'Not Connected' } },
+        // Additional safeguard: exclude any with Follow Date set
+        { property: 'Follow Date', date: { is_empty: true } },
       ],
     })
   } catch (e) {
