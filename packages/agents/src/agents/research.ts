@@ -344,11 +344,24 @@ async function getGeminiClient(): Promise<GeminiClient> {
             console.warn("[Research] WARNING: No grounding evidence found - results may be from training data!");
           }
 
+          // Grounding is confirmed if ANY of these are present:
+          // - groundingSupports (Gemini 2.0 style)
+          // - groundingChunks (legacy style)
+          // - citations extracted from groundingChunks
+          // - webSearchQueries (Gemini searched for something)
+          const groundingUsed = groundingSupports.length > 0 || groundingChunks.length > 0 || citations.length > 0 || webSearchQueries.length > 0;
+          console.log("[Research] Grounding used:", groundingUsed, {
+            groundingSupports: groundingSupports.length,
+            groundingChunks: groundingChunks.length,
+            citations: citations.length,
+            webSearchQueries: webSearchQueries.length,
+          });
+
           return {
             text: response.text || "",
             citations,
             groundingMetadata,
-            groundingUsed: groundingSupports.length > 0 || citations.length > 0,
+            groundingUsed,
           };
         },
       };
@@ -408,11 +421,24 @@ async function getGeminiClient(): Promise<GeminiClient> {
             console.warn("[Research] WARNING: No grounding evidence found - results may be from training data!");
           }
 
+          // Grounding is confirmed if ANY of these are present:
+          // - groundingSupports (Gemini 2.0 style)
+          // - citations extracted from groundingChunks
+          // - webSearchQueries (Gemini searched for something)
+          // - groundingChunks (legacy style)
+          const groundingUsed = groundingSupports.length > 0 || citations.length > 0 || webSearchQueries.length > 0 || groundingChunks.length > 0;
+          console.log("[Research] Grounding used:", groundingUsed, {
+            groundingSupports: groundingSupports.length,
+            citations: citations.length,
+            webSearchQueries: webSearchQueries.length,
+            groundingChunks: groundingChunks.length,
+          });
+
           return {
             text: response.text(),
             citations,
             groundingMetadata,
-            groundingUsed: groundingSupports.length > 0 || citations.length > 0,
+            groundingUsed,
           };
         },
       };
@@ -724,6 +750,29 @@ export async function executeResearch(
     console.log("[Research] ============================================");
 
     await registry.updateProgress(agent.id, 75, "Synthesizing findings");
+
+    // CRITICAL: Fail fast if grounding didn't work
+    // This catches the case where Gemini responds from training data instead of live search
+    if (!response.groundingUsed) {
+      console.error("[Research] GROUNDING FAILURE: Google Search did not return results");
+      console.error("[Research] Gemini responded from training data - this is NOT live research");
+      return {
+        success: false,
+        output: {
+          error: "GROUNDING_FAILURE",
+          rawResponse: response.text,
+          groundingUsed: false,
+        },
+        summary: "Research FAILED: Google Search grounding did not work. Gemini responded from training data instead of performing live web research. The query may be too niche, or there may be an API configuration issue.",
+        artifacts: [],
+        metrics: {
+          durationMs: Date.now() - startTime,
+          apiCalls,
+          tokensUsed: Math.ceil(prompt.length / 4) + Math.ceil(response.text.length / 4),
+          retries: 0,
+        },
+      };
+    }
 
     // Parse research result from response (async for URL resolution)
     const researchResult = await parseResearchResponse(
