@@ -50,6 +50,7 @@ interface Discussion {
   context: string;
   wq_url?: string;
   notion_url?: string;
+  notion_page_id?: string;  // For appending messages to existing page
   output?: string;
   messages: Message[];
   created: string;
@@ -284,6 +285,108 @@ async function syncToNotion(discussion: Discussion): Promise<{ url: string; page
   }
 }
 
+/**
+ * Append a message to an existing Notion page
+ * This enables real-time collaboration between Atlas and Pit Crew
+ */
+async function appendMessageToNotion(
+  pageId: string,
+  message: Message
+): Promise<boolean> {
+  if (!process.env.NOTION_API_KEY) {
+    console.error('[PitCrew] ERROR: NOTION_API_KEY not set - cannot append message');
+    return false;
+  }
+
+  try {
+    // Format timestamp for display
+    const timestamp = new Date(message.timestamp).toLocaleString('en-US', {
+      month: 'short',
+      day: 'numeric',
+      hour: 'numeric',
+      minute: '2-digit',
+    });
+
+    // Determine icon based on sender
+    const senderIcons: Record<string, string> = {
+      'atlas': '🤖',
+      'pit-crew': '🔧',
+      'jim': '👤',
+    };
+    const icon = senderIcons[message.from] || '💬';
+
+    // Build message block
+    await notion.blocks.children.append({
+      block_id: pageId,
+      children: [
+        {
+          object: 'block',
+          type: 'callout',
+          callout: {
+            rich_text: [
+              { type: 'text', text: { content: `[${timestamp}] ` }, annotations: { bold: true, color: 'gray' } },
+              { type: 'text', text: { content: message.content.substring(0, 1900) } },
+            ],
+            icon: { type: 'emoji', emoji: icon as '🤖' | '🔧' | '👤' | '💬' },
+            color: message.from === 'atlas' ? 'blue_background' : message.from === 'pit-crew' ? 'green_background' : 'default',
+          },
+        },
+      ],
+    });
+
+    console.error(`[PitCrew] Appended message to Notion page ${pageId}`);
+    return true;
+  } catch (error) {
+    console.error('[PitCrew] Failed to append message to Notion:', error);
+    return false;
+  }
+}
+
+/**
+ * Update a Notion page's status property
+ */
+async function updateNotionStatus(
+  pageId: string,
+  status: Discussion['status'],
+  output?: string
+): Promise<boolean> {
+  if (!process.env.NOTION_API_KEY) {
+    console.error('[PitCrew] ERROR: NOTION_API_KEY not set - cannot update status');
+    return false;
+  }
+
+  try {
+    const statusMap: Record<Discussion['status'], string> = {
+      'dispatched': 'Dispatched',
+      'in-progress': 'In Progress',
+      'needs-approval': 'Needs Approval',
+      'approved': 'Approved',
+      'deployed': 'Shipped',
+      'closed': 'Closed',
+    };
+
+    const properties: Record<string, unknown> = {
+      'Status': { select: { name: statusMap[status] || 'Dispatched' } },
+    };
+
+    // Add output URL if provided
+    if (output) {
+      properties['Output'] = { url: output };
+    }
+
+    await notion.pages.update({
+      page_id: pageId,
+      properties,
+    });
+
+    console.error(`[PitCrew] Updated Notion page status to ${status}`);
+    return true;
+  } catch (error) {
+    console.error('[PitCrew] Failed to update Notion status:', error);
+    return false;
+  }
+}
+
 // === MCP SERVER ===
 
 const server = new Server(
@@ -416,8 +519,9 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
         };
       }
 
-      // Update local record with Notion URL
+      // Update local record with Notion URL and page ID
       discussion.notion_url = notionResult.url;
+      discussion.notion_page_id = notionResult.pageId;
       await saveDiscussion(discussion);
 
       return {
@@ -442,17 +546,30 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
         };
       }
 
-      discussion.messages.push({
+      const newMessage: Message = {
         timestamp: new Date().toISOString(),
         from: args?.from as Message['from'],
         content: args?.message as string,
-      });
+      };
 
+      discussion.messages.push(newMessage);
       await saveDiscussion(discussion);
-      await syncToNotion(discussion);
+
+      // SYNC MESSAGE TO NOTION PAGE BODY
+      // This enables real-time collaboration visible in Notion
+      if (discussion.notion_page_id) {
+        await appendMessageToNotion(discussion.notion_page_id, newMessage);
+      } else {
+        console.error('[PitCrew] Warning: No notion_page_id for discussion, message not synced to Notion');
+      }
 
       return {
-        content: [{ type: 'text', text: JSON.stringify({ success: true, message: 'Message posted' }) }],
+        content: [{ type: 'text', text: JSON.stringify({
+          success: true,
+          message: 'Message posted',
+          synced_to_notion: !!discussion.notion_page_id,
+          notion_url: discussion.notion_url,
+        }) }],
       };
     }
 
@@ -471,17 +588,27 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
       }
 
       // Auto-add status change message
-      discussion.messages.push({
+      const statusMessage: Message = {
         timestamp: new Date().toISOString(),
         from: 'pit-crew',
         content: `**Status:** ${oldStatus} → ${discussion.status}${args?.output ? `\n**Output:** ${args?.output}` : ''}`,
-      });
-
+      };
+      discussion.messages.push(statusMessage);
       await saveDiscussion(discussion);
-      await syncToNotion(discussion);
+
+      // SYNC TO NOTION: Update status property AND append status message
+      if (discussion.notion_page_id) {
+        await updateNotionStatus(discussion.notion_page_id, discussion.status, args?.output as string | undefined);
+        await appendMessageToNotion(discussion.notion_page_id, statusMessage);
+      }
 
       return {
-        content: [{ type: 'text', text: JSON.stringify({ success: true, status: discussion.status }) }],
+        content: [{ type: 'text', text: JSON.stringify({
+          success: true,
+          status: discussion.status,
+          synced_to_notion: !!discussion.notion_page_id,
+          notion_url: discussion.notion_url,
+        }) }],
       };
     }
 
