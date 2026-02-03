@@ -20,6 +20,7 @@ import { runVoiceHealthCheck } from "./health/voice-check";
 import { initScheduler, stopScheduler, type ScheduledTask } from "./scheduler";
 import { initMcp, shutdownMcp } from "./mcp";
 import { startStatusServer, stopStatusServer } from "./health/status-server";
+import { initializeSkillRegistry } from "./skills";
 import { existsSync, writeFileSync, unlinkSync, readFileSync } from "fs";
 import { join } from "path";
 
@@ -103,6 +104,11 @@ async function main() {
   // Initialize MCP connections (non-blocking)
   await initMcp().catch(err => {
     logger.warn("MCP initialization failed (non-fatal)", { error: err.message });
+  });
+
+  // Initialize skill registry (loads skills from data/skills)
+  await initializeSkillRegistry().catch(err => {
+    logger.warn("Skill registry initialization failed (non-fatal)", { error: err.message });
   });
 
   // Start status server for Chrome extension heartbeat

@@ -247,6 +247,28 @@ export const CORE_TOOLS: Anthropic.Tool[] = [
     },
   },
   {
+    name: 'web_fetch',
+    description: 'Fetch content from a URL. Returns the text content of the page. Use for reading articles, social media posts, or any web content.',
+    input_schema: {
+      type: 'object' as const,
+      properties: {
+        url: {
+          type: 'string',
+          description: 'URL to fetch',
+        },
+        extractText: {
+          type: 'boolean',
+          description: 'Extract plain text from HTML (default: true)',
+        },
+        timeout: {
+          type: 'number',
+          description: 'Timeout in milliseconds (default: 15000)',
+        },
+      },
+      required: ['url'],
+    },
+  },
+  {
     name: 'get_status_summary',
     description: 'Get a dashboard summary of the work queue and priorities. Use when Jim asks "what\'s on my plate" or "status".',
     input_schema: {
@@ -460,6 +482,41 @@ export const CORE_TOOLS: Anthropic.Tool[] = [
       required: ['pageId', 'properties'],
     },
   },
+  {
+    name: 'notion_append',
+    description: 'Append content blocks to an existing Notion page body. Used by skills to add analysis results, summaries, and next actions.',
+    input_schema: {
+      type: 'object' as const,
+      properties: {
+        pageId: {
+          type: 'string',
+          description: 'Notion page ID to append content to',
+        },
+        heading: {
+          type: 'string',
+          description: 'Optional heading to add before content',
+        },
+        content: {
+          type: 'string',
+          description: 'Main content text to append',
+        },
+        bullets: {
+          type: 'array',
+          items: { type: 'string' },
+          description: 'Optional bullet points to add',
+        },
+        callout: {
+          type: 'string',
+          description: 'Optional callout/highlight text',
+        },
+        calloutEmoji: {
+          type: 'string',
+          description: 'Emoji for callout (default: 💡)',
+        },
+      },
+      required: ['pageId', 'content'],
+    },
+  },
 ];
 
 /**
@@ -482,6 +539,8 @@ export async function executeCoreTools(
       return await executeWorkQueueGet(input);
     case 'web_search':
       return await executeWebSearch(input);
+    case 'web_fetch':
+      return await executeWebFetch(input);
     case 'get_status_summary':
       return await executeStatusSummary();
     // Broader Notion access
@@ -506,6 +565,8 @@ export async function executeCoreTools(
       return await executeTelegramSend(input);
     case 'notion_update':
       return await executeNotionUpdate(input);
+    case 'notion_append':
+      return await executeNotionAppend(input);
     default:
       return null; // Not a core tool
   }
@@ -1122,6 +1183,109 @@ async function executeWebSearch(
         `1. Tell Jim: "Web search failed - I cannot get real-time data right now"\n` +
         `2. Use dev_pipeline_create to log a P0 bug titled "Web Search Failure"\n` +
         `3. Include: "Query: ${query}, Error: ${errorMessage}"`,
+    };
+  }
+}
+
+/**
+ * Web Fetch Tool
+ *
+ * Fetches content from a URL and extracts text.
+ * Used by skills for contextual extraction.
+ */
+async function executeWebFetch(
+  input: Record<string, unknown>
+): Promise<{ success: boolean; result: unknown; text?: string; error?: string }> {
+  const url = input.url as string;
+  const extractText = (input.extractText as boolean) !== false; // default true
+  const timeout = (input.timeout as number) || 15000;
+
+  if (!url || typeof url !== 'string') {
+    return {
+      success: false,
+      result: null,
+      error: 'URL is required',
+    };
+  }
+
+  const startTime = Date.now();
+
+  try {
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), timeout);
+
+    const response = await fetch(url, {
+      signal: controller.signal,
+      headers: {
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+        'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
+        'Accept-Language': 'en-US,en;q=0.5',
+      },
+    });
+
+    clearTimeout(timeoutId);
+
+    if (!response.ok) {
+      return {
+        success: false,
+        result: null,
+        error: `HTTP ${response.status}: ${response.statusText}`,
+      };
+    }
+
+    const html = await response.text();
+    const latencyMs = Date.now() - startTime;
+
+    let text = html;
+    if (extractText) {
+      // Simple HTML to text extraction
+      text = html
+        // Remove script and style tags and their content
+        .replace(/<script\b[^<]*(?:(?!<\/script>)<[^<]*)*<\/script>/gi, '')
+        .replace(/<style\b[^<]*(?:(?!<\/style>)<[^<]*)*<\/style>/gi, '')
+        // Remove HTML tags
+        .replace(/<[^>]+>/g, ' ')
+        // Decode common HTML entities
+        .replace(/&nbsp;/g, ' ')
+        .replace(/&amp;/g, '&')
+        .replace(/&lt;/g, '<')
+        .replace(/&gt;/g, '>')
+        .replace(/&quot;/g, '"')
+        .replace(/&#39;/g, "'")
+        // Normalize whitespace
+        .replace(/\s+/g, ' ')
+        .trim();
+
+      // Truncate if too long
+      const maxLength = 50000;
+      if (text.length > maxLength) {
+        text = text.substring(0, maxLength) + '\n\n[Content truncated...]';
+      }
+    }
+
+    logger.info('Web fetch complete', {
+      url,
+      latencyMs,
+      textLength: text.length,
+    });
+
+    return {
+      success: true,
+      result: { url, textLength: text.length, latencyMs },
+      text,
+    };
+  } catch (error: any) {
+    const latencyMs = Date.now() - startTime;
+    const errorMessage = error?.name === 'AbortError'
+      ? `Timeout after ${timeout}ms`
+      : error?.message || String(error);
+
+    logger.warn('Web fetch failed', { url, error: errorMessage, latencyMs });
+
+    return {
+      success: false,
+      result: null,
+      error: `Failed to fetch ${url}: ${errorMessage}`,
     };
   }
 }
@@ -1903,6 +2067,58 @@ async function executeNotionUpdate(
       success: false,
       result: null,
       error: `Notion error: ${error?.code || 'unknown'} - ${error?.message || String(error)}`,
+    };
+  }
+}
+
+/**
+ * Append content blocks to an existing Notion page body.
+ * Uses the shared formatting utilities from formatting/notion.ts
+ * Used by skills to add analysis results, summaries, and next actions.
+ */
+async function executeNotionAppend(
+  input: Record<string, unknown>
+): Promise<{ success: boolean; result: unknown; error?: string }> {
+  // Import shared utilities
+  const { createAnalysisSection, appendBlocksToPage } = await import('../../formatting/notion');
+
+  const pageId = input.pageId as string;
+  const heading = input.heading as string | undefined;
+  const content = input.content as string;
+  const bullets = input.bullets as string[] | undefined;
+  const callout = input.callout as string | undefined;
+  const calloutEmoji = (input.calloutEmoji as string) || '💡';
+
+  if (!pageId || !content) {
+    return {
+      success: false,
+      result: null,
+      error: 'Both pageId and content are required',
+    };
+  }
+
+  // Create blocks using the shared utility
+  const blocks = createAnalysisSection({
+    heading,
+    callout,
+    calloutEmoji,
+    content,
+    bullets,
+  });
+
+  // Append using the shared utility
+  const result = await appendBlocksToPage(notion, pageId, blocks);
+
+  if (result.success) {
+    return {
+      success: true,
+      result: { pageId, blocksAdded: result.blocksAdded },
+    };
+  } else {
+    return {
+      success: false,
+      result: null,
+      error: result.error,
     };
   }
 }

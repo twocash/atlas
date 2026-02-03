@@ -115,6 +115,49 @@ app.get('/health', (c) => {
   return c.json({ ok: true, timestamp: Date.now() });
 });
 
+// Test endpoint - push a fake activity to verify the bridge works
+app.get('/test', (c) => {
+  pushActivity('test-skill', 'step-1', 'running', ['Testing heartbeat bridge...']);
+  setTimeout(() => pushActivity('test-skill', 'step-2', 'running', ['Processing...']), 500);
+  setTimeout(() => pushActivity('test-skill', 'step-3', 'success', ['Test complete!']), 1000);
+  return c.json({ ok: true, message: 'Test activities pushed - check Chrome extension' });
+});
+
+// Debug endpoint - check skill registry and matching
+app.get('/debug/skills', async (c) => {
+  try {
+    const { getSkillRegistry } = await import('../skills/registry');
+    const registry = getSkillRegistry();
+
+    const url = c.req.query('url') || 'https://www.threads.com/test';
+    const pillar = c.req.query('pillar') || 'Personal';
+
+    // Get all enabled skills
+    const skills = registry.getEnabled().map(s => ({
+      name: s.name,
+      tier: s.tier,
+      triggers: s.triggers,
+    }));
+
+    // Try to find a match
+    const match = registry.findBestMatch(url, { pillar });
+
+    return c.json({
+      totalSkills: skills.length,
+      skills: skills.map(s => s.name),
+      testUrl: url,
+      testPillar: pillar,
+      match: match ? {
+        skill: match.skill.name,
+        score: match.score,
+        trigger: match.trigger,
+      } : null,
+    });
+  } catch (err) {
+    return c.json({ error: String(err) }, 500);
+  }
+});
+
 // Root endpoint
 app.get('/', (c) => {
   return c.json({

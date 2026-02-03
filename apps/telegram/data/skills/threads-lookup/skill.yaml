@@ -1,10 +1,10 @@
-# Threads Post Lookup Skill - Pillar-Aware Contextual Extraction
-# Tier 1: Browser automation + Feed enrichment
-# v2.0.0: Hardened selectors, pillar-conditional depth, always_run cleanup
+# Threads Post Lookup Skill - Browser-Based Extraction
+# Tier 1: Uses Playwright for JavaScript-rendered content
+# v5.0.0: Full browser extraction with pillar-aware analysis
 
 name: threads-lookup
-version: 2.0.0
-description: Pillar-aware Threads extraction with resilient selectors
+version: 5.0.0
+description: Extract and analyze Threads posts using browser automation
 
 triggers:
   - type: pattern
@@ -43,158 +43,84 @@ outputs:
   - type: feed_entry
     description: Enriched post content logged to Feed
   - type: data
-    description: Extracted links and analysis
+    description: Extracted content and analysis
 
 process:
   type: tool_sequence
-  timeout: 120000
+  timeout: 90000
   steps:
-    # Open new tab with the Threads URL (capture tabId for cleanup)
-    - id: open_tab
-      tool: mcp__claude-in-chrome__tabs_create_mcp
+    # Step 1: Open page in browser (handles JS rendering)
+    - id: open_page
+      tool: browser_open_page
       inputs:
         url: "$input.url"
+        timeout: 30000
       onError: fail
 
-    # Wait for content - HARDENED with role-based + text heuristics
-    - id: wait_for_content
-      tool: mcp__claude-in-chrome__javascript_tool
+    # Step 2: Extract text content
+    - id: get_content
+      tool: browser_get_text
       inputs:
-        tabId: "$step.open_tab.tabId"
-        code: |
-          await new Promise((resolve, reject) => {
-            const start = Date.now();
-            const interval = setInterval(() => {
-              // Use role-based selector (more stable than obfuscated classes)
-              const main = document.querySelector('[role="main"]') || document.querySelector('article');
-              // Ensure it's not just a loading skeleton (check text length)
-              if (main && main.innerText.length > 100) {
-                clearInterval(interval);
-                resolve(true);
-              }
-              if (Date.now() - start > 15000) {  // 15s timeout
-                clearInterval(interval);
-                reject(new Error('Timeout waiting for Threads hydration'));
-              }
-            }, 500);
-          });
-      onError: fail
-
-    # CONDITIONAL: Deep extraction for Grove pillar - expand replies
-    - id: deep_expand
-      condition: "$input.depth == 'deep'"
-      then:
-        - id: expand_replies
-          tool: mcp__claude-in-chrome__javascript_tool
-          inputs:
-            tabId: "$step.open_tab.tabId"
-            code: |
-              // Expand reply threads using accessibility roles
-              const buttons = document.querySelectorAll('[role="button"]');
-              for (const btn of buttons) {
-                const text = btn.innerText.toLowerCase();
-                if (text.includes('repl') || text.includes('view') || text.includes('more')) {
-                  btn.click();
-                  await new Promise(r => setTimeout(r, 500));
-                }
-              }
-              await new Promise(r => setTimeout(r, 1500));
-              return 'Expanded replies';
-          onError: continue
-
-    # CONDITIONAL: Extract external links for deep extraction
-    - id: deep_links
-      condition: "$input.depth == 'deep'"
-      then:
-        - id: extract_links
-          tool: mcp__claude-in-chrome__javascript_tool
-          inputs:
-            tabId: "$step.open_tab.tabId"
-            code: |
-              const links = Array.from(document.querySelectorAll('a[href]'))
-                .map(a => ({ text: a.innerText.substring(0, 50), href: a.href }))
-                .filter(l => l.href.startsWith('http') && !l.href.includes('threads.net'))
-                .slice(0, 10);
-              return JSON.stringify(links);
-          onError: continue
-
-    # Extract page text content (all depths)
-    - id: extract_content
-      tool: mcp__claude-in-chrome__get_page_text
-      inputs:
-        tabId: "$step.open_tab.tabId"
-      onError: fail
-
-    # CONDITIONAL: Grove analysis (research value)
-    - id: grove_analysis
-      condition: "$input.pillar == 'The Grove'"
-      then:
-        - id: analyze_grove
-          tool: claude_analyze
-          inputs:
-            content: "$step.extract_content"
-            systemPrompt: |
-              Analyze this Threads post for research value:
-              - Key arguments and claims made
-              - Evidence or sources cited
-              - External links worth following up
-              - Relevance to AI/LLM research, architecture, or Grove content strategy
-              - Notable quotes or insights worth capturing
-
-              Be concise but thorough. Focus on actionable research value.
-          onError: continue
-
-    # CONDITIONAL: Consulting analysis (business intel)
-    - id: consulting_analysis
-      condition: "$input.pillar == 'Consulting'"
-      then:
-        - id: analyze_consulting
-          tool: claude_analyze
-          inputs:
-            content: "$step.extract_content"
-            systemPrompt: |
-              Scan this Threads post for business intelligence:
-              - Competitor mentions or comparisons
-              - Pricing or strategy signals
-              - Partnership or opportunity mentions
-              - Industry trends or shifts
-              - Client-relevant insights
-
-              Focus on actionable business intelligence.
-          onError: continue
-
-    # Update Feed entry with extraction results (if feedId provided)
-    - id: update_feed
-      condition: "$input.feedId"
-      then:
-        - id: enrich_feed
-          tool: notion_update
-          inputs:
-            pageId: "$input.feedId"
-            properties:
-              Extraction Status: "complete"
-              Extraction Depth: "$input.depth"
-          onError: continue
-
-    # NOTIFY USER for non-shallow extractions
-    - id: notify_user
-      condition: "$input.depth != 'shallow'"
-      then:
-        - id: send_notification
-          tool: telegram_send
-          inputs:
-            chatId: "$input.telegramChatId"
-            message: "Extraction complete ($input.depth): Analyzed Threads post"
-          onError: continue
-
-    # CLEANUP - runs even on error (always_run flag)
-    - id: cleanup_tab
-      tool: mcp__claude-in-chrome__javascript_tool
-      inputs:
-        tabId: "$step.open_tab.tabId"
-        code: "window.close(); return 'Tab closed';"
+        pageId: "$step.open_page.pageId"
       onError: continue
+
+    # Step 3: Analyze content with Claude (pillar-aware)
+    - id: analyze
+      tool: claude_analyze
+      inputs:
+        content: "$step.get_content.output"
+        systemPrompt: |
+          Analyze this Threads post content. Extract:
+
+          1. **Author**: Who posted this (username/handle if visible)
+          2. **Main Message**: The core point or argument (2-3 sentences)
+          3. **Key Insights**: Notable quotes, claims, or data points (bullet list)
+          4. **Relevance**: How this relates to the user's "$input.pillar" domain
+          5. **Suggested Actions**: 2-3 specific next steps the user could take
+
+          Format your response with clear headers. Be concise but actionable.
+          If the content is empty or unreadable, say so clearly.
+      onError: continue
+
+    # Step 4: Update Feed entry status
+    - id: update_status
+      tool: notion_update
+      inputs:
+        pageId: "$input.feedId"
+        properties:
+          Extraction Status: "complete"
+          Extraction Depth: "$input.depth"
+      onError: continue
+
+    # Step 5: Append analysis to Feed page (follows SOP-007)
+    - id: append_analysis
+      tool: notion_append
+      inputs:
+        pageId: "$input.feedId"
+        heading: "🧵 Threads Extraction"
+        callout: "Pillar: $input.pillar | Depth: $input.depth | Source: Browser automation"
+        calloutEmoji: "📋"
+        content: "$step.analyze.output"
+      onError: continue
+
+    # Step 6: Notify user via Telegram
+    - id: notify
+      tool: telegram_send
+      inputs:
+        chatId: "$input.telegramChatId"
+        message: |
+          Threads extraction complete for $input.pillar
+
+          $step.analyze.output
+      onError: continue
+
+    # Step 7: Close browser page (cleanup - always run)
+    - id: cleanup
+      tool: browser_close_page
+      inputs:
+        pageId: "$step.open_page.pageId"
       always_run: true
+      onError: continue
 
 enabled: true
 tier: 1
