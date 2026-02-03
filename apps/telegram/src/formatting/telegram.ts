@@ -40,9 +40,18 @@ function containsHtmlTags(text: string): boolean {
  * Validate and sanitize HTML - only allow Telegram-safe tags
  */
 function sanitizeHtml(html: string): string {
-  // First, protect allowed tags by temporarily replacing them
+  // FIRST: Escape content inside <pre> and <code> blocks to prevent false tag detection
+  // This handles cases like Record<s> being interpreted as <s> (strikethrough)
+  const preCodeBlocks: string[] = [];
+  let sanitized = html.replace(/<(pre|code)>([\s\S]*?)<\/\1>/gi, (match, tag, content) => {
+    const placeholder = `__PRECODE_${preCodeBlocks.length}__`;
+    // Escape the content inside, preserve the tags
+    preCodeBlocks.push(`<${tag.toLowerCase()}>${escapeHtml(content)}</${tag.toLowerCase()}>`);
+    return placeholder;
+  });
+
+  // Now protect other allowed tags by temporarily replacing them
   const tagPlaceholders: Array<{ placeholder: string; tag: string }> = [];
-  let sanitized = html;
 
   // Match opening and closing tags for allowed elements
   const tagPattern = new RegExp(
@@ -71,6 +80,11 @@ function sanitizeHtml(html: string): string {
   // Restore allowed tags
   for (const { placeholder, tag } of tagPlaceholders) {
     sanitized = sanitized.replace(placeholder, tag);
+  }
+
+  // Restore pre/code blocks (already escaped)
+  for (let i = 0; i < preCodeBlocks.length; i++) {
+    sanitized = sanitized.replace(`__PRECODE_${i}__`, preCodeBlocks[i]);
   }
 
   return sanitized;
