@@ -14,10 +14,16 @@ export function Header({ connected, onSyncComplete }: HeaderProps) {
     try {
       const response = await chrome.runtime.sendMessage({ name: "RUN_FULL_SYNC" })
       console.log("Global sync result:", response)
+      console.log("Sync ok?:", response?.ok)
+      console.log("Comments needing reply:", response?.result?.commentsNeedingReply)
+      console.log("Comments count:", response?.result?.commentsNeedingReply?.length)
 
       // Notify parent to update comment state
       if (response?.ok && response.result?.commentsNeedingReply && onSyncComplete) {
+        console.log("Calling onSyncComplete with", response.result.commentsNeedingReply.length, "comments")
         onSyncComplete(response.result.commentsNeedingReply)
+      } else {
+        console.log("NOT calling onSyncComplete - ok:", response?.ok, "comments:", !!response?.result?.commentsNeedingReply, "callback:", !!onSyncComplete)
       }
     } catch (e) {
       console.error("Sync failed:", e)

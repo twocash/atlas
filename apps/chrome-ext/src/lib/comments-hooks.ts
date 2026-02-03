@@ -29,6 +29,8 @@ export function useCommentsState(): [CommentsState, {
   addComment: (comment: LinkedInComment) => Promise<void>
   updateComment: (comment: LinkedInComment) => Promise<void>
   removeComment: (id: string) => Promise<void>
+  replaceAllComments: (comments: LinkedInComment[]) => Promise<void>
+  clearComments: () => Promise<void>
   loadMockData: () => Promise<void>
 }] {
   const [state, setState] = useState<CommentsState>(DEFAULT_COMMENTS_STATE)
