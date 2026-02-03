@@ -48,6 +48,16 @@ When Jim corrects a classification:
 
 - 2026-02-01: RESOLVED - dev_pipeline_create tool actually works correctly (verified via test scripts). The issue was Claude fabricating URLs in text responses instead of using the EXACT URLs from tool results. Fake URLs have pattern `15653b4c700280...` while real URLs have varied UUIDs like `2fa780a7-8eef-81f8-...`. Added URL INTEGRITY RULE to system prompt requiring exact URL copying from tool result JSON.
 - 2026-02-01: ROUTING ERROR - Put Research Agent P0 bug in Work Queue instead of dispatching to Pit Crew for Dev Pipeline. Jim corrected: "pit crew activities go to the Atlas Dev Pipeline". Research Agent = Atlas infrastructure = Pit Crew territory, not Jim tasks.
+- 2026-02-01: WORKFLOW ERROR - Claimed to mark task "Done" but only updated notes, left status as "Triaged". Jim caught this. RULE: When executing a task from queue, MUST actually change status to "Done" and include resolution_notes. Cannot just claim completion without the status update. Always verify the task status changed after work_queue_update.
+- 2026-02-01: TASK EXECUTION ERROR - Multiple confusion patterns in single interaction:
+1. Claimed to execute "Anthropic collective intelligence" research when actual task was "AI impact on developer skills"
+2. Provided URL to WRONG completed research (Google MCP project) instead of actual task URL
+3. Mixed up task identities, descriptions, and URLs across multiple items
+4. Pattern: Not reading actual task details before claiming execution
+
+ROOT CAUSE: Not properly reading work_queue_get results before responding. Must verify task title, description, and URL match what I'm claiming to execute.
+
+PREVENTION: Always cross-reference task ID, title, and URL from tool results before claiming any action.
 ## Anti-Hallucination Protocol
 
 **MANDATORY for all Notion/MCP operations:**
@@ -213,3 +223,58 @@ Atlas now has MCP (Model Context Protocol) integration:
 - `apps/telegram/src/mcp/index.ts` - MCP client integration
 - `apps/telegram/config/mcp.yaml` - Server configuration
 - `packages/mcp-pit-crew/` - Pit Crew MCP server
+
+### 2026-02-03: Pit Crew Real-Time Collaboration (ATLAS-COLLAB-001)
+
+**POWERFUL DISCOVERY:** Atlas can actively participate in development planning through Notion page body collaboration.
+
+**Key Capabilities:**
+1. **Page Body Content** - All dispatches write rich, editable content to Notion page BODY (not Thread property)
+   - 🤖 Atlas Analysis section (callout block)
+   - 📋 Task Specification section (paragraphs)
+   - 🔧 Pit Crew Work section (placeholder for implementation notes)
+
+2. **Message Threading** - `mcp__pit_crew__post_message` appends to existing pages
+   - Messages appear as callout blocks with sender icons
+   - 🤖 Atlas = blue background
+   - 🔧 Pit Crew = green background
+   - 👤 Jim = default
+   - All messages timestamped for audit trail
+
+3. **Status Sync** - `mcp__pit_crew__update_status` updates both:
+   - Notion Status property
+   - Appends status change message to page body
+
+**Collaboration Workflow:**
+```
+1. Dispatch → Notion page created with rich body
+2. Review → Jim edits specs in Notion
+3. Clarify → Pit Crew posts questions (post_message)
+4. Respond → Atlas answers (post_message)
+5. Approve → Status updated to 'approved'
+6. Execute → Pit Crew implements
+7. Ship → Status updated to 'deployed' with output URL
+```
+
+**Strategic Impact:** Atlas transforms from "task dispatcher" to "development partner" - reviewing technical approaches, iterating on requirements, and collaborating in real-time.
+
+**CRITICAL RULE:** Never stuff content into Thread property. Always use page body for editable, reviewable content.
+
+### 2026-02-03: Routing Confidence Protocol (ATLAS-ROUTE-001)
+
+**New Capability:** When routing confidence < 85%, Atlas presents choice keyboard instead of auto-routing.
+
+**Why:** Prevents misrouting when task type is ambiguous (bug vs feature, research vs build).
+
+**Implementation:**
+- `submit_ticket` requires `routing_confidence` (0-100)
+- If < 85%, returns `needsChoice: true` with both options
+- User sees inline keyboard: [Pit Crew] [Work Queue] [Cancel]
+- User picks → dispatch completes to chosen destination
+
+**Use Low Confidence When:**
+- Task could be bug fix OR feature request
+- Task could be research OR build work
+- Multiple valid interpretations exist
+
+**RULE:** Be honest about uncertainty. Don't force a routing decision when both pipelines are valid.

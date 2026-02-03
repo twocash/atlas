@@ -204,4 +204,178 @@ If you see these in spike tests, **STOP** — the feature is broken:
 
 ---
 
+## SOP-005: Pit Crew Collaboration Protocol
+
+**Effective:** 2026-02-03
+**Scope:** All Atlas ↔ Pit Crew work dispatches and collaboration
+
+### Overview
+
+Atlas and Pit Crew collaborate through Notion pages with rich, editable content. This enables:
+- Real-time back-and-forth on requirements
+- Human review before execution
+- Full audit trail of decisions
+- Agent-to-agent development at enterprise scale
+
+### Rule 1: Page Body Content (Not Thread Property)
+
+**All dispatch content MUST be written to the Notion page BODY, not the Thread property.**
+
+❌ Wrong: Stuffing context into Thread property as escaped text
+✅ Right: Structured blocks in page body (headings, callouts, paragraphs)
+
+### Required Page Structure
+
+When dispatching to Pit Crew, pages must include:
+
+```
+## 🤖 Atlas Analysis
+> [Callout with reasoning/analysis]
+
+## 📋 Task Specification
+[Paragraphs with full requirements]
+
+---
+
+## 🔧 Pit Crew Work
+(Placeholder for implementation notes)
+```
+
+### Rule 2: Message Threading
+
+**Use `mcp__pit_crew__post_message` for collaboration, NOT creating new pages.**
+
+Messages appear in the Notion page body as callout blocks:
+- 🤖 Atlas messages (blue background)
+- 🔧 Pit Crew messages (green background)
+- 👤 Jim messages (default)
+
+All messages include timestamps for audit trail.
+
+### Rule 3: Status Updates Sync to Notion
+
+**Use `mcp__pit_crew__update_status` to progress workflow.**
+
+This tool:
+1. Updates the Notion Status property
+2. Appends a status change message to the page body
+
+Status progression:
+```
+dispatched → in-progress → needs-approval → approved → deployed → closed
+```
+
+### Collaboration Workflow
+
+```
+1. DISPATCH: Atlas creates ticket with rich page body
+   └─ Tool: mcp__pit_crew__dispatch_work
+   └─ Result: Notion page with editable content
+
+2. REVIEW: Jim reviews/edits specs in Notion
+   └─ Human-in-the-loop refinement
+   └─ Can modify requirements directly
+
+3. CLARIFY: Pit Crew posts questions
+   └─ Tool: mcp__pit_crew__post_message
+   └─ Messages appear in page body
+
+4. RESPOND: Atlas answers questions
+   └─ Tool: mcp__pit_crew__post_message
+   └─ Full conversation visible in Notion
+
+5. APPROVE: Jim or Atlas approves approach
+   └─ Tool: mcp__pit_crew__update_status → 'approved'
+   └─ Status change logged in page
+
+6. EXECUTE: Pit Crew implements
+   └─ Documents work in "Pit Crew Work" section
+   └─ Posts progress updates
+
+7. DEPLOY: Mark as shipped
+   └─ Tool: mcp__pit_crew__update_status → 'deployed'
+   └─ Include output URL (commit, PR, etc.)
+```
+
+### MCP Tools Reference
+
+| Tool | Purpose | Syncs to Notion |
+|------|---------|-----------------|
+| `dispatch_work` | Create new ticket | ✅ Creates page with body |
+| `post_message` | Add to conversation | ✅ Appends callout block |
+| `update_status` | Progress workflow | ✅ Updates property + message |
+| `get_discussion` | Read full thread | ❌ Read-only |
+| `list_active` | View open items | ❌ Read-only |
+
+### Acceptance Criteria for Dispatches
+
+```markdown
+### Dispatch Checklist
+
+- [ ] Page body has structured content (not Thread property)
+- [ ] Atlas Analysis section included
+- [ ] Task Specification is detailed enough for execution
+- [ ] Pit Crew Work section placeholder exists
+- [ ] Discussion ID returned for future messages
+- [ ] Notion URL returned for tracking
+```
+
+### Anti-Patterns
+
+❌ **Don't** stuff all content into Thread property
+❌ **Don't** create multiple tickets for same issue (use post_message)
+❌ **Don't** update status without context (add message explaining why)
+❌ **Don't** skip the review step for complex features
+
+---
+
+## SOP-006: Routing Confidence Protocol
+
+**Effective:** 2026-02-03
+**Scope:** All work dispatches through submit_ticket
+
+### Rule
+
+**When routing confidence is below 85%, present a choice to the user.**
+
+Atlas must provide `routing_confidence` (0-100) with every dispatch. If uncertain:
+- Don't auto-route to the wrong pipeline
+- Present inline keyboard with both options
+- Let the user decide: Pit Crew vs Work Queue
+
+### When to Use Low Confidence
+
+- Task could be bug fix OR feature request
+- Task could be research OR build work
+- Category is ambiguous from the request
+- Multiple valid interpretations exist
+
+### Implementation
+
+The `submit_ticket` tool requires:
+- `routing_confidence`: 0-100 (required)
+- `alternative_category`: backup option if confidence < 85%
+
+Example:
+```json
+{
+  "category": "feature",
+  "routing_confidence": 70,
+  "alternative_category": "research",
+  "title": "Investigate caching options"
+}
+```
+
+If confidence < 85%, user sees:
+```
+⚠️ Routing Confidence: 70%
+
+Task: Investigate caching options
+
+[✨ Pit Crew (Feature)] [🔍 Work Queue (Research)]
+                       [❌ Cancel]
+```
+
+---
+
 *SOPs are living documents. Update as patterns emerge.*

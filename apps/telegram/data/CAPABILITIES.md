@@ -64,17 +64,20 @@ When you encounter something you CAN'T do:
 ## 3. PIT CREW INTEGRATION
 
 **What you can do:**
-- Dispatch bugs, features, hotfixes
-- Post messages to discussion threads
-- Update workflow status
-- Monitor active discussions
+- Dispatch bugs, features, hotfixes with rich page body content
+- Collaborate through message threading (syncs to Notion pages)
+- Update workflow status (syncs to Notion properties)
+- Review and refine requirements before execution
+- Participate in agent-to-agent development planning
 
 **Tools:**
-- `mcp__pit_crew__dispatch_work` - Create items
-- `mcp__pit_crew__post_message` - Add context
-- `mcp__pit_crew__update_status` - Move workflow
-- `mcp__pit_crew__get_discussion` - Check status
-- `mcp__pit_crew__list_active` - See open items
+| Tool | Purpose | Notion Sync |
+|------|---------|-------------|
+| `mcp__pit_crew__dispatch_work` | Create ticket | ✅ Page + body content |
+| `mcp__pit_crew__post_message` | Add to conversation | ✅ Appends callout block |
+| `mcp__pit_crew__update_status` | Progress workflow | ✅ Property + message |
+| `mcp__pit_crew__get_discussion` | Read full thread | ❌ Read-only |
+| `mcp__pit_crew__list_active` | See open items | ❌ Read-only |
 
 **When to Dispatch:**
 | Situation | Type |
@@ -83,16 +86,76 @@ When you encounter something you CAN'T do:
 | Need new capability | FEATURE |
 | Critical production issue | HOTFIX |
 | Need clarification on code | Question |
-
 | You hit a limitation | FEATURE dispatch - "grow your own arms" |
 
-**Self-Healing Pattern:**
+### Page Body Structure (CRITICAL)
+
+All dispatches create Notion pages with editable body content:
+
+```
+## 🤖 Atlas Analysis
+> [Callout with reasoning - WHY this is needed]
+
+## 📋 Task Specification
+[Detailed requirements - WHAT to build]
+
+---
+
+## 🔧 Pit Crew Work
+(Placeholder for implementation notes)
+```
+
+**NEVER** stuff content into Thread property. Always use page body.
+
+### Collaboration Workflow
+
+```
+1. DISPATCH: Atlas creates ticket
+   Tool: mcp__pit_crew__dispatch_work
+   Result: Notion page with rich body
+
+2. REVIEW: Jim edits specs in Notion
+   Human-in-the-loop refinement
+
+3. CLARIFY: Pit Crew posts questions
+   Tool: mcp__pit_crew__post_message
+   Result: Message appears in page body (🔧 green)
+
+4. RESPOND: Atlas answers
+   Tool: mcp__pit_crew__post_message
+   Result: Message appears in page body (🤖 blue)
+
+5. APPROVE: Status update
+   Tool: mcp__pit_crew__update_status → 'approved'
+
+6. EXECUTE: Pit Crew implements
+   Documents in "Pit Crew Work" section
+
+7. SHIP: Final status
+   Tool: mcp__pit_crew__update_status → 'deployed'
+   Include output URL (commit, PR, etc.)
+```
+
+### Message Threading
+
+Messages appear as callout blocks with sender identification:
+- 🤖 Atlas messages (blue background)
+- 🔧 Pit Crew messages (green background)
+- 👤 Jim messages (default)
+- All messages include timestamps
+
+### Self-Healing Pattern
+
 ```
 Atlas: "I can't do X because I lack capability Y"
      ↓
 Atlas creates Feed entry: "Self-improvement: Need capability Y"
      ↓
 Atlas dispatches to Pit Crew: "FEATURE: Add Y capability to Atlas"
+     ↓
+Jim reviews, edits specs in Notion
+     ↓
+Atlas ↔ Pit Crew collaborate on requirements
      ↓
 Pit Crew builds it, ships it
      ↓
@@ -236,6 +299,9 @@ When you encounter something you CAN'T do:
 | "Mark X done" | Update item | `notion_update` |
 | "Help" | Show capabilities | Return help text |
 | "I wish you could..." | Self-improvement | Dispatch FEATURE |
+| "Add to that ticket" | Post message | `mcp__pit_crew__post_message` |
+| "Approve that approach" | Update status | `mcp__pit_crew__update_status` |
+| "What's Pit Crew working on?" | List active | `mcp__pit_crew__list_active` |
 
 ---
 
@@ -262,5 +328,5 @@ Every week, Atlas should be MORE capable than the week before:
 
 ---
 
-*Last updated: 2026-02-01*
-*Version: 1.1.0*
+*Last updated: 2026-02-03*
+*Version: 1.2.0 - Added Pit Crew collaboration workflow*

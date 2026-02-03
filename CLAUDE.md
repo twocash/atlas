@@ -185,6 +185,34 @@ Agent coordination capabilities:
 
 ---
 
+## Pit Crew Integration (`packages/mcp-pit-crew/`)
+
+Agent-to-agent development collaboration. Atlas dispatches bugs/features to Pit Crew, collaborates on requirements, and tracks progress.
+
+**MCP Tools:**
+| Tool | Purpose |
+|------|---------|
+| `mcp__pit_crew__dispatch_work` | Create ticket with page body |
+| `mcp__pit_crew__post_message` | Collaborate in thread |
+| `mcp__pit_crew__update_status` | Progress workflow |
+| `mcp__pit_crew__get_discussion` | Read full thread |
+| `mcp__pit_crew__list_active` | See open items |
+
+**Dev Pipeline Database:** `ce6fbf1b-ee30-433d-a9e6-b338552de7c9`
+
+**Collaboration Workflow:**
+1. **Dispatch** → Creates Notion page with rich body content
+2. **Review** → Jim edits specs in Notion
+3. **Collaborate** → Atlas ↔ Pit Crew post messages (sync to page body)
+4. **Approve** → Status update to 'approved'
+5. **Ship** → Status update to 'deployed' with output URL
+
+**CRITICAL:** All dispatches write to page BODY, not Thread property. Messages appear as callout blocks (🤖 blue, 🔧 green, 👤 default).
+
+See `docs/SOP.md` for SOP-005 (Pit Crew Collaboration Protocol).
+
+---
+
 ## Grove Content Pipelines (External)
 
 Atlas dispatches to these but does NOT own them:

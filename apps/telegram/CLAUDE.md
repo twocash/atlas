@@ -279,6 +279,30 @@ Available for agent coordination:
 - `grove_docs_refinery/` - Document polishing
 - `grove_research_generator/` - Blog/whitepaper generation
 
+### Pit Crew Collaboration
+Real-time agent-to-agent development through Notion pages:
+- `mcp__pit_crew__dispatch_work` - Create ticket with page body content
+- `mcp__pit_crew__post_message` - Collaborate (syncs to Notion page)
+- `mcp__pit_crew__update_status` - Progress workflow (syncs property + message)
+
+**Page Body Structure:**
+```
+## 🤖 Atlas Analysis
+> [Callout: reasoning]
+
+## 📋 Task Specification
+[Requirements]
+
+---
+
+## 🔧 Pit Crew Work
+(Implementation notes)
+```
+
+**Message Threading:** Callout blocks with sender icons (🤖 blue, 🔧 green, 👤 default)
+
+See `docs/SOP.md` SOP-005 for full protocol.
+
 ---
 
 ## Session Notes
@@ -294,6 +318,16 @@ Available for agent coordination:
 - Migration audit and strategy documented
 - Brain docs (PRODUCT.md, DECISIONS.md) copied to docs/
 - Merged institutional wisdom into CLAUDE.md
+
+### Session: 2026-02-03
+- Pit Crew Real-Time Collaboration (ATLAS-COLLAB-001)
+- Page body content for dispatches (not Thread property)
+- Message threading syncs to Notion pages
+- Status updates sync property + append message
+- Routing confidence protocol (<85% = user choice)
+- SOP-005 and SOP-006 added
+- pit-crew-collab skill created
+- MEMORY.md, CAPABILITIES.md updated
 
 ---
 
