@@ -11,11 +11,12 @@ interface ReviewListProps {
   onSelectAll: (selected: boolean) => void
   onSelectBatch: (count: number) => void
   onDismiss: (leadIds: string[]) => void
+  isDismissing?: boolean
 }
 
 const BATCH_SIZE = 20
 
-export function ReviewList({ leads, onToggle, onSelectAll, onSelectBatch, onDismiss }: ReviewListProps) {
+export function ReviewList({ leads, onToggle, onSelectAll, onSelectBatch, onDismiss, isDismissing }: ReviewListProps) {
   const selectedCount = leads.filter((l) => l.selected).length
   const allSelected = selectedCount === leads.length && leads.length > 0
   const noneSelected = selectedCount === 0
@@ -72,10 +73,10 @@ export function ReviewList({ leads, onToggle, onSelectAll, onSelectBatch, onDism
           <div className="flex-1" />
           <button
             onClick={handleDismissSelected}
-            disabled={noneSelected}
+            disabled={noneSelected || isDismissing}
             className="text-[10px] px-2 py-1 bg-red-100 text-red-700 rounded hover:bg-red-200 disabled:opacity-40 disabled:cursor-not-allowed"
           >
-            Dismiss ({selectedCount})
+            {isDismissing ? 'Dismissing...' : `Dismiss (${selectedCount})`}
           </button>
         </div>
       </div>

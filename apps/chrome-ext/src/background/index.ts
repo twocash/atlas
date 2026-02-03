@@ -22,6 +22,7 @@ import {
   fetchContactsBySegment,
   markContactsAsFollowing,
   markContactsAsFailed,
+  dismissContacts,
 } from "~src/lib/sync-engine"
 
 const storage = new Storage({ area: "local" })
@@ -333,12 +334,14 @@ chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
 
   if (message.name === "DISMISS_CONTACTS") {
     const { pageIds } = message.body || {}
+    console.log('[Atlas] DISMISS_CONTACTS received, pageIds:', pageIds)
     ;(async () => {
       try {
-        const { dismissContacts } = await import("~src/lib/sync-engine")
         const result = await dismissContacts(pageIds || [])
+        console.log('[Atlas] dismissContacts result:', result)
         sendResponse({ ok: true, dismissed: result })
       } catch (error) {
+        console.error('[Atlas] dismissContacts error:', error)
         sendResponse({ ok: false, error: String(error) })
       }
     })()

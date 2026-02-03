@@ -28,6 +28,7 @@ export function OutreachView() {
   const [selectedSegment, setSelectedSegment] = useState<typeof SEGMENTS[0] | null>(null)
   const [leads, setLeads] = useState<Lead[]>([])
   const [segmentCounts, setSegmentCounts] = useState<Record<string, number>>({})
+  const [isDismissing, setIsDismissing] = useState(false)
 
   // Fetch pending counts for each segment from Notion
   useEffect(() => {
@@ -111,17 +112,36 @@ export function OutreachView() {
   }
 
   const handleDismiss = async (leadIds: string[]) => {
-    // Remove from local list
-    setLeads(leads.filter((l) => !leadIds.includes(l.id)))
+    const pageIds = leadIds
+      .map((id) => leads.find((l) => l.id === id)?.notionPageId)
+      .filter(Boolean) as string[]
 
-    // Mark as processed in Notion (set Connection Status to "Dismissed")
+    if (pageIds.length === 0) {
+      console.error('[Atlas] No valid Notion page IDs found for dismiss')
+      return
+    }
+
+    setIsDismissing(true)
+
     try {
-      await chrome.runtime.sendMessage({
+      const response = await chrome.runtime.sendMessage({
         name: "DISMISS_CONTACTS",
-        body: { pageIds: leadIds.map((id) => leads.find((l) => l.id === id)?.notionPageId).filter(Boolean) },
+        body: { pageIds },
       })
+
+      if (response?.ok) {
+        // Remove from local list only after successful Notion update
+        setLeads(leads.filter((l) => !leadIds.includes(l.id)))
+        // Refresh segment counts
+        fetchSegmentCounts()
+        console.log(`[Atlas] Dismissed ${response.dismissed} contacts`)
+      } else {
+        console.error('[Atlas] Dismiss failed:', response?.error)
+      }
     } catch (e) {
-      console.error("Failed to dismiss contacts in Notion:", e)
+      console.error('[Atlas] Failed to dismiss contacts:', e)
+    } finally {
+      setIsDismissing(false)
     }
   }
 
@@ -191,6 +211,7 @@ export function OutreachView() {
             onSelectAll={handleSelectAll}
             onSelectBatch={handleSelectBatch}
             onDismiss={handleDismiss}
+            isDismissing={isDismissing}
           />
         </div>
 
