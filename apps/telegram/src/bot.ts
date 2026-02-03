@@ -18,6 +18,8 @@ import { handleHealthCommand } from "./commands/health";
 import { initWorker, runWorkerCycle, startPolling, stopPolling, formatWorkerStatus } from "./worker";
 import { handleConversation, clearConversation } from "./conversation";
 import { formatStatsMessage, detectPatterns } from "./conversation/stats";
+import { handleSkillsCommand } from "./handlers/skill-callback";
+import { requestStop } from "./skills";
 import type { AtlasContext } from "./types";
 
 // Feature flag for conversational UX mode
@@ -236,6 +238,27 @@ export function createBot(): Bot<AtlasContext> {
     } catch (error) {
       logger.error("Error generating stats", { error });
       await ctx.reply("Stats generation failed. Check logs.");
+    }
+  });
+
+  // Skills command - manage auto-generated skills (Phase 3)
+  bot.command("skills", async (ctx) => {
+    try {
+      await ctx.replyWithChatAction("typing");
+      await handleSkillsCommand(ctx);
+    } catch (error) {
+      logger.error("Error handling skills command", { error });
+      await ctx.reply("Skills command failed. Check logs.");
+    }
+  });
+
+  // Stop command - emergency stop for running skills
+  bot.command("stop", async (ctx) => {
+    const stopped = requestStop();
+    if (stopped) {
+      await ctx.reply("🛑 <b>Stop requested</b>\n\nThe current skill will stop after completing its current step.");
+    } else {
+      await ctx.reply("No skill is currently running.");
     }
   });
 

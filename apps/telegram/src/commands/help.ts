@@ -52,8 +52,15 @@ export function getHelpText(): string {
 /stats                      — Weekly usage &amp; work queue stats
 /help                       — This message
 
+<b>SKILLS</b>
+/skills                     — Skills system overview
+/skills pending             — Review pending proposals
+/skills list                — View all active skills
+/skills stats               — System statistics
+/stop                       — Emergency stop running skill
+
 <b>COMING SOON</b>
-/skill new                  — Create custom agent type
+/skill new                  — Create custom skill manually
 /draft "topic"              — Generate content
 
 —

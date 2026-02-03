@@ -1,0 +1,94 @@
+# Threads Post Lookup Skill
+# Tier 1: Read-only browser automation + Feed entry
+
+name: threads-lookup
+version: 1.0.0
+description: Look up and analyze a Threads post
+
+triggers:
+  - type: pattern
+    value: "threads\\.net"
+  - type: keyword
+    value: "threads post"
+
+inputs:
+  url:
+    type: string
+    required: true
+    description: Threads post URL
+
+outputs:
+  - type: feed_entry
+    description: Analyzed post content logged to Feed
+
+process:
+  type: tool_sequence
+  timeout: 60000
+  steps:
+    # Open new tab with the Threads URL
+    - id: open_tab
+      tool: mcp__claude-in-chrome__tabs_create_mcp
+      inputs:
+        url: "$input.url"
+      onError: fail
+
+    # Wait for content to load (Threads SPA)
+    - id: wait_for_content
+      tool: mcp__claude-in-chrome__javascript_tool
+      inputs:
+        tabId: "$step.open_tab.tabId"
+        code: |
+          await new Promise((resolve, reject) => {
+            let attempts = 0;
+            const maxAttempts = 20;
+            const interval = setInterval(() => {
+              // Threads uses various containers - look for article or main content
+              const content = document.querySelector('article') ||
+                             document.querySelector('[role="main"]') ||
+                             document.querySelector('main');
+              if (content && content.innerText.length > 50) {
+                clearInterval(interval);
+                resolve(true);
+              } else if (++attempts >= maxAttempts) {
+                clearInterval(interval);
+                reject(new Error('Threads content did not load'));
+              }
+            }, 500);
+          });
+      onError: fail
+
+    # Extract page text
+    - id: extract_content
+      tool: mcp__claude-in-chrome__get_page_text
+      inputs:
+        tabId: "$step.open_tab.tabId"
+      onError: fail
+
+    # Log to Feed
+    - id: log_to_feed
+      tool: notion_create
+      inputs:
+        database: feed
+        properties:
+          Entry: "Threads: $step.extract_content"
+          Pillar: "$context.pillar"
+          Source: "$input.url"
+          Request Type: "Research"
+          Status: "Captured"
+      onError: continue
+
+    # Cleanup tab
+    - id: cleanup_tab
+      tool: mcp__claude-in-chrome__javascript_tool
+      inputs:
+        tabId: "$step.open_tab.tabId"
+        code: "window.close();"
+      onError: continue
+
+enabled: true
+tier: 1
+tags:
+  - social
+  - threads
+  - research
+  - browser-automation

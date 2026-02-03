@@ -1,0 +1,95 @@
+# Social Media Engagement Skill
+# Tier 2: External actions (like/follow) require explicit approval
+
+name: social-engage
+version: 1.0.0
+description: Like or follow on Twitter/X or Threads (requires approval)
+
+triggers:
+  - type: keyword
+    value: "like|follow|engage"
+  - type: pattern
+    value: "(like|follow).*(twitter|threads|x\\.com)"
+
+inputs:
+  url:
+    type: string
+    required: true
+    description: Social media post or profile URL
+  action:
+    type: string
+    required: true
+    description: The action to perform (like or follow)
+    enum:
+      - like
+      - follow
+
+outputs:
+  - type: feed_entry
+    description: Action logged to Feed
+
+process:
+  type: tool_sequence
+  timeout: 60000
+  steps:
+    # Navigate to the URL
+    - id: navigate
+      tool: mcp__claude-in-chrome__navigate
+      inputs:
+        url: "$input.url"
+      onError: fail
+
+    # Wait for page to load
+    - id: wait_load
+      tool: mcp__claude-in-chrome__javascript_tool
+      inputs:
+        code: |
+          await new Promise((resolve) => {
+            if (document.readyState === 'complete') {
+              resolve(true);
+            } else {
+              window.addEventListener('load', () => resolve(true));
+            }
+          });
+          // Extra wait for SPA hydration
+          await new Promise(r => setTimeout(r, 2000));
+      onError: fail
+
+    # Find interactive elements
+    - id: find_button
+      tool: mcp__claude-in-chrome__read_page
+      inputs:
+        filter: interactive
+      onError: fail
+
+    # Click the action button
+    # Note: The computer tool uses element descriptions to find and click
+    - id: click_action
+      tool: mcp__claude-in-chrome__computer
+      inputs:
+        action: left_click
+        element_description: "$input.action button"
+      onError: fail
+
+    # Log the action to Feed
+    - id: log_action
+      tool: notion_create
+      inputs:
+        database: feed
+        properties:
+          Entry: "Social: $input.action on $input.url"
+          Pillar: "$context.pillar"
+          Source: "$input.url"
+          Request Type: "Process"
+          Status: "Completed"
+      onError: continue
+
+# Tier 2: External actions require explicit approval
+# Safety latch in executor prevents automatic execution
+tier: 2
+enabled: true
+tags:
+  - social
+  - engagement
+  - external-action
+  - browser-automation

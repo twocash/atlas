@@ -1,0 +1,106 @@
+# Twitter/X Post Lookup Skill
+# Tier 1: Read-only browser automation + Feed entry
+# v1.1.0 - SPA-aware loading with JavaScript wait logic
+
+name: twitter-lookup
+version: 1.1.0
+description: Look up and analyze a Twitter/X post with SPA-aware loading
+
+triggers:
+  - type: pattern
+    value: "twitter\\.com|x\\.com"
+  - type: keyword
+    value: "tweet|post|thread"
+
+inputs:
+  url:
+    type: string
+    required: true
+    description: Twitter/X post URL
+
+outputs:
+  - type: feed_entry
+    description: Analyzed post content logged to Feed
+
+process:
+  type: tool_sequence
+  timeout: 90000  # Increased for SPA hydration
+  steps:
+    # Open new tab with the tweet URL
+    - id: open_tab
+      tool: mcp__claude-in-chrome__tabs_create_mcp
+      inputs:
+        url: "$input.url"
+      onError: fail
+
+    # Smart wait - poll for tweet content to appear (SPA hydration)
+    - id: wait_for_content
+      tool: mcp__claude-in-chrome__javascript_tool
+      inputs:
+        tabId: "$step.open_tab.tabId"
+        code: |
+          await new Promise((resolve, reject) => {
+            let attempts = 0;
+            const maxAttempts = 30;
+            const interval = setInterval(() => {
+              const tweet = document.querySelector('[data-testid="tweet"]');
+              if (tweet) {
+                clearInterval(interval);
+                resolve(true);
+              } else if (++attempts >= maxAttempts) {
+                clearInterval(interval);
+                reject(new Error('Tweet content did not load'));
+              }
+            }, 500);
+          });
+      onError: fail
+
+    # Scroll to trigger lazy content if needed
+    - id: scroll_for_content
+      tool: mcp__claude-in-chrome__computer
+      inputs:
+        action: scroll
+        coordinate: [640, 400]
+        scroll_amount: 300
+      onError: continue  # Non-critical
+
+    # Extract content with fallback - try tweet container first, fall back to body
+    - id: extract_content
+      tool: mcp__claude-in-chrome__javascript_tool
+      inputs:
+        tabId: "$step.open_tab.tabId"
+        code: |
+          const tweet = document.querySelector('[data-testid="tweet"]');
+          const content = tweet ? tweet.innerText : document.body.innerText;
+          // Truncate to reasonable length for summary
+          return content.substring(0, 2000);
+      onError: fail
+
+    # Log to Feed
+    - id: log_to_feed
+      tool: notion_create
+      inputs:
+        database: feed
+        properties:
+          Entry: "Twitter: $step.extract_content"
+          Pillar: "$context.pillar"
+          Source: "$input.url"
+          Request Type: "Research"
+          Status: "Captured"
+      onError: continue
+
+    # Cleanup - close the tab when done
+    - id: cleanup_tab
+      tool: mcp__claude-in-chrome__javascript_tool
+      inputs:
+        tabId: "$step.open_tab.tabId"
+        code: "window.close();"
+      onError: continue  # Best effort cleanup
+
+enabled: true
+tier: 1
+tags:
+  - social
+  - twitter
+  - research
+  - browser-automation

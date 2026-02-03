@@ -1,6 +1,6 @@
 import React from "react"
 
-export type ViewId = "inbox" | "outreach" | "studio" | "data" | "settings"
+export type ViewId = "inbox" | "outreach" | "studio" | "data" | "atlas" | "settings"
 
 interface NavRailProps {
   activeView: ViewId
@@ -73,7 +73,24 @@ export function NavRail({ activeView, onSelect, hasActiveTask, inboxCount = 3 }:
         </svg>
       </NavButton>
 
-      {/* 5. Settings (Bottom Config) */}
+      {/* 5. Atlas (Browser Automation HUD) */}
+      <NavButton
+        id="atlas"
+        label="Atlas"
+        active={activeView === "atlas"}
+        onClick={() => onSelect("atlas")}
+      >
+        {/* Atlas Icon - Robot */}
+        <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round">
+          <rect x="3" y="11" width="18" height="10" rx="2" />
+          <circle cx="12" cy="5" r="2" />
+          <path d="M12 7v4" />
+          <line x1="8" y1="16" x2="8" y2="16" />
+          <line x1="16" y1="16" x2="16" y2="16" />
+        </svg>
+      </NavButton>
+
+      {/* 6. Settings (Bottom Config) */}
       <div className="mt-auto">
         <NavButton
           id="settings"

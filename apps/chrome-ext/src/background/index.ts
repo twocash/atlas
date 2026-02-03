@@ -42,7 +42,56 @@ chrome.alarms.onAlarm.addListener((alarm) => {
 
 // --- Message Handlers ---
 
+// Track current Atlas skill for emergency stop
+let currentAtlasSkill: { skill: string; stopRequested: boolean } | null = null
+
 chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
+  // --- Atlas Link Messages ---
+
+  if (message.type === "atlas:ping") {
+    sendResponse({ ok: true, connected: true })
+    return true
+  }
+
+  if (message.type === "atlas:emergency_stop") {
+    if (currentAtlasSkill) {
+      currentAtlasSkill.stopRequested = true
+      console.log("Atlas: Emergency stop requested for skill:", currentAtlasSkill.skill)
+      // Broadcast stop event to sidepanel
+      chrome.runtime.sendMessage({
+        type: "atlas:skill:update",
+        data: {
+          skill: currentAtlasSkill.skill,
+          step: "emergency_stop",
+          status: "error",
+          logs: ["Stopped by user"]
+        }
+      }).catch(() => {})
+      currentAtlasSkill = null
+    }
+    sendResponse({ ok: true })
+    return true
+  }
+
+  if (message.type === "atlas:skill:start") {
+    const { skill } = message.data || {}
+    currentAtlasSkill = { skill, stopRequested: false }
+    console.log("Atlas: Skill started:", skill)
+    sendResponse({ ok: true })
+    return true
+  }
+
+  if (message.type === "atlas:skill:end") {
+    currentAtlasSkill = null
+    sendResponse({ ok: true })
+    return true
+  }
+
+  if (message.type === "atlas:check_stop") {
+    sendResponse({ stopRequested: currentAtlasSkill?.stopRequested ?? false })
+    return true
+  }
+
   if (message.name === "START_QUEUE") {
     (async () => {
       const queue = await storage.get<TaskQueueState>(STORAGE_KEYS.QUEUE_STATE)
