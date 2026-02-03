@@ -1989,6 +1989,34 @@ export function registerTelegramSendCallback(
   logger.info('Telegram send callback registered');
 }
 
+/**
+ * Convert markdown to Telegram HTML
+ * Handles: **bold**, *italic*, `code`, [links](url), ## headings, - bullets
+ */
+function markdownToTelegramHtml(text: string): string {
+  return text
+    // Escape HTML special chars first (except for our conversions)
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    // Headings -> bold
+    .replace(/^#{1,3}\s+(.+)$/gm, '<b>$1</b>')
+    // Bold: **text** or __text__
+    .replace(/\*\*([^*]+)\*\*/g, '<b>$1</b>')
+    .replace(/__([^_]+)__/g, '<b>$1</b>')
+    // Italic: *text* or _text_
+    .replace(/(?<!\*)\*([^*]+)\*(?!\*)/g, '<i>$1</i>')
+    .replace(/(?<!_)_([^_]+)_(?!_)/g, '<i>$1</i>')
+    // Inline code
+    .replace(/`([^`]+)`/g, '<code>$1</code>')
+    // Links: [text](url)
+    .replace(/\[([^\]]+)\]\(([^)]+)\)/g, '<a href="$2">$1</a>')
+    // Bullet points: - item -> • item
+    .replace(/^[-*]\s+/gm, '• ')
+    // Numbered lists stay as-is (1. 2. etc)
+    .trim();
+}
+
 async function executeTelegramSend(
   input: Record<string, unknown>
 ): Promise<{ success: boolean; result: unknown; error?: string }> {
@@ -2013,7 +2041,9 @@ async function executeTelegramSend(
   }
 
   try {
-    await _telegramSendCallback(chatId, message);
+    // Convert markdown to Telegram HTML
+    const formattedMessage = markdownToTelegramHtml(message);
+    await _telegramSendCallback(chatId, formattedMessage);
     logger.info('Telegram message sent', { chatId, messageLength: message.length });
 
     return {
@@ -2106,7 +2136,22 @@ async function executeNotionAppend(
   const callout = input.callout as string | undefined;
   const calloutEmoji = (input.calloutEmoji as string) || '💡';
 
+  // DEBUG: Log exactly what we're receiving
+  logger.info('notion_append called', {
+    pageId: pageId || 'MISSING',
+    hasContent: !!content,
+    contentLength: content?.length || 0,
+    contentPreview: content?.substring(0, 200) || 'EMPTY',
+    heading,
+    callout,
+  });
+
   if (!pageId || !content) {
+    logger.warn('notion_append validation failed', {
+      pageIdPresent: !!pageId,
+      contentPresent: !!content,
+      contentLength: content?.length || 0,
+    });
     return {
       success: false,
       result: null,

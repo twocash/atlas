@@ -1090,41 +1090,13 @@ function stripMarkdown(text: string): string {
 
 /**
  * Suggest actions based on request type and pillar
+ *
+ * NOTE: Returns empty array. Generic placeholders like "Review and summarize key findings"
+ * add no value. Real suggested actions come from Claude's analysis in the skill execution.
  */
-function suggestActionsForContent(requestType: RequestType, pillar: Pillar): string[] {
-  const actions: string[] = [];
-
-  switch (requestType) {
-    case 'Research':
-      actions.push('Review and summarize key findings');
-      actions.push('Identify actionable insights');
-      if (pillar === 'The Grove') {
-        actions.push('Consider for blog post or documentation');
-      }
-      break;
-
-    case 'Draft':
-      actions.push('Review content for tone and accuracy');
-      actions.push('Edit and refine messaging');
-      actions.push('Schedule for publication');
-      break;
-
-    case 'Build':
-      actions.push('Review technical requirements');
-      actions.push('Create implementation plan');
-      actions.push('Write tests for new functionality');
-      break;
-
-    case 'Process':
-      actions.push('Complete the required process');
-      actions.push('Document completion status');
-      break;
-
-    default:
-      actions.push('Review content and determine next steps');
-  }
-
-  return actions;
+function suggestActionsForContent(_requestType: RequestType, _pillar: Pillar): string[] {
+  // Return empty - skill execution provides real, contextual suggested actions
+  return [];
 }
 
 /**

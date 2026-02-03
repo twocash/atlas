@@ -172,6 +172,94 @@ export async function appendBlocksToPage(
 }
 
 /**
+ * Parse markdown content into Notion blocks
+ * Handles: headings, bullets, numbered lists, bold, and paragraphs
+ */
+export function parseMarkdownToBlocks(content: string): NotionBlock[] {
+  const blocks: NotionBlock[] = [];
+  const lines = content.split('\n');
+  let i = 0;
+
+  while (i < lines.length) {
+    const line = lines[i].trim();
+
+    // Skip empty lines
+    if (!line) {
+      i++;
+      continue;
+    }
+
+    // Headings: # ## ### or **Header** on its own line
+    const h1Match = line.match(/^#\s+(.+)$/);
+    const h2Match = line.match(/^##\s+(.+)$/);
+    const h3Match = line.match(/^###\s+(.+)$/);
+    const boldHeaderMatch = line.match(/^\*\*([^*]+)\*\*$/);
+
+    if (h1Match) {
+      blocks.push(createHeading(h1Match[1].replace(/\*\*/g, ''), 1));
+      i++;
+      continue;
+    }
+    if (h2Match) {
+      blocks.push(createHeading(h2Match[1].replace(/\*\*/g, ''), 2));
+      i++;
+      continue;
+    }
+    if (h3Match) {
+      blocks.push(createHeading(h3Match[1].replace(/\*\*/g, ''), 3));
+      i++;
+      continue;
+    }
+    if (boldHeaderMatch && line === `**${boldHeaderMatch[1]}**`) {
+      // Standalone bold line = treat as heading
+      blocks.push(createHeading(boldHeaderMatch[1], 3));
+      i++;
+      continue;
+    }
+
+    // Bullet points: - or *
+    const bulletMatch = line.match(/^[-*]\s+(.+)$/);
+    if (bulletMatch) {
+      blocks.push(createBullet(stripMarkdown(bulletMatch[1])));
+      i++;
+      continue;
+    }
+
+    // Numbered lists: 1. 2. etc
+    const numberedMatch = line.match(/^\d+\.\s+(.+)$/);
+    if (numberedMatch) {
+      blocks.push({
+        object: 'block',
+        type: 'numbered_list_item',
+        numbered_list_item: {
+          rich_text: [{ type: 'text', text: { content: prepareForNotion(stripMarkdown(numberedMatch[1]), 500) } }],
+        },
+      });
+      i++;
+      continue;
+    }
+
+    // Regular paragraph - collect consecutive non-special lines
+    let paragraphText = line;
+    i++;
+    while (i < lines.length) {
+      const nextLine = lines[i].trim();
+      // Stop if empty line, heading, or list item
+      if (!nextLine || nextLine.match(/^#{1,3}\s/) || nextLine.match(/^[-*]\s/) || nextLine.match(/^\d+\.\s/) || nextLine.match(/^\*\*[^*]+\*\*$/)) {
+        break;
+      }
+      paragraphText += ' ' + nextLine;
+      i++;
+    }
+
+    // Create paragraph with stripped markdown
+    blocks.push(createParagraph(stripMarkdown(paragraphText)));
+  }
+
+  return blocks;
+}
+
+/**
  * Create a standard analysis section for a page
  * Follows SOP-007: Notion Page Body Communication Standard
  *
@@ -204,14 +292,12 @@ export function createAnalysisSection(opts: {
     blocks.push(createCallout(opts.callout, opts.calloutEmoji || '📋'));
   }
 
-  // Main content - split by double newlines into paragraphs
-  // Handles markdown-formatted output from Claude analysis
-  const paragraphs = opts.content.split(/\n\n+/).filter(p => p.trim());
-  for (const para of paragraphs.slice(0, 15)) { // Allow up to 15 paragraphs for thorough analysis
-    blocks.push(createParagraph(para));
-  }
+  // Parse markdown content into proper Notion blocks
+  // This handles headings, bullets, numbered lists, and paragraphs
+  const contentBlocks = parseMarkdownToBlocks(opts.content);
+  blocks.push(...contentBlocks.slice(0, 30)); // Allow up to 30 blocks for thorough analysis
 
-  // Bullet points for key findings (SOP-007: "Key Points" pattern)
+  // Additional bullet points for key findings (SOP-007: "Key Points" pattern)
   if (opts.bullets && opts.bullets.length > 0) {
     for (const bullet of opts.bullets.slice(0, 10)) {
       blocks.push(createBullet(bullet));

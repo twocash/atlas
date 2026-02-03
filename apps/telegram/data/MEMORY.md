@@ -293,3 +293,67 @@ Atlas now has MCP (Model Context Protocol) integration:
 - Multiple valid interpretations exist
 
 **RULE:** Be honest about uncertainty. Don't force a routing decision when both pipelines are valid.
+
+### 2026-02-03: Work Queue Body Context Standard (ATLAS-CONTEXT-001)
+
+**CRITICAL ARCHITECTURAL PRINCIPLE:** Work Queue is where Jim takes ACTION. Feed is a waystation.
+
+**Key Learnings:**
+1. **Content MUST go to Work Queue page body** - Not just Feed. Work Queue is the action center.
+2. **Markdown → Notion blocks** - Skills must convert markdown to proper Notion blocks:
+   - `## headings` → `heading_2` blocks
+   - `- bullets` → `bulleted_list_item` blocks
+   - `1. numbered` → `numbered_list_item` blocks
+3. **Source links are CRITICAL** - Every analysis must include original source URL and any referenced links
+4. **No placeholder cruft** - Generic actions like "Review and summarize key findings" add no value. Real actions come from Claude's contextual analysis.
+
+**Skill Output Standard (for all extraction skills):**
+```markdown
+## 🔗 Source
+[Original Post](url)
+
+## 👤 Author
+@handle - brief description
+
+## 💡 TL;DR
+2-3 sentence summary
+
+## 🎯 Key Insights
+- Insight 1
+- Insight 2
+
+## 🔗 Referenced Links
+- [Link](url) - context
+
+## 📋 Relevance to [Pillar]
+Why this matters
+
+## ✅ Next Actions
+1. Specific action
+2. Specific action
+```
+
+**Implementation:**
+- `formatting/notion.ts` - `parseMarkdownToBlocks()` converts markdown to Notion blocks
+- Skills append to BOTH Feed (`$input.feedId`) AND Work Queue (`$input.workQueueId`)
+- Telegram messages use `markdownToTelegramHtml()` for proper formatting
+
+**Files Changed:**
+- `apps/telegram/src/formatting/notion.ts` - Added markdown parser
+- `apps/telegram/src/conversation/tools/core.ts` - Added telegram HTML converter
+- `apps/telegram/data/skills/threads-lookup/skill.yaml` - v7.0.0 with Work Queue append
+- `apps/telegram/src/handlers/content-callback.ts` - Removed placeholder actions
+
+### 2026-02-03: Infrastructure Gaps Identified
+
+**Gaps for Standardization Sprint:**
+1. **No MCP declarations in skills** - Skills should declare required MCP servers via `mcp:` frontmatter
+2. **No template repository** - Skills should reference Notion templates (by pillar, task type)
+3. **No skill registry documentation** - How skills are discovered, loaded, versioned
+4. **No cross-session context strategy** - How context survives restarts
+5. **Agent lifecycle thin** - Types defined but coordination unclear
+
+**Recommended SOPs:**
+- SOP-009: Skill Output Standard
+- SOP-010: Notion Template System
+- SOP-011: MCP Server Declaration in Skills

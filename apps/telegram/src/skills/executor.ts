@@ -219,15 +219,34 @@ function resolveVariables(
 
         case 'step': {
           const stepResult = context.steps[key];
-          if (!stepResult) return '';
+          if (!stepResult) {
+            logger.warn('Variable resolution: step not found', { key, subkey, availableSteps: Object.keys(context.steps) });
+            return '';
+          }
 
           // Handle special step result fields (not in output)
           if (subkey === 'success') return String(stepResult.success);
           if (subkey === 'error') return stepResult.error || '';
           if (subkey === 'executionTimeMs') return String(stepResult.executionTimeMs);
 
-          // Access output fields
-          if (subkey && stepResult.output) {
+          // Handle 'output' subkey - return the full output
+          if (subkey === 'output') {
+            const resolved = stepResult.output ? String(stepResult.output) : '';
+            // Log when resolving output for content-related steps
+            if (key.includes('analyze') || key.includes('text')) {
+              logger.info('Variable resolution: output', {
+                step: key,
+                hasOutput: !!stepResult.output,
+                outputType: typeof stepResult.output,
+                outputLength: resolved.length,
+                preview: resolved.substring(0, 100),
+              });
+            }
+            return resolved;
+          }
+
+          // Access nested output fields (when output is an object)
+          if (subkey && stepResult.output && typeof stepResult.output === 'object') {
             const output = stepResult.output as Record<string, unknown>;
             return String(output[subkey] ?? '');
           }
@@ -348,7 +367,18 @@ async function executeToolStep(
     // Import tool executor dynamically to avoid circular deps
     const { executeTool } = await import('../conversation/tools');
 
-    logger.debug('Executing tool step', { stepId: step.id, tool: normalizedToolName, inputs: resolvedInputs });
+    // Log at INFO level for skill debugging - critical for tracing content flow
+    logger.info('Executing tool step', {
+      stepId: step.id,
+      tool: normalizedToolName,
+      inputKeys: Object.keys(resolvedInputs),
+      // Log content preview for notion_append to trace what's being written
+      ...(normalizedToolName === 'notion_append' ? {
+        pageId: resolvedInputs.pageId,
+        contentLength: typeof resolvedInputs.content === 'string' ? resolvedInputs.content.length : 0,
+        contentPreview: typeof resolvedInputs.content === 'string' ? resolvedInputs.content.substring(0, 100) : 'NOT_STRING',
+      } : {}),
+    });
 
     const result = await executeTool(normalizedToolName, resolvedInputs);
 

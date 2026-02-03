@@ -1,9 +1,9 @@
 # Threads Post Lookup Skill - Multi-Strategy Extraction
 # Tier 1: HTTP fetch primary, browser automation fallback
-# v6.0.0: Robust extraction with fallback strategies
+# v7.0.0: Rich analysis with source links, appends to Work Queue
 
 name: threads-lookup
-version: 6.0.0
+version: 7.0.0
 description: Extract and analyze Threads posts with multi-strategy approach
 
 triggers:
@@ -68,17 +68,38 @@ process:
           inputs:
             content: "$step.http_fetch.text"
             systemPrompt: |
-              Analyze this Threads post content. The content may be partial or contain navigation elements.
-              Extract what you can:
+              Analyze this Threads post. Source URL: $input.url
 
-              1. **Author**: Username/handle if visible
-              2. **Main Message**: Core point or argument (2-3 sentences)
-              3. **Key Insights**: Notable quotes, claims, or data points
-              4. **Relevance to $input.pillar**: How this relates to the user's domain
-              5. **Suggested Actions**: 2-3 specific next steps
+              Format your response with these sections:
 
-              Format with clear headers. If content is minimal, note what's missing.
-              Be concise but actionable.
+              ## 🔗 Source
+              [Original Post]($input.url)
+
+              ## 👤 Author
+              @handle - brief description of who they are
+
+              ## 💡 TL;DR
+              2-3 sentence summary of the main point.
+
+              ## 🎯 Key Insights
+              - Insight 1: [detail]
+              - Insight 2: [detail]
+              - Insight 3: [detail]
+
+              ## 🔗 Referenced Links
+              Extract ANY external URLs mentioned in the post:
+              - [Link title](url) - brief context
+              (If no external links, write "None found")
+
+              ## 📋 Relevance to $input.pillar
+              How this connects to the user's domain and why it matters.
+
+              ## ✅ Next Actions
+              1. Specific actionable step
+              2. Specific actionable step
+              3. Specific actionable step
+
+              Be concise. Use markdown formatting.
           onError: continue
 
         # Update Feed status
@@ -91,14 +112,25 @@ process:
               Extraction Depth: "$input.depth"
           onError: continue
 
-        # Append analysis to Feed
-        - id: append_http
+        # Append to Feed
+        - id: append_feed_http
           tool: notion_append
           inputs:
             pageId: "$input.feedId"
             heading: "🧵 Threads Analysis"
-            callout: "Pillar: $input.pillar | Depth: $input.depth | Method: HTTP fetch"
-            calloutEmoji: "📋"
+            callout: "Pillar: $input.pillar | Depth: $input.depth | Method: HTTP"
+            calloutEmoji: "🧵"
+            content: "$step.analyze_http.output"
+          onError: continue
+
+        # Append to Work Queue (primary action location)
+        - id: append_workqueue_http
+          tool: notion_append
+          inputs:
+            pageId: "$input.workQueueId"
+            heading: "🧵 Threads Analysis"
+            callout: "Pillar: $input.pillar | Depth: $input.depth | Method: HTTP"
+            calloutEmoji: "🧵"
             content: "$step.analyze_http.output"
           onError: continue
 
@@ -139,15 +171,38 @@ process:
               inputs:
                 content: "$step.browser_text.output"
                 systemPrompt: |
-                  Analyze this Threads post content extracted from browser.
+                  Analyze this Threads post. Source URL: $input.url
 
-                  1. **Author**: Username/handle if visible
-                  2. **Main Message**: Core point or argument (2-3 sentences)
-                  3. **Key Insights**: Notable quotes, claims, or data points
-                  4. **Relevance to $input.pillar**: How this relates to the user's domain
-                  5. **Suggested Actions**: 2-3 specific next steps
+                  Format your response with these sections:
 
-                  Format with clear headers. Be concise but actionable.
+                  ## 🔗 Source
+                  [Original Post]($input.url)
+
+                  ## 👤 Author
+                  @handle - brief description of who they are
+
+                  ## 💡 TL;DR
+                  2-3 sentence summary of the main point.
+
+                  ## 🎯 Key Insights
+                  - Insight 1: [detail]
+                  - Insight 2: [detail]
+                  - Insight 3: [detail]
+
+                  ## 🔗 Referenced Links
+                  Extract ANY external URLs mentioned in the post:
+                  - [Link title](url) - brief context
+                  (If no external links, write "None found")
+
+                  ## 📋 Relevance to $input.pillar
+                  How this connects to the user's domain and why it matters.
+
+                  ## ✅ Next Actions
+                  1. Specific actionable step
+                  2. Specific actionable step
+                  3. Specific actionable step
+
+                  Be concise. Use markdown formatting.
               onError: continue
 
             # Update Feed status
@@ -160,14 +215,25 @@ process:
                   Extraction Depth: "$input.depth"
               onError: continue
 
-            # Append analysis
-            - id: append_browser
+            # Append to Feed
+            - id: append_feed_browser
               tool: notion_append
               inputs:
                 pageId: "$input.feedId"
                 heading: "🧵 Threads Analysis"
-                callout: "Pillar: $input.pillar | Depth: $input.depth | Method: Browser automation"
-                calloutEmoji: "📋"
+                callout: "Pillar: $input.pillar | Depth: $input.depth | Method: Browser"
+                calloutEmoji: "🧵"
+                content: "$step.analyze_browser.output"
+              onError: continue
+
+            # Append to Work Queue (primary action location)
+            - id: append_workqueue_browser
+              tool: notion_append
+              inputs:
+                pageId: "$input.workQueueId"
+                heading: "🧵 Threads Analysis"
+                callout: "Pillar: $input.pillar | Depth: $input.depth | Method: Browser"
+                calloutEmoji: "🧵"
                 content: "$step.analyze_browser.output"
               onError: continue
 
