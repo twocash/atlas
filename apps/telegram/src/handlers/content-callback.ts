@@ -25,6 +25,7 @@ import { type Pillar as MediaPillar } from '../conversation/media';
 import { getPatternSuggestion, recordClassificationFeedback } from '../conversation/content-patterns';
 import type { Pillar, RequestType } from '../conversation/types';
 import { logAction, isFeatureEnabled, triggerContextualExtraction } from '../skills';
+import { safeAnswerCallback } from '../utils/telegram-helpers';
 
 /**
  * Handle content confirmation callback queries
@@ -45,7 +46,10 @@ export async function handleContentCallback(ctx: Context): Promise<void> {
   // Get pending content
   const pending = getPendingContent(requestId);
   if (!pending) {
-    await ctx.answerCallbackQuery({ text: 'Request expired. Please share again.' });
+    // Use safe answer - if callback expired, falls back to regular message
+    await safeAnswerCallback(ctx, 'Request expired. Please share again.', {
+      fallbackMessage: '⏱️ That request expired. Please share the link again.'
+    });
     // Try to delete the old message
     try {
       await ctx.deleteMessage();
