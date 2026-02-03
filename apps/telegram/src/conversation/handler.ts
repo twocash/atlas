@@ -19,6 +19,13 @@ import { recordUsage } from './stats';
 import { maybeHandleAsContentShare, triggerMediaConfirmation, triggerInstantClassification } from './content-flow';
 import type { ClassificationResult } from './types';
 import { logAction, isFeatureEnabled } from '../skills';
+import {
+  generateDispatchChoiceId,
+  storePendingDispatch,
+  formatRoutingChoiceMessage,
+  buildRoutingChoiceKeyboard,
+  type PendingDispatch,
+} from './dispatch-choice';
 
 // Feature flag for content confirmation keyboard (Universal Content Analysis)
 // Enabled by default - set ATLAS_CONTENT_CONFIRM=false to disable
@@ -406,6 +413,75 @@ export async function handleConversation(ctx: Context): Promise<void> {
           toolUse.name,
           toolUse.input as Record<string, unknown>
         );
+
+        // CHECK FOR LOW-CONFIDENCE ROUTING: Intercept needsChoice response
+        if (toolUse.name === 'submit_ticket' && result.needsChoice) {
+          const choiceData = result.result as {
+            routingConfidence: number;
+            suggestedCategory: string;
+            alternativeCategory: string;
+            title: string;
+            description: string;
+            priority: 'P0' | 'P1' | 'P2';
+            requireReview: boolean;
+            pillar: string;
+            reasoning: string;
+          };
+
+          // Generate request ID and store pending dispatch
+          const requestId = generateDispatchChoiceId();
+          const pending: PendingDispatch = {
+            requestId,
+            chatId: ctx.chat!.id,
+            userId,
+            messageId: ctx.message?.message_id,
+            reasoning: choiceData.reasoning,
+            title: choiceData.title,
+            description: choiceData.description,
+            priority: choiceData.priority,
+            requireReview: choiceData.requireReview,
+            pillar: choiceData.pillar,
+            routingConfidence: choiceData.routingConfidence,
+            suggestedCategory: choiceData.suggestedCategory,
+            alternativeCategory: choiceData.alternativeCategory,
+            timestamp: Date.now(),
+          };
+
+          storePendingDispatch(pending);
+
+          // Build and send the choice keyboard
+          const message = formatRoutingChoiceMessage(pending);
+          const keyboard = buildRoutingChoiceKeyboard(
+            requestId,
+            choiceData.suggestedCategory,
+            choiceData.alternativeCategory
+          );
+
+          await ctx.reply(message, {
+            parse_mode: 'HTML',
+            reply_markup: keyboard,
+          });
+
+          // React to indicate user action needed
+          await setReaction(ctx, REACTIONS.CHAT);
+
+          logger.info('Low-confidence routing - presenting choice keyboard', {
+            requestId,
+            confidence: choiceData.routingConfidence,
+            suggested: choiceData.suggestedCategory,
+            alternative: choiceData.alternativeCategory,
+          });
+
+          // Update conversation with the interaction
+          await updateConversation(
+            userId,
+            messageText,
+            `[Routing choice requested: ${choiceData.title} - ${choiceData.routingConfidence}% confidence]`,
+            { toolsUsed: ['submit_ticket'] }
+          );
+
+          return; // Exit early - keyboard handles the rest
+        }
 
         // Capture tool context for conversation continuity
         toolContexts.push({

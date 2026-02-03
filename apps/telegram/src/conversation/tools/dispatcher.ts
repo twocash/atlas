@@ -18,6 +18,21 @@ import { executeMcpTool, isMcpTool, getMcpStatus } from '../../mcp';
 // Database ID from docs/DATABASE-IDS-CANONICAL.md
 const DB_WORK_QUEUE = '3d679030-b76b-43bd-92d8-1ac51abb4a28';
 
+/**
+ * Extract Notion page ID from URL
+ * URL format: https://www.notion.so/Title-{32-char-id}
+ */
+function extractPageIdFromUrl(url: string): string | null {
+  // Match the 32-character hex ID at the end of the URL
+  const match = url.match(/([a-f0-9]{32})(?:\?|$)/i);
+  if (match) {
+    // Format as UUID: xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx
+    const id = match[1];
+    return `${id.slice(0, 8)}-${id.slice(8, 12)}-${id.slice(12, 16)}-${id.slice(16, 20)}-${id.slice(20)}`;
+  }
+  return null;
+}
+
 // Notion client (lazy loaded)
 let _notion: Client | null = null;
 function getNotionClient(): Client {
@@ -37,7 +52,7 @@ function getNotionClient(): Client {
 
 export const DISPATCHER_TOOL: Anthropic.Tool = {
   name: 'submit_ticket',
-  description: 'The ONLY way to start asynchronous work. Submits a ticket for Research, Dev bugs, or Content tasks. Returns a tracking URL. If no URL is returned, the dispatch FAILED.',
+  description: 'The ONLY way to start asynchronous work. Submits a ticket for Research, Dev bugs, or Content tasks. Returns a tracking URL. If no URL is returned, the dispatch FAILED. IMPORTANT: Include routing_confidence (0-100). If below 85%, user will be asked to choose the destination.',
   input_schema: {
     type: 'object' as const,
     properties: {
@@ -72,8 +87,19 @@ export const DISPATCHER_TOOL: Anthropic.Tool = {
         enum: ['Personal', 'The Grove', 'Consulting', 'Home/Garage'],
         description: 'Which life domain this belongs to. Default: The Grove',
       },
+      routing_confidence: {
+        type: 'number',
+        minimum: 0,
+        maximum: 100,
+        description: 'REQUIRED. Your confidence (0-100) that this category is correct. If below 85, user will be asked to choose between Pit Crew and Work Queue. Be honest - ambiguous tasks (could be bug OR feature, research OR build) should have low confidence.',
+      },
+      alternative_category: {
+        type: 'string',
+        enum: ['research', 'dev_bug', 'feature', 'content'],
+        description: 'If routing_confidence < 85, provide the alternative category you considered. This will be shown as the second option.',
+      },
     },
-    required: ['reasoning', 'category', 'title', 'description', 'priority'],
+    required: ['reasoning', 'category', 'title', 'description', 'priority', 'routing_confidence'],
   },
 };
 
@@ -81,9 +107,12 @@ export const DISPATCHER_TOOL: Anthropic.Tool = {
 // Tool Executor
 // ==========================================
 
+// Confidence threshold for auto-routing (below this = ask user)
+const ROUTING_CONFIDENCE_THRESHOLD = 85;
+
 export async function handleSubmitTicket(
   input: Record<string, unknown>
-): Promise<{ success: boolean; result: unknown; error?: string }> {
+): Promise<{ success: boolean; result: unknown; error?: string; needsChoice?: boolean }> {
   const reasoning = input.reasoning as string;
   const category = input.category as 'research' | 'dev_bug' | 'feature' | 'content';
   const title = input.title as string;
@@ -91,14 +120,48 @@ export async function handleSubmitTicket(
   const priority = input.priority as 'P0' | 'P1' | 'P2';
   const requireReview = (input.require_review as boolean) ?? false;
   const pillar = (input.pillar as string) || 'The Grove';
+  const routingConfidence = (input.routing_confidence as number) ?? 100;
+  const alternativeCategory = input.alternative_category as string | undefined;
 
-  logger.info('[Dispatcher] Routing ticket', { category, title, priority, requireReview });
+  logger.info('[Dispatcher] Routing ticket', { category, title, priority, requireReview, routingConfidence });
   logger.info('[Dispatcher] Reasoning', { reasoning: reasoning.substring(0, 200) });
+
+  // LOW CONFIDENCE: Return choice response instead of auto-routing
+  if (routingConfidence < ROUTING_CONFIDENCE_THRESHOLD) {
+    // Determine alternative category if not provided
+    const isPitCrewCategory = category === 'dev_bug' || category === 'feature';
+    const defaultAlternative = isPitCrewCategory ? 'research' : 'dev_bug';
+    const alternative = alternativeCategory || defaultAlternative;
+
+    logger.info('[Dispatcher] Low confidence routing - requesting user choice', {
+      confidence: routingConfidence,
+      suggested: category,
+      alternative,
+    });
+
+    return {
+      success: false,
+      needsChoice: true,
+      result: {
+        needsChoice: true,
+        routingConfidence,
+        suggestedCategory: category,
+        alternativeCategory: alternative,
+        title,
+        description,
+        priority,
+        requireReview,
+        pillar,
+        reasoning,
+        message: `Routing confidence ${routingConfidence}% is below threshold. User needs to choose between ${category} (→ ${isPitCrewCategory ? 'Pit Crew' : 'Work Queue'}) and ${alternative}.`,
+      },
+    };
+  }
 
   // ROUTE 1: Engineering (Pit Crew MCP) - bugs AND features
   if (category === 'dev_bug' || category === 'feature') {
     const ticketType = category === 'feature' ? 'feature' : 'bug';
-    return await routeToPitCrew({ title, description, priority, ticketType });
+    return await routeToPitCrew({ title, description, priority, ticketType, reasoning });
   }
 
   // ROUTE 2: Operations (Work Queue / Research Worker)
@@ -122,8 +185,9 @@ async function routeToPitCrew(params: {
   description: string;
   priority: 'P0' | 'P1' | 'P2';
   ticketType: 'bug' | 'feature';
+  reasoning: string;
 }): Promise<{ success: boolean; result: unknown; error?: string }> {
-  const { title, description, priority, ticketType } = params;
+  const { title, description, priority, ticketType, reasoning } = params;
 
   // Check if Pit Crew MCP is connected
   const mcpStatus = getMcpStatus();
@@ -132,14 +196,17 @@ async function routeToPitCrew(params: {
   if (!pitCrewStatus || pitCrewStatus.status !== 'connected') {
     logger.warn('[Dispatcher] Pit Crew MCP not connected, falling back to direct Notion');
     // Fallback: Create directly in Dev Pipeline via Notion SDK
-    return await createDirectDevPipelineItem({ title, description, priority, ticketType });
+    return await createDirectDevPipelineItem({ title, description, priority, ticketType, reasoning });
   }
 
   try {
+    // Build rich context: reasoning (why) + description (what)
+    const fullContext = `**Atlas Analysis:**\n${reasoning}\n\n**Task Specification:**\n${description}`;
+
     const result = await executeMcpTool('mcp__pit_crew__dispatch_work', {
       type: ticketType,
       title,
-      context: description,
+      context: fullContext,
       priority,
     });
 
@@ -183,6 +250,53 @@ async function routeToPitCrew(params: {
       };
     }
 
+    // APPEND RICH CONTENT TO PAGE BODY
+    // Pit Crew creates the page, but we add the full analysis as blocks
+    try {
+      const pageId = parsed.notion_page_id || extractPageIdFromUrl(parsed.notion_url);
+      if (pageId) {
+        const notion = getNotionClient();
+        await notion.blocks.children.append({
+          block_id: pageId,
+          children: [
+            {
+              object: 'block',
+              type: 'heading_3',
+              heading_3: {
+                rich_text: [{ type: 'text', text: { content: '🤖 Atlas Analysis' } }],
+              },
+            },
+            {
+              object: 'block',
+              type: 'callout',
+              callout: {
+                rich_text: [{ type: 'text', text: { content: reasoning.substring(0, 2000) } }],
+                icon: { type: 'emoji', emoji: '💡' },
+              },
+            },
+            {
+              object: 'block',
+              type: 'heading_3',
+              heading_3: {
+                rich_text: [{ type: 'text', text: { content: '📋 Task Specification' } }],
+              },
+            },
+            {
+              object: 'block',
+              type: 'paragraph',
+              paragraph: {
+                rich_text: [{ type: 'text', text: { content: description.substring(0, 2000) } }],
+              },
+            },
+          ],
+        });
+        logger.info('[Dispatcher] Appended rich content to page body', { pageId });
+      }
+    } catch (appendErr) {
+      // Non-fatal - page was created, just couldn't append rich content
+      logger.warn('[Dispatcher] Failed to append rich content to page body', { error: appendErr });
+    }
+
     const typeLabel = ticketType === 'feature' ? 'Feature' : 'Bug';
     return {
       success: true,
@@ -217,8 +331,9 @@ async function createDirectDevPipelineItem(params: {
   description: string;
   priority: 'P0' | 'P1' | 'P2';
   ticketType: 'bug' | 'feature';
+  reasoning: string;
 }): Promise<{ success: boolean; result: unknown; error?: string }> {
-  const { title, description, priority, ticketType } = params;
+  const { title, description, priority, ticketType, reasoning } = params;
 
   try {
     const notion = getNotionClient();
@@ -235,7 +350,7 @@ async function createDirectDevPipelineItem(params: {
         'Status': { select: { name: 'Dispatched' } },
         'Requestor': { select: { name: 'Atlas [Telegram]' } },
         'Handler': { select: { name: 'Pit Crew' } },
-        'Thread': { rich_text: [{ text: { content: description.substring(0, 2000) } }] },
+        'Thread': { rich_text: [{ text: { content: `**Atlas Analysis:**\n${reasoning}\n\n**Task Specification:**\n${description}`.substring(0, 2000) } }] },
         'Dispatched': { date: { start: new Date().toISOString().split('T')[0] } },
       },
     });

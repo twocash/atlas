@@ -76,11 +76,13 @@ export const ALL_TOOLS: Anthropic.Tool[] = NATIVE_TOOLS;
  * Handles both native Atlas tools and MCP tools
  *
  * NEURO-LINK SPRINT: Dispatcher tools (submit_ticket) are checked FIRST
+ *
+ * Note: `needsChoice` is returned by submit_ticket when routing confidence < 85%
  */
 export async function executeTool(
   toolName: string,
   input: Record<string, unknown>
-): Promise<{ success: boolean; result: unknown; error?: string }> {
+): Promise<{ success: boolean; result: unknown; error?: string; needsChoice?: boolean }> {
   // Check if this is an MCP tool (format: mcp__{serverId}__{toolName})
   if (isMcpTool(toolName)) {
     return await executeMcpTool(toolName, input);

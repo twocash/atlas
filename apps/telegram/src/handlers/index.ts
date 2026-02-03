@@ -15,8 +15,10 @@ import { handleActionIntent, handleActionCallback, cleanupPendingActions } from 
 import { handleChatIntent, clearConversationHistory } from "./chat";
 import { handleVoiceCallback } from "./voice-callback";
 import { handleContentCallback } from "./content-callback";
+import { handleDispatchCallback } from "./dispatch-callback";
 import { handleNotionCallback, handleNotionStatusUpdate } from "./notion-callback";
 import { isContentCallback } from "../conversation/content-confirm";
+import { isDispatchCallback } from "../conversation/dispatch-choice";
 import { isNotionCallback } from "../conversation/notion-url";
 import { logger } from "../logger";
 import { audit } from "../audit";
@@ -125,6 +127,12 @@ export async function routeCallback(ctx: Context): Promise<void> {
   // Content classification callbacks (Universal Content Analysis)
   if (isContentCallback(data)) {
     await handleContentCallback(ctx);
+    return;
+  }
+
+  // Dispatch routing choice callbacks (low-confidence routing)
+  if (isDispatchCallback(data)) {
+    await handleDispatchCallback(ctx);
     return;
   }
 
