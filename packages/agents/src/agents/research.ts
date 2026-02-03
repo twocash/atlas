@@ -12,7 +12,8 @@
  */
 
 import type { AgentRegistry } from "../registry";
-import type { Agent, AgentResult, AgentMetrics } from "../types";
+import type { Agent, AgentResult, AgentMetrics, Pillar } from "../types";
+import { getPromptManager, type PromptPillar } from "../services/prompt-manager";
 
 // ==========================================
 // Research Agent Types
@@ -54,6 +55,12 @@ export interface ResearchConfig {
 
   /** Custom voice instructions (when voice="custom") */
   voiceInstructions?: string;
+
+  /** Context pillar for prompt routing (e.g., "The Grove") */
+  pillar?: Pillar;
+
+  /** Specific use case for prompt selection (e.g., "Sprout Generation") */
+  useCase?: string;
 }
 
 /**
@@ -453,9 +460,14 @@ async function getGeminiClient(): Promise<GeminiClient> {
 // ==========================================
 
 /**
- * Default voice instructions for each predefined voice
+ * FALLBACK voice instructions for each predefined voice.
+ * These are used when PromptManager cannot fetch from Notion.
+ * Primary source is the Atlas System Prompts database in Notion.
+ *
+ * @see packages/agents/src/services/prompt-manager.ts
+ * @see apps/telegram/data/migrations/prompts-v1.json
  */
-const VOICE_DEFAULTS: Record<Exclude<ResearchVoice, "custom">, string> = {
+const FALLBACK_VOICE_DEFAULTS: Record<Exclude<ResearchVoice, "custom">, string> = {
   "grove-analytical": `
 ## Writing Voice: Grove Analytical
 
@@ -515,33 +527,83 @@ Provide research in working-notes format. Key characteristics:
 };
 
 /**
- * Get voice instructions for the research output
+ * Get voice instructions for the research output.
+ * Tries PromptManager first, falls back to hardcoded defaults.
+ */
+async function getVoiceInstructionsAsync(config: ResearchConfig): Promise<string> {
+  const voice = config.voice || "grove-analytical";
+
+  // Handle custom voice
+  if (voice === "custom" && config.voiceInstructions) {
+    return `\n## Writing Voice: Custom\n\n${config.voiceInstructions}\n`;
+  }
+
+  // Try to fetch from PromptManager (Notion)
+  try {
+    const promptManager = getPromptManager();
+    const pillar = (config.pillar as PromptPillar) || "All";
+
+    // Build voice prompt ID: "voice.grove-analytical" or "voice.linkedin-punchy"
+    const voicePrompt = await promptManager.getPrompt({
+      capability: "Voice",
+      pillar,
+      useCase: "General",
+    });
+
+    if (voicePrompt) {
+      console.log(`[Research] Loaded voice "${voice}" from PromptManager`);
+      return voicePrompt;
+    }
+  } catch (error) {
+    console.warn("[Research] PromptManager fetch failed, using fallback:", error);
+  }
+
+  // Fallback to hardcoded defaults
+  console.log(`[Research] Using fallback voice "${voice}"`);
+  // Type assertion needed because voice can be "custom" which isn't in FALLBACK_VOICE_DEFAULTS
+  const fallbackVoice = voice === "custom" ? "grove-analytical" : voice;
+  return FALLBACK_VOICE_DEFAULTS[fallbackVoice] || FALLBACK_VOICE_DEFAULTS["grove-analytical"];
+}
+
+/**
+ * Sync wrapper for backwards compatibility - uses fallback only
+ * @deprecated Use getVoiceInstructionsAsync for PromptManager integration
  */
 function getVoiceInstructions(config: ResearchConfig): string {
   if (!config.voice || config.voice === "grove-analytical") {
-    // Default voice
-    return VOICE_DEFAULTS["grove-analytical"];
+    return FALLBACK_VOICE_DEFAULTS["grove-analytical"];
   }
 
   if (config.voice === "custom" && config.voiceInstructions) {
     return `\n## Writing Voice: Custom\n\n${config.voiceInstructions}\n`;
   }
 
-  return VOICE_DEFAULTS[config.voice] || VOICE_DEFAULTS["grove-analytical"];
+  // Type assertion needed because voice can be "custom" which isn't in FALLBACK_VOICE_DEFAULTS
+  const fallbackVoice = config.voice === "custom" ? "grove-analytical" : config.voice;
+  return FALLBACK_VOICE_DEFAULTS[fallbackVoice] || FALLBACK_VOICE_DEFAULTS["grove-analytical"];
 }
 
 // ==========================================
 // System Prompts by Depth
 // ==========================================
 
-function buildResearchPrompt(config: ResearchConfig): string {
+async function buildResearchPrompt(config: ResearchConfig): Promise<string> {
   const depth = config.depth || "standard";
   const depthCfg = DEPTH_CONFIG[depth];
-  const voiceInstructions = getVoiceInstructions(config);
+
+  // Try async voice fetch with PromptManager, fall back to sync
+  let voiceInstructions: string;
+  try {
+    voiceInstructions = await getVoiceInstructionsAsync(config);
+  } catch {
+    voiceInstructions = getVoiceInstructions(config);
+  }
 
   // DEBUG: Log voice injection
   console.log("[Research] buildResearchPrompt voice config:", {
     voice: config.voice,
+    pillar: config.pillar,
+    useCase: config.useCase,
     hasVoiceInstructions: !!config.voiceInstructions,
     voiceInstructionsLength: config.voiceInstructions?.length || 0,
     injectedVoiceLength: voiceInstructions.length,
@@ -733,7 +795,7 @@ export async function executeResearch(
     await registry.updateProgress(agent.id, 15, "Searching with Google");
 
     // Build prompt and execute
-    const prompt = buildResearchPrompt(config);
+    const prompt = await buildResearchPrompt(config);
 
     await registry.updateProgress(agent.id, 30, `Analyzing sources (${depth})`);
     const response = await gemini.generateContent(prompt, depthCfg.maxTokens);
@@ -1219,5 +1281,5 @@ export async function runResearchAgent(
 // Exports
 // ==========================================
 
-export { DEPTH_CONFIG, VOICE_DEFAULTS };
+export { DEPTH_CONFIG, FALLBACK_VOICE_DEFAULTS as VOICE_DEFAULTS };
 export type { ResearchConfig, ResearchFinding, ResearchResult, ResearchDepth, ResearchVoice };

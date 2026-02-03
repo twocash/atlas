@@ -373,6 +373,18 @@ export function createBot(): Bot<AtlasContext> {
   });
 
   // ==========================================
+  // Procedural UI (Dynamic Use Case Selection)
+  // ==========================================
+
+  // Register dynamic use case handlers for pillar-specific workflows
+  // These enable dynamic keyboards based on prompts from Notion
+  import("./features/procedural-ui").then(({ registerProceduralHandlers }) => {
+    registerProceduralHandlers(bot);
+  }).catch((err) => {
+    logger.warn("Failed to register procedural UI handlers:", err);
+  });
+
+  // ==========================================
   // Error handling & cleanup
   // ==========================================
 

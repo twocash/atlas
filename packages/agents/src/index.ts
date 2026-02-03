@@ -34,6 +34,7 @@ export type {
   AgentStatus,
   AgentType,
   AgentPriority,
+  Pillar,
   AgentConfig,
   Agent,
   AgentResult,
@@ -87,3 +88,18 @@ export {
   type ResearchResult,
   type ResearchDepth,
 } from "./agents/research";
+
+// Services
+export {
+  PromptManager,
+  getPromptManager,
+  getPrompt,
+  getPromptById,
+  listUseCases,
+  type PromptCapability,
+  type PromptStage,
+  type PromptPillar,
+  type PromptRecord,
+  type PromptLookup,
+  type PromptVariables,
+} from "./services";

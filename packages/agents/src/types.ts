@@ -38,6 +38,11 @@ export type AgentType =
  */
 export type AgentPriority = "P0" | "P1" | "P2" | "P3";
 
+/**
+ * Life domain pillars for context routing
+ */
+export type Pillar = "Personal" | "The Grove" | "Consulting" | "Home/Garage";
+
 // ==========================================
 // Agent Configuration
 // ==========================================
@@ -69,6 +74,12 @@ export interface AgentConfig {
 
   /** Callback URL for completion notification */
   callbackUrl?: string;
+
+  /** Context pillar for prompt routing (e.g., "The Grove") */
+  pillar?: Pillar;
+
+  /** Specific use case for prompt selection (e.g., "Sprout Generation") */
+  useCase?: string;
 }
 
 /**
@@ -416,4 +427,52 @@ export interface WorkQueueUpdater {
    * @param output Output description or URL
    */
   setOutput(itemId: string, output: string): Promise<void>;
+}
+
+// ==========================================
+// Research Agent Configuration
+// ==========================================
+
+/**
+ * Research depth levels
+ */
+export type ResearchDepth = "light" | "standard" | "deep";
+
+/**
+ * Writing voice/style for research output
+ */
+export type ResearchVoice =
+  | "grove-analytical"
+  | "linkedin-punchy"
+  | "consulting"
+  | "raw-notes"
+  | "custom";
+
+/**
+ * Configuration for a research task
+ */
+export interface ResearchConfig {
+  /** The research query/question */
+  query: string;
+
+  /** Research depth - affects rigor, sources, and token budget */
+  depth?: ResearchDepth;
+
+  /** Focus area to narrow research */
+  focus?: string;
+
+  /** Maximum sources to include (overrides depth default) */
+  maxSources?: number;
+
+  /** Writing voice/style for the output */
+  voice?: ResearchVoice;
+
+  /** Custom voice instructions (when voice="custom") */
+  voiceInstructions?: string;
+
+  /** Context pillar for prompt routing (e.g., "The Grove") */
+  pillar?: Pillar;
+
+  /** Specific use case for prompt selection (e.g., "Sprout Generation") */
+  useCase?: string;
 }
