@@ -32,6 +32,54 @@ import {
 const CONTENT_CONFIRM_ENABLED = process.env.ATLAS_CONTENT_CONFIRM !== 'false';
 
 /**
+ * Format tool context for conversation history
+ *
+ * Extracts key information (IDs, URLs, success/failure) from tool results
+ * so Claude can maintain context across conversation turns.
+ *
+ * Fix for: "Conversation continuity breaks on tool follow-ups"
+ */
+function formatToolContextForHistory(toolContexts: ToolContext[]): string {
+  if (toolContexts.length === 0) return '';
+
+  const summaries: string[] = [];
+
+  for (const ctx of toolContexts) {
+    const toolResult = ctx.result as { success?: boolean; result?: unknown; error?: string } | undefined;
+    const success = toolResult?.success ?? false;
+    const result = toolResult?.result as Record<string, unknown> | undefined;
+
+    // Extract key identifiers from results
+    const keyInfo: string[] = [];
+
+    if (result) {
+      // Common ID fields
+      if (result.id) keyInfo.push(`id: ${result.id}`);
+      if (result.pageId) keyInfo.push(`pageId: ${result.pageId}`);
+      if (result.taskId) keyInfo.push(`taskId: ${result.taskId}`);
+      if (result.feedId) keyInfo.push(`feedId: ${result.feedId}`);
+      if (result.workQueueId) keyInfo.push(`workQueueId: ${result.workQueueId}`);
+      if (result.discussionId) keyInfo.push(`discussionId: ${result.discussionId}`);
+
+      // URLs
+      if (result.url) keyInfo.push(`url: ${result.url}`);
+      if (result.notionUrl) keyInfo.push(`url: ${result.notionUrl}`);
+
+      // Status/title for context
+      if (result.title) keyInfo.push(`title: "${String(result.title).substring(0, 50)}"`);
+      if (result.status) keyInfo.push(`status: ${result.status}`);
+    }
+
+    // Build summary line
+    const status = success ? '✓' : '✗';
+    const info = keyInfo.length > 0 ? ` (${keyInfo.join(', ')})` : '';
+    summaries.push(`${status} ${ctx.toolName}${info}`);
+  }
+
+  return `[Tool context for follow-up:\n${summaries.join('\n')}]`;
+}
+
+/**
  * ANTI-HALLUCINATION: Fix fabricated Notion URLs in Claude's response
  *
  * Claude often ignores EXACT_URL_FOR_USER markers and fabricates similar-looking URLs.
@@ -568,8 +616,9 @@ export async function handleConversation(ctx: Context): Promise<void> {
 
     // Build version with tool context for conversation history
     // This helps maintain context across turns when tools were used
-    const historyResponse = toolsUsed.length > 0
-      ? `${responseText}\n\n[Actions taken: ${toolsUsed.join(', ')}]`
+    // Solution A: Include key result data (IDs, URLs) for follow-up continuity
+    const historyResponse = toolContexts.length > 0
+      ? `${responseText}\n\n${formatToolContextForHistory(toolContexts)}`
       : responseText;
 
     // Classify the message for audit
