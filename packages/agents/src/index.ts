@@ -105,3 +105,53 @@ export {
   type PromptComposition,
   type ComposedPrompt,
 } from "./services";
+
+// Prompt Composition Service (V3 Active Capture)
+export {
+  // Main composition
+  composePrompt,
+  composePromptFromState,
+
+  // ID resolution
+  buildPromptIds,
+  buildPromptIdsFromContext,
+  resolveDrafterId,
+  resolveVoiceId,
+  resolveDefaultDrafterId,
+
+  // Validation
+  validateSelection,
+  validateContext,
+
+  // Registry
+  getAvailableActions,
+  getAvailableVoices,
+  getPillarSlug,
+  getPillarFromSlug,
+  pillarSupportsAction,
+  pillarHasVoice,
+
+  // Constants
+  PILLAR_OPTIONS,
+  PILLAR_SLUGS,
+  SLUG_TO_PILLAR,
+  ACTION_OPTIONS,
+  ACTION_LABELS,
+  ACTION_EMOJIS,
+  PILLAR_ACTIONS,
+  PILLAR_VOICES,
+  ACTION_VOICE_PREFERENCES,
+
+  // Types
+  type CompositionPillar,
+  type PillarSlug,
+  type ActionType,
+  type PromptSelectionState,
+  type PromptCompositionIds,
+  type CompositionContext,
+  type PromptCompositionResult,
+  type VoiceOption,
+  type ActionOption,
+  type PillarOption,
+  type ValidationError,
+} from "./services";
