@@ -53,6 +53,10 @@ inputs:
     type: object
     required: false
     description: V3 Active Capture composed prompt (overrides default analysis prompt)
+  v3Requested:
+    type: boolean
+    required: false
+    description: Flag indicating V3 Active Capture was explicitly requested (enables strict mode)
 
 outputs:
   - type: feed_entry
@@ -79,11 +83,13 @@ process:
       then:
         # Analyze the content
         # V3 Active Capture: composedPrompt overrides systemPrompt when provided
+        # v3Requested flag enables strict mode enforcement for V3 captures
         - id: analyze_content
           tool: claude_analyze
           inputs:
             content: "$step.http_fetch.text"
             composedPrompt: "$input.composedPrompt"
+            v3Requested: "$input.v3Requested"
             systemPrompt: |
               Analyze this web content. Source URL: $input.url
 

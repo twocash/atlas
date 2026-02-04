@@ -1994,6 +1994,13 @@ async function executeGetChangelog(
  *
  * V3 Active Capture: If composedPrompt is provided, it OVERRIDES systemPrompt.
  * Set PROMPT_STRICT_MODE=true to fail when composedPrompt is expected but not provided.
+ *
+ * Input parameters:
+ * - content: The content to analyze (required)
+ * - systemPrompt: Default analysis prompt (used when no V3 prompt)
+ * - composedPrompt: V3 composed prompt object { prompt, temperature, maxTokens }
+ * - v3Requested: Boolean flag indicating V3 Active Capture was explicitly requested
+ *                (set when promptIds were provided to the capture endpoint)
  */
 async function executeClaudeAnalyze(
   input: Record<string, unknown>
@@ -2001,23 +2008,27 @@ async function executeClaudeAnalyze(
   const content = input.content as string;
   const systemPrompt = input.systemPrompt as string | undefined;
   const composedPrompt = input.composedPrompt as { prompt?: string; temperature?: number; maxTokens?: number } | undefined;
+  const v3Requested = input.v3Requested as boolean | undefined;
 
   // V3 Active Capture: composedPrompt overrides systemPrompt
   const effectivePrompt = composedPrompt?.prompt || systemPrompt;
   const temperature = composedPrompt?.temperature ?? 0.7;
   const maxTokens = composedPrompt?.maxTokens ?? 1000;
 
-  // Strict mode: Fail if we're falling back to systemPrompt when composedPrompt was expected
+  // Strict mode: Only fail when V3 was explicitly requested but composition failed
+  // Regular skill execution (no V3 params) can still use systemPrompt fallback
   const strictMode = process.env.PROMPT_STRICT_MODE === 'true';
-  if (strictMode && !composedPrompt?.prompt && systemPrompt) {
-    logger.error('PROMPT_STRICT_MODE: Using fallback systemPrompt instead of composedPrompt', {
+  if (strictMode && v3Requested && !composedPrompt?.prompt) {
+    logger.error('PROMPT_STRICT_MODE: V3 Active Capture requested but composedPrompt not provided', {
+      v3Requested,
       hasComposedPrompt: !!composedPrompt,
       composedPromptHasText: !!composedPrompt?.prompt,
+      hasSystemPrompt: !!systemPrompt,
     });
     return {
       success: false,
       result: null,
-      error: 'PROMPT_STRICT_MODE: composedPrompt not provided. V3 Active Capture pipeline failure - the drafter prompt was not fetched/composed.',
+      error: 'PROMPT_STRICT_MODE: V3 Active Capture was requested but composedPrompt not provided. The drafter prompt was not fetched/composed from System Prompts database.',
     };
   }
 

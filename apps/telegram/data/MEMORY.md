@@ -50,7 +50,7 @@ This enables future agents to understand WHY changes were made, not just WHAT.
 
 ---
 
-*Last updated: 2026-02-03*
+*Last updated: 2026-02-04*
 
 
 - 2026-01-31: CRITICAL - Never hallucinate Notion URLs. Only share actual URLs returned by work_queue_create and other tools. Jim needs seamless connectivity - fake links break his workflow. Always use real url/feedUrl fields from tool responses.
@@ -419,3 +419,32 @@ Why this matters
 - SOP-010: Skill Output Standard
 - SOP-011: Notion Template System
 - SOP-012: MCP Server Declaration in Skills
+
+### 2026-02-04: V3 Active Capture Strict Mode Fix (ATLAS-V3-001)
+
+**BUG RESOLVED:** PROMPT_STRICT_MODE was blocking ALL skills using systemPrompt fallback, not just V3 captures.
+
+**Root Cause:** The strict mode check was:
+```typescript
+if (strictMode && !composedPrompt?.prompt && systemPrompt)
+```
+This failed for ANY skill using `systemPrompt` when strict mode was on.
+
+**Fix:** Added `v3Requested` flag to distinguish V3 Active Capture requests:
+```typescript
+if (strictMode && v3Requested && !composedPrompt?.prompt)
+```
+
+**How it works:**
+1. Chrome extension sends capture with `promptIds: { drafter, voice, lens }`
+2. Status server attempts prompt composition
+3. If promptIds were provided, `v3Requested = true` is passed to skill
+4. Strict mode only enforces composedPrompt when V3 was explicitly requested
+5. Regular skills using systemPrompt continue to work
+
+**Files Changed:**
+- `apps/telegram/src/conversation/tools/core.ts` - Added v3Requested flag, fixed strict mode check
+- `apps/telegram/src/health/status-server.ts` - Sets v3Requested when promptIds provided
+- `apps/telegram/data/skills/url-extract/skill.yaml` - Added v3Requested input, passes to claude_analyze
+
+**KEY LEARNING:** Strict mode was put in place to catch V3 pipeline failures - it correctly found this issue! The fix ensures strict mode applies only when V3 is truly expected, not for all skill execution.

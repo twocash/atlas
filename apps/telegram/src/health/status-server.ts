@@ -390,6 +390,10 @@ async function processCapture(capture: CaptureRequest) {
         ownerChatId,
       });
 
+      // V3: v3Requested is true when promptIds were explicitly provided
+      // This flag tells claude_analyze to enforce strict mode for V3 captures
+      const v3Requested = !!(promptIds && (promptIds.drafter || promptIds.voice || promptIds.lens));
+
       await executeSkill(match.skill, {
         userId: ownerChatId,
         messageText: url,
@@ -405,8 +409,9 @@ async function processCapture(capture: CaptureRequest) {
           feedUrl: (feedEntry as any).url,      // Full Notion URL for Feed entry
           depth: action === 'research' ? 'deep' : 'standard',
           telegramChatId: ownerChatId, // For notification step
-          // V3: Pass composed prompt for skill to use
+          // V3: Pass composed prompt and request flag for skill to use
           composedPrompt,
+          v3Requested,
         },
       });
 
