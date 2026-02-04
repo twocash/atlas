@@ -430,7 +430,7 @@ export const CORE_TOOLS: Anthropic.Tool[] = [
   // ==========================================
   {
     name: 'claude_analyze',
-    description: 'Analyze content with Claude using a custom prompt. Used by skills for pillar-aware content analysis.',
+    description: 'Analyze content with Claude using a custom prompt. Used by skills for pillar-aware content analysis. If composedPrompt is provided (from V3 Active Capture), it overrides systemPrompt.',
     input_schema: {
       type: 'object' as const,
       properties: {
@@ -440,10 +440,19 @@ export const CORE_TOOLS: Anthropic.Tool[] = [
         },
         systemPrompt: {
           type: 'string',
-          description: 'Analysis instructions for Claude',
+          description: 'Analysis instructions for Claude (fallback if no composedPrompt)',
+        },
+        composedPrompt: {
+          type: 'object',
+          description: 'V3 Active Capture composed prompt (overrides systemPrompt when present)',
+          properties: {
+            prompt: { type: 'string' },
+            temperature: { type: 'number' },
+            maxTokens: { type: 'number' },
+          },
         },
       },
-      required: ['content', 'systemPrompt'],
+      required: ['content'],
     },
   },
   {
@@ -1190,15 +1199,17 @@ async function executeWebSearch(
 /**
  * Web Fetch Tool
  *
- * Fetches content from a URL and extracts text.
+ * Fetches content from a URL using Jina Reader API for clean markdown extraction.
+ * Jina Reader strips nav, ads, footers and returns just the article content.
  * Used by skills for contextual extraction.
+ *
+ * @see https://jina.ai/reader/
  */
 async function executeWebFetch(
   input: Record<string, unknown>
-): Promise<{ success: boolean; result: unknown; text?: string; error?: string }> {
+): Promise<{ success: boolean; result: unknown; error?: string }> {
   const url = input.url as string;
-  const extractText = (input.extractText as boolean) !== false; // default true
-  const timeout = (input.timeout as number) || 15000;
+  const timeout = (input.timeout as number) || 20000; // Slightly longer for Jina
 
   if (!url || typeof url !== 'string') {
     return {
@@ -1214,12 +1225,105 @@ async function executeWebFetch(
     const controller = new AbortController();
     const timeoutId = setTimeout(() => controller.abort(), timeout);
 
+    // Use Jina Reader API for clean content extraction
+    // Returns markdown with just the article content, no nav/footer/ads
+    const jinaUrl = `https://r.jina.ai/${url}`;
+
+    logger.info('Fetching via Jina Reader', { url, jinaUrl });
+
+    const response = await fetch(jinaUrl, {
+      signal: controller.signal,
+      headers: {
+        'Accept': 'text/plain',
+      },
+    });
+
+    clearTimeout(timeoutId);
+
+    if (!response.ok) {
+      // Fallback to direct fetch if Jina fails
+      logger.warn('Jina Reader failed, falling back to direct fetch', {
+        url,
+        status: response.status,
+      });
+      return await executeDirectFetch(url, timeout - (Date.now() - startTime));
+    }
+
+    const text = await response.text();
+    const latencyMs = Date.now() - startTime;
+
+    // Truncate if too long
+    const maxLength = 50000;
+    const finalText = text.length > maxLength
+      ? text.substring(0, maxLength) + '\n\n[Content truncated...]'
+      : text;
+
+    logger.info('Jina Reader fetch complete', {
+      url,
+      latencyMs,
+      textLength: finalText.length,
+    });
+
+    // For skills: return success=false if content is too short for meaningful analysis
+    const MIN_CONTENT_LENGTH = 100;
+    if (finalText.length < MIN_CONTENT_LENGTH) {
+      logger.info('Content too short for analysis', {
+        url,
+        textLength: finalText.length,
+        minRequired: MIN_CONTENT_LENGTH,
+      });
+      return {
+        success: false,
+        result: { url, textLength: finalText.length, latencyMs, reason: 'content_too_short', text: finalText },
+        error: `Content too short (${finalText.length} chars) - likely JS-rendered or blocked page`,
+      };
+    }
+
+    return {
+      success: true,
+      result: { url, textLength: finalText.length, latencyMs, text: finalText },
+    };
+  } catch (error: any) {
+    const latencyMs = Date.now() - startTime;
+    const errorMessage = error?.name === 'AbortError'
+      ? `Timeout after ${timeout}ms`
+      : error?.message || String(error);
+
+    logger.warn('Jina Reader fetch failed', { url, error: errorMessage, latencyMs });
+
+    // Try direct fetch as fallback
+    if (error?.name !== 'AbortError') {
+      logger.info('Attempting direct fetch fallback');
+      return await executeDirectFetch(url, 10000);
+    }
+
+    return {
+      success: false,
+      result: null,
+      error: `Failed to fetch ${url}: ${errorMessage}`,
+    };
+  }
+}
+
+/**
+ * Direct fetch fallback when Jina Reader fails
+ * Uses basic HTML stripping (lower quality but works for simple pages)
+ */
+async function executeDirectFetch(
+  url: string,
+  timeout: number
+): Promise<{ success: boolean; result: unknown; error?: string }> {
+  const startTime = Date.now();
+
+  try {
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), timeout);
+
     const response = await fetch(url, {
       signal: controller.signal,
       headers: {
         'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
         'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
-        'Accept-Language': 'en-US,en;q=0.5',
       },
     });
 
@@ -1236,73 +1340,36 @@ async function executeWebFetch(
     const html = await response.text();
     const latencyMs = Date.now() - startTime;
 
-    let text = html;
-    if (extractText) {
-      // Simple HTML to text extraction
-      text = html
-        // Remove script and style tags and their content
-        .replace(/<script\b[^<]*(?:(?!<\/script>)<[^<]*)*<\/script>/gi, '')
-        .replace(/<style\b[^<]*(?:(?!<\/style>)<[^<]*)*<\/style>/gi, '')
-        // Remove HTML tags
-        .replace(/<[^>]+>/g, ' ')
-        // Decode common HTML entities
-        .replace(/&nbsp;/g, ' ')
-        .replace(/&amp;/g, '&')
-        .replace(/&lt;/g, '<')
-        .replace(/&gt;/g, '>')
-        .replace(/&quot;/g, '"')
-        .replace(/&#39;/g, "'")
-        // Normalize whitespace
-        .replace(/\s+/g, ' ')
-        .trim();
+    // Basic HTML to text extraction (fallback quality)
+    let text = html
+      .replace(/<script\b[^<]*(?:(?!<\/script>)<[^<]*)*<\/script>/gi, '')
+      .replace(/<style\b[^<]*(?:(?!<\/style>)<[^<]*)*<\/style>/gi, '')
+      .replace(/<[^>]+>/g, ' ')
+      .replace(/&nbsp;/g, ' ')
+      .replace(/&amp;/g, '&')
+      .replace(/&lt;/g, '<')
+      .replace(/&gt;/g, '>')
+      .replace(/&quot;/g, '"')
+      .replace(/&#39;/g, "'")
+      .replace(/\s+/g, ' ')
+      .trim();
 
-      // Truncate if too long
-      const maxLength = 50000;
-      if (text.length > maxLength) {
-        text = text.substring(0, maxLength) + '\n\n[Content truncated...]';
-      }
+    const maxLength = 50000;
+    if (text.length > maxLength) {
+      text = text.substring(0, maxLength) + '\n\n[Content truncated...]';
     }
 
-    logger.info('Web fetch complete', {
-      url,
-      latencyMs,
-      textLength: text.length,
-    });
-
-    // For skills: return success=false if content is too short for meaningful analysis
-    // This allows skill conditionals to fall back to browser automation
-    const MIN_CONTENT_LENGTH = 100;
-    if (extractText && text.length < MIN_CONTENT_LENGTH) {
-      logger.info('Web fetch content too short for analysis', {
-        url,
-        textLength: text.length,
-        minRequired: MIN_CONTENT_LENGTH,
-      });
-      return {
-        success: false,
-        result: { url, textLength: text.length, latencyMs, reason: 'content_too_short' },
-        text,
-        error: `Content too short (${text.length} chars) - likely JS-rendered page`,
-      };
-    }
+    logger.info('Direct fetch complete (fallback)', { url, latencyMs, textLength: text.length });
 
     return {
       success: true,
-      result: { url, textLength: text.length, latencyMs },
-      text,
+      result: { url, textLength: text.length, latencyMs, text, fallback: true },
     };
   } catch (error: any) {
-    const latencyMs = Date.now() - startTime;
-    const errorMessage = error?.name === 'AbortError'
-      ? `Timeout after ${timeout}ms`
-      : error?.message || String(error);
-
-    logger.warn('Web fetch failed', { url, error: errorMessage, latencyMs });
-
     return {
       success: false,
       result: null,
-      error: `Failed to fetch ${url}: ${errorMessage}`,
+      error: `Direct fetch failed: ${error?.message || String(error)}`,
     };
   }
 }
@@ -1924,20 +1991,60 @@ async function executeGetChangelog(
 /**
  * Analyze content with Claude using a custom prompt.
  * Used by skills for pillar-aware content analysis (e.g., Grove = research value, Consulting = intel).
+ *
+ * V3 Active Capture: If composedPrompt is provided, it OVERRIDES systemPrompt.
+ * Set PROMPT_STRICT_MODE=true to fail when composedPrompt is expected but not provided.
  */
 async function executeClaudeAnalyze(
   input: Record<string, unknown>
 ): Promise<{ success: boolean; result: unknown; error?: string }> {
   const content = input.content as string;
-  const systemPrompt = input.systemPrompt as string;
+  const systemPrompt = input.systemPrompt as string | undefined;
+  const composedPrompt = input.composedPrompt as { prompt?: string; temperature?: number; maxTokens?: number } | undefined;
 
-  if (!content || !systemPrompt) {
+  // V3 Active Capture: composedPrompt overrides systemPrompt
+  const effectivePrompt = composedPrompt?.prompt || systemPrompt;
+  const temperature = composedPrompt?.temperature ?? 0.7;
+  const maxTokens = composedPrompt?.maxTokens ?? 1000;
+
+  // Strict mode: Fail if we're falling back to systemPrompt when composedPrompt was expected
+  const strictMode = process.env.PROMPT_STRICT_MODE === 'true';
+  if (strictMode && !composedPrompt?.prompt && systemPrompt) {
+    logger.error('PROMPT_STRICT_MODE: Using fallback systemPrompt instead of composedPrompt', {
+      hasComposedPrompt: !!composedPrompt,
+      composedPromptHasText: !!composedPrompt?.prompt,
+    });
     return {
       success: false,
       result: null,
-      error: 'Both content and systemPrompt are required',
+      error: 'PROMPT_STRICT_MODE: composedPrompt not provided. V3 Active Capture pipeline failure - the drafter prompt was not fetched/composed.',
     };
   }
+
+  if (!content) {
+    return {
+      success: false,
+      result: null,
+      error: 'content is required',
+    };
+  }
+
+  if (!effectivePrompt) {
+    return {
+      success: false,
+      result: null,
+      error: 'Either systemPrompt or composedPrompt.prompt is required',
+    };
+  }
+
+  // Log which prompt source is being used
+  const promptSource = composedPrompt?.prompt ? 'composedPrompt (V3)' : 'systemPrompt (fallback)';
+  logger.info('Claude analyze using prompt', {
+    source: promptSource,
+    promptLength: effectivePrompt.length,
+    temperature,
+    maxTokens,
+  });
 
   try {
     // Dynamic import to avoid circular dependencies
@@ -1946,15 +2053,19 @@ async function executeClaudeAnalyze(
 
     const response = await anthropic.messages.create({
       model: 'claude-sonnet-4-20250514',
-      max_tokens: 1000,
-      system: systemPrompt,
+      max_tokens: maxTokens,
+      system: effectivePrompt,
       messages: [{ role: 'user', content: content.substring(0, 8000) }],
     });
 
     const textContent = response.content.find(c => c.type === 'text');
     const result = textContent ? textContent.text : '';
 
-    logger.info('Claude analysis complete', { inputLength: content.length, outputLength: result.length });
+    logger.info('Claude analysis complete', {
+      inputLength: content.length,
+      outputLength: result.length,
+      promptSource,
+    });
 
     return {
       success: true,

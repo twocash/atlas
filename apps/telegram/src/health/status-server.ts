@@ -269,26 +269,43 @@ async function processCapture(capture: CaptureRequest) {
     const capturedAt = new Date().toISOString();
 
     // Create Feed entry
+    // Properties based on action-log.ts which successfully creates Feed entries
     const feedEntry = await notion.pages.create({
       parent: { database_id: FEED_DB },
       properties: {
         'Entry': { title: [{ text: { content: entryTitle } }] },
         'Pillar': { select: { name: pillar } },
-        'Source': { url: url },
+        'Source': { select: { name: 'Chrome Extension' } },
         'Request Type': { select: { name: 'Research' } },
-        'Extraction Status': { select: { name: 'pending' } },
+        'Author': { select: { name: 'Atlas [Chrome]' } },
+        'Status': { select: { name: 'Captured' } },
+        'Date': { date: { start: new Date().toISOString() } },
       },
     });
 
+    // Add source URL to Feed page body
+    await notion.blocks.children.append({
+      block_id: feedEntry.id,
+      children: [
+        {
+          type: 'bookmark',
+          bookmark: { url },
+        },
+      ],
+    });
+
     // Create Work Queue entry
+    // Properties based on dispatcher.ts which successfully creates WQ entries
     const wqEntry = await notion.pages.create({
       parent: { database_id: WORK_QUEUE_DB },
       properties: {
-        'Item': { title: [{ text: { content: entryTitle } }] },
-        'Pillar': { select: { name: pillar } },
+        'Task': { title: [{ text: { content: entryTitle } }] },
         'Status': { select: { name: 'Captured' } },
+        'Priority': { select: { name: action === 'research' ? 'P1' : 'P2' } },
         'Type': { select: { name: 'Research' } },
-        'Priority': { select: { name: 'P2' } },
+        'Pillar': { select: { name: pillar } },
+        'Assignee': { select: { name: 'Atlas [Chrome]' } },
+        'Queued': { date: { start: new Date().toISOString().split('T')[0] } },
       },
     });
 
@@ -363,29 +380,51 @@ async function processCapture(capture: CaptureRequest) {
     const match = registry.findBestMatch(url, { pillar: pillar as any });
 
     if (match) {
+      // Get owner's Telegram chat ID for notifications
+      const ownerChatId = parseInt(process.env.TELEGRAM_ALLOWED_USERS?.split(',')[0]?.trim() || '0', 10);
+
       logger.info('Executing skill for capture', {
         skill: match.skill.name,
         url,
         hasComposedPrompt: !!composedPrompt,
+        ownerChatId,
       });
 
       await executeSkill(match.skill, {
-        userId: 0, // Chrome extension capture (no Telegram user)
+        userId: ownerChatId,
         messageText: url,
         pillar: pillar as Pillar,
+        approvalLatch: true, // Chrome captures are user-initiated (clicked menu)
         input: {
           url,
+          title: title || url,  // Page title for notifications
+          pillar,  // Skill uses $input.pillar for prompts
           feedId: feedEntry.id,
           workQueueId: wqEntry.id,
+          workQueueUrl: (wqEntry as any).url,  // Full Notion URL from API response
+          feedUrl: (feedEntry as any).url,      // Full Notion URL for Feed entry
           depth: action === 'research' ? 'deep' : 'standard',
+          telegramChatId: ownerChatId, // For notification step
           // V3: Pass composed prompt for skill to use
           composedPrompt,
         },
       });
 
-      pushActivity('page-capture', 'complete', 'success', [`Captured and analyzed: ${title || url}`]);
+      // Push rich result to Chrome extension feed
+      const notionUrl = (wqEntry as any).url;
+      pushActivity('page-capture', 'complete', 'success', [
+        `✅ ${pillar} / ${title || url}`,
+        `🔗 ${notionUrl}`,
+        `View full analysis in Notion`,
+      ]);
     } else {
-      pushActivity('page-capture', 'complete', 'success', [`Captured (no extraction skill matched): ${url}`]);
+      // No skill matched - still show the Notion entry
+      const notionUrl = (wqEntry as any).url;
+      pushActivity('page-capture', 'complete', 'success', [
+        `✅ ${pillar} / ${title || url}`,
+        `🔗 ${notionUrl}`,
+        `Saved (no extraction skill matched)`,
+      ]);
     }
 
   } catch (err) {

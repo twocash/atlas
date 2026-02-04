@@ -200,76 +200,109 @@ export interface SkillExecutionResult {
 // =============================================================================
 
 /**
+ * Resolve a single variable reference to its raw value (no string conversion)
+ * Returns undefined if the variable cannot be resolved
+ */
+function resolveVariableRaw(
+  scope: string,
+  key: string,
+  subkey: string | undefined,
+  context: ExecutionContext
+): unknown {
+  switch (scope) {
+    case 'input': {
+      const value = context.input[key];
+      // Return raw value - could be string, object, number, etc.
+      return value;
+    }
+
+    case 'step': {
+      const stepResult = context.steps[key];
+      if (!stepResult) {
+        logger.warn('Variable resolution: step not found', { key, subkey, availableSteps: Object.keys(context.steps) });
+        return undefined;
+      }
+
+      // Handle special step result fields
+      if (subkey === 'success') return stepResult.success;
+      if (subkey === 'error') return stepResult.error || '';
+      if (subkey === 'executionTimeMs') return stepResult.executionTimeMs;
+
+      // Handle 'output' subkey - return the full output
+      if (subkey === 'output') {
+        if (key.includes('analyze') || key.includes('text')) {
+          const outputStr = stepResult.output ? String(stepResult.output) : '';
+          logger.info('Variable resolution: output', {
+            step: key,
+            hasOutput: !!stepResult.output,
+            outputType: typeof stepResult.output,
+            outputLength: outputStr.length,
+            preview: outputStr.substring(0, 100),
+          });
+        }
+        return stepResult.output;
+      }
+
+      // Access nested output fields (when output is an object)
+      if (subkey && stepResult.output && typeof stepResult.output === 'object') {
+        const output = stepResult.output as Record<string, unknown>;
+        return output[subkey];
+      }
+
+      // Return full output if no subkey
+      return stepResult.output;
+    }
+
+    case 'context':
+      switch (key) {
+        case 'pillar':
+          return context.pillar;
+        case 'userId':
+          return context.userId;
+        case 'messageText':
+          return context.messageText;
+        default:
+          return undefined;
+      }
+
+    default:
+      return undefined;
+  }
+}
+
+/**
  * Resolve variables in a template string or object
  *
  * Supports:
  * - $input.fieldName - Skill inputs
  * - $step.stepId.field - Previous step outputs
  * - $context.pillar - Execution context
+ *
+ * Object passthrough: When the entire template is just a variable reference
+ * (e.g., "$input.composedPrompt"), the raw value is returned instead of
+ * converting to string. This allows passing objects through to tools.
  */
 function resolveVariables(
   template: unknown,
   context: ExecutionContext
 ): unknown {
   if (typeof template === 'string') {
-    return template.replace(/\$(\w+)\.(\w+)(?:\.(\w+))?/g, (match, scope, key, subkey) => {
-      switch (scope) {
-        case 'input':
-          return String(context.input[key] ?? '');
-
-        case 'step': {
-          const stepResult = context.steps[key];
-          if (!stepResult) {
-            logger.warn('Variable resolution: step not found', { key, subkey, availableSteps: Object.keys(context.steps) });
-            return '';
-          }
-
-          // Handle special step result fields (not in output)
-          if (subkey === 'success') return String(stepResult.success);
-          if (subkey === 'error') return stepResult.error || '';
-          if (subkey === 'executionTimeMs') return String(stepResult.executionTimeMs);
-
-          // Handle 'output' subkey - return the full output
-          if (subkey === 'output') {
-            const resolved = stepResult.output ? String(stepResult.output) : '';
-            // Log when resolving output for content-related steps
-            if (key.includes('analyze') || key.includes('text')) {
-              logger.info('Variable resolution: output', {
-                step: key,
-                hasOutput: !!stepResult.output,
-                outputType: typeof stepResult.output,
-                outputLength: resolved.length,
-                preview: resolved.substring(0, 100),
-              });
-            }
-            return resolved;
-          }
-
-          // Access nested output fields (when output is an object)
-          if (subkey && stepResult.output && typeof stepResult.output === 'object') {
-            const output = stepResult.output as Record<string, unknown>;
-            return String(output[subkey] ?? '');
-          }
-
-          // Return full output if no subkey
-          return stepResult.output ? String(stepResult.output) : '';
-        }
-
-        case 'context':
-          switch (key) {
-            case 'pillar':
-              return context.pillar;
-            case 'userId':
-              return String(context.userId);
-            case 'messageText':
-              return context.messageText;
-            default:
-              return '';
-          }
-
-        default:
-          return match;
+    // Check if the entire template is just a single variable reference
+    // Pattern: $scope.key or $scope.key.subkey with nothing else
+    const exactVarMatch = template.match(/^\$(\w+)\.(\w+)(?:\.(\w+))?$/);
+    if (exactVarMatch) {
+      const [, scope, key, subkey] = exactVarMatch;
+      // Return raw value for object passthrough (don't convert to string)
+      const rawValue = resolveVariableRaw(scope, key, subkey, context);
+      if (rawValue !== undefined) {
+        return rawValue;
       }
+    }
+
+    // Template contains embedded variables or multiple variables - use string replacement
+    return template.replace(/\$(\w+)\.(\w+)(?:\.(\w+))?/g, (match, scope, key, subkey) => {
+      const value = resolveVariableRaw(scope, key, subkey, context);
+      return value !== undefined ? String(value) : match;
     });
   }
 

@@ -164,7 +164,14 @@ export class PromptManager {
   /** Notion retry interval (5 minutes) */
   private notionRetryInterval: number = 5 * 60 * 1000;
 
-  private constructor() {}
+  /** Strict mode - throw errors instead of falling back (for development/testing) */
+  private strictMode: boolean = process.env.PROMPT_STRICT_MODE === 'true';
+
+  private constructor() {
+    if (this.strictMode) {
+      console.log('[PromptManager] 🚨 STRICT MODE ENABLED - will throw errors instead of falling back');
+    }
+  }
 
   /**
    * Get singleton instance
@@ -689,11 +696,16 @@ export class PromptManager {
   /**
    * Get prompt record by direct ID lookup
    * Used by composePrompts for V3 Active Capture
+   *
+   * In STRICT MODE (PROMPT_STRICT_MODE=true):
+   * - Throws error if Notion fetch fails
+   * - Does NOT fall back to local JSON
    */
   async getPromptRecordById(promptId: string): Promise<PromptRecord | null> {
     // Check cache
     const cached = this.cache.get(promptId);
     if (cached && cached.expiresAt > Date.now()) {
+      console.log(`[PromptManager] Cache hit: ${promptId}`);
       return cached.record;
     }
 
@@ -704,12 +716,26 @@ export class PromptManager {
         record,
         expiresAt: Date.now() + CACHE_TTL_MS,
       });
+      console.log(`[PromptManager] Notion hit: ${promptId}`);
       return record;
     }
 
-    // Fall back to local
+    // STRICT MODE: Throw error, do NOT fall back
+    if (this.strictMode) {
+      const error = new Error(`[PromptManager] STRICT MODE: Prompt not found in Notion: "${promptId}". Check NOTION_PROMPTS_DB_ID env var and ensure prompt exists with matching ID property.`);
+      console.error(error.message);
+      throw error;
+    }
+
+    // Fall back to local (only in non-strict mode)
     const fallback = this.loadLocalFallback();
-    return fallback.get(promptId) || null;
+    const localRecord = fallback.get(promptId);
+    if (localRecord) {
+      console.log(`[PromptManager] ⚠️ Fallback hit: ${promptId} (set PROMPT_STRICT_MODE=true to disable fallback)`);
+      return localRecord;
+    }
+
+    return null;
   }
 
   /**
@@ -731,6 +757,20 @@ export class PromptManager {
    * }, { pillar: 'The Grove' });
    * ```
    */
+  /**
+   * Compose prompts from Drafter + Voice + Lens pattern
+   * Order: Drafter → Voice → Lens (each optional)
+   *
+   * STRICT MODE: Throws if any prompt not found in Notion
+   *
+   * @example
+   * ```typescript
+   * const composed = await pm.composePrompts({
+   *   drafter: 'drafter.research',
+   *   voice: 'voice.grove-analytical',
+   * }, { pillar: 'The Grove' });
+   * ```
+   */
   async composePrompts(
     composition: PromptComposition,
     variables?: PromptVariables
@@ -743,17 +783,29 @@ export class PromptManager {
     const promptIds = [composition.drafter, composition.voice, composition.lens].filter(Boolean) as string[];
 
     if (promptIds.length === 0) {
-      console.warn('[PromptManager] composePrompts called with no prompt IDs');
+      const msg = '[PromptManager] composePrompts called with no prompt IDs';
+      console.warn(msg);
+      if (this.strictMode) {
+        throw new Error(msg);
+      }
       return null;
     }
 
+    console.log(`[PromptManager] Composing prompts: ${promptIds.join(' + ')}`);
+
     for (const promptId of promptIds) {
+      // getPromptRecordById will throw in strict mode if not found
       const record = await this.getPromptRecordById(promptId);
       if (!record) {
-        console.warn(`[PromptManager] Composition failed: prompt not found: ${promptId}`);
+        const msg = `[PromptManager] Composition failed: prompt not found: "${promptId}"`;
+        console.error(msg);
+        if (this.strictMode) {
+          throw new Error(msg);
+        }
         return null;
       }
 
+      console.log(`[PromptManager] ✓ Loaded: ${promptId} (${record.promptText.length} chars)`);
       const hydrated = this.hydrateTemplate(record.promptText, variables || {});
       parts.push(hydrated);
 
@@ -763,6 +815,8 @@ export class PromptManager {
         maxTokens = (record.modelConfig.maxTokens as number) ?? maxTokens;
       }
     }
+
+    console.log(`[PromptManager] ✓ Composition complete: ${parts.length} prompts, ${parts.join('').length} total chars`);
 
     return {
       prompt: parts.join('\n\n---\n\n'),

@@ -20,6 +20,10 @@ inputs:
     type: string
     required: true
     description: URL to extract content from
+  title:
+    type: string
+    required: false
+    description: Page title for notifications
   pillar:
     type: string
     required: false
@@ -37,10 +41,18 @@ inputs:
     type: string
     required: false
     description: Work Queue entry ID if applicable
+  workQueueUrl:
+    type: string
+    required: false
+    description: Full Notion URL for the Work Queue entry
   telegramChatId:
     type: number
     required: false
     description: Chat ID for sending completion notification
+  composedPrompt:
+    type: object
+    required: false
+    description: V3 Active Capture composed prompt (overrides default analysis prompt)
 
 outputs:
   - type: feed_entry
@@ -66,10 +78,12 @@ process:
       condition: "$step.http_fetch.success == true"
       then:
         # Analyze the content
+        # V3 Active Capture: composedPrompt overrides systemPrompt when provided
         - id: analyze_content
           tool: claude_analyze
           inputs:
             content: "$step.http_fetch.text"
+            composedPrompt: "$input.composedPrompt"
             systemPrompt: |
               Analyze this web content. Source URL: $input.url
 
@@ -139,15 +153,18 @@ process:
             content: "$step.analyze_content.output"
           onError: continue
 
-        # Notify user
+        # Notify user with link to Work Queue for feedback
+        # Note: Full output is in Notion - Telegram gets concise summary
         - id: notify_success
           tool: telegram_send
           inputs:
             chatId: "$input.telegramChatId"
             message: |
-              Content extraction complete
+              ✅ Captured: $input.pillar / $input.title
 
-              $step.analyze_content.output
+              🔗 [$input.title]($input.workQueueUrl)
+
+              View full analysis in Notion and let me know if you'd like to take further action.
           onError: continue
 
       else:

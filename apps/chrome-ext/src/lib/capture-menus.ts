@@ -88,12 +88,15 @@ function getActionLabel(action: Action): string {
 }
 
 /**
- * Build prompt IDs from action and voice selection
+ * Build prompt IDs from pillar + action + voice
+ * Drafters are pillar-specific (worldview framing)
+ * Voices are shared (tone/style)
  */
-export function buildPromptIds(action: Action, voice: string): PromptComposition {
+export function buildPromptIds(pillar: Pillar, action: Action, voice: string): PromptComposition {
+  const pillarSlug = slugify(pillar);  // "the-grove", "consulting", "personal", "home-garage"
   return {
-    drafter: `drafter.${action}`,
-    voice: `voice.${voice}`,
+    drafter: `drafter.${pillarSlug}.${action}`,  // e.g., "drafter.the-grove.research"
+    voice: `voice.${voice}`,                      // e.g., "voice.grove-analytical"
     // lens: undefined - future extension point
   };
 }
@@ -208,7 +211,7 @@ export function parseMenuItemId(menuItemId: string): CaptureConfig | null {
             pillar,
             action,
             voice: voice.id,
-            promptIds: buildPromptIds(action, voice.id),
+            promptIds: buildPromptIds(pillar, action, voice.id),
           };
         }
       }
