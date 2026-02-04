@@ -11,6 +11,7 @@
 import { Hono } from 'hono';
 import { cors } from 'hono/cors';
 import { logger } from '../logger';
+import type { Pillar } from '../conversation/types';
 
 const app = new Hono();
 
@@ -164,11 +165,25 @@ app.get('/debug/skills', async (c) => {
 // PAGE CAPTURE ENDPOINT (Chrome Extension → Atlas)
 // =============================================================================
 
+/**
+ * Prompt composition IDs for V3 Active Capture
+ * Object form: { drafter?, voice?, lens? }
+ */
+interface PromptCompositionIds {
+  drafter?: string;  // e.g. "drafter.capture", "drafter.research"
+  voice?: string;    // e.g. "voice.grove-analytical", "voice.linkedin-punchy"
+  lens?: string;     // e.g. "lens.strategic", "lens.tactical" (future)
+}
+
 interface CaptureRequest {
   url: string;
   title?: string;
   pillar?: string;
   selectedText?: string;
+  // V3 Active Capture fields
+  action?: string;   // e.g. "capture", "research"
+  voice?: string;    // e.g. "grove-analytical", "consulting"
+  promptIds?: PromptCompositionIds;
 }
 
 // Queue for captures (processed async)
@@ -227,7 +242,17 @@ async function processCaptureQueue() {
 }
 
 async function processCapture(capture: CaptureRequest) {
-  const { url, title, pillar = 'Personal', selectedText } = capture;
+  const { url, title, pillar = 'Personal', selectedText, action, voice, promptIds } = capture;
+
+  // V3 Active Capture: Log when new params received
+  if (action || voice || promptIds) {
+    logger.info('V3 Active Capture parameters received', {
+      action,
+      voice,
+      promptIds,
+      url: url.substring(0, 50),
+    });
+  }
 
   pushActivity('page-capture', 'creating-entries', 'running', ['Creating Feed and Work Queue entries...']);
 
@@ -290,6 +315,40 @@ async function processCapture(capture: CaptureRequest) {
 
     pushActivity('page-capture', 'entries-created', 'success', ['Feed and Work Queue entries created']);
 
+    // V3 Active Capture: Compose prompts if promptIds provided
+    let composedPrompt: { prompt: string; temperature: number; maxTokens: number } | null = null;
+
+    if (promptIds && (promptIds.drafter || promptIds.voice || promptIds.lens)) {
+      try {
+        pushActivity('page-capture', 'composing-prompts', 'running', ['Composing prompts from V3 selection...']);
+
+        const { getPromptManager } = await import('../../../../packages/agents/src');
+        const pm = getPromptManager();
+        composedPrompt = await pm.composePrompts(promptIds, {
+          pillar,
+          url,
+          title: title || url,
+        });
+
+        if (composedPrompt) {
+          logger.info('V3 Prompt composition successful', {
+            drafter: promptIds.drafter,
+            voice: promptIds.voice,
+            lens: promptIds.lens,
+            promptLength: composedPrompt.prompt.length,
+          });
+          pushActivity('page-capture', 'prompts-composed', 'success', ['Prompts composed successfully']);
+        } else {
+          logger.warn('V3 Prompt composition returned null, falling back to default', { promptIds });
+          pushActivity('page-capture', 'prompts-fallback', 'running', ['Using default extraction...']);
+        }
+      } catch (err) {
+        logger.error('V3 Prompt composition failed', { promptIds, error: err });
+        pushActivity('page-capture', 'prompts-error', 'error', ['Prompt composition failed, using default']);
+        // Continue with default extraction
+      }
+    }
+
     // Now trigger skill execution for rich extraction
     pushActivity('page-capture', 'extracting', 'running', ['Running content extraction...']);
 
@@ -304,14 +363,24 @@ async function processCapture(capture: CaptureRequest) {
     const match = registry.findBestMatch(url, { pillar: pillar as any });
 
     if (match) {
-      logger.info('Executing skill for capture', { skill: match.skill.name, url });
+      logger.info('Executing skill for capture', {
+        skill: match.skill.name,
+        url,
+        hasComposedPrompt: !!composedPrompt,
+      });
 
       await executeSkill(match.skill, {
-        url,
-        pillar,
-        feedId: feedEntry.id,
-        workQueueId: wqEntry.id,
-        depth: 'standard',
+        userId: 0, // Chrome extension capture (no Telegram user)
+        messageText: url,
+        pillar: pillar as Pillar,
+        input: {
+          url,
+          feedId: feedEntry.id,
+          workQueueId: wqEntry.id,
+          depth: action === 'research' ? 'deep' : 'standard',
+          // V3: Pass composed prompt for skill to use
+          composedPrompt,
+        },
       });
 
       pushActivity('page-capture', 'complete', 'success', [`Captured and analyzed: ${title || url}`]);

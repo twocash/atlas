@@ -104,6 +104,25 @@ export interface PromptVariables {
   [key: string]: string | number | boolean | undefined;
 }
 
+/**
+ * Prompt composition for V3 Active Capture
+ * Composes prompts from Drafter + Voice + Lens pattern
+ */
+export interface PromptComposition {
+  drafter?: string;  // e.g. "drafter.capture", "drafter.research"
+  voice?: string;    // e.g. "voice.grove-analytical", "voice.linkedin-punchy"
+  lens?: string;     // e.g. "lens.strategic", "lens.tactical" (future)
+}
+
+/**
+ * Result from prompt composition
+ */
+export interface ComposedPrompt {
+  prompt: string;
+  temperature: number;
+  maxTokens: number;
+}
+
 // ==========================================
 // Constants
 // ==========================================
@@ -665,6 +684,91 @@ export class PromptManager {
     // Fall back to local
     const fallback = this.loadLocalFallback();
     return fallback.get(promptId) || null;
+  }
+
+  /**
+   * Get prompt record by direct ID lookup
+   * Used by composePrompts for V3 Active Capture
+   */
+  async getPromptRecordById(promptId: string): Promise<PromptRecord | null> {
+    // Check cache
+    const cached = this.cache.get(promptId);
+    if (cached && cached.expiresAt > Date.now()) {
+      return cached.record;
+    }
+
+    // Try Notion
+    const record = await this.fetchFromNotion(promptId);
+    if (record) {
+      this.cache.set(promptId, {
+        record,
+        expiresAt: Date.now() + CACHE_TTL_MS,
+      });
+      return record;
+    }
+
+    // Fall back to local
+    const fallback = this.loadLocalFallback();
+    return fallback.get(promptId) || null;
+  }
+
+  /**
+   * Hydrate template with variables (exposed for composition)
+   */
+  hydrateTemplate(template: string, variables: PromptVariables): string {
+    return this.injectSystemVariables(template, variables);
+  }
+
+  /**
+   * Compose prompts from Drafter + Voice + Lens pattern
+   * Order: Drafter → Voice → Lens (each optional)
+   *
+   * @example
+   * ```typescript
+   * const composed = await pm.composePrompts({
+   *   drafter: 'drafter.research',
+   *   voice: 'voice.grove-analytical',
+   * }, { pillar: 'The Grove' });
+   * ```
+   */
+  async composePrompts(
+    composition: PromptComposition,
+    variables?: PromptVariables
+  ): Promise<ComposedPrompt | null> {
+    const parts: string[] = [];
+    let temperature = 0.7;
+    let maxTokens = 4096;
+
+    // Ordered composition: drafter, voice, lens
+    const promptIds = [composition.drafter, composition.voice, composition.lens].filter(Boolean) as string[];
+
+    if (promptIds.length === 0) {
+      console.warn('[PromptManager] composePrompts called with no prompt IDs');
+      return null;
+    }
+
+    for (const promptId of promptIds) {
+      const record = await this.getPromptRecordById(promptId);
+      if (!record) {
+        console.warn(`[PromptManager] Composition failed: prompt not found: ${promptId}`);
+        return null;
+      }
+
+      const hydrated = this.hydrateTemplate(record.promptText, variables || {});
+      parts.push(hydrated);
+
+      // Use first prompt's model config as base
+      if (parts.length === 1 && record.modelConfig) {
+        temperature = (record.modelConfig.temperature as number) ?? temperature;
+        maxTokens = (record.modelConfig.maxTokens as number) ?? maxTokens;
+      }
+    }
+
+    return {
+      prompt: parts.join('\n\n---\n\n'),
+      temperature,
+      maxTokens,
+    };
   }
 
   /**

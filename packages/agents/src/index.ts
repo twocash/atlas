@@ -102,4 +102,6 @@ export {
   type PromptRecord,
   type PromptLookup,
   type PromptVariables,
+  type PromptComposition,
+  type ComposedPrompt,
 } from "./services";

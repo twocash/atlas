@@ -33,52 +33,76 @@ console.log("Atlas Orchestrator Initialized")
 chrome.sidePanel?.setPanelBehavior?.({ openPanelOnActionClick: true })
 
 // =============================================================================
-// CONTEXT MENU: "Send to Atlas"
+// V3 ACTIVE CAPTURE: 4-Level Hierarchical Menus
 // =============================================================================
+
+import { createCaptureMenus, parseMenuItemId, type PromptComposition } from "~src/lib/capture-menus"
+import { showCapturing, showSuccess, showError } from "~src/lib/badge"
 
 const ATLAS_STATUS_SERVER = "http://localhost:3847"
 
-// Create context menu on install/update
+// Create 4-level hierarchical menus on install/update
 chrome.runtime.onInstalled.addListener(() => {
-  // Page context menu (right-click on page)
-  chrome.contextMenus.create({
-    id: "atlas-capture-page",
-    title: "Send to Atlas",
-    contexts: ["page"],
-  })
-
-  // Selection context menu (right-click on selected text)
-  chrome.contextMenus.create({
-    id: "atlas-capture-selection",
-    title: "Send to Atlas",
-    contexts: ["selection"],
-  })
-
-  // Link context menu (right-click on a link)
-  chrome.contextMenus.create({
-    id: "atlas-capture-link",
-    title: "Send Link to Atlas",
-    contexts: ["link"],
-  })
-
-  console.log("Atlas: Context menus created")
+  createCaptureMenus()
 })
 
 // Handle context menu clicks
 chrome.contextMenus.onClicked.addListener(async (info, tab) => {
-  const url = info.menuItemId === "atlas-capture-link"
-    ? info.linkUrl
-    : info.pageUrl || tab?.url
+  const menuItemId = info.menuItemId as string
 
+  // Quick capture (bypass prompt composition)
+  if (menuItemId === "atlas-quick") {
+    await sendCapture(info, tab, { pillar: "Personal" })
+    return
+  }
+
+  // Parse 4-level hierarchical menu selection
+  const config = parseMenuItemId(menuItemId)
+  if (!config) {
+    // Intermediate menu click (pillar or action level), ignore
+    console.log("Atlas: Intermediate menu click, waiting for voice selection:", menuItemId)
+    return
+  }
+
+  // Full 4-level selection: Pillar -> Action -> Voice
+  await sendCapture(info, tab, {
+    pillar: config.pillar,
+    action: config.action,
+    voice: config.voice,
+    promptIds: config.promptIds,
+  })
+})
+
+interface CaptureOptions {
+  pillar: string
+  action?: string
+  voice?: string
+  promptIds?: PromptComposition
+}
+
+async function sendCapture(
+  info: chrome.contextMenus.OnClickData,
+  tab: chrome.tabs.Tab | undefined,
+  options: CaptureOptions
+) {
+  const url = info.linkUrl || info.pageUrl || tab?.url
   if (!url) {
     console.error("Atlas: No URL to capture")
     return
   }
 
+  showCapturing()
+
   const selectedText = info.selectionText || undefined
   const title = tab?.title || url
 
-  console.log("Atlas: Capturing page", { url, title, selectedText: selectedText?.substring(0, 100) })
+  console.log("Atlas: Capturing with V3 Active Capture", {
+    url,
+    pillar: options.pillar,
+    action: options.action,
+    voice: options.voice,
+    promptIds: options.promptIds,
+  })
 
   try {
     const response = await fetch(`${ATLAS_STATUS_SERVER}/capture`, {
@@ -88,23 +112,24 @@ chrome.contextMenus.onClicked.addListener(async (info, tab) => {
         url,
         title,
         selectedText,
-        pillar: "Personal", // Default pillar - could be made configurable
+        ...options,
       }),
     })
 
     const result = await response.json()
 
     if (result.ok) {
-      console.log("Atlas: Page captured successfully")
-      // Could show a notification here
+      showSuccess()
+      console.log("Atlas: V3 capture successful")
     } else {
-      console.error("Atlas: Capture failed", result.error)
+      showError()
+      console.error("Atlas: V3 capture failed", result.error)
     }
   } catch (err) {
-    console.error("Atlas: Failed to send to Atlas", err)
-    // Atlas backend might be offline
+    showError()
+    console.warn("Atlas: Backend offline", err)
   }
-})
+}
 
 // Keepalive alarm (backup for heartbeat port)
 chrome.alarms.create("atlas-keepalive", { periodInMinutes: ALARM_KEEPALIVE_MINUTES })
