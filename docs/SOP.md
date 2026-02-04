@@ -820,4 +820,91 @@ Or say: "run tests", "quality check", "master blaster"
 
 ---
 
+## SOP-010: Notion Database ID Immutability
+
+**Effective:** 2026-02-04
+**Scope:** All Notion API integration code
+
+### Overview
+
+Database IDs in the codebase are IMMUTABLE and must NEVER be changed without explicit approval and validation.
+
+### Background
+
+Atlas uses TWO different types of IDs for the SAME Notion database:
+- **Database PAGE IDs** (for `@notionhq/client` SDK)
+- **DATA SOURCE IDs** (for Notion MCP plugin with `collection://` URLs)
+
+Confusion between these two types has caused "object_not_found" errors 25+ times.
+
+### Canonical Database IDs
+
+**For Notion SDK (`@notionhq/client`) - NEVER CHANGE THESE:**
+```typescript
+// Use these in all code that calls the Notion API
+const FEED_DATABASE_ID = '90b2b33f-4b44-4b42-870f-8d62fb8cbf18';
+const WORK_QUEUE_DATABASE_ID = '3d679030-b76b-43bd-92d8-1ac51abb4a28';
+const DEV_PIPELINE_DATABASE_ID = 'ce6fbf1b-ee30-433d-a9e6-b338552de7c9';
+```
+
+**For Notion MCP plugin ONLY - DIFFERENT IDs:**
+```typescript
+// Use these only with Notion MCP plugin tools
+// Feed 2.0: a7493abb-804a-4759-b6ac-aeca62ae23b8
+// Work Queue 2.0: 6a8d9c43-b084-47b5-bc83-bc363640f2cd
+```
+
+### Contract
+
+1. ❌ NEVER change database IDs in code without documenting why
+2. ❌ NEVER "fix" IDs by swapping PAGE IDs for DATA SOURCE IDs
+3. ✅ ALWAYS use PAGE IDs for Notion SDK code
+4. ✅ ALWAYS use DATA SOURCE IDs for MCP plugin references
+5. ✅ ALWAYS verify which context you're in before changing IDs
+6. ✅ ALWAYS update CLAUDE.md if a database is renamed/recreated
+
+### When "object_not_found" Occurs
+
+**The problem is almost NEVER:**
+- ❌ "Integration needs to be shared with the database"
+- ❌ "Check Notion settings > Connections"
+
+**The problem is almost ALWAYS:**
+- ✅ Code is using the WRONG database ID (drift toward legacy IDs)
+- ✅ A file still references Inbox 2.0 or other deprecated databases
+- ✅ Code is using DATA SOURCE IDs where it should use PAGE IDs
+
+### Before Changing Any Database ID
+
+1. Run validation test against the new ID
+2. Document which context requires which ID type
+3. Update canonical ID list in CLAUDE.md
+4. Grep codebase for all references to old ID
+5. Get explicit approval
+
+### Historical Context
+
+- **Jan 30, 2026**: Commit f014058 incorrectly changed PAGE IDs to DATA SOURCE IDs
+- **Jan 30, 2026**: Commit a0b6ff7 correctly reverted back to PAGE IDs
+- **Lesson**: Database access works with PAGE IDs for SDK, not DATA SOURCE IDs
+
+### Validation Script
+
+Before deploying any database ID changes:
+
+```bash
+cd packages/agents
+bun validate-workqueue-bug.ts  # or equivalent test
+```
+
+If the validation fails, DO NOT DEPLOY.
+
+### Cross-References
+
+- **CLAUDE.md**: Canonical database IDs section
+- **apps/telegram/CLAUDE.md**: Same canonical IDs
+- **SOP-004**: Spike tests with production environment
+
+---
+
 *SOPs are living documents. Update as patterns emerge.*

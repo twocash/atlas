@@ -42,6 +42,20 @@ Every bug fix and feature MUST leave breadcrumbs:
 This enables future agents to understand WHY changes were made, not just WHAT.
 
 - CRITICAL ROUTING RULE: Research Agent bugs/issues go to Atlas Dev Pipeline (via Pit Crew), NOT Work Queue. Work Queue is for Jim's tasks. Dev Pipeline is for Atlas infrastructure issues. Research Agent is Atlas infrastructure, therefore = Dev Pipeline via Pit Crew dispatch.
+- CRITICAL ROUTING RULE: Atlas + agent/repo content = Atlas Dev Pipeline (via Pit Crew), NOT Work Queue. 
+
+When content involves:
+- Atlas capabilities/features
+- Agent architecture/patterns  
+- Repository analysis for Atlas enhancement
+- AI/LLM tooling for Atlas
+
+→ Route to Atlas Dev Pipeline via Pit Crew dispatch
+→ NOT to Work Queue (Work Queue is for Jim's tasks, not Atlas infrastructure)
+
+Example: "Research this agent framework for Atlas" = Pit Crew feature request, not Work Queue research task.
+
+This applies to both direct requests and content classification from links/repos about agent systems.
 ## Corrections Log
 
 *(Atlas logs corrections here for pattern detection)*
@@ -448,3 +462,70 @@ if (strictMode && v3Requested && !composedPrompt?.prompt)
 - `apps/telegram/data/skills/url-extract/skill.yaml` - Added v3Requested input, passes to claude_analyze
 
 **KEY LEARNING:** Strict mode was put in place to catch V3 pipeline failures - it correctly found this issue! The fix ensures strict mode applies only when V3 is truly expected, not for all skill execution.
+
+### 2026-02-04: Work Queue Update Validation Bug Fix (P0) (ATLAS-WQ-VAL-001)
+
+**BUG RESOLVED:** work_queue_update tool was vulnerable to invalid inputs causing data corruption.
+
+**Root Cause:** Notion API accepts ANY string values for select properties and empty property updates without server-side validation. Missing client-side validation allowed bad data through.
+
+**CRITICAL DISCOVERY:** The bug was NOT a database access issue. The problem was:
+1. ❌ No input sanitization (whitespace in " Active " breaks select matching)
+2. ❌ No schema validation (invalid status values accepted by Notion)
+3. ❌ No empty update check (Notion accepts `properties: {}`)
+4. ❌ No rich text truncation (2000 char limit causes validation_error)
+
+**Fix:** Implemented defense-in-depth validation:
+```typescript
+// 1. Input Sanitization
+- Trim whitespace from all select values
+- Truncate rich text to 2000 chars (Notion limit)
+- Type check all inputs
+
+// 2. Schema Validation
+- Status: Captured, Active, Triaged, Paused, Blocked, Done, Shipped
+- Type: Research, Build, Draft, Schedule, Answer, Process
+- Priority: P0, P1, P2, P3
+- Pillar: Personal, The Grove, Consulting, Home/Garage
+
+// 3. Empty Update Check
+- Reject updates with no properties specified
+
+// 4. Enhanced Error Messages
+- User-friendly messages for common failures
+- Diagnostic logging for debugging
+```
+
+**Testing Results:**
+- ✅ Integration test suite created (10 test cases)
+- ⚠️ Tests 4 & 5 confirmed: Notion DOES NOT validate inputs server-side
+- ⚠️ Our validation layer is THE ONLY protection against data corruption
+- ✅ Rich text limit: 2000 characters (strict)
+- ✅ Whitespace sanitization: CRITICAL for select properties
+
+**Files Changed:**
+- `apps/telegram/src/conversation/tools/core.ts` - Added validation layers (~120 lines)
+- `packages/agents/test-workqueue-update.ts` - Integration test suite (NEW)
+- `docs/SOP.md` - Added SOP-010 (Database ID Immutability)
+
+**KEY LEARNINGS:**
+1. **Never trust API validation** - Even enterprise APIs don't validate all inputs
+2. **Client-side validation is mandatory** - Our application layer MUST enforce data integrity
+3. **Test edge cases thoroughly** - Without testing, we wouldn't know validation is critical
+4. **Rich text has hard limits** - 2000 chars on all rich_text fields
+5. **Whitespace matters** - " Active " ≠ "Active" in select properties
+
+**SOP-010 Added:** Database ID Immutability protocol
+- Documents PAGE ID vs DATA SOURCE ID confusion (fell into this trap 25+ times)
+- PAGE IDs for Notion SDK, DATA SOURCE IDs for MCP plugin
+- "object_not_found" almost always = wrong ID, NOT sharing issues
+
+**Anti-Pattern Documented:**
+When database access fails:
+- ❌ DON'T assume sharing issues
+- ❌ DON'T suggest "share database with integration"
+- ✅ DO grep for database ID in codebase first
+- ✅ DO verify ID matches canonical IDs in CLAUDE.md
+- ✅ DO check for deprecated database references
+
+**Full documentation:** `packages/agents/WORK_QUEUE_UPDATE_BUG_FIX.md`

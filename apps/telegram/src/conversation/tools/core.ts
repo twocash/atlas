@@ -834,20 +834,96 @@ async function executeWorkQueueUpdate(
   input: Record<string, unknown>
 ): Promise<{ success: boolean; result: unknown; error?: string }> {
   const id = input.id as string;
-  // Extract ALL Work Queue 2.0 schema fields
-  const status = input.status as string | undefined;
-  const priority = input.priority as string | undefined;
-  const pillar = input.pillar as string | undefined;
-  const assignee = input.assignee as string | undefined;
-  const type = input.type as string | undefined;
-  const notes = input.notes as string | undefined;
-  const resolutionNotes = input.resolution_notes as string | undefined;
-  const blockedReason = input.blocked_reason as string | undefined;
-  const output = input.output as string | undefined;
-  const workType = input.work_type as string | undefined;
-  const disposition = input.disposition as string | undefined;
-  const wasReclassified = input.was_reclassified as boolean | undefined;
-  const originalPillar = input.original_pillar as string | undefined;
+
+  // === INPUT SANITIZATION ===
+  // Helper to sanitize select values (trim whitespace)
+  function sanitizeSelectValue(value: string | undefined | null): string | undefined {
+    if (!value || typeof value !== 'string') return undefined;
+    return value.trim();
+  }
+
+  // Helper to safely truncate rich text to Notion's 2000 char limit
+  function truncateRichText(text: string | undefined): string | undefined {
+    if (!text || typeof text !== 'string') return undefined;
+    const MAX_RICH_TEXT_LENGTH = 2000;
+    if (text.length > MAX_RICH_TEXT_LENGTH) {
+      logger.warn('WQ Update: Truncating rich text field', {
+        originalLength: text.length,
+        truncatedLength: MAX_RICH_TEXT_LENGTH,
+      });
+      return text.substring(0, MAX_RICH_TEXT_LENGTH);
+    }
+    return text;
+  }
+
+  // Sanitize all select field inputs
+  const status = sanitizeSelectValue(input.status as string | undefined);
+  const priority = sanitizeSelectValue(input.priority as string | undefined);
+  const pillar = sanitizeSelectValue(input.pillar as string | undefined);
+  const assignee = sanitizeSelectValue(input.assignee as string | undefined);
+  const type = sanitizeSelectValue(input.type as string | undefined);
+  const disposition = sanitizeSelectValue(input.disposition as string | undefined);
+  const originalPillar = sanitizeSelectValue(input.original_pillar as string | undefined);
+
+  // Text fields (notes, etc.) - ensure string type and truncate rich text to 2000 chars
+  const notes = truncateRichText(typeof input.notes === 'string' ? input.notes : undefined);
+  const resolutionNotes = truncateRichText(typeof input.resolution_notes === 'string' ? input.resolution_notes : undefined);
+  const blockedReason = truncateRichText(typeof input.blocked_reason === 'string' ? input.blocked_reason : undefined);
+  const output = typeof input.output === 'string' ? input.output : undefined;  // URL type, no truncation
+  const workType = truncateRichText(typeof input.work_type === 'string' ? input.work_type : undefined);
+  const wasReclassified = typeof input.was_reclassified === 'boolean' ? input.was_reclassified : undefined;
+
+  // === SCHEMA VALIDATION ===
+  // Validate status value against allowed options
+  const VALID_STATUSES = ['Captured', 'Active', 'Triaged', 'Paused', 'Blocked', 'Done', 'Shipped'];
+  if (status && !VALID_STATUSES.includes(status)) {
+    logger.error('WQ Update: Invalid status value', { status, validValues: VALID_STATUSES });
+    return {
+      success: false,
+      result: null,
+      error: `Invalid status "${status}". Must be one of: ${VALID_STATUSES.join(', ')}`,
+    };
+  }
+
+  // Validate type value
+  const VALID_TYPES = ['Research', 'Build', 'Draft', 'Schedule', 'Answer', 'Process'];
+  if (type && !VALID_TYPES.includes(type)) {
+    logger.error('WQ Update: Invalid type value', { type, validTypes: VALID_TYPES });
+    return {
+      success: false,
+      result: null,
+      error: `Invalid type "${type}". Must be one of: ${VALID_TYPES.join(', ')}`,
+    };
+  }
+
+  // Validate priority value
+  const VALID_PRIORITIES = ['P0', 'P1', 'P2', 'P3'];
+  if (priority && !VALID_PRIORITIES.includes(priority)) {
+    logger.error('WQ Update: Invalid priority value', { priority, validPriorities: VALID_PRIORITIES });
+    return {
+      success: false,
+      result: null,
+      error: `Invalid priority "${priority}". Must be one of: ${VALID_PRIORITIES.join(', ')}`,
+    };
+  }
+
+  // Validate pillar value
+  const VALID_PILLARS = ['Personal', 'The Grove', 'Consulting', 'Home/Garage'];
+  if (pillar && !VALID_PILLARS.includes(pillar)) {
+    logger.error('WQ Update: Invalid pillar value', { pillar, validPillars: VALID_PILLARS});
+    return {
+      success: false,
+      result: null,
+      error: `Invalid pillar "${pillar}". Must be one of: ${VALID_PILLARS.join(', ')}`,
+    };
+  }
+
+  // Validate assignee value
+  const VALID_ASSIGNEES = ['Jim', 'Atlas [Telegram]', 'Atlas [laptop]', 'Atlas [grove-node-1]', 'Agent', 'Pit Crew', 'Atlas [Chrome]'];
+  if (assignee && !VALID_ASSIGNEES.includes(assignee)) {
+    logger.warn('WQ Update: Unknown assignee value', { assignee, validAssignees: VALID_ASSIGNEES });
+    // Don't fail - new assignees might be added
+  }
 
   try {
     // First, fetch the current WQ item to get title, pillar, and current values
@@ -925,6 +1001,30 @@ async function executeWorkQueueUpdate(
       properties['Original Pillar'] = { select: { name: originalPillar } };
     }
 
+    // === EMPTY UPDATE CHECK ===
+    // Ensure we're not sending an empty update to Notion
+    if (Object.keys(properties).length === 0) {
+      logger.error('WQ Update: No properties to update', {
+        id,
+        inputKeys: Object.keys(input),
+        allUndefined: true,
+      });
+      return {
+        success: false,
+        result: null,
+        error: 'No fields specified to update. At least one field (status, priority, notes, etc.) is required.',
+      };
+    }
+
+    // === DIAGNOSTIC LOGGING ===
+    logger.info('WQ Update: Sending to Notion', {
+      pageId: id,
+      propertyCount: Object.keys(properties).length,
+      propertyNames: Object.keys(properties),
+      statusValue: properties['Status'],
+      priorityValue: properties['Priority'],
+    });
+
     await notion.pages.update({
       page_id: id,
       properties: properties as any,
@@ -980,9 +1080,47 @@ async function executeWorkQueueUpdate(
         feedUrl: feedResult?.feedUrl,
       },
     };
-  } catch (error) {
-    logger.error('Work queue update failed', { error, id });
-    return { success: false, result: null, error: String(error) };
+  } catch (error: any) {
+    // Enhanced error logging with context
+    logger.error('Work queue update failed', {
+      error: error?.message || String(error),
+      code: error?.code,
+      status: error?.status,
+      pageId: id,
+      inputFields: {
+        status,
+        priority,
+        pillar,
+        type,
+        assignee,
+        hasNotes: !!notes,
+        hasResolutionNotes: !!resolutionNotes,
+        hasBlockedReason: !!blockedReason,
+      },
+    });
+
+    // User-friendly error messages
+    let errorMessage = 'Failed to update Work Queue item';
+
+    if (error?.code === 'object_not_found') {
+      errorMessage = `Work Queue item not found (ID: ${id}). It may have been deleted or moved.`;
+    } else if (error?.code === 'validation_error') {
+      errorMessage = `Invalid property value: ${error?.message}. Check that all field values are valid.`;
+    } else if (error?.status === 400) {
+      errorMessage = `Bad request: ${error?.message}. One or more property values are invalid.`;
+    } else if (error?.status === 401 || error?.status === 403) {
+      errorMessage = `Permission denied. The integration may not have access to this Work Queue item.`;
+    } else if (error?.code === 'rate_limited') {
+      errorMessage = `Rate limited by Notion API. Please try again in a moment.`;
+    } else {
+      errorMessage = `Notion API error: ${error?.message || String(error)}`;
+    }
+
+    return {
+      success: false,
+      result: null,
+      error: errorMessage,
+    };
   }
 }
 
