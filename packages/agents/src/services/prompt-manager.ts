@@ -137,6 +137,23 @@ const FALLBACK_PROMPTS_PATH = path.join(
 );
 
 // ==========================================
+// Notion ID Sanitizer
+// ==========================================
+
+/**
+ * Strip Notion auto-link formatting from rich_text ID values.
+ *
+ * Notion auto-links strings that look like valid TLDs (e.g., .consulting, .dev, .studio).
+ * This converts "[drafter.consulting](http://drafter.consulting).capture"
+ * back to "drafter.consulting.capture"
+ *
+ * Affected TLDs include: .consulting, .dev, .studio, .agency, .app, .design, .systems
+ */
+function sanitizeNotionId(raw: string): string {
+  return raw.replace(/\[([^\]]+)\]\([^)]+\)/g, '$1');
+}
+
+// ==========================================
 // PromptManager Class
 // ==========================================
 
@@ -372,10 +389,12 @@ export class PromptManager {
     try {
       const props = page.properties;
 
-      const id = props.ID?.rich_text?.[0]?.plain_text || '';
-      const capability = props.Capability?.select?.name || '';
+      // Sanitize ID to strip Notion auto-link formatting (e.g., .consulting TLD)
+      const rawId = props.ID?.rich_text?.[0]?.plain_text || '';
+      const id = sanitizeNotionId(rawId);
+      const capability = props.Type?.select?.name || '';
       const pillars = (props.Pillar?.multi_select || []).map((s: any) => s.name);
-      const useCase = props['Use Case']?.select?.name || 'General';
+      const useCase = props['Action']?.select?.name || 'General';
       const stage = props.Stage?.select?.name;
       // Prompt text comes from page body now, but fallback to property if present
       const propPromptText = props['Prompt Text']?.rich_text
@@ -531,8 +550,14 @@ export class PromptManager {
     }
 
     try {
+      // Guard against undefined capability
+      if (!lookup.capability) {
+        console.warn('[PromptManager] fetchByProperties called with undefined capability');
+        return null;
+      }
+
       const filters: any[] = [
-        { property: 'Capability', select: { equals: lookup.capability } },
+        { property: 'Type', select: { equals: lookup.capability } },
         { property: 'Active', checkbox: { equals: true } },
       ];
 
@@ -548,7 +573,7 @@ export class PromptManager {
 
       // Add use case filter
       if (lookup.useCase) {
-        filters.push({ property: 'Use Case', select: { equals: lookup.useCase } });
+        filters.push({ property: 'Action', select: { equals: lookup.useCase } });
       }
 
       const response = await notion.databases.query({
@@ -848,7 +873,7 @@ export class PromptManager {
         try {
           const filter: any = {
             and: [
-              { property: 'Capability', select: { equals: capability } },
+              { property: 'Type', select: { equals: capability } },
               { property: 'Active', checkbox: { equals: true } },
             ],
           };

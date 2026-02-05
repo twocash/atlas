@@ -1,0 +1,379 @@
+# LinkedIn Content Lookup Skill - Professional Network Intelligence
+# Tier 1: HTTP fetch primary, browser automation fallback
+# v1.0.0: Rich analysis for posts, articles, and profiles
+
+name: linkedin-lookup
+version: 1.0.0
+description: Extract and analyze LinkedIn posts, articles, and profiles with professional context
+
+triggers:
+  - type: pattern
+    value: "linkedin\\.com/(posts|pulse|in/|company/)"
+  - type: keyword
+    value: "linkedin post"
+
+inputs:
+  url:
+    type: string
+    required: true
+    description: LinkedIn URL (post, article, profile, or company page)
+  pillar:
+    type: string
+    required: false
+    description: Life domain (The Grove, Consulting, Personal, Home/Garage)
+  depth:
+    type: string
+    required: false
+    default: "standard"
+    description: Extraction depth (shallow, standard, deep)
+  feedId:
+    type: string
+    required: false
+    description: Feed entry ID to update with extraction results
+  workQueueId:
+    type: string
+    required: false
+    description: Work Queue entry ID if applicable
+  workQueueUrl:
+    type: string
+    required: false
+    description: Full Notion URL for Work Queue entry
+  telegramChatId:
+    type: number
+    required: false
+    description: Chat ID for sending completion notification
+  title:
+    type: string
+    required: false
+    description: Page title for notification display
+  # V3 Active Capture support
+  composedPrompt:
+    type: object
+    required: false
+    description: V3 composed prompt with drafter/voice/lens
+  v3Requested:
+    type: boolean
+    required: false
+    description: Whether V3 prompt composition was explicitly requested
+
+outputs:
+  - type: feed_entry
+    description: Enriched LinkedIn content logged to Feed
+  - type: data
+    description: Extracted professional content and analysis
+
+process:
+  type: tool_sequence
+  timeout: 120000
+  steps:
+    # Strategy 1: Try HTTP fetch first (via Jina reader for clean extraction)
+    - id: http_fetch
+      tool: web_fetch
+      inputs:
+        url: "$input.url"
+        extractText: true
+        timeout: 20000
+      onError: continue
+
+    # Check if HTTP fetch got meaningful content (>150 chars for LinkedIn)
+    - id: check_http
+      condition: "$step.http_fetch.success == true"
+      then:
+        # HTTP worked - analyze the content with LinkedIn-specific prompts
+        - id: analyze_http
+          tool: claude_analyze
+          inputs:
+            content: "$step.http_fetch.text"
+            composedPrompt: "$input.composedPrompt"
+            v3Requested: "$input.v3Requested"
+            systemPrompt: |
+              Analyze this LinkedIn content. Source URL: $input.url
+
+              ## Content Type Detection
+              First, identify what type of LinkedIn content this is:
+              - **Post**: Personal update, thought leadership, commentary
+              - **Article**: Long-form content (pulse)
+              - **Profile**: Person's professional background
+              - **Company**: Organization page
+
+              Format your response with these sections:
+
+              ## 🔗 Source
+              [View on LinkedIn]($input.url)
+
+              ## 👤 Author/Entity
+              **Name:** Full name or company name
+              **Headline/Description:** Professional title or company tagline
+              **Relevance:** Why this person/company matters for $input.pillar
+
+              ## 💡 TL;DR
+              2-3 sentence summary of the main message or value proposition.
+
+              ## 🎯 Key Insights
+              - **Insight 1:** [professional/industry insight]
+              - **Insight 2:** [actionable takeaway]
+              - **Insight 3:** [connection to broader trends]
+
+              ## 📊 Professional Context
+              - **Industry/Domain:** What field or industry this relates to
+              - **Engagement signals:** Any notable engagement or social proof
+              - **Network value:** Potential value of this connection/content
+
+              ## 🔗 Referenced Links & Mentions
+              Extract ANY external URLs, @mentions, or #hashtags:
+              - [Link/mention](url) - brief context
+              (If none found, write "None identified")
+
+              ## 📋 Relevance to $input.pillar
+              Specifically how this connects to the user's domain:
+              - For **The Grove**: AI/tech insights, potential Grove content
+              - For **Consulting**: Client opportunities, industry intelligence
+              - For **Personal**: Network value, learning opportunities
+              - For **Home/Garage**: Relevant vendors, DIY expertise
+
+              ## ✅ Suggested Actions
+              Based on the content and pillar, suggest concrete next steps:
+              1. **Immediate:** (e.g., connect, comment, save for reference)
+              2. **Follow-up:** (e.g., research further, add to content calendar)
+              3. **Strategic:** (e.g., reach out for collaboration, apply insight)
+
+              Be concise but thorough. Use markdown formatting.
+          onError: continue
+
+        # Update Feed status
+        - id: update_feed_http
+          tool: notion_update
+          inputs:
+            pageId: "$input.feedId"
+            properties:
+              Extraction Status: "complete"
+              Extraction Depth: "$input.depth"
+          onError: continue
+
+        # Append to Feed
+        - id: append_feed_http
+          tool: notion_append
+          inputs:
+            pageId: "$input.feedId"
+            heading: "💼 LinkedIn Analysis"
+            callout: "Pillar: $input.pillar | Depth: $input.depth | Method: HTTP"
+            calloutEmoji: "💼"
+            content: "$step.analyze_http.output"
+          onError: continue
+
+        # Append to Work Queue (primary action location)
+        - id: append_workqueue_http
+          tool: notion_append
+          inputs:
+            pageId: "$input.workQueueId"
+            heading: "💼 LinkedIn Analysis"
+            callout: "Pillar: $input.pillar | Depth: $input.depth | Method: HTTP"
+            calloutEmoji: "💼"
+            content: "$step.analyze_http.output"
+          onError: continue
+
+        # Notify user with concise summary
+        - id: notify_http
+          tool: telegram_send
+          inputs:
+            chatId: "$input.telegramChatId"
+            message: |
+              💼 LinkedIn extraction complete
+
+              **$input.title**
+
+              View analysis: $input.workQueueUrl
+          onError: continue
+
+      else:
+        # HTTP failed - try browser automation for dynamic content
+        - id: browser_open
+          tool: browser_open_page
+          inputs:
+            url: "$input.url"
+            timeout: 45000
+          onError: continue
+
+        # Check browser result
+        - id: check_browser
+          condition: "$step.browser_open.success == true"
+          then:
+            # Browser worked - extract text
+            - id: browser_text
+              tool: browser_get_text
+              inputs:
+                pageId: "$step.browser_open.pageId"
+              onError: continue
+
+            # Analyze browser content
+            - id: analyze_browser
+              tool: claude_analyze
+              inputs:
+                content: "$step.browser_text.output"
+                composedPrompt: "$input.composedPrompt"
+                v3Requested: "$input.v3Requested"
+                systemPrompt: |
+                  Analyze this LinkedIn content. Source URL: $input.url
+
+                  ## Content Type Detection
+                  First, identify what type of LinkedIn content this is:
+                  - **Post**: Personal update, thought leadership, commentary
+                  - **Article**: Long-form content (pulse)
+                  - **Profile**: Person's professional background
+                  - **Company**: Organization page
+
+                  Format your response with these sections:
+
+                  ## 🔗 Source
+                  [View on LinkedIn]($input.url)
+
+                  ## 👤 Author/Entity
+                  **Name:** Full name or company name
+                  **Headline/Description:** Professional title or company tagline
+                  **Relevance:** Why this person/company matters for $input.pillar
+
+                  ## 💡 TL;DR
+                  2-3 sentence summary of the main message or value proposition.
+
+                  ## 🎯 Key Insights
+                  - **Insight 1:** [professional/industry insight]
+                  - **Insight 2:** [actionable takeaway]
+                  - **Insight 3:** [connection to broader trends]
+
+                  ## 📊 Professional Context
+                  - **Industry/Domain:** What field or industry this relates to
+                  - **Engagement signals:** Any notable engagement or social proof
+                  - **Network value:** Potential value of this connection/content
+
+                  ## 🔗 Referenced Links & Mentions
+                  Extract ANY external URLs, @mentions, or #hashtags:
+                  - [Link/mention](url) - brief context
+                  (If none found, write "None identified")
+
+                  ## 📋 Relevance to $input.pillar
+                  Specifically how this connects to the user's domain:
+                  - For **The Grove**: AI/tech insights, potential Grove content
+                  - For **Consulting**: Client opportunities, industry intelligence
+                  - For **Personal**: Network value, learning opportunities
+                  - For **Home/Garage**: Relevant vendors, DIY expertise
+
+                  ## ✅ Suggested Actions
+                  Based on the content and pillar, suggest concrete next steps:
+                  1. **Immediate:** (e.g., connect, comment, save for reference)
+                  2. **Follow-up:** (e.g., research further, add to content calendar)
+                  3. **Strategic:** (e.g., reach out for collaboration, apply insight)
+
+                  Be concise but thorough. Use markdown formatting.
+              onError: continue
+
+            # Update Feed status
+            - id: update_feed_browser
+              tool: notion_update
+              inputs:
+                pageId: "$input.feedId"
+                properties:
+                  Extraction Status: "complete"
+                  Extraction Depth: "$input.depth"
+              onError: continue
+
+            # Append to Feed
+            - id: append_feed_browser
+              tool: notion_append
+              inputs:
+                pageId: "$input.feedId"
+                heading: "💼 LinkedIn Analysis"
+                callout: "Pillar: $input.pillar | Depth: $input.depth | Method: Browser"
+                calloutEmoji: "💼"
+                content: "$step.analyze_browser.output"
+              onError: continue
+
+            # Append to Work Queue
+            - id: append_workqueue_browser
+              tool: notion_append
+              inputs:
+                pageId: "$input.workQueueId"
+                heading: "💼 LinkedIn Analysis"
+                callout: "Pillar: $input.pillar | Depth: $input.depth | Method: Browser"
+                calloutEmoji: "💼"
+                content: "$step.analyze_browser.output"
+              onError: continue
+
+            # Notify
+            - id: notify_browser
+              tool: telegram_send
+              inputs:
+                chatId: "$input.telegramChatId"
+                message: |
+                  💼 LinkedIn extraction complete
+
+                  **$input.title**
+
+                  View analysis: $input.workQueueUrl
+              onError: continue
+
+            # Cleanup
+            - id: cleanup_browser
+              tool: browser_close_page
+              inputs:
+                pageId: "$step.browser_open.pageId"
+              always_run: true
+              onError: continue
+
+          else:
+            # Both methods failed - mark as failed with helpful guidance
+            - id: update_feed_failed
+              tool: notion_update
+              inputs:
+                pageId: "$input.feedId"
+                properties:
+                  Extraction Status: "failed"
+                  Extraction Depth: "$input.depth"
+              onError: continue
+
+            - id: append_failed
+              tool: notion_append
+              inputs:
+                pageId: "$input.feedId"
+                heading: "💼 LinkedIn Analysis - Failed"
+                callout: "Could not extract content from this LinkedIn page"
+                calloutEmoji: "⚠️"
+                content: |
+                  **Extraction failed**
+
+                  Both HTTP fetch and browser automation were unable to extract content.
+
+                  **Possible reasons:**
+                  - Content may require LinkedIn login
+                  - Post may be private or connection-only
+                  - LinkedIn may be blocking automated access
+
+                  **Suggested Actions:**
+                  1. Open the link in your browser while logged in
+                  2. Copy the key content manually
+                  3. Consider screenshot capture if the content is valuable
+              onError: continue
+
+            - id: notify_failed
+              tool: telegram_send
+              inputs:
+                chatId: "$input.telegramChatId"
+                message: |
+                  ⚠️ LinkedIn extraction failed
+
+                  **$input.title**
+
+                  Could not extract content. This may require login access.
+                  Please check the link manually.
+              onError: continue
+
+enabled: true
+tier: 1
+priority: 100  # Domain-specific skills win over generic url-extract
+tags:
+  - social
+  - linkedin
+  - professional
+  - pillar-aware
+  - contextual-extraction
+  - multi-strategy
+  - v3-compatible

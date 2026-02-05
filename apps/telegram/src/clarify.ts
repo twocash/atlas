@@ -8,16 +8,25 @@
  */
 
 import { InlineKeyboard } from "grammy";
-import type { 
-  ClassificationResult, 
-  UrlContent, 
-  Pillar, 
+import type {
+  ClassificationResult,
+  UrlContent,
+  Pillar,
   Intent,
-  ClarificationOption 
+  ClarificationOption
 } from "./types";
 import { getClarificationType } from "./classifier";
 import { getUrlDomain } from "./url";
 import { logger } from "./logger";
+
+/**
+ * Escape Markdown special characters to prevent parse errors
+ * LinkedIn URLs contain underscores which break Markdown parsing
+ */
+function escapeMarkdown(text: string): string {
+  // Escape underscores, asterisks, backticks, and square brackets
+  return text.replace(/([_*`\[\]])/g, '\\$1');
+}
 
 /**
  * Generate a clarification question based on classification result
@@ -57,8 +66,9 @@ function generateAutoConfirm(
   title: string,
   domain: string | null
 ): { question: string; options: ClarificationOption[] } {
-  const source = domain ? `${domain}: ` : "";
-  const shortTitle = title.length > 50 ? title.substring(0, 47) + "..." : title;
+  const source = domain ? `${escapeMarkdown(domain)}: ` : "";
+  const rawTitle = title.length > 50 ? title.substring(0, 47) + "..." : title;
+  const shortTitle = escapeMarkdown(rawTitle);
 
   return {
     question: `${source}${shortTitle} → ${classification.pillar} ${classification.intent.toLowerCase()}?`,
@@ -78,8 +88,9 @@ function generateCaveatConfirm(
   title: string,
   domain: string | null
 ): { question: string; options: ClarificationOption[] } {
-  const source = domain ? `${domain}: ` : "";
-  const shortTitle = title.length > 40 ? title.substring(0, 37) + "..." : title;
+  const source = domain ? `${escapeMarkdown(domain)}: ` : "";
+  const rawTitle = title.length > 40 ? title.substring(0, 37) + "..." : title;
+  const shortTitle = escapeMarkdown(rawTitle);
 
   return {
     question: `${source}${shortTitle}\n\nLooks like ${classification.pillar} ${classification.intent.toLowerCase()}. Correct?`,
@@ -100,8 +111,9 @@ function generateQuickClarification(
   title: string,
   domain: string | null
 ): { question: string; options: ClarificationOption[] } {
-  const source = domain ? `${domain}: ` : "";
-  const shortTitle = title.length > 40 ? title.substring(0, 37) + "..." : title;
+  const source = domain ? `${escapeMarkdown(domain)}: ` : "";
+  const rawTitle = title.length > 40 ? title.substring(0, 37) + "..." : title;
+  const shortTitle = escapeMarkdown(rawTitle);
 
   // Generate pillar-specific options
   if (classification.pillar === "The Grove") {
@@ -136,8 +148,9 @@ function generateMustAsk(
   title: string,
   domain: string | null
 ): { question: string; options: ClarificationOption[] } {
-  const source = domain ? `${domain}: ` : "";
-  const shortTitle = title.length > 40 ? title.substring(0, 37) + "..." : title;
+  const source = domain ? `${escapeMarkdown(domain)}: ` : "";
+  const rawTitle = title.length > 40 ? title.substring(0, 37) + "..." : title;
+  const shortTitle = escapeMarkdown(rawTitle);
 
   return {
     question: `${source}${shortTitle}\n\nNot sure how to classify. What is this?`,

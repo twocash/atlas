@@ -452,16 +452,26 @@ if (strictMode && v3Requested && !composedPrompt?.prompt)
 **How it works:**
 1. Chrome extension sends capture with `promptIds: { drafter, voice, lens }`
 2. Status server attempts prompt composition
-3. If promptIds were provided, `v3Requested = true` is passed to skill
-4. Strict mode only enforces composedPrompt when V3 was explicitly requested
-5. Regular skills using systemPrompt continue to work
+3. `v3Requested = !!composedPrompt?.prompt` - TRUE only when composition SUCCEEDED
+4. Strict mode only enforces when we have a valid composed prompt
+5. If composition fails/returns null, v3Requested=false and we fall back to systemPrompt
+
+**BUG FIX (2026-02-05):** Original implementation set `v3Requested = !!(promptIds && ...)` which was based on promptIds being PROVIDED, not composition SUCCEEDING. This caused cascade failure:
+1. User sends capture without V3 promptIds
+2. promptIds is undefined, but v3Requested logic was fragile
+3. When composition fails/returns null, v3Requested was still true
+4. Strict mode blocks with "composedPrompt not provided"
+5. Empty content cascades to notion_append validation failure
+6. Skill reports "success" despite complete failure
+
+**Correct Fix:** `const v3Requested = !!composedPrompt?.prompt;` - only true when we HAVE a valid prompt
 
 **Files Changed:**
 - `apps/telegram/src/conversation/tools/core.ts` - Added v3Requested flag, fixed strict mode check
-- `apps/telegram/src/health/status-server.ts` - Sets v3Requested when promptIds provided
+- `apps/telegram/src/health/status-server.ts` - Sets v3Requested based on composedPrompt existence (NOT promptIds)
 - `apps/telegram/data/skills/url-extract/skill.yaml` - Added v3Requested input, passes to claude_analyze
 
-**KEY LEARNING:** Strict mode was put in place to catch V3 pipeline failures - it correctly found this issue! The fix ensures strict mode applies only when V3 is truly expected, not for all skill execution.
+**KEY LEARNING:** Strict mode was put in place to catch V3 pipeline failures - it correctly found this issue! The fix ensures strict mode applies only when V3 composition succeeded, allowing graceful fallback when composition fails.
 
 ### 2026-02-04: Work Queue Update Validation Bug Fix (P0) (ATLAS-WQ-VAL-001)
 
