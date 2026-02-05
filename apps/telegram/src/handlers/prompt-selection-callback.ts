@@ -17,6 +17,14 @@ import type { Context } from 'grammy';
 import { InlineKeyboard } from 'grammy';
 import { logger } from '../logger';
 
+/**
+ * Escape Markdown special characters to prevent parse errors
+ * LinkedIn/Twitter URLs contain underscores which break Markdown parsing
+ */
+function escapeMarkdown(text: string): string {
+  return text.replace(/([_*`\[\]])/g, '\\$1');
+}
+
 import {
   getSelection,
   updateSelection,
@@ -582,6 +590,89 @@ async function executePromptComposition(
 
     const notionUrl = (wqEntry as any).url;
 
+    // Update progress message
+    try {
+      await ctx.api.editMessageText(
+        ctx.chat!.id,
+        progressMsg.message_id,
+        `🔄 Extracting content...\n\n` +
+        `📌 ${pillar} → ${action}${voice ? ` → ${voice}` : ''}\n` +
+        `📝 ${title || content.substring(0, 50)}...`
+      );
+    } catch {
+      // Ignore edit failures
+    }
+
+    // Trigger skill execution for content extraction (if URL)
+    if (contentType === 'url') {
+      try {
+        const { getSkillRegistry, initializeSkillRegistry } = await import('../skills/registry');
+        const { executeSkill } = await import('../skills/executor');
+
+        // Ensure registry is initialized
+        await initializeSkillRegistry();
+        const registry = getSkillRegistry();
+
+        // Find matching skill
+        const match = registry.findBestMatch(content, { pillar: pillar as any });
+
+        if (match) {
+          logger.info('Executing skill for prompt selection', {
+            skill: match.skill.name,
+            url: content,
+            pillar,
+            action,
+            voice,
+          });
+
+          const userId = ctx.from?.id || 0;
+
+          // Execute skill with composed prompt
+          await executeSkill(match.skill, {
+            userId,
+            messageText: content,
+            pillar: pillar as any,
+            approvalLatch: true, // User already confirmed via interactive flow
+            input: {
+              url: content,
+              title: title || content,
+              pillar,
+              feedId: feedEntry.id,
+              workQueueId: wqEntry.id,
+              workQueueUrl: notionUrl,
+              feedUrl: (feedEntry as any).url,
+              depth: action === 'research' ? 'deep' : 'standard',
+              telegramChatId: userId,
+              // Pass the composed prompt for the skill to use
+              composedPrompt: {
+                prompt: result.prompt,
+                temperature: result.temperature,
+                maxTokens: result.maxTokens,
+                metadata: result.metadata,
+              },
+              v3Requested: true, // Interactive flow = V3 capture
+            },
+          });
+
+          logger.info('Skill execution completed', {
+            skill: match.skill.name,
+            action,
+            pillar,
+          });
+        } else {
+          logger.warn('No skill matched for URL', { url: content, pillar });
+        }
+      } catch (skillError) {
+        logger.error('Skill execution failed', {
+          error: skillError,
+          url: content,
+          pillar,
+          action,
+        });
+        // Don't fail the whole capture - entries are created, just no extraction
+      }
+    }
+
     // Clean up the selection
     removeSelection(state.requestId);
 
@@ -600,9 +691,6 @@ async function executePromptComposition(
       `🔗 [View in Notion](${notionUrl})`,
       { parse_mode: 'Markdown' }
     );
-
-    // TODO: If action is 'research', trigger skill execution
-    // For now, just create the entries
 
   } catch (error) {
     logger.error('Prompt composition execution failed', {
@@ -666,8 +754,12 @@ export async function startPromptSelection(
   // Build and send pillar keyboard
   const keyboard = buildPillarKeyboard(state.requestId);
 
+  // Escape Markdown in content to prevent parse errors (LinkedIn URLs have underscores)
+  const displayText = escapeMarkdown(title || content.substring(0, 100));
+  const ellipsis = content.length > 100 ? '...' : '';
+
   const message = await ctx.reply(
-    `Which pillar?\n\n_${title || content.substring(0, 100)}${content.length > 100 ? '...' : ''}_`,
+    `Which pillar?\n\n_${displayText}${ellipsis}_`,
     { reply_markup: keyboard, parse_mode: 'Markdown' }
   );
 
