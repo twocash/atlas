@@ -419,16 +419,16 @@ async function processCapture(capture: CaptureRequest) {
       const notionUrl = (wqEntry as any).url;
       pushActivity('page-capture', 'complete', 'success', [
         `✅ ${pillar} / ${title || url}`,
+        `📎 ${url}`,
         `🔗 ${notionUrl}`,
-        `View full analysis in Notion`,
       ]);
     } else {
       // No skill matched - still show the Notion entry
       const notionUrl = (wqEntry as any).url;
       pushActivity('page-capture', 'complete', 'success', [
         `✅ ${pillar} / ${title || url}`,
+        `📎 ${url}`,
         `🔗 ${notionUrl}`,
-        `Saved (no extraction skill matched)`,
       ]);
     }
 
