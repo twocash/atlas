@@ -42,6 +42,22 @@ const ALLOWED_USERS = process.env.TELEGRAM_ALLOWED_USERS!
   .map((id) => parseInt(id.trim(), 10));
 
 /**
+ * Format a date as time ago (e.g., "5 min ago", "2 hours ago")
+ */
+function formatTimeAgo(date: Date): string {
+  const now = new Date();
+  const diffMs = now.getTime() - date.getTime();
+  const diffSec = Math.floor(diffMs / 1000);
+  const diffMin = Math.floor(diffSec / 60);
+  const diffHour = Math.floor(diffMin / 60);
+
+  if (diffMin < 1) return "just now";
+  if (diffMin < 60) return `${diffMin} min ago`;
+  if (diffHour < 24) return `${diffHour} hour${diffHour > 1 ? "s" : ""} ago`;
+  return date.toLocaleDateString();
+}
+
+/**
  * Create and configure the bot instance
  */
 export function createBot(): Bot<AtlasContext> {
@@ -262,6 +278,41 @@ export function createBot(): Bot<AtlasContext> {
     } else {
       await ctx.reply("No skill is currently running.");
     }
+  });
+
+  // Rollback command - rollback recently auto-deployed skills (Sprint: Pit Stop)
+  bot.command("rollback", async (ctx) => {
+    const { rollbackDeployment, getRecentDeployments } = await import("./skills/approval-queue");
+
+    const skillName = ctx.message?.text?.split(" ").slice(1).join(" ").trim();
+
+    if (!skillName) {
+      // List recent deployments
+      const deployments = getRecentDeployments();
+
+      if (deployments.length === 0) {
+        await ctx.reply("No recent auto-deployments within rollback window.");
+        return;
+      }
+
+      const lines = [
+        "<b>Recent Auto-Deployments</b>",
+        "",
+        ...deployments.map(d => {
+          const ago = formatTimeAgo(new Date(d.deployedAt));
+          return `• <code>${d.skillName}</code> (${d.zone}) - ${ago}`;
+        }),
+        "",
+        "Usage: <code>/rollback skill-name</code>",
+      ];
+
+      await ctx.reply(lines.join("\n"), { parse_mode: "HTML" });
+      return;
+    }
+
+    // Attempt rollback
+    const result = await rollbackDeployment(skillName);
+    await ctx.reply(result.message, { parse_mode: "HTML" });
   });
 
   // Briefing command - manual briefing control
