@@ -28,6 +28,7 @@ import { isNotionUrl, handleNotionUrl } from './notion-url';
 import type { Pillar, RequestType } from './types';
 import type { MediaContext } from './media';
 import type { AttachmentInfo } from './attachments';
+import { startPromptSelection } from '../handlers/prompt-selection-callback';
 
 /**
  * Result of content detection
@@ -166,7 +167,9 @@ function inferRequestType(source: string): RequestType {
 /**
  * Trigger the content confirmation flow
  *
- * This sends a message with the content preview and classification keyboard.
+ * V3 UPDATE (2026-02-05): Now routes to V3 Progressive Profiling flow
+ * (Pillar → Action → Voice) instead of the old confirmation keyboard.
+ *
  * Returns true if the flow was triggered, false otherwise.
  */
 export async function triggerContentConfirmation(
@@ -183,70 +186,24 @@ export async function triggerContentConfirmation(
   }
 
   try {
-    // Route for analysis
+    // Route for analysis (just for logging/title extraction)
     const route = await routeForAnalysis(url);
 
-    // Build initial content analysis (basic metadata)
-    // Full extraction happens after confirmation if browser is needed
-    const analysis: ContentAnalysis = {
-      source: route.source,
-      method: route.method,
-      title: contextText || `${route.source} content`,
-      description: url,
-      extractedAt: new Date().toISOString(),
-    };
+    // Use context text as title if provided, otherwise use source type
+    const title = contextText || `${route.source} content from ${extractDomain(url)}`;
 
-    // Infer classification
-    const pillar = inferPillar(url, contextText);
-    const requestType = inferRequestType(route.source);
-
-    // Generate request ID
-    const requestId = generateRequestId();
-
-    // Create pending content
-    const pending: PendingContent = {
-      requestId,
-      chatId,
-      userId,
-      messageId: ctx.message?.message_id,
-      flowState: 'confirm',  // URL flow goes straight to confirm (no Gemini needed)
-      analysis,
-      originalText: ctx.message?.text || url,
-      pillar,
-      requestType,
-      timestamp: Date.now(),
-      url,
-    };
-
-    // Store pending
-    storePendingContent(pending);
-
-    // Build preview and keyboard
-    const preview = formatContentPreview(pending);
-    const keyboard = buildConfirmationKeyboard(requestId, pillar, requestType);
-
-    // Send confirmation message
-    const confirmMsg = await ctx.reply(preview, {
-      parse_mode: 'HTML',
-      reply_markup: keyboard,
-      reply_to_message_id: ctx.message?.message_id,
-    });
-
-    // Store the confirmation message ID for later editing
-    pending.confirmMessageId = confirmMsg.message_id;
-    storePendingContent(pending);
-
-    logger.info('Content confirmation triggered', {
-      requestId,
+    logger.info('Content share detected, routing to V3 progressive profiling', {
       url,
       source: route.source,
-      pillar,
-      requestType,
+      title,
     });
+
+    // V3 PROGRESSIVE PROFILING: Use the new Pillar → Action → Voice flow
+    await startPromptSelection(ctx, url, 'url', title);
 
     return true;
   } catch (error) {
-    logger.error('Failed to trigger content confirmation', { error, url });
+    logger.error('Failed to trigger V3 content flow', { error, url });
     return false;
   }
 }
@@ -308,23 +265,16 @@ function getMediaIcon(type: string): string {
 }
 
 /**
- * Trigger INSTANT classification keyboard for media (Classify-First Flow)
+ * Trigger classification for media (images, documents, etc.)
  *
- * This shows the pillar selection keyboard IMMEDIATELY when media is shared,
- * BEFORE running any Gemini analysis. The analysis happens AFTER pillar selection.
+ * V3 UPDATE (2026-02-05): Now routes to V3 Progressive Profiling flow
+ * (Pillar → Action → Voice) instead of the old instant classification keyboard.
  *
  * Flow:
  * 1. User shares image/document/video
- * 2. INSTANT: Show pillar keyboard (< 200ms)
- * 3. User taps pillar → triggers Gemini with pillar context
- * 4. Show type confirmation with Gemini analysis
- * 5. User confirms → Feed + Work Queue created
- *
- * Benefits:
- * - Faster UX (instant keyboard, no waiting for Gemini)
- * - More accurate (pillar-aware prompts)
- * - Cheaper (Quick File skips Gemini entirely)
- * - Enables pattern learning
+ * 2. Show V3 pillar keyboard
+ * 3. User taps pillar → action → voice
+ * 4. Feed + Work Queue created with attachment info
  */
 export async function triggerInstantClassification(
   ctx: Context,
@@ -334,79 +284,30 @@ export async function triggerInstantClassification(
   const chatId = ctx.chat?.id;
 
   if (!userId || !chatId) {
-    logger.warn('Missing userId or chatId for instant classification');
+    logger.warn('Missing userId or chatId for media classification');
     return false;
   }
 
   try {
     const caption = ctx.message?.caption || '';
+    const title = attachment.fileName || caption || `${attachment.type} content`;
 
-    // Generate request ID
-    const requestId = generateRequestId();
+    // For media, we use the caption or filename as content, contentType as 'text'
+    // since we don't have a URL. The V3 flow will handle it.
+    const content = caption || `[${attachment.type}${attachment.fileName ? `: ${attachment.fileName}` : ''}]`;
 
-    // Create pending content in 'classify' state (no analysis yet)
-    const pending: PendingContent = {
-      requestId,
-      chatId,
-      userId,
-      messageId: ctx.message?.message_id,
-      flowState: 'classify',  // Phase 1: awaiting pillar selection
-      analysis: {
-        source: 'generic',
-        method: 'Gemini',  // Will be processed after pillar selection
-        title: attachment.fileName || `${attachment.type} content`,
-        extractedAt: new Date().toISOString(),
-      },
-      originalText: caption || `[${attachment.type}]`,
-      pillar: 'The Grove',  // Default, will be set by user
-      requestType: 'Research',  // Default, will be set after analysis
-      timestamp: Date.now(),
-      attachmentInfo: attachment,
-    };
-
-    // Store pending
-    storePendingContent(pending);
-
-    // Build instant preview (minimal - no Gemini analysis yet)
-    const icon = getMediaIcon(attachment.type);
-    let preview = `${icon} <b>Content received</b>\n`;
-
-    if (attachment.fileName) {
-      preview += `📁 ${attachment.fileName}\n`;
-    }
-    if (attachment.fileSize) {
-      preview += `📊 ${formatFileSize(attachment.fileSize)}\n`;
-    }
-    if (caption) {
-      const truncCaption = caption.length > 100 ? caption.substring(0, 97) + '...' : caption;
-      preview += `\n"${truncCaption}"\n`;
-    }
-
-    preview += `\n<b>Quick classify:</b>`;
-
-    // Build instant keyboard (pillar selection + Quick File/Analyze)
-    const keyboard = buildClassificationKeyboard(requestId);
-
-    // Send confirmation message
-    const confirmMsg = await ctx.reply(preview, {
-      parse_mode: 'HTML',
-      reply_markup: keyboard,
-      reply_to_message_id: ctx.message?.message_id,
-    });
-
-    // Store the confirmation message ID
-    pending.confirmMessageId = confirmMsg.message_id;
-    storePendingContent(pending);
-
-    logger.info('Instant classification triggered (classify-first)', {
-      requestId,
+    logger.info('Media share detected, routing to V3 progressive profiling', {
       type: attachment.type,
       fileName: attachment.fileName,
+      title,
     });
+
+    // V3 PROGRESSIVE PROFILING: Use the new Pillar → Action → Voice flow
+    await startPromptSelection(ctx, content, 'text', title);
 
     return true;
   } catch (error) {
-    logger.error('Failed to trigger instant classification', { error, type: attachment.type });
+    logger.error('Failed to trigger V3 media flow', { error, type: attachment.type });
     return false;
   }
 }
@@ -498,13 +399,17 @@ function inferRequestTypeFromMedia(mediaContext: MediaContext): RequestType {
 /**
  * Trigger the content confirmation flow for MEDIA (images, docs, etc.)
  *
- * This shows a keyboard with Gemini's analysis so Jim can confirm classification.
+ * V3 UPDATE (2026-02-05): Now routes to V3 Progressive Profiling flow
+ * (Pillar → Action → Voice) instead of the old confirmation keyboard.
+ *
+ * Note: This is called after Gemini analysis, so we include the analysis
+ * in the title for context.
  */
 export async function triggerMediaConfirmation(
   ctx: Context,
   attachment: AttachmentInfo,
   mediaContext: MediaContext,
-  suggestedPillar: Pillar
+  _suggestedPillar: Pillar
 ): Promise<boolean> {
   const userId = ctx.from?.id;
   const chatId = ctx.chat?.id;
@@ -517,84 +422,30 @@ export async function triggerMediaConfirmation(
   try {
     const caption = ctx.message?.caption || '';
 
-    // Build content analysis from Gemini's work
-    const analysis: ContentAnalysis = {
-      source: mediaContext.type === 'image' ? 'generic' : 'article',
-      method: 'Gemini',
-      title: attachment.fileName || `${mediaContext.type} content`,
-      description: mediaContext.description.substring(0, 200),
-      extractedAt: new Date().toISOString(),
-    };
-
-    // Infer classification from Gemini analysis
-    const pillar = inferPillarFromMedia(mediaContext, caption) || suggestedPillar;
-    const requestType = inferRequestTypeFromMedia(mediaContext);
-
-    // Generate request ID
-    const requestId = generateRequestId();
-
-    // Create pending content
-    const pending: PendingContent = {
-      requestId,
-      chatId,
-      userId,
-      messageId: ctx.message?.message_id,
-      flowState: 'confirm',  // Legacy flow goes straight to confirm (Gemini already ran)
-      analysis,
-      originalText: caption || `[${mediaContext.type}]`,
-      pillar,
-      requestType,
-      timestamp: Date.now(),
-    };
-
-    // Store pending
-    storePendingContent(pending);
-
-    // Build custom preview for media
-    const icon = getMediaIcon(mediaContext.type);
-    const pillarIcon = {
-      'Personal': '👤',
-      'The Grove': '🌳',
-      'Consulting': '💼',
-      'Home/Garage': '🏠',
-    }[pillar] || '📁';
-
-    let preview = `${icon} <b>${attachment.fileName || mediaContext.type.toUpperCase()}</b>\n`;
-
-    // Show Gemini's analysis (truncated)
-    const desc = mediaContext.description.length > 150
-      ? mediaContext.description.substring(0, 147) + '...'
+    // Use Gemini's description as context, truncated for title
+    const geminiSummary = mediaContext.description.length > 100
+      ? mediaContext.description.substring(0, 97) + '...'
       : mediaContext.description;
-    preview += `\n${desc}\n`;
 
-    preview += `\n${pillarIcon} <b>Pillar:</b> ${pillar}`;
-    preview += `\n📋 <b>Type:</b> ${requestType}`;
-    preview += `\n🔍 <b>Method:</b> Gemini`;
+    const title = attachment.fileName || geminiSummary || `${mediaContext.type} content`;
 
-    // Build keyboard
-    const keyboard = buildConfirmationKeyboard(requestId, pillar, requestType);
+    // Content includes both caption and Gemini's analysis
+    const content = caption
+      ? `${caption}\n\n[Gemini analysis: ${geminiSummary}]`
+      : `[${mediaContext.type}: ${geminiSummary}]`;
 
-    // Send confirmation message
-    const confirmMsg = await ctx.reply(preview, {
-      parse_mode: 'HTML',
-      reply_markup: keyboard,
-      reply_to_message_id: ctx.message?.message_id,
-    });
-
-    // Store the confirmation message ID
-    pending.confirmMessageId = confirmMsg.message_id;
-    storePendingContent(pending);
-
-    logger.info('Media confirmation triggered', {
-      requestId,
+    logger.info('Media with Gemini analysis, routing to V3 progressive profiling', {
       type: mediaContext.type,
-      pillar,
-      requestType,
+      fileName: attachment.fileName,
+      title,
     });
+
+    // V3 PROGRESSIVE PROFILING: Use the new Pillar → Action → Voice flow
+    await startPromptSelection(ctx, content, 'text', title);
 
     return true;
   } catch (error) {
-    logger.error('Failed to trigger media confirmation', { error, type: mediaContext.type });
+    logger.error('Failed to trigger V3 media flow', { error, type: mediaContext.type });
     return false;
   }
 }
