@@ -21,6 +21,7 @@ import { initScheduler, stopScheduler, type ScheduledTask } from "./scheduler";
 import { initMcp, shutdownMcp } from "./mcp";
 import { startStatusServer, stopStatusServer } from "./health/status-server";
 import { initializeSkillRegistry } from "./skills";
+import { startSelfImprovementListener, stopSelfImprovementListener } from "./listeners/self-improvement";
 import { existsSync, writeFileSync, unlinkSync, readFileSync } from "fs";
 import { join } from "path";
 
@@ -111,6 +112,14 @@ async function main() {
     logger.warn("Skill registry initialization failed (non-fatal)", { error: err.message });
   });
 
+  // Start self-improvement listener (Sprint: Pit Stop)
+  // Polls Feed 2.0 for self-improvement entries and auto-dispatches to pit crew
+  try {
+    startSelfImprovementListener();
+  } catch (err) {
+    logger.warn("Self-improvement listener failed to start (non-fatal)", { error: err });
+  }
+
   // Start status server for Chrome extension heartbeat
   try {
     startStatusServer(3847);
@@ -125,6 +134,7 @@ async function main() {
   const shutdown = async (signal: string) => {
     logger.info(`Received ${signal}, shutting down gracefully...`);
     stopScheduler();
+    stopSelfImprovementListener();
     stopStatusServer();
     await shutdownMcp();
     await bot.stop();
