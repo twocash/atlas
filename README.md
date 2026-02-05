@@ -6,13 +6,11 @@
 
 ## Why This Architecture?
 
-Atlas is not productivity software. It's a **cognitive prosthetic**.
-
 Most productivity tools assume you have reliable executive function—that you'll remember to check the app, maintain consistent routines, and translate intentions into actions. For ADHD brains, that assumption is catastrophic. These tools add cognitive load instead of removing it.
 
 Atlas takes a different approach, built on the **extended mind thesis**: cognition doesn't stop at the skull. If a notebook can function as memory and a calculator as arithmetic processing, an AI system can function as extended executive function—not a tool you operate, but a cognitive partner that completes your thinking.
 
-**This isn't accommodation. It's architecture.**
+**Forget accommodation. Adopt an exploratory view of the world that supports this style of cognition.**
 
 ---
 
@@ -20,15 +18,13 @@ Atlas takes a different approach, built on the **extended mind thesis**: cogniti
 
 ### Pattern-Based Approval
 
-You don't approve individual actions—you approve *categories* of action once. "Yes, file Grove-related content this way." "Yes, send daily briefings at 6am." One blessing enables unlimited future executions of that pattern.
-
-This mirrors how executive function should work: decide once, implement automatically forever. Skills embody these approved patterns and compound over time.
+You don't approve individual actions—you approve *categories* of action once. "Yes, file Grove-related content this way." "Yes, send daily briefings at 6am." One blessing enables unlimited future executions of that pattern. This mirrors how executive function should work: decide once, implement automatically forever. Skills embody these approved patterns and compound over time. Muscle memory and contextual clues build up to streamline the experience of using Atlas over time. 
 
 ### Self-Improving Infrastructure
 
-Atlas doesn't just execute tasks—it identifies its own limitations and creates development work to address them. When Atlas hits a constraint, it logs the issue, dispatches a fix to development partners via MCP, and becomes more capable.
+Atlas doesn't just execute tasks—it identifies its own limitations and creates development work to address them. When Atlas hits a constraint, it logs the issue, dispatches a fix to the "Pit Crew" -- integrated development partners connected to Atlas via MCP, and becomes more capable. With time, this happens automatically. 
 
-This "grows its own arms" approach shifts the developer role from debugger to approver, reducing cognitive load while expanding autonomous capability.
+We wanted Atlas have a "grows your own arms" approach. This shifts the developer role from debugger to approver, reducing cognitive load while expanding autonomous capability.
 
 ### MCP-First Extensibility
 
@@ -38,15 +34,15 @@ This includes agent-to-agent collaboration where Atlas doesn't just call tools, 
 
 ### Feed-First Processing
 
-Every interaction flows through a structured activity log with full metadata. This isn't surveillance—it's context preservation and pattern detection.
+Every interaction flows through a structured activity log with full metadata. This isn't surveillance—it's context preservation and pattern detection. Even the Pit Crew, which monitors the server for error and logs bugs, and issues fix and feature discussions with Atlas to ensure that we're meeting the user's needs -- with full transparecy and a built-in capability for the user to edit plans directly in Notion (today, other endpoints in teh future with new capes - but this MVP is based on using Notion to manage markdown files with some panache. It's also what I use. 
 
 The system learns from corrections, recognizes temporal patterns, and maintains continuity across sessions. Your decisions inform future routing without requiring you to remember what you decided last time.
 
 ### Shame-Resistant Design
 
-ADHD often involves failure spirals: bad feelings lead to avoidance, avoidance leads to more failure.
+Labeling a different style of thinking-any type of label on cognition-often involves failure spirals: bad feelings lead to avoidance, avoidance leads to more failure.
 
-Atlas handles failures automatically (retry without surfacing), manages backlogs proactively (no guilt-inducing overdue lists), and assumes positive intent. The emotional tenor is *competent assistant*, not disappointed parent keeping score.
+Atlas handles failures automatically (retry without surfacing), manages backlogs proactively (no guilt-inducing overdue lists), and assumes positive intent. The emotional tenor is *competent assistant*, not disappointed parent keeping score. 
 
 ---
 
@@ -72,7 +68,7 @@ Skills are approved workflow patterns that execute automatically. The current de
 Natural language control over email, calendar, and docs. "Move that meeting to Tuesday and draft a follow-up email" becomes a single command instead of four context switches across three apps.
 
 #### Bug-to-Feature Conversion Pipeline
-When Atlas encounters a failure, it doesn't just log an error—it creates a development request with reproduction steps, dispatches it to Pit Crew for implementation, and auto-integrates the fix. The system debugs itself.
+When Atlas encounters a failure, it doesn't just log an error—it creates a development request with reproduction steps, dispatches it to Pit Crew for implementation, and auto-integrates the fix. The system debugs itself. 
 
 #### YouTube Transcript Analysis
 Extract transcripts, summarize key points, identify actionable insights, and file to relevant knowledge bases. Consuming long-form content without the cognitive overhead of watching at 1x speed or manually taking notes.
