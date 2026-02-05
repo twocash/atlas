@@ -383,16 +383,18 @@ async function processCapture(capture: CaptureRequest) {
       // Get owner's Telegram chat ID for notifications
       const ownerChatId = parseInt(process.env.TELEGRAM_ALLOWED_USERS?.split(',')[0]?.trim() || '0', 10);
 
+      // V3: v3Requested is true ONLY when prompt composition succeeded
+      // This ensures strict mode only enforces when we have a valid composed prompt
+      // If composition failed/returned null, we fall back to systemPrompt gracefully
+      const v3Requested = !!composedPrompt?.prompt;
+
       logger.info('Executing skill for capture', {
         skill: match.skill.name,
         url,
         hasComposedPrompt: !!composedPrompt,
+        v3Requested,
         ownerChatId,
       });
-
-      // V3: v3Requested is true when promptIds were explicitly provided
-      // This flag tells claude_analyze to enforce strict mode for V3 captures
-      const v3Requested = !!(promptIds && (promptIds.drafter || promptIds.voice || promptIds.lens));
 
       await executeSkill(match.skill, {
         userId: ownerChatId,
