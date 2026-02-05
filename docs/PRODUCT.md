@@ -78,6 +78,7 @@ Atlas is a cognitive co-pilot that works *with* how Jim's brain operates—not a
 - LinkedIn engagement tracking captures high-value contacts
 - Editorial learning loop improves output over time
 - Context clue analysis can auto-classify most sparks (see `SPARKS.md`)
+- **Autonomous self-repair** for skill-related issues (Zone 1/2 auto-deploys)
 
 **What creates friction:**
 - Async processing requires hunting in Notion for results
@@ -228,17 +229,49 @@ A Claude Code instance running persistently to act as Atlas's "hands":
 - Skill creation time
 - Cross-session state reliability
 - Multi-machine sync accuracy
+- Autonomous repair success rate
 
 **Current components:**
 - `skills/` - Skill system
 - `.claude/` - Custom instructions
 - `launchers/` - Multi-model support
 - `.agent/` - Coordination infrastructure
+- **Autonomous Repair System** - Self-healing skill infrastructure
 
 **Priority problems:**
 - P3: Skills system underutilized
 - P3: Multi-machine state not synced
 - P3: Agent dispatch patterns underdeveloped
+
+### 5. Autonomous Self-Repair (Pit Stop Sprint)
+
+**Goal:** Atlas maintains its own skill infrastructure without human intervention for routine fixes
+
+**Key metrics:**
+- Mean time to auto-repair (Zone 1/2 operations)
+- False positive rate (Zone 3 escalations that could have been Zone 2)
+- Rollback frequency
+
+**Current components:**
+- `src/skills/zone-classifier.ts` - Three-zone permission model
+- `src/pit-crew/swarm-dispatch.ts` - Claude Code session spawning
+- `src/listeners/self-improvement.ts` - Feed 2.0 polling
+- `src/skills/approval-queue.ts` - Zone-aware operation handling
+
+**Permission Zones:**
+| Zone | Behavior | Scope |
+|------|----------|-------|
+| Zone 1 | Auto-Execute | Tier 0 skills, safe directory edits |
+| Zone 2 | Auto-Notify | Tier 1 skills, bug fixes, configs |
+| Zone 3 | Approve | Tier 2 skills, core files, auth |
+
+**Safety mechanisms:**
+- Rate limiting (5/hour max)
+- 24-hour rollback window
+- Auto-disable after 3 failures
+- All flags default OFF
+
+See `apps/telegram/docs/AUTONOMY.md` for complete documentation.
 
 ---
 

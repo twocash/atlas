@@ -168,6 +168,29 @@ Pit Crew:
 - ❌ Updating status without context (always explain why)
 - ❌ Skipping dispatch for Atlas infrastructure issues (self-improve!)
 
+## Zone-Aware Dispatch (Autonomous Repair)
+
+When dispatching skill-related work, the zone classifier determines the permission level:
+
+| Zone | Dispatch Behavior |
+|------|-------------------|
+| Zone 1 (auto-execute) | Swarm dispatch runs immediately, no notification |
+| Zone 2 (auto-notify) | Swarm dispatch runs, Telegram notification sent |
+| Zone 3 (approve) | Work Queue item created, human approval required |
+
+**Integration with Self-Improvement Listener:**
+- Feed 2.0 entries tagged "self-improvement" are auto-processed
+- Zone classifier routes to appropriate permission zone
+- Swarm dispatch spawns Claude Code sessions for Zone 1/2
+- Zone 3 operations create Pit Crew discussions for manual review
+
+**Relevant code:**
+- Zone Classifier: `src/skills/zone-classifier.ts`
+- Swarm Dispatch: `src/pit-crew/swarm-dispatch.ts`
+- Approval Queue: `src/skills/approval-queue.ts`
+
+See `docs/AUTONOMY.md` for the complete permission model.
+
 ## Dependencies
 
 - `mcp__pit_crew__*` tools available
@@ -185,3 +208,5 @@ Pit Crew:
 
 - `self-diagnosis` - Dispatch for self-improvement
 - `feed-first-classification` - Classify before dispatch
+- `zone-classifier` - Permission zone routing (autonomous repair)
+- `swarm-dispatch` - Claude Code session spawning

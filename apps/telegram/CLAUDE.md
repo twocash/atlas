@@ -303,6 +303,34 @@ Real-time agent-to-agent development through Notion pages:
 
 See `docs/SOP.md` SOP-005 for full protocol.
 
+### Autonomous Repair & Permission Zones
+
+Atlas can autonomously detect, classify, and repair skill-related issues through a three-zone permission model:
+
+| Zone | Behavior | Scope |
+|------|----------|-------|
+| **Zone 1** | Auto-Execute | Tier 0 skills, .md edits in `data/skills/` |
+| **Zone 2** | Auto-Notify | Tier 1 skills, bug fixes, config adjustments |
+| **Zone 3** | Approve | Tier 2 skills, core routing, auth, schemas |
+
+**Safety Mechanisms:**
+- Rate limiting (5 swarm dispatches/hour max)
+- 24-hour rollback window (`/rollback skill-name`)
+- Auto-disable after 3 consecutive failures
+- All flags default OFF until explicitly enabled
+
+**Feature Flags (all default false):**
+- `ATLAS_ZONE_CLASSIFIER` - Enables zone-based routing
+- `ATLAS_SWARM_DISPATCH` - Enables Claude Code sessions
+- `ATLAS_SELF_IMPROVEMENT_LISTENER` - Enables Feed 2.0 polling
+
+**Full documentation:** `docs/AUTONOMY.md`
+
+**Code locations:**
+- Zone Classifier: `src/skills/zone-classifier.ts`
+- Swarm Dispatch: `src/pit-crew/swarm-dispatch.ts`
+- Self-Improvement Listener: `src/listeners/self-improvement.ts`
+
 ---
 
 ## Session Notes
