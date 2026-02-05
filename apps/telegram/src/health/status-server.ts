@@ -332,33 +332,58 @@ async function processCapture(capture: CaptureRequest) {
 
     pushActivity('page-capture', 'entries-created', 'success', ['Feed and Work Queue entries created']);
 
-    // V3 Active Capture: Compose prompts if promptIds provided
-    let composedPrompt: { prompt: string; temperature: number; maxTokens: number } | null = null;
+    // V3 Active Capture: Compose prompts using the shared composition core
+    // This now uses the composePrompt function which handles drafter/voice resolution
+    let composedPrompt: { prompt: string; temperature: number; maxTokens: number; metadata?: { drafter: string; voice?: string; lens?: string } } | null = null;
 
     if (promptIds && (promptIds.drafter || promptIds.voice || promptIds.lens)) {
       try {
         pushActivity('page-capture', 'composing-prompts', 'running', ['Composing prompts from V3 selection...']);
 
-        const { getPromptManager } = await import('../../../../packages/agents/src');
-        const pm = getPromptManager();
-        composedPrompt = await pm.composePrompts(promptIds, {
-          pillar,
-          url,
+        // Use the shared composition core - it handles the full Drafter + Voice + Lens pattern
+        const { composePrompt, getPillarFromSlug } = await import('../../../../packages/agents/src');
+
+        // Extract action from drafter ID (e.g., "drafter.the-grove.research" → "research")
+        const drafterParts = promptIds.drafter?.split('.') || [];
+        const actionFromDrafter = drafterParts[drafterParts.length - 1] as 'research' | 'draft' | 'capture' | 'analysis' | 'summarize' || 'capture';
+
+        // Resolve pillar from drafter ID or use the provided pillar
+        // Type: 'The Grove' | 'Personal' | 'Consulting' | 'Home/Garage'
+        let compositionPillar = pillar as 'The Grove' | 'Personal' | 'Consulting' | 'Home/Garage';
+        if (drafterParts.length >= 2) {
+          const pillarFromDrafter = getPillarFromSlug(drafterParts[1]);
+          if (pillarFromDrafter) {
+            compositionPillar = pillarFromDrafter;
+          }
+        }
+
+        // Extract voice ID (strip "voice." prefix if present)
+        const voiceId = promptIds.voice?.replace(/^voice\./, '');
+
+        const result = await composePrompt({
+          pillar: compositionPillar,
+          action: actionFromDrafter,
+          voice: voiceId,
+          content: url,
           title: title || url,
+          url,
         });
 
-        if (composedPrompt) {
-          logger.info('V3 Prompt composition successful', {
-            drafter: promptIds.drafter,
-            voice: promptIds.voice,
-            lens: promptIds.lens,
-            promptLength: composedPrompt.prompt.length,
-          });
-          pushActivity('page-capture', 'prompts-composed', 'success', ['Prompts composed successfully']);
-        } else {
-          logger.warn('V3 Prompt composition returned null, falling back to default', { promptIds });
-          pushActivity('page-capture', 'prompts-fallback', 'running', ['Using default extraction...']);
-        }
+        composedPrompt = {
+          prompt: result.prompt,
+          temperature: result.temperature,
+          maxTokens: result.maxTokens,
+          metadata: result.metadata,
+        };
+
+        logger.info('V3 Prompt composition successful (shared core)', {
+          drafter: result.metadata.drafter,
+          voice: result.metadata.voice,
+          action: actionFromDrafter,
+          pillar: compositionPillar,
+          promptLength: result.prompt.length,
+        });
+        pushActivity('page-capture', 'prompts-composed', 'success', ['Prompts composed successfully']);
       } catch (err) {
         logger.error('V3 Prompt composition failed', { promptIds, error: err });
         pushActivity('page-capture', 'prompts-error', 'error', ['Prompt composition failed, using default']);

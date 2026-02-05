@@ -18,6 +18,11 @@ import { handleContentCallback } from "./content-callback";
 import { handleDispatchCallback } from "./dispatch-callback";
 import { handleNotionCallback, handleNotionStatusUpdate } from "./notion-callback";
 import { handleSkillCallback, isSkillCallback } from "./skill-callback";
+import {
+  handlePromptSelectionCallback,
+  isPromptSelectionCallback,
+  startPromptSelection,
+} from "./prompt-selection-callback";
 import { isContentCallback } from "../conversation/content-confirm";
 import { isDispatchCallback } from "../conversation/dispatch-choice";
 import { isNotionCallback } from "../conversation/notion-url";
@@ -108,6 +113,12 @@ export async function routeCallback(ctx: Context): Promise<void> {
 
   logger.debug("Routing callback", { data });
 
+  // Prompt selection callbacks (V3 Pillar → Action → Voice flow)
+  if (isPromptSelectionCallback(data)) {
+    await handlePromptSelectionCallback(ctx);
+    return;
+  }
+
   // Voice selection callbacks
   if (data.startsWith("voice:")) {
     await handleVoiceCallback(ctx);
@@ -181,4 +192,6 @@ export {
   handleChatIntent,
   handleVoiceCallback,
   handleContentCallback,
+  handlePromptSelectionCallback,
+  startPromptSelection,
 };
