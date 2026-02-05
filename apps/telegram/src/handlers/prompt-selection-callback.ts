@@ -475,6 +475,20 @@ async function executePromptComposition(
 
     const entryTitle = title || content;
 
+    // Map action to valid Request Type (from CLAUDE.md schema)
+    // Valid types: Research, Build, Draft, Schedule, Answer, Process
+    const requestTypeMap: Record<string, string> = {
+      'research': 'Research',
+      'analysis': 'Research',
+      'draft': 'Draft',
+      'build': 'Build',
+      'task': 'Process',
+      'reference': 'Research',
+    };
+    const requestType = requestTypeMap[action || ''] || 'Research';
+
+    logger.info('Creating Feed entry', { entryTitle, pillar, requestType, action });
+
     // Create Feed entry
     const feedEntry = await notion.pages.create({
       parent: { database_id: FEED_DB },
@@ -482,12 +496,14 @@ async function executePromptComposition(
         'Entry': { title: [{ text: { content: entryTitle } }] },
         'Pillar': { select: { name: pillar! } },
         'Source': { select: { name: 'Telegram' } },
-        'Request Type': { select: { name: action === 'research' ? 'Research' : 'Capture' } },
+        'Request Type': { select: { name: requestType } },
         'Author': { select: { name: 'Atlas [Telegram]' } },
         'Status': { select: { name: 'Captured' } },
         'Date': { date: { start: new Date().toISOString() } },
       },
     });
+
+    logger.info('Feed entry created', { feedId: feedEntry.id });
 
     // Add source URL to Feed page body if URL
     if (contentType === 'url') {
@@ -502,19 +518,36 @@ async function executePromptComposition(
       });
     }
 
+    // Map action to Work Queue Type (from CLAUDE.md schema)
+    // Valid types: Research, Build, Draft, Schedule, Answer, Process
+    const wqTypeMap: Record<string, string> = {
+      'research': 'Research',
+      'analysis': 'Research',
+      'draft': 'Draft',
+      'build': 'Build',
+      'task': 'Process',
+      'reference': 'Research',
+    };
+    const wqType = wqTypeMap[action || ''] || 'Research';
+    const priority = ['research', 'analysis', 'build'].includes(action || '') ? 'P1' : 'P2';
+
+    logger.info('Creating Work Queue entry', { entryTitle, pillar, wqType, priority });
+
     // Create Work Queue entry
     const wqEntry = await notion.pages.create({
       parent: { database_id: WORK_QUEUE_DB },
       properties: {
         'Task': { title: [{ text: { content: entryTitle } }] },
         'Status': { select: { name: 'Captured' } },
-        'Priority': { select: { name: action === 'research' ? 'P1' : 'P2' } },
-        'Type': { select: { name: action === 'research' ? 'Research' : 'Draft' } },
+        'Priority': { select: { name: priority } },
+        'Type': { select: { name: wqType } },
         'Pillar': { select: { name: pillar! } },
         'Assignee': { select: { name: 'Atlas [Telegram]' } },
         'Queued': { date: { start: new Date().toISOString().split('T')[0] } },
       },
     });
+
+    logger.info('Work Queue entry created', { wqId: wqEntry.id });
 
     // Add composed prompt metadata to Work Queue page body
     await notion.blocks.children.append({
