@@ -160,7 +160,19 @@ export async function routeCallback(ctx: Context): Promise<void> {
     return;
   }
 
-  // Spark callbacks (default)
+  // UNKNOWN CALLBACK - No handler matched
+  // This used to fall back to handleSparkCallback, but V3 flow uses ps:* callbacks.
+  // If we get here, it's either:
+  // 1. A bug in callback routing (missing pattern)
+  // 2. Stale UI with old callback format
+  // 3. New callback pattern that needs handling
+  logger.error("[CALLBACK] Unhandled callback - no routing pattern matched", {
+    data,
+    userId: ctx.from?.id,
+    chatId: ctx.chat?.id,
+  });
+
+  // Invoke deprecated handler which will throw with full context
   await handleSparkCallback(ctx);
 }
 

@@ -1,0 +1,124 @@
+# Atlas Supervisor Skill
+# Tier 2: Manages external process (requires explicit approval)
+
+name: atlas-supervisor
+version: 1.0.0
+description: |
+  Dedicated supervisor for Atlas Telegram bot - monitors process health,
+  dispatches issues to Pit Crew automatically, and feeds the learning pipeline
+  via Feed 2.0 telemetry.
+
+triggers:
+  - type: phrase
+    value: "/atlas-supervisor"
+  - type: phrase
+    value: "start supervisor"
+  - type: phrase
+    value: "supervisor mode"
+
+inputs:
+  mode:
+    type: string
+    required: false
+    default: "production"
+    description: "production or dev"
+  devPath:
+    type: string
+    required: false
+    description: "Worktree path for dev mode (required if mode=dev)"
+
+outputs:
+  - type: process_status
+    description: Process health and monitoring status
+  - type: feed_entry
+    description: Telemetry promoted to Feed 2.0 on anomalies
+  - type: pit_crew_dispatch
+    description: Auto-escalated bugs when error thresholds hit
+
+process:
+  type: tool_sequence
+  timeout: 0  # Long-running, no timeout
+  steps:
+    - id: validate_environment
+      tool: shell_exec
+      inputs:
+        command: "bun --version"
+      onError: fail
+
+    - id: start_bot
+      tool: supervisor_start
+      inputs:
+        mode: "$input.mode"
+        devPath: "$input.devPath"
+      onError: fail
+
+    - id: monitor_loop
+      tool: supervisor_monitor
+      inputs:
+        processId: "$step.start_bot.processId"
+        pitCrewEnabled: true
+        errorThreshold: 3
+        telemetryInterval: 900000  # 15 minutes
+      onError: continue  # Keep monitoring even on errors
+
+# Tier 2: Requires explicit approval (manages external process)
+tier: 2
+
+enabled: true
+
+tags:
+  - supervisor
+  - process
+  - pit-crew
+  - monitoring
+  - telemetry
+
+priority: 100  # High priority skill
+
+# Modes supported
+modes:
+  production:
+    path: "C:\\github\\atlas\\apps\\telegram"
+    description: "Production bot instance"
+  dev:
+    path: null  # User-specified worktree
+    description: "Development/test instance from worktree"
+
+# Error patterns for detection (bootstrap set - grows via pattern registry)
+errorPatterns:
+  - pattern: "ECONNREFUSED"
+    severity: P0
+    action: dispatch
+    description: "Notion API connection refused"
+  - pattern: "401 Unauthorized"
+    severity: P0
+    action: dispatch
+    description: "API authentication failure"
+  - pattern: "PROMPT_STRICT_MODE"
+    severity: P1
+    action: dispatch_after_threshold
+    description: "Prompt composition error"
+  - pattern: "UnhandledPromiseRejection"
+    severity: P1
+    action: dispatch_after_threshold
+    description: "Unhandled async error"
+  - pattern: "exit code"
+    severity: P1
+    action: restart_and_dispatch
+    description: "Process crashed"
+
+# Telemetry promotion rules
+promotionRules:
+  - trigger: error_rate_spike
+    threshold: 5  # percent increase
+    action: promote_to_feed
+  - trigger: memory_jump
+    threshold: 10  # percent increase
+    action: promote_to_feed
+  - trigger: new_unknown_pattern
+    action: promote_to_feed
+  - trigger: process_restart
+    action: promote_to_feed
+  - trigger: latency_degradation
+    threshold: 50  # percent increase
+    action: promote_to_feed

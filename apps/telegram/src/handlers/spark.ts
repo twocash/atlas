@@ -2,7 +2,15 @@
  * Atlas Telegram Bot - Spark Handler
  *
  * Handles spark intent: URL capture, classification, and Notion routing.
- * Refactored from handler.ts to support intent routing.
+ * Uses V3 Progressive Profiling (Pillar → Action → Voice) flow.
+ *
+ * MIGRATION NOTE (2026-02-05):
+ * Old callback handlers (handleSparkCallback, handleSparkConfirm, handleSparkDismiss)
+ * have been removed. All spark capture now uses the V3 prompt selection flow via
+ * startPromptSelection() from prompt-selection-callback.ts.
+ *
+ * If you see errors about missing handleSparkCallback, update the calling code
+ * to use the new V3 flow.
  */
 
 import type { Context } from "grammy";
@@ -10,43 +18,25 @@ import type {
   Spark,
   ClassificationResult,
   UrlContent,
-  ClarificationExchange,
-  Decision,
-  Pillar,
-  Intent,
   IntentDetectionResult,
 } from "../types";
 import { extractFirstUrl, fetchUrlContent, getUrlDomain } from "../url";
 import { classifyWithClaude } from "../claude";
-import {
-  generateClarificationQuestion,
-  buildClarificationKeyboard,
-  parseCallbackData,
-  formatConfirmationMessage,
-  generatePillarChangeOptions,
-  generateIntentChangeOptions,
-} from "../clarify";
-import { createFeedItem, createWorkItem } from "../notion";
 import { logger } from "../logger";
 import { audit } from "../audit";
-import { updateState, getState, logUpdate } from "../atlas-system";
+import { startPromptSelection } from "./prompt-selection-callback";
 
 // Use Claude for classification
 const USE_CLAUDE = process.env.USE_CLAUDE !== "false";
 
-// In-memory store for pending clarifications
-export const pendingSparkClarifications = new Map<number, PendingSparkClarification>();
-
-export interface PendingSparkClarification {
-  spark: Spark;
-  classification: ClassificationResult;
-  urlContent?: UrlContent;
-  question: string;
-  createdAt: Date;
-}
-
 /**
  * Handle spark intent - capture URL/content to Notion
+ *
+ * Flow:
+ * 1. Extract URL if present
+ * 2. Fetch URL content (if URL)
+ * 3. Classify with Claude (optional)
+ * 4. Start V3 prompt selection flow (Pillar → Action → Voice)
  */
 export async function handleSparkIntent(
   ctx: Context,
@@ -57,7 +47,7 @@ export async function handleSparkIntent(
 
   logger.info("Processing spark intent", { userId, text: text.substring(0, 100) });
 
-  // Create spark object
+  // Create spark object (for logging/tracking)
   const spark: Spark = {
     id: `spark_${Date.now()}`,
     source: "Telegram",
@@ -68,6 +58,7 @@ export async function handleSparkIntent(
   // Check for URL (may already be in entities)
   const url = intentResult.entities?.url || extractFirstUrl(text);
   let urlContent: UrlContent | undefined;
+  let title: string | undefined;
 
   if (url) {
     spark.url = url;
@@ -77,38 +68,19 @@ export async function handleSparkIntent(
     urlContent = await fetchUrlContent(url);
     spark.urlContent = urlContent;
 
-    if (!urlContent.success) {
-      // URL fetch failed - offer to capture anyway
-      await ctx.reply(
-        `Couldn't fetch ${getUrlDomain(url)} (${urlContent.error}).\n\nCapture link anyway?`,
-        {
-          reply_markup: buildClarificationKeyboard([
-            { text: "Yes, capture", data: "spark_capture_anyway" },
-            { text: "No, skip", data: "spark_dismiss" },
-          ]),
-        }
-      );
-
-      pendingSparkClarifications.set(userId, {
-        spark,
-        classification: {
-          pillar: "The Grove",
-          intent: "Reference",
-          confidence: 40,
-          reasoning: "URL fetch failed",
-          tags: [],
-          suggestedTitle: url,
-        },
-        urlContent,
-        question: "capture_anyway",
-        createdAt: new Date(),
+    if (urlContent.success) {
+      title = urlContent.title;
+    } else {
+      // URL fetch failed - still proceed with V3 flow, just note the failure
+      logger.warn("URL fetch failed, proceeding with V3 flow", {
+        url,
+        error: urlContent.error,
       });
-
-      return;
+      title = `${getUrlDomain(url)} (fetch failed)`;
     }
   }
 
-  // Classify the spark
+  // Classify the spark (optional, for suggested title)
   await ctx.replyWithChatAction("typing");
 
   let classification: ClassificationResult;
@@ -128,205 +100,67 @@ export async function handleSparkIntent(
 
   spark.classification = classification;
 
-  // Generate clarification or confirm
-  const { question, options } = generateClarificationQuestion(classification, urlContent);
+  // Use classification title if we don't have one from URL
+  if (!title) {
+    title = classification.suggestedTitle;
+  }
 
-  // Store pending clarification
-  pendingSparkClarifications.set(userId, {
-    spark,
-    classification,
-    urlContent,
-    question,
-    createdAt: new Date(),
-  });
+  // V3 PROGRESSIVE PROFILING: Start the Pillar → Action → Voice flow
+  const contentType = url ? 'url' : 'text';
+  const content = url || text;
 
-  // Send clarification question
-  await ctx.reply(question, {
-    reply_markup: buildClarificationKeyboard(options),
-  });
+  await startPromptSelection(ctx, content, contentType, title);
 
-  audit.logResponse(userId, question);
+  audit.logResponse(userId, `Started V3 progressive profiling for: ${title}`);
 }
 
 /**
- * Handle spark callback (button press during spark flow)
+ * @deprecated Old callback handler removed - V3 flow uses ps:* callbacks
+ *
+ * If you're seeing this error, the code path that called handleSparkCallback
+ * needs to be updated to use the V3 prompt selection flow instead.
+ *
+ * The V3 flow uses callbacks with the ps:* prefix, handled by
+ * handlePromptSelectionCallback in prompt-selection-callback.ts.
  */
 export async function handleSparkCallback(ctx: Context): Promise<void> {
-  const userId = ctx.from!.id;
-  const data = ctx.callbackQuery?.data || "";
+  const userId = ctx.from?.id;
+  const callbackData = ctx.callbackQuery?.data || "(no data)";
+  const chatId = ctx.chat?.id;
 
-  logger.info("Processing spark callback", { userId, data });
+  const errorMsg =
+    `[DEPRECATED] handleSparkCallback received callback but V3 flow is active.\n` +
+    `- Callback data: "${callbackData}"\n` +
+    `- User ID: ${userId}\n` +
+    `- Chat ID: ${chatId}\n` +
+    `- This indicates stale code or an unhandled callback pattern.\n` +
+    `- V3 flow uses ps:* prefix callbacks (handled by handlePromptSelectionCallback).\n` +
+    `- Check handlers/index.ts routeCallback() to add handling for this callback pattern.`;
 
-  const pending = pendingSparkClarifications.get(userId);
-  if (!pending) {
-    await ctx.answerCallbackQuery({ text: "Session expired. Please try again." });
-    return;
-  }
+  logger.error("[SPARK] Deprecated callback handler invoked", {
+    callbackData,
+    userId,
+    chatId,
+  });
 
-  const parsed = parseCallbackData(data);
-
-  // Handle special capture_anyway case
-  if (data === "spark_capture_anyway" || data === "capture_anyway") {
-    await handleSparkConfirm(
-      ctx,
-      pending,
-      pending.classification.pillar,
-      pending.classification.intent
-    );
-    return;
-  }
-
-  // Handle dismiss
-  if (data === "spark_dismiss" || data === "dismiss") {
-    await handleSparkDismiss(ctx, pending);
-    return;
-  }
-
-  // Handle based on action
-  switch (parsed.action) {
-    case "confirm":
-      await handleSparkConfirm(
-        ctx,
-        pending,
-        parsed.pillar || pending.classification.pillar,
-        parsed.intent || pending.classification.intent
-      );
-      break;
-
-    case "change":
-    case "change_pillar": {
-      const pillarOpts = generatePillarChangeOptions();
-      await ctx.editMessageText(pillarOpts.question, {
-        reply_markup: buildClarificationKeyboard(pillarOpts.options),
-      });
-      await ctx.answerCallbackQuery();
-      break;
-    }
-
-    case "change_intent": {
-      const intentOpts = generateIntentChangeOptions();
-      await ctx.editMessageText(intentOpts.question, {
-        reply_markup: buildClarificationKeyboard(intentOpts.options),
-      });
-      await ctx.answerCallbackQuery();
-      break;
-    }
-
-    case "set_pillar":
-      if (parsed.pillar) {
-        pending.classification.pillar = parsed.pillar;
-        const intentOpts = generateIntentChangeOptions();
-        await ctx.editMessageText(`Pillar: ${parsed.pillar}\n\n${intentOpts.question}`, {
-          reply_markup: buildClarificationKeyboard(intentOpts.options),
-        });
-      }
-      await ctx.answerCallbackQuery();
-      break;
-
-    case "set_intent":
-      if (parsed.intent) {
-        await handleSparkConfirm(ctx, pending, pending.classification.pillar, parsed.intent);
-      }
-      break;
-
-    default:
-      await ctx.answerCallbackQuery({ text: "Unknown action" });
-  }
-}
-
-/**
- * Handle spark confirmation - create Notion items
- */
-async function handleSparkConfirm(
-  ctx: Context,
-  pending: PendingSparkClarification,
-  pillar: Pillar,
-  intent: Intent
-): Promise<void> {
-  const userId = ctx.from!.id;
-
-  await ctx.answerCallbackQuery({ text: "Processing..." });
-
-  pending.classification.pillar = pillar;
-  pending.classification.intent = intent;
-  pending.classification.confidence = 100;
-
-  const shouldRoute = ["Build", "Task", "Research"].includes(intent);
-  const decision: Decision = shouldRoute ? "Route to Work" : "Archive";
-
-  const clarification: ClarificationExchange = {
-    question: pending.question,
-    response: `Confirmed: ${pillar} / ${intent}`,
-    respondedAt: new Date(),
-  };
-  pending.spark.clarification = clarification;
-
+  // Try to respond to user so they're not left hanging
   try {
-    const feedPageId = await createFeedItem(
-      pending.spark,
-      pending.classification,
-      decision,
-      clarification
-    );
-
-    let workPageId: string | undefined;
-    if (shouldRoute) {
-      workPageId = await createWorkItem(feedPageId, pending.spark, pending.classification);
-    }
-
-    const confirmMsg = formatConfirmationMessage(pillar, intent, shouldRoute);
-    await ctx.editMessageText(confirmMsg);
-
-    audit.logResponse(userId, confirmMsg, feedPageId);
-    logger.info("Spark captured", { feedPageId, workPageId, pillar, intent });
-
-    // Track capture in Atlas state
-    const state = getState();
-    updateState({
-      stats: {
-        ...state.stats,
-        sparksCaptured: state.stats.sparksCaptured + 1,
-      }
+    await ctx.answerCallbackQuery({
+      text: "Error: Unhandled callback. Please try again.",
+      show_alert: true,
     });
-    logUpdate(`SPARK: Captured "${pending.classification.suggestedTitle}" to ${pillar}`);
-  } catch (error) {
-    logger.error("Failed to create Notion items", { error });
-    await ctx.editMessageText("Error saving to Notion. Please try again.");
+  } catch {
+    // Ignore if we can't answer
   }
 
-  pendingSparkClarifications.delete(userId);
+  throw new Error(errorMsg);
 }
 
 /**
- * Handle spark dismissal
+ * Clean up function - kept for interface compatibility but no-op now
+ * V3 flow uses prompt-selection.ts which has its own TTL-based cleanup
  */
-async function handleSparkDismiss(
-  ctx: Context,
-  pending: PendingSparkClarification
-): Promise<void> {
-  const userId = ctx.from!.id;
-
-  await ctx.answerCallbackQuery({ text: "Dismissed" });
-  await ctx.editMessageText("Dismissed");
-
-  audit.logResponse(userId, "Dismissed");
-  logger.info("Spark dismissed", { sparkId: pending.spark.id });
-
-  pendingSparkClarifications.delete(userId);
-}
-
-/**
- * Clean up old pending spark clarifications
- */
-export function cleanupPendingSparkClarifications(maxAgeMinutes: number = 30): void {
-  const now = new Date();
-  const maxAge = maxAgeMinutes * 60 * 1000;
-
-  for (const [userId, pending] of pendingSparkClarifications.entries()) {
-    const age = now.getTime() - pending.createdAt.getTime();
-    if (age > maxAge) {
-      pendingSparkClarifications.delete(userId);
-      logger.debug("Cleaned up stale spark clarification", { userId });
-    }
-  }
+export function cleanupPendingSparkClarifications(_maxAgeMinutes: number = 30): void {
+  // No-op: V3 flow manages its own state in prompt-selection.ts
+  logger.debug("cleanupPendingSparkClarifications called (no-op in V3 flow)");
 }

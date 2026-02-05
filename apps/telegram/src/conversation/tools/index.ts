@@ -26,6 +26,9 @@ export { OPERATOR_TOOLS, executeOperatorTools } from './operator';
 // Browser automation (Playwright-based)
 export { BROWSER_TOOLS, executeBrowserTools, closeBrowser } from './browser';
 
+// Supervisor tools (process management)
+export { SUPERVISOR_TOOLS, executeSupervisorTools } from './supervisor';
+
 import type Anthropic from '@anthropic-ai/sdk';
 import { CORE_TOOLS, executeCoreTools } from './core';
 import { DISPATCHER_TOOLS, executeDispatcherTools } from './dispatcher';
@@ -34,6 +37,7 @@ import { WORKSPACE_TOOLS, executeWorkspaceTools } from './workspace';
 import { SELF_MOD_TOOLS, executeSelfModTools } from './self-mod';
 import { OPERATOR_TOOLS, executeOperatorTools } from './operator';
 import { BROWSER_TOOLS, executeBrowserTools } from './browser';
+import { SUPERVISOR_TOOLS, executeSupervisorTools } from './supervisor';
 import { getMcpTools, isMcpTool, executeMcpTool } from '../../mcp';
 
 /**
@@ -45,7 +49,8 @@ import { getMcpTools, isMcpTool, executeMcpTool } from '../../mcp';
  * 3. WORKSPACE_TOOLS - File operations
  * 4. SELF_MOD_TOOLS - Memory/soul updates
  * 5. OPERATOR_TOOLS - Scripts, scheduling
- * 6. AGENT_TOOLS - Legacy dispatch (deprecated)
+ * 6. SUPERVISOR_TOOLS - Process management
+ * 7. AGENT_TOOLS - Legacy dispatch (deprecated)
  */
 const NATIVE_TOOLS: Anthropic.Tool[] = [
   ...DISPATCHER_TOOLS,  // PRIMARY: submit_ticket
@@ -54,6 +59,7 @@ const NATIVE_TOOLS: Anthropic.Tool[] = [
   ...SELF_MOD_TOOLS,
   ...OPERATOR_TOOLS,
   ...BROWSER_TOOLS,     // Playwright-based browser automation
+  ...SUPERVISOR_TOOLS,  // Process management
   ...AGENT_TOOLS,       // DEPRECATED: dispatch_research, etc.
 ];
 
@@ -113,6 +119,10 @@ export async function executeTool(
   // Browser automation tools (Playwright-based)
   const browserResult = await executeBrowserTools(toolName, input);
   if (browserResult !== null) return browserResult;
+
+  // Supervisor tools (process management)
+  const supervisorResult = await executeSupervisorTools(toolName, input);
+  if (supervisorResult !== null) return supervisorResult;
 
   // Legacy agent tools (deprecated but still functional)
   const agentResult = await executeAgentTools(toolName, input);
