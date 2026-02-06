@@ -1,6 +1,8 @@
 ---
 name: research-prompt-builder
 description: Interview Jim to build well-structured deep research prompts through guided questions
+version: 1.0.0
+tier: basic
 trigger: research prompt, build research, scope research, interview for research
 created: 2026-01-30T18:36:53.047Z
 ---
