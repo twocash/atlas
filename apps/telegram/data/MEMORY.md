@@ -539,3 +539,88 @@ When database access fails:
 - ✅ DO check for deprecated database references
 
 **Full documentation:** `packages/agents/WORK_QUEUE_UPDATE_BUG_FIX.md`
+
+---
+
+## Self-Improvement Pipeline (Autonomous Repair)
+
+**Added:** 2026-02-05
+**SOP:** SOP-011 (Self-Improvement Pipeline Protocol)
+
+### How It Works
+
+Atlas has a self-healing loop:
+1. Feed 2.0 entries tagged with Keywords = `self-improvement` are polled every 15 seconds
+2. The self-improvement listener parses the entry, extracts target file paths
+3. Zone classifier determines permission level (auto-execute, auto-notify, approve)
+4. Swarm dispatch spawns a Claude Code CLI session to fix the issue
+5. On success → Feed entry marked "Dispatched"; on failure → Work Queue item created
+
+### When to Tag Bugs as "self-improvement"
+
+**DO tag** when the bug is:
+- **Bounded** — specific files, not "fix everything"
+- **Specified** — clear what the fix should do
+- **Safe** — failure won't corrupt data or break production
+- **Verifiable** — you can tell if it worked
+
+**Common candidates:**
+- Missing YAML frontmatter in skill files
+- Config values drifted from spec
+- Schema property typos
+- Test fixture mismatches
+- Missing documentation/JSDoc
+
+**DO NOT tag:**
+- Architecture redesigns
+- New features requiring product decisions
+- Security-sensitive fixes
+- Database migrations
+- Multi-service coordination work
+
+### Feed Entry Requirements
+
+When creating a self-improvement Feed entry:
+```
+Title: [verb] [what] in [where]
+Keywords: self-improvement  ← REQUIRED for pickup
+Pillar: appropriate pillar
+Request Type: Bug
+Status: New
+
+Body MUST contain:
+- Specific file paths (src/... or data/...)
+- Description of the fix
+- Success criteria
+- Tier classification
+```
+
+### Queue Moderation
+
+**Strategic rules:**
+- One Feed entry per logical bug (batch related files into one entry)
+- Don't flood — wait for current swarm to complete before queuing next
+- If swarm keeps timing out, investigate before adding more entries
+- Timeout automatically creates Work Queue fallback — this is by design
+
+**Capacity:**
+- Max 3 concurrent swarm sessions
+- Max 10 entries in dispatched set
+- 300s timeout per swarm session
+
+### Pipeline Health Indicators
+
+| Signal | Meaning |
+|--------|---------|
+| Entries move New → Dispatched quickly | Pipeline healthy |
+| Multiple consecutive timeouts | Prompts too broad, investigate |
+| Count stuck at same number | Entries not being processed |
+| "[Auto]" items filling Work Queue | Swarm reliability issue |
+
+### Key Files
+
+- Listener: `src/listeners/self-improvement.ts`
+- Zone classifier: `src/skills/zone-classifier.ts`
+- Swarm dispatch: `src/pit-crew/swarm-dispatch.ts`
+- Feature flags: `ATLAS_SELF_IMPROVEMENT_LISTENER`, `ATLAS_SWARM_DISPATCH`
+- Feed 2.0 DB: `90b2b33f-4b44-4b42-870f-8d62fb8cbf18`

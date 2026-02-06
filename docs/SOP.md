@@ -907,4 +907,123 @@ If the validation fails, DO NOT DEPLOY.
 
 ---
 
+---
+
+## SOP-011: Self-Improvement Pipeline Protocol
+
+**Added:** 2026-02-05
+**Context:** Autonomous skill repair via Feed 2.0 → Self-Improvement Listener → Swarm Dispatch
+
+### Purpose
+
+Atlas has a self-healing pipeline that autonomously detects and fixes certain classes of bugs. This SOP documents when and how to tag bugs for autonomous repair, how the pipeline works, and how to moderate the queue strategically.
+
+### Pipeline Overview
+
+```
+Feed 2.0 (Keywords: "self-improvement")
+    ↓ polled every 15 seconds
+Self-Improvement Listener (src/listeners/self-improvement.ts)
+    ↓ parses entry, extracts target files
+Zone Classifier (src/skills/zone-classifier.ts)
+    ↓ Zone 1: auto-execute | Zone 2: auto-notify | Zone 3: approve
+Swarm Dispatch (src/pit-crew/swarm-dispatch.ts)
+    ↓ spawns Claude Code CLI session (300s timeout)
+    ↓ success → mark Feed entry "Dispatched"
+    ↓ failure → create Work Queue item for manual handling
+```
+
+### What Qualifies for Self-Improvement Tagging
+
+**Tag with `self-improvement` keyword when ALL of these are true:**
+
+1. **Bounded scope** — The fix touches specific, identifiable files (not "refactor the whole system")
+2. **Clear specification** — The fix can be described precisely enough for an automated agent to execute
+3. **Low blast radius** — Failure won't corrupt data, break production, or cascade
+4. **Verifiable** — Success can be detected (file exists, frontmatter parses, test passes)
+
+**Qualifying bug categories:**
+
+| Category | Example | Zone |
+|----------|---------|------|
+| Missing file content | SKILL.md missing YAML frontmatter | Zone 1 (auto-execute) |
+| Config drift | skill.yaml has wrong tier value | Zone 1 (auto-execute) |
+| Schema mismatches | Property name typo in Notion writes | Zone 2 (auto-notify) |
+| Test fixtures | Test data out of sync with schema | Zone 2 (auto-notify) |
+| Documentation gaps | Missing JSDoc on public APIs | Zone 1 (auto-execute) |
+
+**DO NOT tag with `self-improvement`:**
+
+| Category | Reason |
+|----------|--------|
+| Architecture changes | Too broad, needs human design review |
+| New features | Requires product decision |
+| Security fixes | Needs careful human review |
+| Database migrations | Risk of data loss |
+| Multi-service changes | Cross-system coordination needed |
+
+### Feed Entry Format for Self-Improvement
+
+When creating a Feed 2.0 entry for autonomous repair:
+
+```
+Title: [verb] [what] in [where]
+  e.g. "fix SKILL.md missing frontmatter in 5 skills"
+
+Keywords: self-improvement (REQUIRED)
+Pillar: The Grove (or appropriate pillar)
+Request Type: Bug
+Status: New
+
+Body content MUST include:
+1. Specific file paths (matching pattern: src/ or data/)
+2. What the fix should do
+3. What "done" looks like
+4. Tier classification (0, 1, or 2)
+```
+
+### Queue Moderation Strategy
+
+**Capacity limits:**
+- Maximum 3 concurrent swarm sessions (prevents resource exhaustion)
+- Maximum 10 entries in the dispatched set (prevents runaway queuing)
+- 300-second timeout per swarm session (prevents hanging)
+
+**Priority ordering:**
+- Process entries in the order Feed 2.0 returns them (newest first by default)
+- P0 bugs with `self-improvement` tag get natural priority from Feed ordering
+
+**Backpressure:**
+- If swarm sessions consistently timeout, STOP creating new self-improvement entries
+- Investigate why sessions fail before adding more work
+- Timeout → auto-creates Work Queue item → human reviews the failure
+
+**Throttling rules:**
+- Don't flood the Feed with self-improvement entries — batch related fixes into one entry
+- One entry per logical bug (e.g., "5 skills missing frontmatter" = 1 entry, not 5)
+- Wait for current swarm to finish before queuing the next self-improvement entry
+
+### Monitoring
+
+**Signs the pipeline is healthy:**
+- Feed entries move from "New" → "Dispatched" within 5 minutes
+- Swarm sessions complete (not timeout) > 80% of the time
+- Work Queue fallback items are rare (< 20% of dispatches)
+
+**Signs the pipeline needs attention:**
+- Multiple consecutive timeouts → swarm prompts may be too broad
+- "Found self-improvement entries" count stuck at same number → entries not being processed
+- Work Queue filling up with "[Auto]" prefixed items → swarm reliability issue
+
+### Cross-References
+
+- **Listener code:** `src/listeners/self-improvement.ts`
+- **Zone classifier:** `src/skills/zone-classifier.ts`
+- **Swarm dispatch:** `src/pit-crew/swarm-dispatch.ts`
+- **Feature flags:** `ATLAS_SELF_IMPROVEMENT_LISTENER`, `ATLAS_SWARM_DISPATCH`
+- **SOP-005:** Pit Crew Collaboration Protocol (manual fallback path)
+- **docs/AUTONOMY.md:** Complete permission model
+
+---
+
 *SOPs are living documents. Update as patterns emerge.*

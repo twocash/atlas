@@ -331,6 +331,32 @@ Atlas can autonomously detect, classify, and repair skill-related issues through
 - Swarm Dispatch: `src/pit-crew/swarm-dispatch.ts`
 - Self-Improvement Listener: `src/listeners/self-improvement.ts`
 
+### Self-Improvement Pipeline (SOP-011)
+
+When Atlas detects actionable bugs during triage or monitoring, it can tag them for autonomous repair via the self-improvement pipeline.
+
+**How to tag a bug for autonomous repair:**
+1. Create a Feed 2.0 entry with Keywords = `self-improvement`
+2. Include specific file paths in the body (matching `src/` or `data/` patterns)
+3. Describe exactly what the fix should do and what "done" looks like
+
+**When to tag (ALL must be true):**
+- Bounded scope (specific files, not "refactor everything")
+- Clear specification (an agent can execute without ambiguity)
+- Low blast radius (failure won't corrupt data or break production)
+- Verifiable (success is detectable)
+
+**Good candidates:** Missing frontmatter, config drift, schema typos, test fixture mismatches, missing docs
+**Bad candidates:** Architecture redesigns, new features, security fixes, database migrations
+
+**Queue moderation:**
+- One entry per logical bug (batch related files together)
+- Wait for current swarm to complete before queuing next
+- If swarm times out repeatedly, investigate root cause before adding more
+- Timeout → auto-creates Work Queue item → human reviews
+
+**See:** `docs/SOP.md` SOP-011, `data/MEMORY.md` Self-Improvement Pipeline section
+
 ---
 
 ## Session Notes
@@ -356,6 +382,14 @@ Atlas can autonomously detect, classify, and repair skill-related issues through
 - SOP-005 and SOP-006 added
 - pit-crew-collab skill created
 - MEMORY.md, CAPABILITIES.md updated
+
+### Session: 2026-02-05
+- Self-Improvement Pipeline operational (Feed 2.0 → Listener → Swarm)
+- Added "self-improvement" keyword to Feed 2.0 multi_select
+- SOP-011 added (Self-Improvement Pipeline Protocol)
+- MEMORY.md updated with pipeline awareness and queue moderation rules
+- First autonomous fix dispatched: SKILL.md frontmatter in 5 skills
+- Race condition fix in self-improvement listener (double-dispatch prevention)
 
 ---
 

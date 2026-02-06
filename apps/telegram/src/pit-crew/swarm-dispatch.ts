@@ -144,47 +144,50 @@ const FORBIDDEN_FILES = [
 
 /**
  * Build the fix prompt for Claude Code
+ *
+ * IMPORTANT: Keep prompts focused and directive to avoid timeouts.
+ * Don't ask for test/commit - just the fix. Validation is separate.
  */
 export function buildFixPrompt(task: SwarmTask): string {
-  const modeLabel = task.zone === 'approve' ? 'PLAN ONLY - DO NOT EXECUTE' : 'FIX AND VERIFY';
+  const modeLabel = task.zone === 'approve' ? 'PLAN ONLY' : 'FIX';
+  const filesStr = task.operation.targetFiles.join(', ');
 
-  return `
-You are Atlas Pit Crew — an autonomous repair agent.
+  // Plan-only mode for Zone 3
+  if (task.zone === 'approve') {
+    return `You are Atlas Pit Crew. Analyze this issue and output a fix plan (DO NOT execute).
 
-=== MODE: ${modeLabel} ===
+ISSUE: ${task.context}
+FILES: ${filesStr}
 
-TASK: ${task.context}
+Output format:
+1. Root cause (1-2 sentences)
+2. Files to change
+3. Exact changes needed (code snippets)
 
-TARGET: ${task.targetSkill || 'See files below'}
-FILES: ${task.operation.targetFiles.join(', ')}
-ZONE: ${task.zone} (${task.zone === 'auto-execute' ? 'deploy without notification' : task.zone === 'auto-notify' ? 'deploy and notify' : 'plan only'})
+DO NOT make any edits. Just output the plan.`.trim();
+  }
 
-=== RULES ===
-1. Only modify files in: data/skills/, data/pit-crew/, src/skills/
-2. Run tests after changes: bun run test
-3. If tests fail, revert your changes and report the failure
-4. Keep changes minimal — fix the specific issue, don't refactor
-5. Commit with message: fix(skills): <description>
+  // Execute mode for Zone 1/2 - be very directive
+  return `You are Atlas Pit Crew. Fix this issue NOW.
 
-=== SAFETY ===
-- Do NOT touch supervisor.ts, handler.ts, bot.ts, index.ts
-- Do NOT modify .env or any config outside src/config/features.ts
-- Do NOT add new dependencies
-- If you're unsure whether a change is safe, STOP and report back
+ISSUE: ${task.context}
 
-=== FEED ENTRY ===
-ID: ${task.feedEntryId}
-${task.workQueueId ? `Work Queue: ${task.workQueueId}` : ''}
+FILES TO FIX: ${filesStr}
+${task.targetSkill ? `SKILL: ${task.targetSkill}` : ''}
 
-${task.zone === 'approve' ? `
-=== PLAN ONLY MODE ===
-You must NOT execute any changes. Instead:
-1. Analyze the problem
-2. Identify the files that need to change
-3. Describe the exact changes needed
-4. Return a structured plan for human review
-` : ''}
-`.trim();
+INSTRUCTIONS:
+1. Read the file(s) listed above
+2. Make the minimal fix described in ISSUE
+3. Write the fixed file(s)
+4. Output "DONE: <what you fixed>" or "FAILED: <why>"
+
+CONSTRAINTS:
+- Only edit files in: data/skills/, data/pit-crew/, src/skills/
+- Keep changes minimal - fix only what's described
+- Do NOT refactor, add features, or run tests
+- Do NOT touch: index.ts, bot.ts, handler.ts, .env
+
+START NOW. Read the files and fix.`.trim();
 }
 
 // ==========================================
@@ -307,12 +310,12 @@ async function executeWithClaudeCode(
     const args = [
       '--print',
       '--dangerously-skip-permissions',
+      '--max-turns', '10',  // Prevent endless exploration
     ];
 
-    // Add allowed paths for execute mode
+    // Add allowed tools for execute mode (Read, Edit, Write only - no Bash)
     if (mode === 'execute') {
-      // Note: Claude Code CLI args may vary - adjust as needed
-      args.push('--allowedTools', 'Edit,Write,Bash,Read');
+      args.push('--allowedTools', 'Read,Edit,Write');
     }
 
     args.push(prompt);

@@ -147,8 +147,9 @@ export interface SafetyLimits {
 
   /**
    * Timeout for swarm fix sessions (seconds)
-   * Claude Code sessions are terminated after this duration
-   * @default 300 (5 minutes)
+   * Claude Code sessions are terminated after this duration.
+   * With --max-turns 10 and focused prompts, 600s should be sufficient.
+   * @default 600 (10 minutes)
    */
   swarmTimeoutSeconds: number;
 
@@ -200,7 +201,7 @@ function loadSafetyLimits(): SafetyLimits {
     rollbackWindowHours: parseInt(process.env.ATLAS_SKILL_ROLLBACK_HOURS || '24', 10),
     // Autonomous Repair (Sprint: Pit Stop)
     maxSwarmDispatchesPerHour: parseInt(process.env.ATLAS_SWARM_MAX_PER_HOUR || '5', 10),
-    swarmTimeoutSeconds: parseInt(process.env.ATLAS_SWARM_TIMEOUT_SECONDS || '300', 10),
+    swarmTimeoutSeconds: parseInt(process.env.ATLAS_SWARM_TIMEOUT_SECONDS || '600', 10),
     selfImprovementPollIntervalMs: parseInt(process.env.ATLAS_SELF_IMPROVEMENT_POLL_MS || '60000', 10),
   };
 }

@@ -357,10 +357,13 @@ async function createWorkQueueItem(
  * Process a single self-improvement entry
  */
 async function processEntry(entry: FeedEntry): Promise<void> {
-  // Skip if already dispatched
+  // Skip if already dispatched or currently processing
   if (dispatchedEntries.has(entry.id)) {
     return;
   }
+
+  // Mark immediately to prevent re-dispatch during async processing
+  dispatchedEntries.add(entry.id);
 
   logger.info('Processing self-improvement entry', {
     id: entry.id,
@@ -376,7 +379,6 @@ async function processEntry(entry: FeedEntry): Promise<void> {
 
   if (!operation) {
     logger.info('Entry not actionable (no target files detected)', { id: entry.id });
-    dispatchedEntries.add(entry.id);
     return;
   }
 
@@ -438,9 +440,6 @@ async function processEntry(entry: FeedEntry): Promise<void> {
       flags.swarmDispatch ? classification.reason : 'Swarm dispatch disabled'
     );
   }
-
-  // Mark as processed
-  dispatchedEntries.add(entry.id);
 }
 
 /**
