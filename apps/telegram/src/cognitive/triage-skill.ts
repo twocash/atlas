@@ -12,6 +12,7 @@ import Anthropic from '@anthropic-ai/sdk';
 import { z } from 'zod';
 import { TASK_MODEL_MAP } from './models';
 import { logger } from '../logger';
+import { getFeatureFlags } from '../config/features';
 import type { Pillar, RequestType } from '../conversation/types';
 import { PILLARS, REQUEST_TYPES } from '../conversation/types';
 
@@ -341,6 +342,20 @@ export async function triageMessage(
       source: 'haiku',
       latencyMs,
     };
+
+    // BUG #3 FIX: Low confidence fallback to capture
+    // Philosophy: "capture is always safe, asking always adds friction"
+    const flags = getFeatureFlags();
+    if (flags.lowConfidenceFallbackToCapture) {
+      if (result.intent === 'clarify' && result.confidence < 0.5) {
+        logger.info('[Triage] Applying low-confidence fallback: clarify → capture', {
+          originalConfidence: result.confidence,
+          pillar: result.pillar,
+        });
+        result.intent = 'capture';
+        // Keep the best-guess pillar, let the user reclassify if needed
+      }
+    }
 
     logger.info('[Triage] Completed', {
       intent: result.intent,

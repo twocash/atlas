@@ -104,6 +104,15 @@ export interface FeatureFlags {
    */
   triageSkill: boolean;
 
+  /**
+   * Low Confidence Fallback to Capture (Bug #3 Fix)
+   * When enabled, ambiguous intents with confidence < 50% are captured
+   * with reclassify option instead of asking for clarification.
+   * Philosophy: "capture is always safe, asking always adds friction"
+   * @default false
+   */
+  lowConfidenceFallbackToCapture: boolean;
+
   // === Bug Fixes ===
 
   /**
@@ -210,6 +219,7 @@ function loadFeatureFlags(): FeatureFlags {
     apiSwarmDispatch: process.env.ATLAS_API_SWARM === 'true',
     // Triage Intelligence (Sprint: Triage Intelligence)
     triageSkill: process.env.ATLAS_TRIAGE_SKILL === 'true',
+    lowConfidenceFallbackToCapture: process.env.ATLAS_LOW_CONFIDENCE_CAPTURE === 'true',
     // Bug Fixes
     pendingSelectionContext: process.env.ATLAS_PENDING_SELECTION_CONTEXT !== 'false', // Default ON
   };
