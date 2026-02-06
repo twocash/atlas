@@ -58,6 +58,15 @@ export function createSelection(params: {
   contentType: 'url' | 'text';
   title?: string;
   messageId?: number;
+  // Triage Intelligence additions
+  suggestedPillar?: Pillar;
+  triageResult?: {
+    intent: 'command' | 'capture' | 'query' | 'clarify';
+    confidence: number;
+    complexityTier: 0 | 1 | 2 | 3;
+    source: 'pattern_cache' | 'haiku';
+    keywords?: string[];
+  };
 }): PromptSelectionState {
   const requestId = generateRequestId();
   const now = Date.now();
@@ -73,6 +82,9 @@ export function createSelection(params: {
     step: 'pillar',
     timestamp: now,
     expiresAt: now + SELECTION_TTL_MS,
+    // Triage Intelligence additions
+    suggestedPillar: params.suggestedPillar,
+    triageResult: params.triageResult,
   };
 
   storeSelection(state);

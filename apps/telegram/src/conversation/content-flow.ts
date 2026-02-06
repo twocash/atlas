@@ -29,6 +29,8 @@ import type { Pillar, RequestType } from './types';
 import type { MediaContext } from './media';
 import type { AttachmentInfo } from './attachments';
 import { startPromptSelection } from '../handlers/prompt-selection-callback';
+import { getFeatureFlags } from '../config/features';
+import { triageMessage, type TriageResult } from '../cognitive/triage-skill';
 
 /**
  * Result of content detection
@@ -170,6 +172,9 @@ function inferRequestType(source: string): RequestType {
  * V3 UPDATE (2026-02-05): Now routes to V3 Progressive Profiling flow
  * (Pillar → Action → Voice) instead of the old confirmation keyboard.
  *
+ * TRIAGE INTELLIGENCE (2026-02-06): When triageSkill flag is enabled,
+ * uses unified Haiku triage for smart title generation and pillar suggestion.
+ *
  * Returns true if the flow was triggered, false otherwise.
  */
 export async function triggerContentConfirmation(
@@ -186,20 +191,43 @@ export async function triggerContentConfirmation(
   }
 
   try {
-    // Route for analysis (just for logging/title extraction)
-    const route = await routeForAnalysis(url);
+    const flags = getFeatureFlags();
+    let title: string;
+    let triageResult: TriageResult | undefined;
 
-    // Use context text as title if provided, otherwise use source type
-    const title = contextText || `${route.source} content from ${extractDomain(url)}`;
+    if (flags.triageSkill) {
+      // TRIAGE INTELLIGENCE: Use unified Haiku triage for smart title + classification
+      const triageInput = contextText ? `${url}\n\n${contextText}` : url;
+      triageResult = await triageMessage(triageInput);
 
-    logger.info('Content share detected, routing to V3 progressive profiling', {
-      url,
-      source: route.source,
-      title,
-    });
+      // Use triage-generated title, fallback to URL domain
+      title = triageResult.title || contextText || `Content from ${extractDomain(url)}`;
+
+      logger.info('Triage skill completed', {
+        url,
+        intent: triageResult.intent,
+        confidence: triageResult.confidence,
+        suggestedPillar: triageResult.pillar,
+        complexityTier: triageResult.complexityTier,
+        source: triageResult.source,
+        title,
+        latencyMs: triageResult.latencyMs,
+      });
+    } else {
+      // Legacy: Use context text or generic title
+      const route = await routeForAnalysis(url);
+      title = contextText || `${route.source} content from ${extractDomain(url)}`;
+
+      logger.info('Content share detected (triage skill disabled)', {
+        url,
+        source: route.source,
+        title,
+      });
+    }
 
     // V3 PROGRESSIVE PROFILING: Use the new Pillar → Action → Voice flow
-    await startPromptSelection(ctx, url, 'url', title);
+    // Pass triage result for suggested pillar highlighting
+    await startPromptSelection(ctx, url, 'url', title, triageResult);
 
     return true;
   } catch (error) {

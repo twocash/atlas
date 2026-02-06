@@ -112,3 +112,27 @@ export {
   resetCircuitBreaker,
   getCircuitBreakerStatus,
 } from "./supervisor";
+
+// Triage Skill (Unified Haiku Triage)
+export {
+  triageMessage,
+  createCachedTriageResult,
+  type TriageResult,
+  type TriageCommand,
+  type TriageOptions,
+  type ComplexityTier,
+} from "./triage-skill";
+
+// Triage Patterns (Cache + Feedback)
+export {
+  getCachedTriage,
+  getTriageExamples,
+  recordTriageFeedback,
+  generatePatternKey,
+  getAllPatterns,
+  getPatternCount,
+  clearPatterns,
+  flushPatterns,
+  seedPatterns,
+  type TriagePattern,
+} from "./triage-patterns";

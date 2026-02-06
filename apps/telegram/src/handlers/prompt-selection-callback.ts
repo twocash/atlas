@@ -32,7 +32,11 @@ import {
   selectAction,
   selectVoice,
   removeSelection,
+  createSelection,
 } from '../conversation/prompt-selection';
+import type { TriageResult } from '../cognitive/triage-skill';
+import { recordTriageFeedback } from '../cognitive/triage-patterns';
+import { getFeatureFlags } from '../config/features';
 
 import {
   // Types
@@ -65,15 +69,23 @@ export function isPromptSelectionCallback(data: string): boolean {
 
 /**
  * Build pillar selection keyboard
+ *
+ * @param requestId - Unique request ID for callback routing
+ * @param suggestedPillar - Optional pillar from triage skill to highlight
  */
-export function buildPillarKeyboard(requestId: string): InlineKeyboard {
+export function buildPillarKeyboard(requestId: string, suggestedPillar?: Pillar): InlineKeyboard {
   const keyboard = new InlineKeyboard();
 
   // Add pillar buttons (2 per row)
   PILLAR_OPTIONS.forEach((option, index) => {
     const slug = option.pillar.toLowerCase().replace(/\//g, '-').replace(/\s+/g, '-');
+    // Highlight suggested pillar with star
+    const isSuggested = suggestedPillar && option.pillar === suggestedPillar;
+    const label = isSuggested
+      ? `⭐ ${option.emoji} ${option.label}`
+      : `${option.emoji} ${option.label}`;
     keyboard.text(
-      `${option.emoji} ${option.label}`,
+      label,
       `ps:pillar:${requestId}:${slug}`
     );
     if ((index + 1) % 2 === 0) keyboard.row();
@@ -235,6 +247,34 @@ async function handlePillarSelection(
   if (!updated) {
     await ctx.reply('⚠️ Selection expired. Please try again.');
     return;
+  }
+
+  // TRIAGE FEEDBACK: Record whether user confirmed or corrected the suggestion
+  const flags = getFeatureFlags();
+  if (flags.triageSkill && state.triageResult) {
+    const wasCorrection = state.suggestedPillar && pillar !== state.suggestedPillar;
+    const correctedFields = wasCorrection ? { pillar } : null;
+
+    // Reconstruct minimal triage result for feedback
+    const triageForFeedback = {
+      intent: state.triageResult.intent,
+      confidence: state.triageResult.confidence,
+      pillar: state.suggestedPillar || pillar,
+      requestType: 'Research' as const, // Default, will be refined in action step
+      keywords: state.triageResult.keywords || [],
+      complexityTier: state.triageResult.complexityTier,
+      source: state.triageResult.source,
+    };
+
+    recordTriageFeedback(state.content, triageForFeedback, correctedFields);
+
+    logger.info('Triage feedback recorded', {
+      requestId,
+      selectedPillar: pillar,
+      suggestedPillar: state.suggestedPillar,
+      wasCorrection,
+      triageSource: state.triageResult.source,
+    });
   }
 
   logger.info('Pillar selected', { requestId, pillar });
@@ -718,12 +758,22 @@ async function executePromptComposition(
  *
  * Called when content is detected and needs interactive pillar selection.
  * Sends the initial pillar keyboard.
+ *
+ * TRIAGE INTELLIGENCE: When triageResult is provided, highlights the
+ * suggested pillar in the keyboard.
+ *
+ * @param ctx - Grammy context
+ * @param content - URL or text content
+ * @param contentType - Type of content ('url' or 'text')
+ * @param title - Optional title (from triage or extraction)
+ * @param triageResult - Optional triage result for pillar suggestion
  */
 export async function startPromptSelection(
   ctx: Context,
   content: string,
   contentType: 'url' | 'text',
-  title?: string
+  title?: string,
+  triageResult?: TriageResult
 ): Promise<void> {
   const chatId = ctx.chat?.id;
   const userId = ctx.from?.id;
@@ -733,33 +783,45 @@ export async function startPromptSelection(
     return;
   }
 
-  // Import here to avoid circular dependency
-  const { createSelection } = await import('../conversation/prompt-selection');
-
-  // Create selection state
+  // Create selection state with triage suggestion
   const state = createSelection({
     chatId,
     userId,
     content,
     contentType,
     title,
+    suggestedPillar: triageResult?.pillar,
+    triageResult: triageResult ? {
+      intent: triageResult.intent,
+      confidence: triageResult.confidence,
+      complexityTier: triageResult.complexityTier,
+      source: triageResult.source,
+      keywords: triageResult.keywords,
+    } : undefined,
   });
 
   logger.info('Starting prompt selection flow', {
     requestId: state.requestId,
     content: content.substring(0, 50),
     contentType,
+    suggestedPillar: triageResult?.pillar,
+    triageSource: triageResult?.source,
   });
 
-  // Build and send pillar keyboard
-  const keyboard = buildPillarKeyboard(state.requestId);
+  // Build and send pillar keyboard (with suggested pillar highlighted)
+  const keyboard = buildPillarKeyboard(state.requestId, triageResult?.pillar);
 
   // Escape Markdown in content to prevent parse errors (LinkedIn URLs have underscores)
   const displayText = escapeMarkdown(title || content.substring(0, 100));
   const ellipsis = content.length > 100 ? '...' : '';
 
+  // Include triage confidence hint if available
+  const confidenceHint = triageResult && triageResult.confidence >= 0.7
+    ? `\n\n💡 _Suggested: ${triageResult.pillar}_`
+    : '';
+
   const message = await ctx.reply(
-    `Which pillar?\n\n_${displayText}${ellipsis}_`,
+    `Which pillar?\n\n_${displayText}${ellipsis}_${confidenceHint}`,
     { reply_markup: keyboard, parse_mode: 'Markdown' }
   );
 

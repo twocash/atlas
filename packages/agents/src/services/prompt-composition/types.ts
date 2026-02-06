@@ -68,6 +68,18 @@ export interface PromptSelectionState {
   /** Whether user accepted the shortcut */
   acceptedShortcut?: boolean;
 
+  // Triage Intelligence (Sprint: Triage Intelligence)
+  /** Suggested pillar from triage skill */
+  suggestedPillar?: Pillar;
+  /** Full triage result for logging and feedback */
+  triageResult?: {
+    intent: 'command' | 'capture' | 'query' | 'clarify';
+    confidence: number;
+    complexityTier: 0 | 1 | 2 | 3;
+    source: 'pattern_cache' | 'haiku';
+    keywords?: string[];
+  };
+
   // Metadata
   /** Creation timestamp */
   timestamp: number;
