@@ -1,0 +1,46 @@
+{
+  "version": 1,
+  "patterns": {
+    "url:github.com/kingbootoshi/codex-orchestrator": {
+      "patternKey": "url:github.com/kingbootoshi/codex-orchestrator",
+      "confirmedResult": {
+        "intent": "capture",
+        "pillar": "The Grove",
+        "requestType": "Research",
+        "keywords": [
+          "codex",
+          "orchestrator",
+          "github",
+          "project"
+        ]
+      },
+      "confirmCount": 1,
+      "correctionCount": 0,
+      "lastSeen": "2026-02-06T21:42:34.112Z",
+      "examples": [
+        "https://github.com/kingbootoshi/codex-orchestrator"
+      ]
+    },
+    "url:bringatrailer.com/listing/*-mercedes-benz-300e-2-6/": {
+      "patternKey": "url:bringatrailer.com/listing/*-mercedes-benz-300e-2-6/",
+      "confirmedResult": {
+        "intent": "capture",
+        "pillar": "Personal",
+        "requestType": "Research",
+        "keywords": [
+          "mercedes",
+          "classic car",
+          "300E",
+          "1990s luxury sedan"
+        ]
+      },
+      "confirmCount": 1,
+      "correctionCount": 0,
+      "lastSeen": "2026-02-06T21:47:51.913Z",
+      "examples": [
+        "https://bringatrailer.com/listing/1992-mercedes-benz-300e-2-6/?utm_source=Iterable&utm_medium=email&utm_campaign=Model_Update"
+      ]
+    }
+  },
+  "lastUpdated": "2026-02-06T21:47:56.915Z"
+}

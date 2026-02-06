@@ -103,6 +103,17 @@ export interface FeatureFlags {
    * @default false
    */
   triageSkill: boolean;
+
+  // === Bug Fixes ===
+
+  /**
+   * Pending Selection Context (Bug #2 Fix)
+   * When enabled, detects follow-up context messages when a user has a
+   * pending content selection. Prevents "I don't see content" false negatives
+   * when user sends URL then context in separate messages.
+   * @default true (safe - only adds graceful acknowledgment)
+   */
+  pendingSelectionContext: boolean;
 }
 
 /**
@@ -199,6 +210,8 @@ function loadFeatureFlags(): FeatureFlags {
     apiSwarmDispatch: process.env.ATLAS_API_SWARM === 'true',
     // Triage Intelligence (Sprint: Triage Intelligence)
     triageSkill: process.env.ATLAS_TRIAGE_SKILL === 'true',
+    // Bug Fixes
+    pendingSelectionContext: process.env.ATLAS_PENDING_SELECTION_CONTEXT !== 'false', // Default ON
   };
 }
 

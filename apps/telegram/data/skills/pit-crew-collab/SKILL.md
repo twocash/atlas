@@ -11,6 +11,11 @@ triggers:
   - "check pit crew status"
   - "approve pit crew approach"
   - "User shares Pit Crew Notion URL"
+skill_id: pit-crew-collab
+category: collaboration
+dependencies:
+  - notion
+  - mcp
 ---
 
 # Skill: Pit Crew Collaboration
@@ -39,7 +44,6 @@ Real-time collaboration workflow between Atlas and Pit Crew through Notion page 
 
 When starting new work:
 
-```
 1. Classify as bug/feature/hotfix/question
 2. Use mcp__pit_crew__dispatch_work with:
    - type: classification result
@@ -49,6 +53,3 @@ When starting new work:
 3. Verify notion_url returned
 4. Store discussion_id for follow-up
 5. Report: "Dispatched to Pit Crew: [url]"
-```
-
-[... rest of the file remains unchanged ...]

@@ -250,6 +250,29 @@ export function getPendingCount(): number {
 }
 
 /**
+ * Find a pending selection for a specific user
+ * Returns the most recent non-expired selection for this user
+ */
+export function getSelectionByUserId(userId: number): PromptSelectionState | undefined {
+  const now = Date.now();
+
+  for (const [id, state] of pendingSelections) {
+    if (state.userId === userId && state.expiresAt > now) {
+      return state;
+    }
+  }
+
+  return undefined;
+}
+
+/**
+ * Check if a user has a pending selection
+ */
+export function hasPendingSelectionForUser(userId: number): boolean {
+  return getSelectionByUserId(userId) !== undefined;
+}
+
+/**
  * Clean up all expired selections
  * Called periodically or on demand
  */
