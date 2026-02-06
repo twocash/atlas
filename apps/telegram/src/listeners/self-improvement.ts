@@ -13,7 +13,8 @@ import { Client } from '@notionhq/client';
 import { logger } from '../logger';
 import { getFeatureFlags, getSafetyLimits } from '../config/features';
 import { classifyZone, createOperation, type PitCrewOperation } from '../skills/zone-classifier';
-import { executeSwarmFix, type SwarmTask } from '../pit-crew/swarm-dispatch';
+import { executeSwarmFix, type SwarmTask, type SwarmResult } from '../pit-crew/swarm-dispatch';
+import { executeWithAPI } from '../pit-crew/api-dispatch';
 
 // ==========================================
 // Constants
@@ -267,6 +268,35 @@ function extractSkillName(content: string): string | undefined {
 }
 
 /**
+ * Split multi-file operations into single-file tasks for faster swarm execution.
+ * Each file gets its own Claude Code session to prevent timeouts.
+ */
+function splitOperationByFile(operation: PitCrewOperation): PitCrewOperation[] {
+  // Filter out directory-level paths (e.g., "data/skills/")
+  const specificFiles = operation.targetFiles.filter(f => !f.endsWith('/'));
+
+  // If no specific files, return original (directory-only operation)
+  if (specificFiles.length === 0) {
+    return [operation];
+  }
+
+  // If exactly one specific file, return operation with just that file
+  if (specificFiles.length === 1) {
+    return [{
+      ...operation,
+      targetFiles: specificFiles,
+    }];
+  }
+
+  // Multiple files: split into separate operations
+  return specificFiles.map(file => ({
+    ...operation,
+    targetFiles: [file],
+    description: `${operation.description} [file: ${file}]`,
+  }));
+}
+
+/**
  * Update Feed entry status to "Dispatched"
  */
 async function markEntryDispatched(entryId: string): Promise<void> {
@@ -375,70 +405,89 @@ async function processEntry(entry: FeedEntry): Promise<void> {
   const content = await getPageContent(entry.id);
 
   // Parse to operation
-  const operation = parseEntryToOperation(entry, content || entry.title);
+  const baseOperation = parseEntryToOperation(entry, content || entry.title);
 
-  if (!operation) {
+  if (!baseOperation) {
     logger.info('Entry not actionable (no target files detected)', { id: entry.id });
     return;
   }
 
-  // Classify the zone
-  const classification = classifyZone(operation);
-  const { zone } = classification;
+  // Split multi-file operations into single-file tasks for faster execution
+  const operations = splitOperationByFile(baseOperation);
 
-  logger.info('Zone classification for self-improvement', {
+  logger.info('Processing operations for entry', {
     entry: entry.id,
-    zone,
-    rule: classification.ruleApplied,
-    reason: classification.reason,
+    operationCount: operations.length,
+    files: operations.map(op => op.targetFiles[0]),
   });
 
-  // Handle based on zone and swarm dispatch flag
-  const flags = getFeatureFlags();
+  // Process each operation (single file per swarm dispatch)
+  for (const operation of operations) {
+    // Classify the zone
+    const classification = classifyZone(operation);
+    const { zone } = classification;
 
-  if ((zone === 'auto-execute' || zone === 'auto-notify') && flags.swarmDispatch) {
-    // Create swarm task and dispatch
-    const task: SwarmTask = {
-      feedEntryId: entry.id,
-      operation,
+    logger.info('Zone classification for self-improvement', {
+      entry: entry.id,
       zone,
-      context: content || entry.title,
-      targetSkill: operation.skillName,
-    };
+      rule: classification.ruleApplied,
+      reason: classification.reason,
+      targetFile: operation.targetFiles[0],
+    });
 
-    const result = await executeSwarmFix(task);
+    // Handle based on zone and swarm dispatch flag
+    const flags = getFeatureFlags();
 
-    if (result.success) {
-      logger.info('Swarm fix succeeded', {
-        entry: entry.id,
-        filesChanged: result.filesChanged,
-        commitHash: result.commitHash,
-      });
+    if ((zone === 'auto-execute' || zone === 'auto-notify') && flags.swarmDispatch) {
+      // Create swarm task and dispatch
+      const task: SwarmTask = {
+        feedEntryId: entry.id,
+        operation,
+        zone,
+        context: content || entry.title,
+        targetSkill: operation.skillName,
+      };
 
-      // Mark as dispatched in Feed
-      await markEntryDispatched(entry.id);
-    } else {
-      logger.warn('Swarm fix failed, creating Work Queue item', {
-        entry: entry.id,
-        error: result.error,
-      });
+      // Use API Direct dispatch if enabled, otherwise fall back to CLI
+      const result: SwarmResult = flags.apiSwarmDispatch
+        ? await executeWithAPI(task)
+        : await executeSwarmFix(task);
 
+      if (result.success) {
+        logger.info('Swarm fix succeeded', {
+          entry: entry.id,
+          filesChanged: result.filesChanged,
+          commitHash: result.commitHash,
+        });
+
+        // Only mark as dispatched after ALL operations complete (last one)
+        if (operation === operations[operations.length - 1]) {
+          await markEntryDispatched(entry.id);
+        }
+      } else {
+        logger.warn('Swarm fix failed, creating Work Queue item', {
+          entry: entry.id,
+          error: result.error,
+          targetFile: operation.targetFiles[0],
+        });
+
+        // Create Work Queue item for manual handling
+        await createWorkQueueItem(
+          entry,
+          operation,
+          zone,
+          result.error || 'Swarm execution failed'
+        );
+      }
+    } else if (zone === 'approve' || !flags.swarmDispatch) {
       // Create Work Queue item for manual handling
       await createWorkQueueItem(
         entry,
         operation,
         zone,
-        result.error || 'Swarm execution failed'
+        flags.swarmDispatch ? classification.reason : 'Swarm dispatch disabled'
       );
     }
-  } else if (zone === 'approve' || !flags.swarmDispatch) {
-    // Create Work Queue item for manual handling
-    await createWorkQueueItem(
-      entry,
-      operation,
-      zone,
-      flags.swarmDispatch ? classification.reason : 'Swarm dispatch disabled'
-    );
   }
 }
 

@@ -14,6 +14,7 @@
  */
 
 import { spawn } from 'child_process';
+import { join } from 'path';
 import { logger } from '../logger';
 import { getFeatureFlags, getSafetyLimits } from '../config/features';
 import type { PitCrewOperation, PermissionZone } from '../skills/zone-classifier';
@@ -147,10 +148,16 @@ const FORBIDDEN_FILES = [
  *
  * IMPORTANT: Keep prompts focused and directive to avoid timeouts.
  * Don't ask for test/commit - just the fix. Validation is separate.
+ *
+ * @param task - The swarm task
+ * @param projectRoot - Absolute path to project root (for absolute file paths)
  */
-export function buildFixPrompt(task: SwarmTask): string {
-  const modeLabel = task.zone === 'approve' ? 'PLAN ONLY' : 'FIX';
-  const filesStr = task.operation.targetFiles.join(', ');
+export function buildFixPrompt(task: SwarmTask, projectRoot?: string): string {
+  // Convert to absolute paths if projectRoot provided
+  const files = projectRoot
+    ? task.operation.targetFiles.map(f => join(projectRoot, f))
+    : task.operation.targetFiles;
+  const filesStr = files.join(', ');
 
   // Plan-only mode for Zone 3
   if (task.zone === 'approve') {
@@ -172,22 +179,22 @@ DO NOT make any edits. Just output the plan.`.trim();
 
 ISSUE: ${task.context}
 
-FILES TO FIX: ${filesStr}
+FILE TO FIX: ${filesStr}
 ${task.targetSkill ? `SKILL: ${task.targetSkill}` : ''}
 
 INSTRUCTIONS:
-1. Read the file(s) listed above
-2. Make the minimal fix described in ISSUE
-3. Write the fixed file(s)
-4. Output "DONE: <what you fixed>" or "FAILED: <why>"
+1. Read the file above
+2. Add the missing YAML frontmatter at the top
+3. Write the file
+4. Output "DONE: <what you fixed>"
 
 CONSTRAINTS:
-- Only edit files in: data/skills/, data/pit-crew/, src/skills/
-- Keep changes minimal - fix only what's described
-- Do NOT refactor, add features, or run tests
-- Do NOT touch: index.ts, bot.ts, handler.ts, .env
+- Edit ONLY the file listed above
+- Do NOT read other files
+- Do NOT explore the codebase
+- Do NOT run tests or validation
 
-START NOW. Read the files and fix.`.trim();
+START NOW.`.trim();
 }
 
 // ==========================================
@@ -304,17 +311,26 @@ async function executeWithClaudeCode(
   mode: SwarmMode,
   timeoutSeconds: number
 ): Promise<Omit<SwarmResult, 'durationMs'>> {
-  const prompt = buildFixPrompt(task);
+  // Use data/pit-crew as cwd so Claude reads minimal CLAUDE.md (not the massive root one)
+  // Pass absolute paths in the prompt so file operations still work
+  const projectRoot = process.cwd();
+  const swarmCwd = join(projectRoot, 'data', 'pit-crew');
+  const prompt = buildFixPrompt(task, projectRoot);
 
-  // Model defaults to sonnet for cost efficiency; override with ATLAS_SWARM_MODEL=opus for complex fixes
-  const model = process.env.ATLAS_SWARM_MODEL || 'sonnet';
+  // Haiku for simple fixes (frontmatter, typos), Sonnet for complex refactors
+  // Override with ATLAS_SWARM_MODEL=sonnet for harder tasks
+  const model = process.env.ATLAS_SWARM_MODEL || 'haiku';
 
   return new Promise((resolve) => {
+    // IMPORTANT: Prompt must come immediately after -p flag, not at end
     const args = [
-      '--print',
+      '-p', prompt,  // Prompt MUST be right after -p
       '--model', model,
       '--dangerously-skip-permissions',
-      '--max-turns', '10',  // Prevent endless exploration
+      '--max-turns', '3',  // Frontmatter fix: read → write → done
+      // Disable MCP servers (Serena, browser, etc.) to reduce startup time
+      '--strict-mcp-config',
+      '--mcp-config', './swarm-mcp.json',
     ];
 
     // Add allowed tools for execute mode (Read, Edit, Write only - no Bash)
@@ -322,18 +338,16 @@ async function executeWithClaudeCode(
       args.push('--allowedTools', 'Read,Edit,Write');
     }
 
-    args.push(prompt);
-
-    logger.debug('Spawning Claude Code', { args: args.slice(0, 4) });
+    logger.debug('Spawning Claude Code', { args: args.slice(2) }); // Exclude prompt (first 2 args)
 
     const proc = spawn('claude', args, {
-      shell: true,
-      cwd: process.cwd(),
+      shell: false,  // Don't use shell - avoids escaping issues with newlines in prompt
+      cwd: swarmCwd,  // Reads minimal CLAUDE.md from data/pit-crew/
       timeout: timeoutSeconds * 1000,
       env: {
         ...process.env,
-        // Ensure Claude Code uses the worktree, not production
-        CLAUDE_WORKING_DIR: process.cwd(),
+        MCP_TIMEOUT: '1000',  // 1s timeout for any MCP that somehow loads
+        PATH: process.env.PATH,  // Ensure claude is findable without shell
       },
     });
 

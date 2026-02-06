@@ -83,6 +83,15 @@ export interface FeatureFlags {
    * @default false
    */
   selfImprovementListener: boolean;
+
+  /**
+   * API Swarm Dispatch
+   * When enabled, uses Anthropic SDK directly instead of spawning
+   * Claude Code CLI for autonomous repairs. Bypasses CLI overhead
+   * (MCP servers, session init) for faster execution.
+   * @default false
+   */
+  apiSwarmDispatch: boolean;
 }
 
 /**
@@ -176,6 +185,7 @@ function loadFeatureFlags(): FeatureFlags {
     zoneClassifier: process.env.ATLAS_ZONE_CLASSIFIER === 'true',
     swarmDispatch: process.env.ATLAS_SWARM_DISPATCH === 'true',
     selfImprovementListener: process.env.ATLAS_SELF_IMPROVEMENT_LISTENER === 'true',
+    apiSwarmDispatch: process.env.ATLAS_API_SWARM === 'true',
   };
 }
 
@@ -200,8 +210,8 @@ function loadSafetyLimits(): SafetyLimits {
     autoDisableOnErrors: parseInt(process.env.ATLAS_SKILL_AUTO_DISABLE_ERRORS || '3', 10),
     rollbackWindowHours: parseInt(process.env.ATLAS_SKILL_ROLLBACK_HOURS || '24', 10),
     // Autonomous Repair (Sprint: Pit Stop)
-    maxSwarmDispatchesPerHour: parseInt(process.env.ATLAS_SWARM_MAX_PER_HOUR || '5', 10),
-    swarmTimeoutSeconds: parseInt(process.env.ATLAS_SWARM_TIMEOUT_SECONDS || '600', 10),
+    maxSwarmDispatchesPerHour: parseInt(process.env.ATLAS_SWARM_MAX_PER_HOUR || '15', 10), // Bumped from 5 for testing
+    swarmTimeoutSeconds: parseInt(process.env.ATLAS_SWARM_TIMEOUT_SECONDS || '300', 10), // 5 min - CLI startup is slow
     selfImprovementPollIntervalMs: parseInt(process.env.ATLAS_SELF_IMPROVEMENT_POLL_MS || '60000', 10),
   };
 }
