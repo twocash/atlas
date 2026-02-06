@@ -113,6 +113,14 @@ export interface FeatureFlags {
    */
   lowConfidenceFallbackToCapture: boolean;
 
+  /**
+   * Multi-Intent Parsing (Bug #6 Fix)
+   * When enabled, triage detects compound messages with multiple intents
+   * (e.g., "Save this article and remind me tomorrow") and processes each.
+   * @default false
+   */
+  multiIntentParsing: boolean;
+
   // === Bug Fixes ===
 
   /**
@@ -220,6 +228,7 @@ function loadFeatureFlags(): FeatureFlags {
     // Triage Intelligence (Sprint: Triage Intelligence)
     triageSkill: process.env.ATLAS_TRIAGE_SKILL === 'true',
     lowConfidenceFallbackToCapture: process.env.ATLAS_LOW_CONFIDENCE_CAPTURE === 'true',
+    multiIntentParsing: process.env.ATLAS_MULTI_INTENT === 'true',
     // Bug Fixes
     pendingSelectionContext: process.env.ATLAS_PENDING_SELECTION_CONTEXT !== 'false', // Default ON
   };

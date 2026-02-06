@@ -78,6 +78,13 @@ export interface PromptSelectionState {
     complexityTier: 0 | 1 | 2 | 3;
     source: 'pattern_cache' | 'haiku';
     keywords?: string[];
+    // Bug #6: Multi-intent support
+    isCompound?: boolean;
+    subIntents?: Array<{
+      intent: 'command' | 'capture' | 'query' | 'clarify';
+      description: string;
+      pillar?: Pillar;
+    }>;
   };
 
   // Metadata

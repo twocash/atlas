@@ -714,8 +714,72 @@ async function executePromptComposition(
       }
     }
 
-    // Log triage action if triage was used (Phase 4: Action Logging)
+    // BUG #6: Process sub-intents if compound message
     const flags = getFeatureFlags();
+    const subIntentResults: Array<{ intent: string; title: string; url?: string }> = [];
+
+    if (flags.multiIntentParsing && state.triageResult?.isCompound && state.triageResult.subIntents) {
+      logger.info('Processing compound message sub-intents', {
+        primaryIntent: state.triageResult.intent,
+        subIntentCount: state.triageResult.subIntents.length,
+      });
+
+      for (const subIntent of state.triageResult.subIntents) {
+        try {
+          const subTitle = subIntent.description.substring(0, 60);
+          const subPillar = subIntent.pillar || pillar;
+
+          // Create Feed entry for sub-intent
+          const subFeedEntry = await notion.pages.create({
+            parent: { database_id: FEED_DB },
+            properties: {
+              'Entry': { title: [{ text: { content: `[Sub] ${subTitle}` } }] },
+              'Pillar': { select: { name: subPillar! } },
+              'Source': { select: { name: 'Telegram' } },
+              'Request Type': { select: { name: subIntent.intent === 'command' ? 'Process' : 'Research' } },
+              'Author': { select: { name: 'Atlas [Telegram]' } },
+              'Status': { select: { name: 'Captured' } },
+              'Date': { date: { start: new Date().toISOString() } },
+            },
+          });
+
+          // Create Work Queue entry for sub-intent
+          const subWqEntry = await notion.pages.create({
+            parent: { database_id: WORK_QUEUE_DB },
+            properties: {
+              'Task': { title: [{ text: { content: subTitle } }] },
+              'Status': { select: { name: 'Captured' } },
+              'Priority': { select: { name: 'P2' } },
+              'Type': { select: { name: subIntent.intent === 'command' ? 'Process' : 'Research' } },
+              'Pillar': { select: { name: subPillar! } },
+              'Assignee': { select: { name: 'Atlas [Telegram]' } },
+              'Queued': { date: { start: new Date().toISOString().split('T')[0] } },
+            },
+          });
+
+          subIntentResults.push({
+            intent: subIntent.intent,
+            title: subTitle,
+            url: (subWqEntry as any).url,
+          });
+
+          logger.info('Sub-intent captured', {
+            intent: subIntent.intent,
+            title: subTitle,
+            feedId: subFeedEntry.id,
+            wqId: subWqEntry.id,
+          });
+        } catch (subError) {
+          logger.error('Failed to capture sub-intent', {
+            error: subError,
+            subIntent,
+          });
+          // Continue with other sub-intents
+        }
+      }
+    }
+
+    // Log triage action if triage was used (Phase 4: Action Logging)
     if (flags.triageSkill && state.triageResult) {
       const pillarCorrected = state.suggestedPillar && pillar !== state.suggestedPillar;
       try {
@@ -759,13 +823,21 @@ async function executePromptComposition(
     }
 
     // Send success message
-    await ctx.reply(
+    let successMessage =
       `✅ *Captured!*\n\n` +
       `📌 ${pillar} → ${action}${voice ? ` → ${voice}` : ''}\n` +
       `📝 ${entryTitle.substring(0, 100)}${entryTitle.length > 100 ? '...' : ''}\n\n` +
-      `🔗 [View in Notion](${notionUrl})`,
-      { parse_mode: 'Markdown' }
-    );
+      `🔗 [View in Notion](${notionUrl})`;
+
+    // BUG #6: Include sub-intent confirmations if any
+    if (subIntentResults.length > 0) {
+      successMessage += `\n\n*Also captured:*\n`;
+      for (const sub of subIntentResults) {
+        successMessage += `• ${sub.title}${sub.url ? ` [→](${sub.url})` : ''}\n`;
+      }
+    }
+
+    await ctx.reply(successMessage, { parse_mode: 'Markdown' });
 
   } catch (error) {
     logger.error('Prompt composition execution failed', {
@@ -832,6 +904,13 @@ export async function startPromptSelection(
       complexityTier: triageResult.complexityTier,
       source: triageResult.source,
       keywords: triageResult.keywords,
+      // Bug #6: Multi-intent support
+      isCompound: triageResult.isCompound,
+      subIntents: triageResult.subIntents?.map(sub => ({
+        intent: sub.intent,
+        description: sub.description,
+        pillar: sub.pillar,
+      })),
     } : undefined,
   });
 

@@ -36,6 +36,17 @@ export interface TriageCommand {
   description: string; // The actual content, NOT the meta-request
 }
 
+/**
+ * Sub-intent for compound messages (Bug #6 Fix)
+ * Lightweight representation of an additional intent in a multi-intent message
+ */
+export interface SubIntent {
+  intent: 'command' | 'capture' | 'query' | 'clarify';
+  description: string;  // Brief description of what this sub-intent is about
+  pillar?: Pillar;
+  command?: TriageCommand;
+}
+
 export interface TriageResult {
   intent: 'command' | 'capture' | 'query' | 'clarify';
   confidence: number; // 0-1
@@ -57,6 +68,10 @@ export interface TriageResult {
   // Metadata
   source: 'pattern_cache' | 'haiku';  // How this result was produced
   latencyMs?: number;
+
+  // Multi-intent (Bug #6 Fix)
+  isCompound?: boolean;         // True if message contains multiple intents
+  subIntents?: SubIntent[];     // Additional intents beyond the primary
 }
 
 // ==========================================
@@ -70,6 +85,14 @@ const TriageCommandSchema = z.object({
   description: z.string(),
 });
 
+// Bug #6: Sub-intent schema for multi-intent parsing
+const SubIntentSchema = z.object({
+  intent: z.enum(['command', 'capture', 'query', 'clarify']),
+  description: z.string(),
+  pillar: z.string().optional(),
+  command: TriageCommandSchema.optional(),
+});
+
 const TriageResultSchema = z.object({
   intent: z.enum(['command', 'capture', 'query', 'clarify']),
   confidence: z.number().min(0).max(1),
@@ -81,6 +104,9 @@ const TriageResultSchema = z.object({
   keywords: z.array(z.string()).default([]),
   complexityTier: z.union([z.literal(0), z.literal(1), z.literal(2), z.literal(3)]).default(1),
   suggestedModel: z.string().optional(),
+  // Bug #6: Multi-intent support
+  isCompound: z.boolean().optional(),
+  subIntents: z.array(SubIntentSchema).optional(),
 });
 
 // ==========================================
@@ -140,6 +166,21 @@ ${REQUEST_TYPES.map(r => `- "${r}"`).join('\n')}
 - 2: Route to Sonnet (long content, ambiguous, multi-step)
 - 3: Route to Opus/Gemini (research, code gen, deep synthesis)
 
+## Multi-Intent Detection (Compound Messages)
+
+Some messages contain multiple intents. Look for connectors like "and", "also", "then", "plus".
+
+Examples:
+- "Save this article and remind me to read it tomorrow" → capture + command(schedule)
+- "Log a bug about X and create a P0 for Y" → command + command
+- "What's in my feed? Also, capture this idea about Z" → query + capture
+
+When detected:
+- Set "isCompound": true
+- Primary intent goes in main fields
+- Additional intents go in "subIntents" array
+- Each sub-intent needs: intent, description, pillar (optional), command (if applicable)
+
 ## Response Format
 Return JSON only, no markdown fences. Match this structure exactly:
 {
@@ -152,7 +193,9 @@ Return JSON only, no markdown fences. Match this structure exactly:
   "requestType": "...",
   "keywords": ["..."],
   "complexityTier": 1,
-  "suggestedModel": "..."
+  "suggestedModel": "...",
+  "isCompound": false,
+  "subIntents": []
 }`;
 
 // ==========================================
@@ -341,6 +384,14 @@ export async function triageMessage(
       suggestedModel: validated.suggestedModel,
       source: 'haiku',
       latencyMs,
+      // Bug #6: Multi-intent support
+      isCompound: validated.isCompound,
+      subIntents: validated.subIntents?.map(sub => ({
+        intent: sub.intent,
+        description: sub.description,
+        pillar: sub.pillar ? validatePillar(sub.pillar) : undefined,
+        command: sub.command,
+      })),
     };
 
     // BUG #3 FIX: Low confidence fallback to capture
@@ -365,6 +416,8 @@ export async function triageMessage(
       latencyMs,
       hasTitle: !!result.title,
       hasCommand: !!result.command,
+      isCompound: result.isCompound ?? false,
+      subIntentCount: result.subIntents?.length ?? 0,
     });
 
     return result;
