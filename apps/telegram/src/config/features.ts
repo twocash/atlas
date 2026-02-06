@@ -92,6 +92,17 @@ export interface FeatureFlags {
    * @default false
    */
   apiSwarmDispatch: boolean;
+
+  // === Triage Intelligence (Sprint: Triage Intelligence) ===
+
+  /**
+   * Triage Skill
+   * When enabled, uses unified Haiku triage call for intent detection,
+   * smart title generation, classification, and complexity tier routing.
+   * Replaces multi-step capture pipeline with single API call.
+   * @default false
+   */
+  triageSkill: boolean;
 }
 
 /**
@@ -186,6 +197,8 @@ function loadFeatureFlags(): FeatureFlags {
     swarmDispatch: process.env.ATLAS_SWARM_DISPATCH === 'true',
     selfImprovementListener: process.env.ATLAS_SELF_IMPROVEMENT_LISTENER === 'true',
     apiSwarmDispatch: process.env.ATLAS_API_SWARM === 'true',
+    // Triage Intelligence (Sprint: Triage Intelligence)
+    triageSkill: process.env.ATLAS_TRIAGE_SKILL === 'true',
   };
 }
 
