@@ -306,9 +306,13 @@ async function executeWithClaudeCode(
 ): Promise<Omit<SwarmResult, 'durationMs'>> {
   const prompt = buildFixPrompt(task);
 
+  // Model defaults to sonnet for cost efficiency; override with ATLAS_SWARM_MODEL=opus for complex fixes
+  const model = process.env.ATLAS_SWARM_MODEL || 'sonnet';
+
   return new Promise((resolve) => {
     const args = [
       '--print',
+      '--model', model,
       '--dangerously-skip-permissions',
       '--max-turns', '10',  // Prevent endless exploration
     ];
