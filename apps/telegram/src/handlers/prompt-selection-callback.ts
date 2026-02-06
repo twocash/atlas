@@ -37,6 +37,7 @@ import {
 import type { TriageResult } from '../cognitive/triage-skill';
 import { recordTriageFeedback } from '../cognitive/triage-patterns';
 import { getFeatureFlags } from '../config/features';
+import { logTriageAction } from '../skills/action-log';
 
 import {
   // Types
@@ -710,6 +711,40 @@ async function executePromptComposition(
           action,
         });
         // Don't fail the whole capture - entries are created, just no extraction
+      }
+    }
+
+    // Log triage action if triage was used (Phase 4: Action Logging)
+    const flags = getFeatureFlags();
+    if (flags.triageSkill && state.triageResult) {
+      const pillarCorrected = state.suggestedPillar && pillar !== state.suggestedPillar;
+      try {
+        await logTriageAction(
+          content,
+          pillar!,
+          requestType as 'Research' | 'Build' | 'Draft' | 'Schedule' | 'Answer' | 'Process',
+          state.userId,
+          {
+            intent: state.triageResult.intent,
+            confidence: state.triageResult.confidence,
+            complexityTier: state.triageResult.complexityTier,
+            source: state.triageResult.source,
+            suggestedPillar: state.suggestedPillar,
+            title: state.title,
+            keywords: state.triageResult.keywords,
+          },
+          {
+            pillarCorrected: pillarCorrected || false,
+            contentType: contentType === 'url' ? 'url' : undefined,
+          }
+        );
+        logger.info('Triage action logged to Feed', {
+          intent: state.triageResult.intent,
+          pillarCorrected,
+        });
+      } catch (logError) {
+        // Non-fatal - don't fail capture if logging fails
+        logger.warn('Failed to log triage action', { error: logError });
       }
     }
 

@@ -35,7 +35,9 @@
     "wq:cleanup": "bun run scripts/work-queue-cleanup.ts --all",
     "wq:cleanup:dry": "bun run scripts/work-queue-cleanup.ts --all --dry-run",
     "wq:refactor-titles": "bun run scripts/refactor-titles.ts",
-    "wq:refactor-titles:dry": "bun run scripts/refactor-titles.ts --dry-run"
+    "wq:refactor-titles:dry": "bun run scripts/refactor-titles.ts --dry-run",
+    "seed:triage": "bun run src/scripts/seed-triage-patterns.ts",
+    "seed:triage:dry": "bun run src/scripts/seed-triage-patterns.ts --dry-run"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.39.0",
