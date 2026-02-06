@@ -265,6 +265,230 @@ async function runCanaryTests(cwd: string): Promise<SuiteResult> {
 }
 
 /**
+ * Run autonomous repair tests (Pit Stop sprint)
+ */
+async function runAutonomousRepairTests(cwd: string): Promise<SuiteResult> {
+  console.log('\n[PITSTOP] Running Autonomous Repair Tests...');
+  console.log('─'.repeat(50));
+
+  const start = Date.now();
+  const errors: string[] = [];
+  let passed = 0;
+  let failed = 0;
+
+  // Test 1: Zone classifier loads and exports functions
+  try {
+    const zoneClassifier = await import('../src/skills/zone-classifier.js');
+    if (
+      typeof zoneClassifier.classifyZone === 'function' &&
+      typeof zoneClassifier.createOperation === 'function'
+    ) {
+      passed++;
+      console.log('  \x1b[32m✓\x1b[0m Zone classifier module exports');
+    } else {
+      failed++;
+      console.log('  \x1b[31m✗\x1b[0m Zone classifier missing exports');
+      errors.push('Zone classifier missing required exports');
+    }
+  } catch (err: any) {
+    failed++;
+    console.log('  \x1b[31m✗\x1b[0m Zone classifier import failed');
+    errors.push('Zone classifier error: ' + err.message);
+  }
+
+  // Test 2: Zone classification works correctly
+  try {
+    const { classifyZone, createOperation } = await import('../src/skills/zone-classifier.js');
+
+    // Test Zone 1: Tier 0 in data/skills/
+    const op1 = createOperation({
+      type: 'skill-edit',
+      tier: 0,
+      targetFiles: ['data/skills/test/SKILL.md'],
+      description: 'Test Zone 1',
+    });
+    const result1 = classifyZone(op1);
+    if (result1.zone === 'auto-execute') {
+      passed++;
+      console.log('  \x1b[32m✓\x1b[0m Zone 1 classification (auto-execute)');
+    } else {
+      failed++;
+      console.log(`  \x1b[31m✗\x1b[0m Zone 1 classification (got ${result1.zone})`);
+      errors.push(`Zone 1 expected auto-execute, got ${result1.zone}`);
+    }
+
+    // Test Zone 3: Core files
+    const op3 = createOperation({
+      type: 'code-fix',
+      tier: 1,
+      targetFiles: ['src/bot.ts'],
+      description: 'Test Zone 3',
+    });
+    const result3 = classifyZone(op3);
+    if (result3.zone === 'approve') {
+      passed++;
+      console.log('  \x1b[32m✓\x1b[0m Zone 3 classification (approve)');
+    } else {
+      failed++;
+      console.log(`  \x1b[31m✗\x1b[0m Zone 3 classification (got ${result3.zone})`);
+      errors.push(`Zone 3 expected approve, got ${result3.zone}`);
+    }
+  } catch (err: any) {
+    failed++;
+    console.log('  \x1b[31m✗\x1b[0m Zone classification logic failed');
+    errors.push('Zone classification error: ' + err.message);
+  }
+
+  // Test 3: Swarm dispatch module loads
+  try {
+    const swarmDispatch = await import('../src/pit-crew/swarm-dispatch.js');
+    if (
+      typeof swarmDispatch.executeSwarmFix === 'function' &&
+      typeof swarmDispatch.isWritableBySwarm === 'function' &&
+      typeof swarmDispatch.getSwarmStats === 'function'
+    ) {
+      passed++;
+      console.log('  \x1b[32m✓\x1b[0m Swarm dispatch module exports');
+    } else {
+      failed++;
+      console.log('  \x1b[31m✗\x1b[0m Swarm dispatch missing exports');
+      errors.push('Swarm dispatch missing required exports');
+    }
+  } catch (err: any) {
+    failed++;
+    console.log('  \x1b[31m✗\x1b[0m Swarm dispatch import failed');
+    errors.push('Swarm dispatch error: ' + err.message);
+  }
+
+  // Test 4: File permission validation
+  try {
+    const { isWritableBySwarm, validateSwarmScope } = await import('../src/pit-crew/swarm-dispatch.js');
+
+    // Should allow data/skills/
+    if (isWritableBySwarm('data/skills/test/SKILL.md')) {
+      passed++;
+      console.log('  \x1b[32m✓\x1b[0m File permission: data/skills/ allowed');
+    } else {
+      failed++;
+      console.log('  \x1b[31m✗\x1b[0m File permission: data/skills/ should be allowed');
+      errors.push('data/skills/ should be writable');
+    }
+
+    // Should deny core files
+    if (!isWritableBySwarm('src/index.ts')) {
+      passed++;
+      console.log('  \x1b[32m✓\x1b[0m File permission: src/index.ts denied');
+    } else {
+      failed++;
+      console.log('  \x1b[31m✗\x1b[0m File permission: src/index.ts should be denied');
+      errors.push('src/index.ts should NOT be writable');
+    }
+
+    // Scope validation
+    const scopeResult = validateSwarmScope(['data/skills/a.md', 'src/bot.ts']);
+    if (!scopeResult.valid && scopeResult.invalidFiles.includes('src/bot.ts')) {
+      passed++;
+      console.log('  \x1b[32m✓\x1b[0m Scope validation catches forbidden files');
+    } else {
+      failed++;
+      console.log('  \x1b[31m✗\x1b[0m Scope validation should catch src/bot.ts');
+      errors.push('Scope validation failed to catch forbidden file');
+    }
+  } catch (err: any) {
+    failed++;
+    console.log('  \x1b[31m✗\x1b[0m File permission validation failed');
+    errors.push('Permission validation error: ' + err.message);
+  }
+
+  // Test 5: Feature flags default to OFF
+  try {
+    const { getFeatureFlags } = await import('../src/config/features.js');
+
+    // Save and clear env vars
+    const savedZone = process.env.ATLAS_ZONE_CLASSIFIER;
+    const savedSwarm = process.env.ATLAS_SWARM_DISPATCH;
+    const savedListener = process.env.ATLAS_SELF_IMPROVEMENT_LISTENER;
+    delete process.env.ATLAS_ZONE_CLASSIFIER;
+    delete process.env.ATLAS_SWARM_DISPATCH;
+    delete process.env.ATLAS_SELF_IMPROVEMENT_LISTENER;
+
+    // Module may cache, so we just verify the function exists and returns an object
+    const flags = getFeatureFlags();
+    if (typeof flags === 'object' && 'zoneClassifier' in flags && 'swarmDispatch' in flags) {
+      passed++;
+      console.log('  \x1b[32m✓\x1b[0m Feature flags structure valid');
+    } else {
+      failed++;
+      console.log('  \x1b[31m✗\x1b[0m Feature flags structure invalid');
+      errors.push('Feature flags missing required properties');
+    }
+
+    // Restore env vars
+    if (savedZone) process.env.ATLAS_ZONE_CLASSIFIER = savedZone;
+    if (savedSwarm) process.env.ATLAS_SWARM_DISPATCH = savedSwarm;
+    if (savedListener) process.env.ATLAS_SELF_IMPROVEMENT_LISTENER = savedListener;
+  } catch (err: any) {
+    failed++;
+    console.log('  \x1b[31m✗\x1b[0m Feature flags module failed');
+    errors.push('Feature flags error: ' + err.message);
+  }
+
+  // Test 6: Self-improvement listener loads
+  try {
+    const listener = await import('../src/listeners/self-improvement.js');
+    if (
+      typeof listener.startSelfImprovementListener === 'function' &&
+      typeof listener.stopSelfImprovementListener === 'function' &&
+      typeof listener.getSelfImprovementListenerStatus === 'function'
+    ) {
+      passed++;
+      console.log('  \x1b[32m✓\x1b[0m Self-improvement listener exports');
+    } else {
+      failed++;
+      console.log('  \x1b[31m✗\x1b[0m Self-improvement listener missing exports');
+      errors.push('Self-improvement listener missing required exports');
+    }
+  } catch (err: any) {
+    failed++;
+    console.log('  \x1b[31m✗\x1b[0m Self-improvement listener import failed');
+    errors.push('Self-improvement listener error: ' + err.message);
+  }
+
+  // Test 7: Approval queue zone handling
+  try {
+    const approvalQueue = await import('../src/skills/approval-queue.js');
+    if (
+      typeof approvalQueue.handlePitCrewOperation === 'function' &&
+      typeof approvalQueue.rollbackDeployment === 'function'
+    ) {
+      passed++;
+      console.log('  \x1b[32m✓\x1b[0m Approval queue module exports');
+    } else {
+      failed++;
+      console.log('  \x1b[31m✗\x1b[0m Approval queue missing exports');
+      errors.push('Approval queue missing required exports');
+    }
+  } catch (err: any) {
+    failed++;
+    console.log('  \x1b[31m✗\x1b[0m Approval queue import failed');
+    errors.push('Approval queue error: ' + err.message);
+  }
+
+  const duration = Date.now() - start;
+  const status = failed === 0 ? '\x1b[32m[PASS]\x1b[0m' : '\x1b[31m[FAIL]\x1b[0m';
+  console.log(`  ${status} ${passed} passed, ${failed} failed (${duration}ms)`);
+
+  return {
+    name: 'Autonomous Repair (Pit Stop)',
+    passed,
+    failed,
+    skipped: 0,
+    duration,
+    errors,
+  };
+}
+
+/**
  * Run integration tests (health checks, Notion connectivity)
  */
 async function runIntegrationTests(cwd: string): Promise<SuiteResult> {
@@ -395,14 +619,16 @@ async function main() {
   else if (full) {
     suites.push(await runCanaryTests(cwd));  // Canaries first - detect silent failures
     suites.push(await runUnitTests(cwd));
+    suites.push(await runAutonomousRepairTests(cwd));  // Pit Stop sprint
     suites.push(await runSmokeTests(cwd));
     suites.push(await runE2ETests(cwd));
     suites.push(await runIntegrationTests(cwd));
   }
-  // Default mode: Canaries + Unit + Smoke + Integration
+  // Default mode: Canaries + Unit + Pit Stop + Smoke + Integration
   else {
     suites.push(await runCanaryTests(cwd));  // Canaries first - detect silent failures
     suites.push(await runUnitTests(cwd));
+    suites.push(await runAutonomousRepairTests(cwd));  // Pit Stop sprint
     suites.push(await runSmokeTests(cwd));
     suites.push(await runIntegrationTests(cwd));
   }

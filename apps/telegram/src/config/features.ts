@@ -57,6 +57,41 @@ export interface FeatureFlags {
    * @default false
    */
   skillComposition: boolean;
+
+  // === Autonomous Repair (Sprint: Pit Stop) ===
+
+  /**
+   * Zone Classifier
+   * When enabled, routes pit crew operations through zone-based permissions
+   * (auto-execute, auto-notify, approve) instead of always requiring approval.
+   * @default false
+   */
+  zoneClassifier: boolean;
+
+  /**
+   * Swarm Dispatch
+   * When enabled, spawns Claude Code sessions for autonomous skill repairs.
+   * Only triggers for Zone 1/2 operations when zone classifier is also enabled.
+   * @default false
+   */
+  swarmDispatch: boolean;
+
+  /**
+   * Self-Improvement Listener
+   * When enabled, polls Feed 2.0 for entries tagged "self-improvement"
+   * and auto-dispatches to pit crew for Zone 1/2 operations.
+   * @default false
+   */
+  selfImprovementListener: boolean;
+
+  /**
+   * API Swarm Dispatch
+   * When enabled, uses Anthropic SDK directly instead of spawning
+   * Claude Code CLI for autonomous repairs. Bypasses CLI overhead
+   * (MCP servers, session init) for faster execution.
+   * @default false
+   */
+  apiSwarmDispatch: boolean;
 }
 
 /**
@@ -109,6 +144,30 @@ export interface SafetyLimits {
    * @default 24
    */
   rollbackWindowHours: number;
+
+  // === Autonomous Repair (Sprint: Pit Stop) ===
+
+  /**
+   * Maximum swarm dispatches allowed per hour
+   * Prevents runaway autonomous repair loops
+   * @default 5
+   */
+  maxSwarmDispatchesPerHour: number;
+
+  /**
+   * Timeout for swarm fix sessions (seconds)
+   * Claude Code sessions are terminated after this duration.
+   * With --max-turns 10 and focused prompts, 600s should be sufficient.
+   * @default 600 (10 minutes)
+   */
+  swarmTimeoutSeconds: number;
+
+  /**
+   * Polling interval for self-improvement listener (milliseconds)
+   * How often to check Feed 2.0 for new self-improvement entries
+   * @default 60000 (60 seconds)
+   */
+  selfImprovementPollIntervalMs: number;
 }
 
 /**
@@ -122,6 +181,11 @@ function loadFeatureFlags(): FeatureFlags {
     patternDetection: process.env.ATLAS_PATTERN_DETECTION === 'true',
     autoDeployTier0: process.env.ATLAS_AUTO_DEPLOY_TIER0 === 'true',
     skillComposition: process.env.ATLAS_SKILL_COMPOSITION === 'true',
+    // Autonomous Repair (Sprint: Pit Stop)
+    zoneClassifier: process.env.ATLAS_ZONE_CLASSIFIER === 'true',
+    swarmDispatch: process.env.ATLAS_SWARM_DISPATCH === 'true',
+    selfImprovementListener: process.env.ATLAS_SELF_IMPROVEMENT_LISTENER === 'true',
+    apiSwarmDispatch: process.env.ATLAS_API_SWARM === 'true',
   };
 }
 
@@ -145,6 +209,10 @@ function loadSafetyLimits(): SafetyLimits {
     maxTier2PerWeek: parseInt(process.env.ATLAS_SKILL_MAX_TIER2_WEEKLY || '1', 10),
     autoDisableOnErrors: parseInt(process.env.ATLAS_SKILL_AUTO_DISABLE_ERRORS || '3', 10),
     rollbackWindowHours: parseInt(process.env.ATLAS_SKILL_ROLLBACK_HOURS || '24', 10),
+    // Autonomous Repair (Sprint: Pit Stop)
+    maxSwarmDispatchesPerHour: parseInt(process.env.ATLAS_SWARM_MAX_PER_HOUR || '15', 10), // Bumped from 5 for testing
+    swarmTimeoutSeconds: parseInt(process.env.ATLAS_SWARM_TIMEOUT_SECONDS || '300', 10), // 5 min - CLI startup is slow
+    selfImprovementPollIntervalMs: parseInt(process.env.ATLAS_SELF_IMPROVEMENT_POLL_MS || '60000', 10),
   };
 }
 

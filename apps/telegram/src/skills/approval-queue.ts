@@ -4,6 +4,11 @@
  * Phase 3: Manages pending skill proposals for user approval.
  * Persists to filesystem for durability across restarts.
  *
+ * Phase 4 (Pit Stop): Zone-aware operation routing
+ * - Zone 1 (auto-execute): Deploy immediately, no notification
+ * - Zone 2 (auto-notify): Deploy and notify via Telegram
+ * - Zone 3 (approve): Queue for human approval
+ *
  * Proposals are queued here and presented to Jim via:
  * - Daily briefing inclusion
  * - `/skills pending` command
@@ -19,6 +24,14 @@ import {
   rejectProposal as doReject,
 } from './pattern-detector';
 import type { SkillDefinition } from './schema';
+import {
+  classifyZone,
+  type PitCrewOperation,
+  type PermissionZone,
+  type ZoneClassification,
+} from './zone-classifier';
+import { getFeatureFlags, getSafetyLimits } from '../config/features';
+import { getSkillRegistry } from './registry';
 
 // =============================================================================
 // QUEUE STORAGE
@@ -260,6 +273,291 @@ export async function cleanupOldProposals(maxAgeDays: number = 30): Promise<numb
   }
 
   return removed;
+}
+
+// =============================================================================
+// ZONE-AWARE OPERATIONS (Sprint: Pit Stop)
+// =============================================================================
+
+/**
+ * Deployment record for rollback tracking
+ */
+interface DeploymentRecord {
+  skillName: string;
+  zone: PermissionZone;
+  deployedAt: string;
+  proposal?: SkillProposal;
+  filesChanged: string[];
+}
+
+// In-memory deployment tracking (for rollback window)
+const recentDeployments: Map<string, DeploymentRecord> = new Map();
+
+/**
+ * Result of zone-aware operation handling
+ */
+export interface ZoneOperationResult {
+  /** Whether the skill was deployed */
+  deployed: boolean;
+  /** The classification zone */
+  zone: PermissionZone;
+  /** Human-readable message for the operation */
+  message: string;
+  /** The registered skill definition (if deployed) */
+  skill?: SkillDefinition;
+  /** Classification details */
+  classification: ZoneClassification;
+}
+
+/**
+ * Zone-aware skill deployment.
+ *
+ * Routes pit crew operations through the zone classifier:
+ * - Zone 1 (auto-execute): Deploy immediately, no notification
+ * - Zone 2 (auto-notify): Deploy and return notification message
+ * - Zone 3 (approve): Queue for human approval
+ *
+ * @param operation - The pit crew operation descriptor
+ * @param proposal - The skill proposal to deploy/queue
+ * @returns Result indicating whether deployed and what message to show
+ */
+export async function handlePitCrewOperation(
+  operation: PitCrewOperation,
+  proposal: SkillProposal
+): Promise<ZoneOperationResult> {
+  const flags = getFeatureFlags();
+
+  // If zone classifier is disabled, use existing approval queue for everything
+  if (!flags.zoneClassifier) {
+    await queueProposals([proposal]);
+    return {
+      deployed: false,
+      zone: 'approve',
+      message: `Queued for approval: ${proposal.skill.name} (zone classifier disabled)`,
+      classification: {
+        zone: 'approve',
+        reason: 'Zone classifier feature flag is disabled',
+        ruleApplied: 'FLAG_DISABLED',
+      },
+    };
+  }
+
+  // Classify the operation
+  const classification = classifyZone(operation);
+  const { zone } = classification;
+
+  logger.info('Zone classification result', {
+    skill: proposal.skill.name,
+    operation: operation.type,
+    zone,
+    reason: classification.reason,
+    rule: classification.ruleApplied,
+  });
+
+  // Route based on zone
+  switch (zone) {
+    case 'auto-execute': {
+      // Deploy immediately, no notification
+      const registry = getSkillRegistry();
+      registry.register(proposal.skill);
+
+      // Track for rollback
+      trackDeployment(proposal.skill.name, zone, proposal, operation.targetFiles);
+
+      // Mark proposal as approved
+      proposal.status = 'approved';
+      proposal.processedAt = new Date().toISOString();
+
+      logger.info('Auto-executed skill deployment', {
+        skill: proposal.skill.name,
+        tier: proposal.skill.tier,
+        zone,
+      });
+
+      return {
+        deployed: true,
+        zone,
+        message: `✅ Auto-deployed: ${proposal.skill.name}`,
+        skill: proposal.skill,
+        classification,
+      };
+    }
+
+    case 'auto-notify': {
+      // Deploy, then return notification message
+      const registry = getSkillRegistry();
+      registry.register(proposal.skill);
+
+      // Track for rollback
+      trackDeployment(proposal.skill.name, zone, proposal, operation.targetFiles);
+
+      // Mark proposal as approved
+      proposal.status = 'approved';
+      proposal.processedAt = new Date().toISOString();
+
+      logger.info('Auto-notify skill deployment', {
+        skill: proposal.skill.name,
+        tier: proposal.skill.tier,
+        zone,
+      });
+
+      return {
+        deployed: true,
+        zone,
+        message: formatDeploymentNotification(proposal.skill, zone, classification),
+        skill: proposal.skill,
+        classification,
+      };
+    }
+
+    case 'approve': {
+      // Queue for human approval
+      await queueProposals([proposal]);
+
+      logger.info('Skill queued for approval', {
+        skill: proposal.skill.name,
+        tier: proposal.skill.tier,
+        zone,
+        reason: classification.reason,
+      });
+
+      return {
+        deployed: false,
+        zone,
+        message: `🔒 Queued for approval: ${proposal.skill.name}\n\nReason: ${classification.reason}`,
+        classification,
+      };
+    }
+  }
+}
+
+/**
+ * Track a deployment for rollback window
+ */
+function trackDeployment(
+  skillName: string,
+  zone: PermissionZone,
+  proposal: SkillProposal,
+  filesChanged: string[]
+): void {
+  recentDeployments.set(skillName, {
+    skillName,
+    zone,
+    deployedAt: new Date().toISOString(),
+    proposal,
+    filesChanged,
+  });
+
+  // Cleanup old deployments outside rollback window
+  const limits = getSafetyLimits();
+  const cutoff = new Date();
+  cutoff.setHours(cutoff.getHours() - limits.rollbackWindowHours);
+
+  for (const [name, record] of recentDeployments.entries()) {
+    if (new Date(record.deployedAt) < cutoff) {
+      recentDeployments.delete(name);
+    }
+  }
+}
+
+/**
+ * Rollback a recently deployed skill
+ *
+ * @param skillName - Name of the skill to rollback
+ * @returns Success status and message
+ */
+export async function rollbackDeployment(skillName: string): Promise<{
+  success: boolean;
+  message: string;
+}> {
+  const deployment = recentDeployments.get(skillName);
+
+  if (!deployment) {
+    // Check if it's outside rollback window
+    const limits = getSafetyLimits();
+    return {
+      success: false,
+      message: `Cannot rollback: ${skillName} not found in recent deployments (${limits.rollbackWindowHours}h window)`,
+    };
+  }
+
+  // Check rollback window
+  const limits = getSafetyLimits();
+  const deployedAt = new Date(deployment.deployedAt);
+  const windowEnd = new Date(deployedAt);
+  windowEnd.setHours(windowEnd.getHours() + limits.rollbackWindowHours);
+
+  if (new Date() > windowEnd) {
+    recentDeployments.delete(skillName);
+    return {
+      success: false,
+      message: `Rollback window expired for ${skillName} (deployed ${deployment.deployedAt})`,
+    };
+  }
+
+  // Unregister the skill
+  const registry = getSkillRegistry();
+  const removed = registry.unregister(skillName);
+
+  if (!removed) {
+    return {
+      success: false,
+      message: `Skill ${skillName} not found in registry (may have been manually removed)`,
+    };
+  }
+
+  // Remove from tracking
+  recentDeployments.delete(skillName);
+
+  logger.info('Skill rolled back', {
+    skill: skillName,
+    zone: deployment.zone,
+    deployedAt: deployment.deployedAt,
+  });
+
+  return {
+    success: true,
+    message: `✅ Rolled back: ${skillName}`,
+  };
+}
+
+/**
+ * Get recent deployments (for /rollback command listing)
+ */
+export function getRecentDeployments(): DeploymentRecord[] {
+  const limits = getSafetyLimits();
+  const cutoff = new Date();
+  cutoff.setHours(cutoff.getHours() - limits.rollbackWindowHours);
+
+  return Array.from(recentDeployments.values())
+    .filter(d => new Date(d.deployedAt) > cutoff)
+    .sort((a, b) => new Date(b.deployedAt).getTime() - new Date(a.deployedAt).getTime());
+}
+
+/**
+ * Format deployment notification message for Telegram
+ */
+export function formatDeploymentNotification(
+  skill: SkillDefinition,
+  zone: PermissionZone,
+  classification: ZoneClassification
+): string {
+  const tierEmoji = skill.tier === 0 ? '🟢' : skill.tier === 1 ? '🟡' : '🔴';
+  const tierLabel = skill.tier === 0 ? 'Read-only' : skill.tier === 1 ? 'Creates' : 'External';
+
+  const lines = [
+    `✅ <b>Auto-deployed</b>: <code>${skill.name}</code>`,
+    ``,
+    `${tierEmoji} Tier ${skill.tier} (${tierLabel})`,
+    `Zone: ${zone}`,
+    `Rule: ${classification.ruleApplied}`,
+    ``,
+    `<i>${classification.reason}</i>`,
+    ``,
+    `Rollback: <code>/rollback ${skill.name}</code>`,
+  ];
+
+  return lines.join('\n');
 }
 
 // =============================================================================

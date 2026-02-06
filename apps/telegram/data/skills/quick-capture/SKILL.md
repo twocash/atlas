@@ -1,8 +1,14 @@
 ---
 name: quick-capture
+version: 1.0.0
+tier: 1
 description: Fast spark capture to Inbox with minimal friction
-trigger: capture this, quick note, remember this, add to inbox
-created: 2026-01-30T00:00:00.000Z
+triggers:
+  - capture this
+  - quick note
+  - remember this
+  - add to inbox
+  - log this
 ---
 
 # quick-capture

@@ -50,6 +50,60 @@
 **Architecture:** Feed 2.0 (activity log) + Work Queue 2.0 (task ledger)
 **NO INBOX** — Telegram IS the inbox.
 
+### 5. Autonomous Repair System (Pit Stop Sprint)
+
+**Responsibility:** Detect, classify, and repair skill-related issues autonomously
+
+**Technology:**
+- Zone Classifier (`src/skills/zone-classifier.ts`)
+- Swarm Dispatch (`src/pit-crew/swarm-dispatch.ts`)
+- Self-Improvement Listener (`src/listeners/self-improvement.ts`)
+
+**Three-Zone Permission Model:**
+```
+┌─────────────────────────────────────────────────────────────────┐
+│                    ZONE CLASSIFICATION                          │
+├─────────────────────────────────────────────────────────────────┤
+│                                                                 │
+│  Feed 2.0 Entry                                                 │
+│  (tagged: self-improvement)                                     │
+│         │                                                       │
+│         ▼                                                       │
+│  ┌─────────────┐                                                │
+│  │ Zone        │                                                │
+│  │ Classifier  │                                                │
+│  └──────┬──────┘                                                │
+│         │                                                       │
+│    ┌────┼────────────────┐                                      │
+│    ▼    ▼                ▼                                      │
+│ ┌──────┐ ┌──────┐ ┌────────────┐                               │
+│ │Zone 1│ │Zone 2│ │  Zone 3    │                               │
+│ │Silent│ │Notify│ │  Approve   │                               │
+│ └──┬───┘ └──┬───┘ └─────┬──────┘                               │
+│    │        │           │                                       │
+│    ▼        ▼           ▼                                       │
+│ ┌──────────────┐  ┌────────────┐                               │
+│ │Swarm Dispatch│  │Work Queue  │                               │
+│ │(Claude Code) │  │(Manual Fix)│                               │
+│ └──────────────┘  └────────────┘                               │
+│                                                                 │
+└─────────────────────────────────────────────────────────────────┘
+```
+
+**Writable Directories (Swarm can modify):**
+- `data/skills/**` - Full read/write
+- `data/pit-crew/**` - Full read/write
+- `src/skills/**` - Read/write
+
+**Forbidden Files (Never modified):**
+- `src/index.ts`, `src/bot.ts`, `src/handler.ts`
+- `src/supervisor/**`
+- `.env*`, `package.json`, `bun.lockb`
+
+**Safety:** Rate limiting, rollback window, auto-disable on errors
+
+See `docs/AUTONOMY.md` for complete documentation.
+
 **Databases (Canonical IDs for Notion SDK - DO NOT CHANGE):**
 - Feed 2.0: `90b2b33f-4b44-4b42-870f-8d62fb8cbf18`
 - Work Queue 2.0: `3d679030-b76b-43bd-92d8-1ac51abb4a28`
@@ -267,3 +321,11 @@ AUDIT_LOG_PATH=./logs           # Where to write audit logs
 - Shared Notion state
 - Extension can show items captured via Telegram
 - Desktop equivalent of clarification loop
+
+### With Autonomous Repair System
+
+- Self-improvement listener polls Feed 2.0 for tagged entries
+- Zone classifier routes operations to appropriate permission zone
+- Swarm dispatch spawns Claude Code sessions for Zone 1/2 operations
+- Zone 3 operations create Work Queue items for manual handling
+- Rollback via `/rollback` command for auto-deployed changes
