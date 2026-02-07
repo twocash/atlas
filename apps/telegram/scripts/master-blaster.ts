@@ -53,6 +53,28 @@ interface VerificationReport {
 // =============================================================================
 
 /**
+ * Resolve bun path — handles Windows environments where bun isn't in PATH
+ */
+function resolveBunPath(): string {
+  const homeDir = process.env.USERPROFILE || process.env.HOME || '';
+  const bunPaths = [
+    'bun',
+    `${homeDir}/.bun/bin/bun.exe`,
+    `${homeDir}/.bun/bin/bun`,
+  ];
+  // Try the first available — spawn will fail fast if wrong
+  for (const p of bunPaths) {
+    try {
+      // Quick existence check for explicit paths
+      if (p !== 'bun' && require('fs').existsSync(p)) return p;
+    } catch { /* ignore */ }
+  }
+  return bunPaths[0]; // Default to 'bun', let spawn report the error
+}
+
+const BUN_PATH = resolveBunPath();
+
+/**
  * Run a command and capture output
  */
 async function runCommand(
@@ -151,7 +173,7 @@ async function runUnitTests(cwd: string): Promise<SuiteResult> {
   console.log('\n[UNIT] Running Unit Tests...');
   console.log('─'.repeat(50));
 
-  const result = await runCommand('bun', ['test'], cwd, 60000);
+  const result = await runCommand(BUN_PATH, ['test'], cwd, 60000);
   const counts = parseBunTestOutput(result.output);
 
   // Show output for failures
@@ -180,7 +202,7 @@ async function runSmokeTests(cwd: string, quick: boolean = false): Promise<Suite
   console.log('─'.repeat(50));
 
   const scriptPath = join(cwd, 'scripts', 'smoke-test-all.ts');
-  const result = await runCommand('bun', ['run', scriptPath], cwd, 180000);
+  const result = await runCommand(BUN_PATH, ['run', scriptPath], cwd, 180000);
   const counts = parseSmokeTestOutput(result.output);
 
   // Show output for failures or if verbose
@@ -209,7 +231,7 @@ async function runE2ETests(cwd: string): Promise<SuiteResult> {
   console.log('─'.repeat(50));
 
   const scriptPath = join(cwd, 'src', 'health', 'test-runner.ts');
-  const result = await runCommand('bun', ['run', scriptPath], cwd, 180000);
+  const result = await runCommand(BUN_PATH, ['run', scriptPath], cwd, 180000);
 
   // Parse E2E output (similar to smoke tests)
   const counts = parseSmokeTestOutput(result.output);
@@ -240,27 +262,32 @@ async function runCanaryTests(cwd: string): Promise<SuiteResult> {
   console.log('─'.repeat(50));
 
   const scriptPath = join(cwd, 'scripts', 'canary-tests.ts');
-  const result = await runCommand('bun', ['run', scriptPath], cwd, 120000);
+  const result = await runCommand(BUN_PATH, ['run', scriptPath], cwd, 120000);
 
   // Count canary results (✅ and ❌)
   const passMatches = result.output.match(/✅/g) || [];
   const failMatches = result.output.match(/❌/g) || [];
 
-  // Show output for failures
-  if (!result.success) {
+  // Detect complete subprocess failure (bun not found, crash, etc.)
+  let failed = failMatches.length;
+  if (!result.success && passMatches.length === 0 && failMatches.length === 0) {
+    failed = 1; // Subprocess didn't produce any results — treat as failure
+    console.log('  ⚠️  Canary subprocess produced no results — treating as failure');
+    console.log(result.output);
+  } else if (!result.success) {
     console.log(result.output);
   }
 
-  const status = result.success ? '\x1b[32m[PASS]\x1b[0m' : '\x1b[31m[FAIL]\x1b[0m';
-  console.log(`  ${status} ${passMatches.length} passed, ${failMatches.length} failed (${result.duration}ms)`);
+  const status = failed === 0 ? '\x1b[32m[PASS]\x1b[0m' : '\x1b[31m[FAIL]\x1b[0m';
+  console.log(`  ${status} ${passMatches.length} passed, ${failed} failed (${result.duration}ms)`);
 
   return {
     name: 'Canary Tests',
     passed: passMatches.length,
-    failed: failMatches.length,
+    failed,
     skipped: 0,
     duration: result.duration,
-    errors: result.success ? [] : [result.output],
+    errors: failed > 0 ? [result.output] : [],
   };
 }
 
