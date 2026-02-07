@@ -18,6 +18,7 @@
     "verify:quick": "bun run scripts/master-blaster.ts --quick",
     "verify:full": "bun run scripts/master-blaster.ts --full",
     "verify:strict": "bun run scripts/master-blaster.ts --strict",
+    "verify:fail-fast": "bun run scripts/fail-fast-e2e-tests.ts",
     "verify:canary": "bun run scripts/canary-tests.ts",
     "verify:pipeline": "bun run scripts/pipeline-e2e-tests.ts",
     "verify:pipeline:notion": "bun run scripts/pipeline-e2e-tests.ts --with-notion",
