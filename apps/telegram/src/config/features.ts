@@ -140,6 +140,15 @@ export interface FeatureFlags {
    * @default false
    */
   duplicateConfirmationGuard: boolean;
+
+  /**
+   * Vehicle Pillar Routing (Bug #4 Fix)
+   * When enabled, vehicle-related content (cars, auctions, Bring a Trailer)
+   * is explicitly routed to Home/Garage pillar instead of Personal.
+   * Applied via enhanced triage system prompt with pillar classification rules.
+   * @default false (behavior always active in prompt, flag for tracking)
+   */
+  vehiclePillarRouting: boolean;
 }
 
 /**
@@ -241,6 +250,7 @@ function loadFeatureFlags(): FeatureFlags {
     // Bug Fixes
     pendingSelectionContext: process.env.ATLAS_PENDING_SELECTION_CONTEXT !== 'false', // Default ON
     duplicateConfirmationGuard: process.env.ATLAS_DUPLICATE_CONFIRMATION_GUARD === 'true',
+    vehiclePillarRouting: process.env.ATLAS_VEHICLE_PILLAR_ROUTING === 'true',
   };
 }
 

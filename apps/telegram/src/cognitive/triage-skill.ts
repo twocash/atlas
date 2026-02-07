@@ -150,6 +150,30 @@ When a user says "log a bug about X" or "create a P0 for Y":
 ## Valid Pillar Values
 ${PILLARS.map(p => `- "${p}"`).join('\n')}
 
+## Pillar Classification Rules
+
+**"Home/Garage"** — Physical space, vehicles, house, tools
+- Vehicle content: cars, motorcycles, car auctions, Bring a Trailer, BaT, AutoTrader
+- Home improvement: permits, contractors, renovations, repairs
+- Garage projects: tools, parts, builds
+- Examples: "1986 Mercedes 300E listing" → Home/Garage (vehicle)
+
+**"The Grove"** — AI/tech venture, research, architecture
+- AI/LLM: Claude, GPT, OpenAI, Anthropic, Hugging Face, LangChain
+- Tech: GitHub, programming, code, APIs, developer tools
+- Examples: "OpenAI Codex Orchestrator" → The Grove (AI tool)
+
+**"Consulting"** — Client work, professional services
+- Clients: DrumWave, Take Flight, client meetings, invoices
+- Examples: "DrumWave integration spec" → Consulting
+
+**"Personal"** — Health, relationships, growth, finances
+- Health: gym, fitness, medical, nutrition
+- Family: kids, spouse, relatives, personal events
+- Examples: "gym membership renewal" → Personal
+
+CRITICAL: Vehicles (cars, motorcycles, auctions) are ALWAYS "Home/Garage", NOT "Personal".
+
 ## Valid RequestType Values
 ${REQUEST_TYPES.map(r => `- "${r}"`).join('\n')}
 
