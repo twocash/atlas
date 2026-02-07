@@ -159,19 +159,9 @@ process:
             content: "$step.analyze_content.output"
           onError: continue
 
-        # Notify user with link to Work Queue for feedback
-        # Note: Full output is in Notion - Telegram gets concise summary
-        - id: notify_success
-          tool: telegram_send
-          inputs:
-            chatId: "$input.telegramChatId"
-            message: |
-              ✅ Captured: $input.pillar / $input.title
-
-              🔗 [$input.title]($input.workQueueUrl)
-
-              View full analysis in Notion and let me know if you'd like to take further action.
-          onError: continue
+        # Note: Success notification is handled by executePromptComposition()
+        # Skill only notifies on enrichment completion (silent success)
+        # This avoids duplicate "Captured!" messages (Bug #1 related)
 
       else:
         # HTTP failed - mark as failed

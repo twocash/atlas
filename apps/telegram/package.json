@@ -37,7 +37,12 @@
     "wq:refactor-titles": "bun run scripts/refactor-titles.ts",
     "wq:refactor-titles:dry": "bun run scripts/refactor-titles.ts --dry-run",
     "seed:triage": "bun run src/scripts/seed-triage-patterns.ts",
-    "seed:triage:dry": "bun run src/scripts/seed-triage-patterns.ts --dry-run"
+    "seed:triage:dry": "bun run src/scripts/seed-triage-patterns.ts --dry-run",
+    "e2e": "bun run scripts/e2e-test-runner.ts",
+    "e2e:verbose": "bun run scripts/e2e-test-runner.ts --verbose",
+    "e2e:high": "bun run scripts/e2e-test-runner.ts --high-only",
+    "e2e:cleanup": "bun run scripts/e2e-cleanup.ts",
+    "e2e:cleanup:dry": "bun run scripts/e2e-cleanup.ts --dry-run"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.39.0",

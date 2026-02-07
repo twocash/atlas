@@ -236,17 +236,77 @@ function getAnthropicClient(): Anthropic {
 }
 
 // ==========================================
+// Domain-Based Pillar Hints (Bug #8 Fix)
+// ==========================================
+
+/**
+ * Known domains that should always route to specific pillars.
+ * These provide explicit hints to the triage model regardless of content.
+ */
+const DOMAIN_PILLAR_MAP: Record<string, { pillar: Pillar; category: string }> = {
+  // Vehicle/Automotive → Home/Garage
+  'bringatrailer.com': { pillar: 'Home/Garage', category: 'vehicle auction' },
+  'bat.vin': { pillar: 'Home/Garage', category: 'vehicle auction' },
+  'carsandbids.com': { pillar: 'Home/Garage', category: 'vehicle auction' },
+  'autotrader.com': { pillar: 'Home/Garage', category: 'vehicle marketplace' },
+  'hemmings.com': { pillar: 'Home/Garage', category: 'classic cars' },
+  'classiccars.com': { pillar: 'Home/Garage', category: 'classic cars' },
+  'carfax.com': { pillar: 'Home/Garage', category: 'vehicle history' },
+  'kbb.com': { pillar: 'Home/Garage', category: 'vehicle valuation' },
+  'edmunds.com': { pillar: 'Home/Garage', category: 'vehicle research' },
+  'cars.com': { pillar: 'Home/Garage', category: 'vehicle marketplace' },
+  // AI/LLM/Tech → The Grove
+  'openai.com': { pillar: 'The Grove', category: 'AI provider' },
+  'anthropic.com': { pillar: 'The Grove', category: 'AI provider' },
+  'huggingface.co': { pillar: 'The Grove', category: 'AI/ML' },
+  'github.com': { pillar: 'The Grove', category: 'code/dev' },
+  'arxiv.org': { pillar: 'The Grove', category: 'research papers' },
+};
+
+/**
+ * Detect domain-based pillar hint from a message (usually a URL).
+ * Returns undefined if no known domain is detected.
+ */
+function detectDomainPillarHint(message: string): { pillar: Pillar; category: string; domain: string } | undefined {
+  // Extract domain from URL if present
+  const urlMatch = message.match(/https?:\/\/(?:www\.)?([^\/\s]+)/i);
+  if (!urlMatch) return undefined;
+
+  const domain = urlMatch[1].toLowerCase();
+
+  // Check direct match
+  if (DOMAIN_PILLAR_MAP[domain]) {
+    return { ...DOMAIN_PILLAR_MAP[domain], domain };
+  }
+
+  // Check if domain ends with a known pattern (e.g., subdomain.bringatrailer.com)
+  for (const [knownDomain, hint] of Object.entries(DOMAIN_PILLAR_MAP)) {
+    if (domain.endsWith(knownDomain)) {
+      return { ...hint, domain };
+    }
+  }
+
+  return undefined;
+}
+
+// ==========================================
 // Prompt Builder
 // ==========================================
 
 function buildTriagePrompt(
   messageText: string,
   contentPreview?: string,
-  patternExamples?: string[]
+  patternExamples?: string[],
+  domainHint?: { pillar: Pillar; category: string; domain: string }
 ): string {
   const parts: string[] = [];
 
   parts.push(`Message to triage:\n"${messageText}"`);
+
+  // Bug #8 Fix: Add explicit domain hint when detected
+  if (domainHint) {
+    parts.push(`\n⚠️ DOMAIN SIGNAL: ${domainHint.domain} is a ${domainHint.category} site → pillar MUST be "${domainHint.pillar}"`);
+  }
 
   if (contentPreview) {
     parts.push(`\nURL content preview (first 500 chars):\n"${contentPreview.slice(0, 500)}"`);
@@ -265,13 +325,23 @@ function buildTriagePrompt(
 // Fallback
 // ==========================================
 
-function fallbackTriage(messageText: string): TriageResult {
-  logger.warn('[Triage] Using fallback triage', { messageLength: messageText.length });
+function fallbackTriage(
+  messageText: string,
+  domainHint?: { pillar: Pillar; category: string; domain: string }
+): TriageResult {
+  // Domain hint overrides default pillar even in fallback
+  const pillar = domainHint?.pillar ?? 'The Grove';
+
+  logger.warn('[Triage] Using fallback triage', {
+    messageLength: messageText.length,
+    domainHint: domainHint ? { domain: domainHint.domain, pillar: domainHint.pillar } : undefined,
+    pillar,
+  });
 
   return {
     intent: 'capture',
     confidence: 0.3,
-    pillar: 'The Grove',
+    pillar,
     requestType: 'Quick',
     keywords: [],
     complexityTier: 1,
@@ -338,45 +408,57 @@ export interface TriageOptions {
 }
 
 /**
- * Triage a message using Haiku.
- *
- * Returns intent, title, classification, and complexity tier in a single call.
+ * Quality check for triage result.
+ * Returns true if the result is "good enough" and doesn't need a retry.
  */
-export async function triageMessage(
-  messageText: string,
-  options?: TriageOptions
-): Promise<TriageResult> {
-  const start = Date.now();
+function isQualityResult(
+  result: TriageResult,
+  domainHint?: { pillar: Pillar; category: string; domain: string }
+): boolean {
+  // Check 1: Reasonable confidence (>0.5 is okay, <0.5 might be flaky)
+  if (result.confidence < 0.5) {
+    return false;
+  }
 
+  // Check 2: If domain hint exists, pillar should match
+  if (domainHint && result.pillar !== domainHint.pillar) {
+    return false;
+  }
+
+  // Check 3: Capture intent should have a title
+  if (result.intent === 'capture' && !result.title) {
+    return false;
+  }
+
+  // Check 4: Command intent should have a command
+  if (result.intent === 'command' && !result.command) {
+    return false;
+  }
+
+  return true;
+}
+
+/**
+ * Execute a single Haiku triage call.
+ * Separated out to enable retry logic.
+ */
+async function executeHaikuTriage(
+  anthropic: Anthropic,
+  userPrompt: string,
+  isRetry: boolean = false
+): Promise<{ success: boolean; result?: z.infer<typeof TriageResultSchema>; error?: string }> {
   try {
-    const anthropic = getAnthropicClient();
-
-    const userPrompt = buildTriagePrompt(
-      messageText,
-      options?.contentPreview,
-      options?.patternExamples
-    );
-
-    logger.debug('[Triage] Calling Haiku', {
-      messageLength: messageText.length,
-      hasContentPreview: !!options?.contentPreview,
-      exampleCount: options?.patternExamples?.length ?? 0,
-    });
-
     const response = await anthropic.messages.create({
       model: TASK_MODEL_MAP.classification,
       max_tokens: 400,
-      system: TRIAGE_SYSTEM_PROMPT,
+      system: TRIAGE_SYSTEM_PROMPT + (isRetry ? '\n\nIMPORTANT: Be extra careful with classification. Double-check pillar and intent.' : ''),
       messages: [{ role: 'user', content: userPrompt }],
     });
-
-    const latencyMs = Date.now() - start;
 
     // Extract text response
     const textBlock = response.content.find(b => b.type === 'text');
     if (!textBlock || textBlock.type !== 'text') {
-      logger.error('[Triage] No text response from Haiku');
-      return fallbackTriage(messageText);
+      return { success: false, error: 'No text response from Haiku' };
     }
 
     // Parse JSON (handle potential markdown fences)
@@ -394,29 +476,91 @@ export async function triageMessage(
     const parsed = JSON.parse(jsonText);
     const validated = TriageResultSchema.parse(parsed);
 
-    // Map to proper types
-    const result: TriageResult = {
-      intent: validated.intent,
-      confidence: validated.confidence,
-      command: validated.command,
-      title: truncateTitle(validated.title),
-      titleRationale: validated.titleRationale,
-      pillar: validatePillar(validated.pillar),
-      requestType: validateRequestType(validated.requestType),
-      keywords: validated.keywords,
-      complexityTier: validated.complexityTier,
-      suggestedModel: validated.suggestedModel,
-      source: 'haiku',
-      latencyMs,
-      // Bug #6: Multi-intent support
-      isCompound: validated.isCompound,
-      subIntents: validated.subIntents?.map(sub => ({
-        intent: sub.intent,
-        description: sub.description,
-        pillar: sub.pillar ? validatePillar(sub.pillar) : undefined,
-        command: sub.command,
-      })),
+    return { success: true, result: validated };
+  } catch (error) {
+    return {
+      success: false,
+      error: error instanceof Error ? error.message : String(error),
     };
+  }
+}
+
+/**
+ * Triage a message using Haiku.
+ *
+ * Returns intent, title, classification, and complexity tier in a single call.
+ * Includes retry logic for flaky API responses (Haiku is cheap, so we can afford it).
+ */
+export async function triageMessage(
+  messageText: string,
+  options?: TriageOptions
+): Promise<TriageResult> {
+  const start = Date.now();
+
+  try {
+    const anthropic = getAnthropicClient();
+
+    // Bug #8 Fix: Detect domain-based pillar hint for strong routing signals
+    const domainHint = detectDomainPillarHint(messageText);
+
+    const userPrompt = buildTriagePrompt(
+      messageText,
+      options?.contentPreview,
+      options?.patternExamples,
+      domainHint
+    );
+
+    logger.debug('[Triage] Calling Haiku', {
+      messageLength: messageText.length,
+      hasContentPreview: !!options?.contentPreview,
+      exampleCount: options?.patternExamples?.length ?? 0,
+      domainHint: domainHint ? { domain: domainHint.domain, pillar: domainHint.pillar } : undefined,
+    });
+
+    // First attempt
+    const attempt1 = await executeHaikuTriage(anthropic, userPrompt, false);
+
+    if (!attempt1.success || !attempt1.result) {
+      logger.error('[Triage] First attempt failed', { error: attempt1.error });
+      return fallbackTriage(messageText, domainHint);
+    }
+
+    // Build result from first attempt
+    let validated = attempt1.result;
+    let result = buildTriageResult(validated, Date.now() - start, domainHint);
+
+    // Quality check: retry if result looks flaky
+    if (!isQualityResult(result, domainHint)) {
+      logger.info('[Triage] First attempt quality check failed, retrying', {
+        confidence: result.confidence,
+        pillar: result.pillar,
+        expectedPillar: domainHint?.pillar,
+        hasTitle: !!result.title,
+        intent: result.intent,
+      });
+
+      // Short delay to avoid rate limiting
+      await new Promise(resolve => setTimeout(resolve, 100));
+
+      // Second attempt with emphasis on accuracy
+      const attempt2 = await executeHaikuTriage(anthropic, userPrompt, true);
+
+      if (attempt2.success && attempt2.result) {
+        const result2 = buildTriageResult(attempt2.result, Date.now() - start, domainHint);
+
+        // Use second result if it's higher quality
+        if (isQualityResult(result2, domainHint) || result2.confidence > result.confidence) {
+          logger.info('[Triage] Using retry result', {
+            originalConfidence: result.confidence,
+            retryConfidence: result2.confidence,
+            pillarChanged: result.pillar !== result2.pillar,
+          });
+          result = result2;
+        } else {
+          logger.info('[Triage] Retry did not improve, using original');
+        }
+      }
+    }
 
     // BUG #3 FIX: Low confidence fallback to capture
     // Philosophy: "capture is always safe, asking always adds friction"
@@ -437,7 +581,7 @@ export async function triageMessage(
       confidence: result.confidence,
       pillar: result.pillar,
       requestType: result.requestType,
-      latencyMs,
+      latencyMs: result.latencyMs,
       hasTitle: !!result.title,
       hasCommand: !!result.command,
       isCompound: result.isCompound ?? false,
@@ -450,8 +594,52 @@ export async function triageMessage(
       error: error instanceof Error ? error.message : String(error),
       latencyMs: Date.now() - start,
     });
-    return fallbackTriage(messageText);
+    return fallbackTriage(messageText, domainHint);
   }
+}
+
+/**
+ * Build a TriageResult from validated schema data.
+ * Separated out to avoid duplication with retry logic.
+ */
+function buildTriageResult(
+  validated: z.infer<typeof TriageResultSchema>,
+  latencyMs: number,
+  domainHint?: { pillar: Pillar; category: string; domain: string }
+): TriageResult {
+  // If domain hint exists and Haiku disagreed, override the pillar
+  let pillar = validatePillar(validated.pillar);
+  if (domainHint && pillar !== domainHint.pillar) {
+    logger.debug('[Triage] Domain hint overriding pillar', {
+      originalPillar: pillar,
+      domainPillar: domainHint.pillar,
+      domain: domainHint.domain,
+    });
+    pillar = domainHint.pillar;
+  }
+
+  return {
+    intent: validated.intent,
+    confidence: validated.confidence,
+    command: validated.command,
+    title: truncateTitle(validated.title),
+    titleRationale: validated.titleRationale,
+    pillar,
+    requestType: validateRequestType(validated.requestType),
+    keywords: validated.keywords,
+    complexityTier: validated.complexityTier,
+    suggestedModel: validated.suggestedModel,
+    source: 'haiku',
+    latencyMs,
+    // Bug #6: Multi-intent support
+    isCompound: validated.isCompound,
+    subIntents: validated.subIntents?.map(sub => ({
+      intent: sub.intent,
+      description: sub.description,
+      pillar: sub.pillar ? validatePillar(sub.pillar) : undefined,
+      command: sub.command,
+    })),
+  };
 }
 
 /**

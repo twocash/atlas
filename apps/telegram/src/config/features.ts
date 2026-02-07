@@ -100,7 +100,7 @@ export interface FeatureFlags {
    * When enabled, uses unified Haiku triage call for intent detection,
    * smart title generation, classification, and complexity tier routing.
    * Replaces multi-step capture pipeline with single API call.
-   * @default false
+   * @default true (core feature - disable with ATLAS_TRIAGE_SKILL=false)
    */
   triageSkill: boolean;
 
@@ -109,7 +109,7 @@ export interface FeatureFlags {
    * When enabled, ambiguous intents with confidence < 50% are captured
    * with reclassify option instead of asking for clarification.
    * Philosophy: "capture is always safe, asking always adds friction"
-   * @default false
+   * @default true (core feature - disable with ATLAS_LOW_CONFIDENCE_CAPTURE=false)
    */
   lowConfidenceFallbackToCapture: boolean;
 
@@ -117,7 +117,7 @@ export interface FeatureFlags {
    * Multi-Intent Parsing (Bug #6 Fix)
    * When enabled, triage detects compound messages with multiple intents
    * (e.g., "Save this article and remind me tomorrow") and processes each.
-   * @default false
+   * @default true (core feature - disable with ATLAS_MULTI_INTENT=false)
    */
   multiIntentParsing: boolean;
 
@@ -137,7 +137,7 @@ export interface FeatureFlags {
    * When enabled, tracks sent confirmations by message ID to prevent
    * duplicate confirmation keyboards from being sent for the same message.
    * Race conditions in URL/media detection can trigger multiple paths.
-   * @default false
+   * @default true (core fix - disable with ATLAS_DUPLICATE_CONFIRMATION_GUARD=false)
    */
   duplicateConfirmationGuard: boolean;
 
@@ -146,7 +146,7 @@ export interface FeatureFlags {
    * When enabled, vehicle-related content (cars, auctions, Bring a Trailer)
    * is explicitly routed to Home/Garage pillar instead of Personal.
    * Applied via enhanced triage system prompt with pillar classification rules.
-   * @default false (behavior always active in prompt, flag for tracking)
+   * @default true (core fix - disable with ATLAS_VEHICLE_PILLAR_ROUTING=false)
    */
   vehiclePillarRouting: boolean;
 
@@ -155,7 +155,7 @@ export interface FeatureFlags {
    * When enabled, raw API errors from research/grounding calls are
    * sanitized before being returned to the user. Replaces technical
    * error messages with user-friendly fallback text.
-   * @default false
+   * @default true (core fix - disable with ATLAS_RESEARCH_ERROR_SANITIZATION=false)
    */
   researchErrorSanitization: boolean;
 }
@@ -252,15 +252,15 @@ function loadFeatureFlags(): FeatureFlags {
     swarmDispatch: process.env.ATLAS_SWARM_DISPATCH === 'true',
     selfImprovementListener: process.env.ATLAS_SELF_IMPROVEMENT_LISTENER === 'true',
     apiSwarmDispatch: process.env.ATLAS_API_SWARM === 'true',
-    // Triage Intelligence (Sprint: Triage Intelligence)
-    triageSkill: process.env.ATLAS_TRIAGE_SKILL === 'true',
-    lowConfidenceFallbackToCapture: process.env.ATLAS_LOW_CONFIDENCE_CAPTURE === 'true',
-    multiIntentParsing: process.env.ATLAS_MULTI_INTENT === 'true',
-    // Bug Fixes
+    // Triage Intelligence (Sprint: Triage Intelligence) - Core features, default ON
+    triageSkill: process.env.ATLAS_TRIAGE_SKILL !== 'false', // Default ON
+    lowConfidenceFallbackToCapture: process.env.ATLAS_LOW_CONFIDENCE_CAPTURE !== 'false', // Default ON
+    multiIntentParsing: process.env.ATLAS_MULTI_INTENT !== 'false', // Default ON
+    // Bug Fixes - Core fixes, default ON
     pendingSelectionContext: process.env.ATLAS_PENDING_SELECTION_CONTEXT !== 'false', // Default ON
-    duplicateConfirmationGuard: process.env.ATLAS_DUPLICATE_CONFIRMATION_GUARD === 'true',
-    vehiclePillarRouting: process.env.ATLAS_VEHICLE_PILLAR_ROUTING === 'true',
-    researchErrorSanitization: process.env.ATLAS_RESEARCH_ERROR_SANITIZATION === 'true',
+    duplicateConfirmationGuard: process.env.ATLAS_DUPLICATE_CONFIRMATION_GUARD !== 'false', // Default ON
+    vehiclePillarRouting: process.env.ATLAS_VEHICLE_PILLAR_ROUTING !== 'false', // Default ON
+    researchErrorSanitization: process.env.ATLAS_RESEARCH_ERROR_SANITIZATION !== 'false', // Default ON
   };
 }
 
