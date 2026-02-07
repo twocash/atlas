@@ -4,6 +4,8 @@ import { useActionWrite } from './hooks/useActionWrite'
 import { InfoCard } from './cards/InfoCard'
 import { AlertCard } from './cards/AlertCard'
 import { TriageCard } from './cards/TriageCard'
+import { ApprovalCard } from './cards/ApprovalCard'
+import { ReviewCard } from './cards/ReviewCard'
 import { BatchActions } from './BatchActions'
 import type { ActionFeedEntry } from '~src/types/action-feed'
 
@@ -85,6 +87,10 @@ export function ActionFeed({ pollingInterval = 30000 }: ActionFeedProps) {
     switch (entry.actionType) {
       case 'Triage':
         return <TriageCard {...cardProps} />
+      case 'Approval':
+        return <ApprovalCard {...cardProps} />
+      case 'Review':
+        return <ReviewCard {...cardProps} />
       case 'Alert':
         return <AlertCard {...cardProps} />
       case 'Info':
