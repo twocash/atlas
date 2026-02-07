@@ -21,6 +21,9 @@ config({ path: join(import.meta.dir, '..', '.env'), override: true });
 // Disable verbose logging
 process.env.LOG_LEVEL = 'warn';
 
+// Strict mode: ENABLE_FALLBACKS=false means fallbacks are hard failures
+const STRICT_MODE = process.env.ENABLE_FALLBACKS !== 'true';
+
 // =============================================================================
 // TYPES
 // =============================================================================
@@ -287,11 +290,17 @@ async function runToolResponseCanaries(): Promise<CanarySuite> {
         // Verify items have expected structure
         const firstItem = items[0] as Record<string, unknown>;
         results.push(assertFieldsPresent(firstItem, ['id', 'title', 'status'], 'WQ item structure'));
+      } else if (STRICT_MODE) {
+        results.push({
+          name: 'WQ list returns items',
+          passed: false,
+          error: 'FALLBACK DETECTED: Work Queue returned empty. Strict mode = hard failure.',
+        });
       } else {
         results.push({
           name: 'WQ list returns items',
-          passed: true, // Empty WQ is valid
-          warning: 'Work Queue is empty (valid but unusual)',
+          passed: true,
+          warning: 'Work Queue is empty (accepted — fallbacks enabled)',
         });
       }
     } else {
@@ -500,11 +509,17 @@ async function runFallbackDetectionCanaries(): Promise<CanarySuite> {
     const { getMcpTools } = await import('../src/mcp/index.js');
     const mcpTools = getMcpTools();
 
-    if (mcpTools.length === 0) {
+    if (mcpTools.length === 0 && STRICT_MODE) {
       results.push({
         name: 'MCP tools connected',
-        passed: true, // Warning only - MCP is optional, direct API fallback is valid
-        warning: 'No MCP tools loaded - will fall back to direct APIs (expected during tests)',
+        passed: false,
+        error: 'FALLBACK DETECTED: No MCP tools loaded. Strict mode = hard failure.',
+      });
+    } else if (mcpTools.length === 0) {
+      results.push({
+        name: 'MCP tools connected',
+        passed: true,
+        warning: 'No MCP tools loaded - direct API fallback (accepted — fallbacks enabled)',
       });
     } else {
       results.push({
@@ -514,11 +529,19 @@ async function runFallbackDetectionCanaries(): Promise<CanarySuite> {
       });
     }
   } catch (err: any) {
-    results.push({
-      name: 'MCP tools check',
-      passed: true, // Warning only
-      warning: `MCP check failed: ${err.message} (expected during tests)`,
-    });
+    if (STRICT_MODE) {
+      results.push({
+        name: 'MCP tools check',
+        passed: false,
+        error: `FALLBACK DETECTED: MCP check failed: ${err.message}. Strict mode = hard failure.`,
+      });
+    } else {
+      results.push({
+        name: 'MCP tools check',
+        passed: true,
+        warning: `MCP check failed: ${err.message} (accepted — fallbacks enabled)`,
+      });
+    }
   }
 
   // Canary 2: Verify feature flags are loaded (not using defaults)
@@ -575,6 +598,7 @@ async function main() {
   console.log('====================================');
   console.log('   CANARY TESTS');
   console.log('   Silent Failure Detection');
+  console.log(`   Mode: ${STRICT_MODE ? '🔴 STRICT (no fallbacks)' : '🟢 LENIENT (fallbacks OK)'}`);
   console.log('====================================');
   console.log(`\nStarted: ${new Date().toISOString()}`);
 

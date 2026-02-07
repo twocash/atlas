@@ -596,6 +596,15 @@ async function main() {
   const args = process.argv.slice(2);
   const quick = args.includes('--quick');
   const full = args.includes('--full');
+  const strict = args.includes('--strict');
+
+  // Strict mode: disable fallbacks so canary tests enforce hard failures
+  // Default verify also runs with fallbacks disabled (policy change post fail-fast sprint)
+  if (strict || (!quick && !full)) {
+    process.env.ENABLE_FALLBACKS = 'false';
+  }
+
+  const isStrictMode = process.env.ENABLE_FALLBACKS !== 'true';
 
   const cwd = join(import.meta.dir, '..');
   const startTime = new Date();
@@ -605,7 +614,8 @@ async function main() {
   console.log('====================================');
   console.log('   MASTER BLASTER VERIFICATION');
   console.log('====================================');
-  console.log(`\nMode: ${quick ? 'QUICK' : full ? 'FULL' : 'DEFAULT'}`);
+  const modeLabel = strict ? 'STRICT' : quick ? 'QUICK' : full ? 'FULL' : 'DEFAULT';
+  console.log(`\nMode: ${modeLabel}${isStrictMode ? ' (fallbacks disabled)' : ' (fallbacks enabled)'}`);
   console.log(`Started: ${startTime.toISOString()}`);
   console.log(`Working dir: ${cwd}`);
 
@@ -614,6 +624,22 @@ async function main() {
   // Quick mode: Unit tests only
   if (quick) {
     suites.push(await runUnitTests(cwd));
+  }
+  // Strict mode: Canaries FIRST — failure stops all subsequent suites
+  else if (strict) {
+    const canaryResult = await runCanaryTests(cwd);
+    suites.push(canaryResult);
+
+    if (canaryResult.failed > 0) {
+      console.log('\n\x1b[31m🛑 CANARY FAILURE IN STRICT MODE — HALTING ALL SUITES\x1b[0m');
+      console.log('Fix canary failures before proceeding.\n');
+    } else {
+      suites.push(await runUnitTests(cwd));
+      suites.push(await runAutonomousRepairTests(cwd));
+      suites.push(await runSmokeTests(cwd));
+      suites.push(await runE2ETests(cwd));
+      suites.push(await runIntegrationTests(cwd));
+    }
   }
   // Full mode: All suites including canaries and E2E
   else if (full) {
@@ -624,13 +650,20 @@ async function main() {
     suites.push(await runE2ETests(cwd));
     suites.push(await runIntegrationTests(cwd));
   }
-  // Default mode: Canaries + Unit + Pit Stop + Smoke + Integration
+  // Default mode: Canaries + Unit + Pit Stop + Smoke + Integration (strict by default)
   else {
-    suites.push(await runCanaryTests(cwd));  // Canaries first - detect silent failures
-    suites.push(await runUnitTests(cwd));
-    suites.push(await runAutonomousRepairTests(cwd));  // Pit Stop sprint
-    suites.push(await runSmokeTests(cwd));
-    suites.push(await runIntegrationTests(cwd));
+    const canaryResult = await runCanaryTests(cwd);
+    suites.push(canaryResult);
+
+    if (canaryResult.failed > 0 && isStrictMode) {
+      console.log('\n\x1b[31m🛑 CANARY FAILURE — HALTING ALL SUITES (fallbacks disabled)\x1b[0m');
+      console.log('Fix canary failures or run with ENABLE_FALLBACKS=true to proceed.\n');
+    } else {
+      suites.push(await runUnitTests(cwd));
+      suites.push(await runAutonomousRepairTests(cwd));
+      suites.push(await runSmokeTests(cwd));
+      suites.push(await runIntegrationTests(cwd));
+    }
   }
 
   // Calculate totals
