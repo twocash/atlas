@@ -25,6 +25,16 @@ import type {
   ClassificationResult,
   Decision,
   ClarificationExchange,
+  ActionStatus,
+  ActionType,
+  ActionData,
+  ActionedVia,
+  ActionFeedEntry,
+  ActionDataTriage,
+  ActionDataApproval,
+  ActionDataReview,
+  ActionDataAlert,
+  ActionDataInfo,
 } from "./types";
 import { logger } from "./logger";
 
@@ -510,6 +520,187 @@ function extractDate(page: any, propName: string): Date | undefined {
 }
 
 // ==========================================
+// Action Feed Functions
+// ==========================================
+
+/**
+ * Create an Action Feed entry (for alerts, approvals, reviews that don't originate from sparks)
+ */
+export async function createActionFeedEntry(
+  actionType: ActionType,
+  actionData: ActionData,
+  source: string,
+  title?: string
+): Promise<string> {
+  const notion = getNotionClient();
+  const entryTitle = title || generateActionTitle(actionType, actionData);
+
+  try {
+    const response = await notion.pages.create({
+      parent: { database_id: FEED_DATABASE_ID },
+      properties: {
+        'Entry': {
+          title: [{ text: { content: entryTitle.substring(0, 100) } }],
+        },
+        'Source': {
+          select: { name: source },
+        },
+        'Date': {
+          date: { start: new Date().toISOString() },
+        },
+        'Action Status': {
+          select: { name: 'Pending' },
+        },
+        'Action Type': {
+          select: { name: actionType },
+        },
+        'Action Data': {
+          rich_text: [{ text: { content: JSON.stringify(actionData) } }],
+        },
+      },
+    });
+
+    logger.info('Action Feed entry created', { id: response.id, actionType });
+    return response.id;
+  } catch (error) {
+    logger.error('Failed to create Action Feed entry', { error, actionType });
+    throw error;
+  }
+}
+
+/**
+ * Generate a title based on action type and data
+ */
+function generateActionTitle(actionType: ActionType, actionData: ActionData): string {
+  switch (actionType) {
+    case 'Triage': {
+      const data = actionData as ActionDataTriage;
+      return `[Triage] ${data.title}`;
+    }
+    case 'Approval': {
+      const data = actionData as ActionDataApproval;
+      return `[Approval] ${data.skill_name}`;
+    }
+    case 'Review': {
+      const data = actionData as ActionDataReview;
+      return `[Review] ${data.wq_title}`;
+    }
+    case 'Alert': {
+      const data = actionData as ActionDataAlert;
+      return `[Alert] ${data.alert_type}: ${data.platform || 'System'}`;
+    }
+    case 'Info':
+    default: {
+      const data = actionData as ActionDataInfo;
+      return data.message;
+    }
+  }
+}
+
+/**
+ * Update Action properties on a Feed entry
+ */
+export async function updateFeedEntryAction(
+  pageId: string,
+  updates: Partial<{
+    actionStatus: ActionStatus;
+    actionData: ActionData;
+    actionedAt: string;
+    actionedVia: ActionedVia;
+  }>
+): Promise<void> {
+  const notion = getNotionClient();
+  const properties: Record<string, any> = {};
+
+  if (updates.actionStatus) {
+    properties['Action Status'] = { select: { name: updates.actionStatus } };
+  }
+  if (updates.actionData) {
+    properties['Action Data'] = {
+      rich_text: [{ text: { content: JSON.stringify(updates.actionData) } }],
+    };
+  }
+  if (updates.actionedAt) {
+    properties['Actioned At'] = { date: { start: updates.actionedAt } };
+  }
+  if (updates.actionedVia) {
+    properties['Actioned Via'] = { select: { name: updates.actionedVia } };
+  }
+
+  try {
+    await notion.pages.update({
+      page_id: pageId,
+      properties,
+    });
+    logger.info('Feed entry action updated', { pageId, actionStatus: updates.actionStatus });
+  } catch (error) {
+    logger.error('Failed to update feed entry action', { pageId, error });
+    throw error;
+  }
+}
+
+/**
+ * Query pending Action Feed items (Pending or Snoozed)
+ */
+export async function queryPendingActionItems(): Promise<ActionFeedEntry[]> {
+  const notion = getNotionClient();
+
+  try {
+    const response = await notion.databases.query({
+      database_id: FEED_DATABASE_ID,
+      filter: {
+        or: [
+          {
+            property: 'Action Status',
+            select: { equals: 'Pending' },
+          },
+          {
+            property: 'Action Status',
+            select: { equals: 'Snoozed' },
+          },
+        ],
+      },
+      sorts: [
+        { timestamp: 'created_time', direction: 'descending' },
+      ],
+    });
+
+    return response.results.map(parseActionFeedEntry);
+  } catch (error) {
+    logger.error('Failed to query pending action items', { error });
+    throw error;
+  }
+}
+
+/**
+ * Parse a Notion page into an ActionFeedEntry
+ */
+function parseActionFeedEntry(page: any): ActionFeedEntry {
+  const props = page.properties;
+
+  const actionDataRaw = props['Action Data']?.rich_text?.[0]?.text?.content || '{}';
+  let actionData: ActionData;
+  try {
+    actionData = JSON.parse(actionDataRaw);
+  } catch {
+    actionData = { message: 'Parse error' } as ActionDataInfo;
+  }
+
+  return {
+    id: page.id,
+    url: page.url || getNotionPageUrl(page.id),
+    createdAt: page.created_time,
+    title: extractTitle(page, 'Entry'),
+    source: props['Source']?.select?.name || 'Unknown',
+    actionStatus: props['Action Status']?.select?.name || 'Pending',
+    actionType: props['Action Type']?.select?.name || 'Info',
+    actionData,
+    actionedAt: props['Actioned At']?.date?.start,
+    actionedVia: props['Actioned Via']?.select?.name,
+  };
+}
+
+// ==========================================
 // DEPRECATED FUNCTIONS - DO NOT USE
 // ==========================================
 // Legacy Item Creation (for handler.ts, spark.ts)
@@ -523,33 +714,55 @@ export async function createFeedItem(
   _spark: Spark,
   classification: ClassificationResult,
   decision: Decision,
-  _clarification?: ClarificationExchange
+  _clarification?: ClarificationExchange,
+  actionProps?: {
+    actionStatus?: ActionStatus;
+    actionType?: ActionType;
+    actionData?: ActionData;
+  }
 ): Promise<string> {
   const notion = getNotionClient();
 
   try {
+    const properties: Record<string, any> = {
+      'Entry': {
+        title: [{ text: { content: classification.suggestedTitle.substring(0, 100) } }],
+      },
+      'Pillar': {
+        select: { name: classification.pillar },
+      },
+      'Source': {
+        select: { name: 'Telegram' },
+      },
+      'Status': {
+        select: { name: decision === 'Route to Work' ? 'Routed' : 'Done' },
+      },
+      'Confidence': {
+        number: classification.confidence / 100,
+      },
+      'Date': {
+        date: { start: new Date().toISOString() },
+      },
+    };
+
+    // Add Action properties if provided
+    if (actionProps) {
+      if (actionProps.actionStatus) {
+        properties['Action Status'] = { select: { name: actionProps.actionStatus } };
+      }
+      if (actionProps.actionType) {
+        properties['Action Type'] = { select: { name: actionProps.actionType } };
+      }
+      if (actionProps.actionData) {
+        properties['Action Data'] = {
+          rich_text: [{ text: { content: JSON.stringify(actionProps.actionData) } }],
+        };
+      }
+    }
+
     const response = await notion.pages.create({
       parent: { database_id: FEED_DATABASE_ID },
-      properties: {
-        'Entry': {
-          title: [{ text: { content: classification.suggestedTitle.substring(0, 100) } }],
-        },
-        'Pillar': {
-          select: { name: classification.pillar },
-        },
-        'Source': {
-          select: { name: 'Telegram' },
-        },
-        'Status': {
-          select: { name: decision === 'Route to Work' ? 'Routed' : 'Done' },
-        },
-        'Confidence': {
-          number: classification.confidence / 100,
-        },
-        'Date': {
-          date: { start: new Date().toISOString() },
-        },
-      },
+      properties,
     });
 
     logger.info('Feed item created', { id: response.id });

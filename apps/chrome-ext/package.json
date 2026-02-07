@@ -6,7 +6,9 @@
   "scripts": {
     "dev": "plasmo dev",
     "build": "plasmo build",
-    "package": "plasmo package"
+    "package": "plasmo package",
+    "test:action-feed": "bun run scripts/test-action-feed.ts",
+    "verify:extension": "bun run scripts/test-action-feed.ts"
   },
   "dependencies": {
     "@plasmohq/messaging": "^0.7.0",
