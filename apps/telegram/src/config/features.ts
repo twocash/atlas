@@ -149,6 +149,15 @@ export interface FeatureFlags {
    * @default false (behavior always active in prompt, flag for tracking)
    */
   vehiclePillarRouting: boolean;
+
+  /**
+   * Research Error Sanitization (Bug #5 Fix)
+   * When enabled, raw API errors from research/grounding calls are
+   * sanitized before being returned to the user. Replaces technical
+   * error messages with user-friendly fallback text.
+   * @default false
+   */
+  researchErrorSanitization: boolean;
 }
 
 /**
@@ -251,6 +260,7 @@ function loadFeatureFlags(): FeatureFlags {
     pendingSelectionContext: process.env.ATLAS_PENDING_SELECTION_CONTEXT !== 'false', // Default ON
     duplicateConfirmationGuard: process.env.ATLAS_DUPLICATE_CONFIRMATION_GUARD === 'true',
     vehiclePillarRouting: process.env.ATLAS_VEHICLE_PILLAR_ROUTING === 'true',
+    researchErrorSanitization: process.env.ATLAS_RESEARCH_ERROR_SANITIZATION === 'true',
   };
 }
 

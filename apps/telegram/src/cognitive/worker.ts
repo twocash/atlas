@@ -14,7 +14,55 @@ import type {
 } from "./types";
 import { MODEL_CATALOG, estimateCost } from "./models";
 import { getCognitiveConfig } from "../config/cognitive";
+import { getFeatureFlags } from "../config/features";
 import { logger } from "../logger";
+
+// ==========================================
+// Bug #5 Fix: Research Error Sanitization
+// ==========================================
+
+/**
+ * User-friendly error messages for common API failures.
+ * Raw technical errors are logged but not exposed to users.
+ */
+const SANITIZED_ERRORS: Record<string, string> = {
+  // Gemini/Google errors
+  'SAFETY': "I couldn't complete that research due to content restrictions. I've captured your request for follow-up.",
+  'RECITATION': "I couldn't complete that research due to content restrictions. I've captured your request for follow-up.",
+  'BLOCKED': "I couldn't complete that research due to content restrictions. I've captured your request for follow-up.",
+  'RATE_LIMIT': "Research is temporarily unavailable. I've captured your request for follow-up.",
+  'QUOTA': "Research is temporarily unavailable. I've captured your request for follow-up.",
+  // Generic API errors
+  'timeout': "Research timed out. I've captured your request for follow-up.",
+  'network': "Couldn't reach the research service. I've captured your request for follow-up.",
+  'auth': "Research service authentication failed. Please check configuration.",
+};
+
+/**
+ * Default fallback message for unknown errors
+ */
+const DEFAULT_SANITIZED_ERROR = "Couldn't complete research right now, but I've captured this for follow-up.";
+
+/**
+ * Sanitize error message for user display.
+ * Returns user-friendly message instead of raw API error.
+ */
+function sanitizeErrorForUser(rawError: string): string {
+  const flags = getFeatureFlags();
+  if (!flags.researchErrorSanitization) {
+    return rawError; // Feature disabled, return raw error
+  }
+
+  // Check for known error patterns
+  const upperError = rawError.toUpperCase();
+  for (const [pattern, message] of Object.entries(SANITIZED_ERRORS)) {
+    if (upperError.includes(pattern.toUpperCase())) {
+      return message;
+    }
+  }
+
+  return DEFAULT_SANITIZED_ERROR;
+}
 
 /**
  * Execute a worker request
@@ -55,18 +103,22 @@ export async function executeWorker(request: WorkerRequest): Promise<WorkerResul
     return result;
   } catch (error) {
     const latencyMs = Date.now() - startTime;
-    const errorMessage = error instanceof Error ? error.message : String(error);
+    const rawError = error instanceof Error ? error.message : String(error);
 
+    // Log the raw error for debugging (never suppress this)
     logger.error("Worker failed", {
       taskId: request.taskId,
-      error: errorMessage,
+      error: rawError,
       latencyMs,
     });
+
+    // Bug #5 Fix: Sanitize error for user display
+    const sanitizedError = sanitizeErrorForUser(rawError);
 
     return {
       taskId: request.taskId,
       success: false,
-      error: errorMessage,
+      error: sanitizedError,
       usage: { inputTokens: 0, outputTokens: 0, totalTokens: 0, cost: 0 },
       latencyMs,
       modelId: request.model.modelId,
