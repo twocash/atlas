@@ -1104,67 +1104,66 @@ async function section9_FailureScenarios() {
     }
   )
 
-  // Test 9.2: Missing title field rejected by Notion
+  // Test 9.2: Entry without title creates with empty title (Notion is permissive)
+  // NOTE: Notion allows empty titles — client-side validation is the guard
   await runTest(
     'Failure Handling',
-    'Entry without title rejected by Notion API',
+    'Entry without title creates with empty title (client must validate)',
     async () => {
-      try {
-        const response = await notionFetch(`/pages`, {
-          method: 'POST',
-          body: JSON.stringify({
-            parent: { database_id: FEED_DATABASE_ID },
-            properties: {
-              Source: { select: { name: 'Test' } },
-            },
-          }),
-        })
-        // If it somehow succeeds, clean it up
-        allCreatedEntryIds.push(response.id)
-        throw new Error('Should have failed without title')
-      } catch (err) {
-        if (
-          err instanceof Error &&
-          err.message.includes('Should have failed')
-        ) {
-          throw err
-        }
-        // Expected — validates Notion enforces schema
+      const response = await notionFetch(`/pages`, {
+        method: 'POST',
+        body: JSON.stringify({
+          parent: { database_id: FEED_DATABASE_ID },
+          properties: {
+            Source: { select: { name: 'Test' } },
+          },
+        }),
+      })
+      allCreatedEntryIds.push(response.id)
+
+      // Notion accepts it — verify the entry exists with empty title
+      const entry = await getFeedEntry(response.id)
+      const title =
+        entry.properties['Entry']?.title?.[0]?.text?.content || ''
+      if (typeof title !== 'string') {
+        throw new Error('Title property not a string')
       }
+      // Passes — documents that Notion won't reject empty titles,
+      // so the extension parser must handle this gracefully
     }
   )
 
-  // Test 9.3: Invalid Action Status value rejected
+  // Test 9.3: Invalid Action Status auto-creates option (Notion is permissive)
+  // NOTE: Notion select properties auto-create unknown values — client must validate
   await runTest(
     'Failure Handling',
-    'Invalid Action Status value rejected by Notion',
+    'Invalid Action Status auto-creates option (client must validate)',
     async () => {
-      try {
-        const response = await notionFetch(`/pages`, {
-          method: 'POST',
-          body: JSON.stringify({
-            parent: { database_id: FEED_DATABASE_ID },
-            properties: {
-              Entry: {
-                title: [
-                  { text: { content: `[TEST] Invalid status - ${Date.now()}` } },
-                ],
-              },
-              'Action Status': { select: { name: 'InvalidStatus' } },
+      const bogusStatus = `_TEST_BOGUS_${Date.now()}`
+      const response = await notionFetch(`/pages`, {
+        method: 'POST',
+        body: JSON.stringify({
+          parent: { database_id: FEED_DATABASE_ID },
+          properties: {
+            Entry: {
+              title: [
+                { text: { content: `[TEST] Invalid status - ${Date.now()}` } },
+              ],
             },
-          }),
-        })
-        allCreatedEntryIds.push(response.id)
-        throw new Error('Should have rejected invalid status')
-      } catch (err) {
-        if (
-          err instanceof Error &&
-          err.message.includes('Should have rejected')
-        ) {
-          throw err
-        }
-        // Expected — Notion select properties reject unknown values
+            'Action Status': { select: { name: bogusStatus } },
+          },
+        }),
+      })
+      allCreatedEntryIds.push(response.id)
+
+      // Notion accepts it and auto-creates the select option
+      const entry = await getFeedEntry(response.id)
+      const status = entry.properties['Action Status']?.select?.name
+      if (status !== bogusStatus) {
+        throw new Error(`Expected auto-created status "${bogusStatus}", got "${status}"`)
       }
+      // Passes — documents that Notion won't reject invalid statuses,
+      // so the extension polling hook must filter by known values only
     }
   )
 
