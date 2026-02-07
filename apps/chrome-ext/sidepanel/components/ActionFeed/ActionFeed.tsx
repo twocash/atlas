@@ -1,8 +1,10 @@
-import React, { useCallback } from 'react'
+import React, { useCallback, useState } from 'react'
 import { useFeedPolling } from './hooks/useFeedPolling'
 import { useActionWrite } from './hooks/useActionWrite'
 import { InfoCard } from './cards/InfoCard'
 import { AlertCard } from './cards/AlertCard'
+import { TriageCard } from './cards/TriageCard'
+import { BatchActions } from './BatchActions'
 import type { ActionFeedEntry } from '~src/types/action-feed'
 
 interface ActionFeedProps {
@@ -17,6 +19,10 @@ export function ActionFeed({ pollingInterval = 30000 }: ActionFeedProps) {
 
   const { writeAction, pendingWriteCount, isWriting } = useActionWrite()
 
+  // Batch mode state
+  const [batchMode, setBatchMode] = useState(false)
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set())
+
   const handleAction = useCallback(async (
     entryId: string,
     updates: Partial<ActionFeedEntry>
@@ -25,14 +31,60 @@ export function ActionFeed({ pollingInterval = 30000 }: ActionFeedProps) {
     await refresh()
   }, [writeAction, refresh])
 
+  const handleSelect = useCallback((entryId: string, selected: boolean) => {
+    setSelectedIds(prev => {
+      const next = new Set(prev)
+      if (selected) {
+        next.add(entryId)
+      } else {
+        next.delete(entryId)
+      }
+      return next
+    })
+  }, [])
+
+  const handleBatchAction = useCallback(async (
+    ids: string[],
+    updates: Record<string, any>
+  ) => {
+    await Promise.all(
+      ids.map(id => {
+        const entry = entries.find(e => e.id === id)
+        if (!entry) return Promise.resolve()
+
+        return writeAction(id, {
+          actionStatus: updates.actionStatus,
+          actionData: {
+            ...entry.actionData,
+            pillar: updates.pillar,
+            disposition: updates.disposition,
+            create_wq_item: updates.create_wq_item,
+          },
+          actionedAt: updates.actionedAt,
+          actionedVia: updates.actionedVia,
+        })
+      })
+    )
+    await refresh()
+  }, [entries, writeAction, refresh])
+
+  const clearSelection = useCallback(() => {
+    setSelectedIds(new Set())
+  }, [])
+
   const renderCard = (entry: ActionFeedEntry) => {
     const cardProps = {
       entry,
       onAction: handleAction,
       key: entry.id,
+      isSelected: selectedIds.has(entry.id),
+      onSelect: handleSelect,
+      batchMode,
     }
 
     switch (entry.actionType) {
+      case 'Triage':
+        return <TriageCard {...cardProps} />
       case 'Alert':
         return <AlertCard {...cardProps} />
       case 'Info':
@@ -54,6 +106,19 @@ export function ActionFeed({ pollingInterval = 30000 }: ActionFeedProps) {
           {lastSynced && (
             <span>Synced {formatSyncTime(lastSynced)}</span>
           )}
+          <button
+            className={`px-2 py-0.5 rounded text-[10px] font-medium transition-all ${
+              batchMode
+                ? 'bg-blue-600 text-white'
+                : 'bg-gray-100 text-gray-500 hover:bg-gray-200'
+            }`}
+            onClick={() => {
+              setBatchMode(!batchMode)
+              if (batchMode) clearSelection()
+            }}
+          >
+            Batch
+          </button>
           <button
             className="p-1 rounded hover:bg-gray-100 text-gray-400 hover:text-gray-600 transition-colors disabled:opacity-50"
             onClick={refresh}
@@ -93,6 +158,14 @@ export function ActionFeed({ pollingInterval = 30000 }: ActionFeedProps) {
         </div>
       ) : (
         <div className="flex-1 overflow-y-auto p-2">
+          {batchMode && (
+            <BatchActions
+              selectedIds={selectedIds}
+              entries={entries}
+              onBatchAction={handleBatchAction}
+              onClearSelection={clearSelection}
+            />
+          )}
           {entries.map(renderCard)}
         </div>
       )}
