@@ -818,22 +818,7 @@ export async function executeResearch(
     if (!response.groundingUsed) {
       console.error("[Research] GROUNDING FAILURE: Google Search did not return results");
       console.error("[Research] Gemini responded from training data - this is NOT live research");
-      return {
-        success: false,
-        output: {
-          error: "GROUNDING_FAILURE",
-          rawResponse: response.text,
-          groundingUsed: false,
-        },
-        summary: "Research FAILED: Google Search grounding did not work. Gemini responded from training data instead of performing live web research. The query may be too niche, or there may be an API configuration issue.",
-        artifacts: [],
-        metrics: {
-          durationMs: Date.now() - startTime,
-          apiCalls,
-          tokensUsed: Math.ceil(prompt.length / 4) + Math.ceil(response.text.length / 4),
-          retries: 0,
-        },
-      };
+      throw new Error("HALLUCINATION: Grounding failure — Gemini responded from training data instead of performing live web research");
     }
 
     // Parse research result from response (async for URL resolution)
@@ -847,23 +832,8 @@ export async function executeResearch(
     // CHECK: Did parsing detect hallucination?
     const isHallucinated = researchResult.summary.startsWith("Research FAILED:");
     if (isHallucinated) {
-      console.error("[Research Agent] Hallucination detected, returning failure");
-      return {
-        success: false,
-        output: {
-          ...researchResult,
-          rawResponse: response.text,
-          hallucinationDetected: true,
-        },
-        summary: researchResult.summary,
-        artifacts: [],
-        metrics: {
-          durationMs: Date.now() - startTime,
-          apiCalls,
-          tokensUsed: Math.ceil(prompt.length / 4) + Math.ceil(response.text.length / 4),
-          retries: 0,
-        },
-      };
+      console.error("[Research Agent] Hallucination detected, throwing error");
+      throw new Error("HALLUCINATION: " + researchResult.summary);
     }
 
     // Validate source count for deep research

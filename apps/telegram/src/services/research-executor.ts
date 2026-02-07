@@ -8,6 +8,8 @@
 import type { Api } from "grammy";
 import { logger } from "../logger";
 import { markdownToHtml } from "../formatting";
+import { validateResearchOutput, type ResearchOutput } from "../agents/validation";
+import { HallucinationError } from "../errors";
 
 // Import from @atlas/agents package
 import {
@@ -112,6 +114,19 @@ export async function runResearchAgentWithNotifications(
     const result = await executeResearch(config, agent, registry);
     logger.info("Research execution complete", { agentId: agent.id, success: result.success });
 
+    // Validate research output before accepting it
+    if (result.success) {
+      const researchOutput: ResearchOutput = {
+        findings: result.output?.summary || result.summary || '',
+        confidence: result.output?.groundingUsed !== false ? 1.0 : 0.0,
+        toolExecutions: result.output?.sources?.length > 0
+          ? result.output.sources.map((s: string) => ({ tool: 'google_search', result: s }))
+          : [],
+        sources: result.output?.sources,
+      };
+      validateResearchOutput(researchOutput);
+    }
+
     // Complete or fail
     if (result.success) {
       logger.info("Marking agent as complete", { agentId: agent.id, hasSummary: !!result.summary });
@@ -133,6 +148,33 @@ export async function runResearchAgentWithNotifications(
     const errorMessage =
       error instanceof Error ? error.message : "Unknown error";
     const errorStack = error instanceof Error ? error.stack : undefined;
+
+    // Detect hallucination errors — from research.ts throws or validateResearchOutput
+    if (error instanceof HallucinationError || (error instanceof Error && error.message.includes('HALLUCINATION'))) {
+      const hallError = error instanceof HallucinationError
+        ? error
+        : new HallucinationError(error.message, { agentId: agent.id, query: config.query });
+      // Auto-logs to Dev Pipeline via constructor
+
+      logger.error("Hallucination detected in research", {
+        agentId: agent.id,
+        error: hallError.message,
+      });
+
+      try {
+        await api.sendMessage(chatId,
+          '⚠️ Research blocked: hallucination detected. No fabricated results were delivered. Auto-logged to Dev Pipeline.'
+        );
+      } catch { /* notification failure must not propagate */ }
+
+      await registry.fail(agent.id, hallError.message, true);
+      subscription.unsubscribe();
+      notificationContexts.delete(agent.id);
+
+      const finalAgent = await registry.status(agent.id);
+      return { agent: finalAgent || agent, result: { success: false, summary: hallError.message } };
+    }
+
     logger.error("Research execution threw exception", {
       agentId: agent.id,
       error: errorMessage,

@@ -13,6 +13,7 @@ config({ override: true });
 
 import { createBot, startBot } from "./bot";
 import { logger } from "./logger";
+import { validateEnvironment } from "./config/environment";
 import { initAtlasSystem, updateHeartbeat, logUpdate } from "./atlas-system";
 import { healthCheckOrDie } from "./health";
 import { verifySystemIntegrity } from "./health/integrity";
@@ -76,6 +77,14 @@ function releaseLock(): void {
 
 async function main() {
   logger.info("Starting Atlas Telegram Bot...");
+
+  // Validate environment configuration (exits if production + fallbacks enabled)
+  const envConfig = validateEnvironment();
+  logger.info("Environment validated", {
+    mode: envConfig.mode,
+    enableFallbacks: envConfig.enableFallbacks,
+    autoLogErrors: envConfig.autoLogErrors,
+  });
 
   // Prevent multiple instances
   if (!acquireLock()) {
