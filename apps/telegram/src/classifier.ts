@@ -7,12 +7,14 @@
  * @see workspace/SPARKS.md for classification rules
  */
 
-import type { 
-  ClassificationResult, 
-  UrlContent, 
-  Pillar, 
-  Intent 
+import type {
+  ClassificationResult,
+  UrlContent,
+  Pillar,
+  Intent
 } from "./types";
+import { ClassificationError } from "./errors";
+import { isStrictMode } from "./config/environment";
 import { logger } from "./logger";
 
 // Confidence thresholds
@@ -35,14 +37,22 @@ export async function classifySpark(
   logger.debug("Classifying spark", { message, hasUrl: !!urlContent });
 
   // TODO: Sprint 2.3 - Send to Claude with SPARKS.md context
-  // For now, return mock classification based on simple heuristics
+  // For now, return classification based on simple heuristics
 
   const result = applySimpleHeuristics(message, urlContent);
-  
-  logger.info("Classification result", { 
-    pillar: result.pillar, 
-    intent: result.intent, 
-    confidence: result.confidence 
+
+  // Strict mode: low confidence = hard failure (no silent fallbacks)
+  if (isStrictMode() && result.confidence < CONFIDENCE_THRESHOLDS.QUICK_CLARIFY) {
+    throw new ClassificationError(
+      `Classification confidence ${result.confidence} below threshold ${CONFIDENCE_THRESHOLDS.QUICK_CLARIFY}`,
+      { message: message.substring(0, 100), pillar: result.pillar, intent: result.intent, confidence: result.confidence }
+    );
+  }
+
+  logger.info("Classification result", {
+    pillar: result.pillar,
+    intent: result.intent,
+    confidence: result.confidence
   });
 
   return result;

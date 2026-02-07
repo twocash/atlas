@@ -36,6 +36,7 @@ import type {
   ActionDataAlert,
   ActionDataInfo,
 } from "./types";
+import { NotionSyncError } from "./errors";
 import { logger } from "./logger";
 
 // CANONICAL DATA SOURCE IDs - DO NOT CHANGE
@@ -765,11 +766,37 @@ export async function createFeedItem(
       properties,
     });
 
-    logger.info('Feed item created', { id: response.id });
+    if (!response.id) {
+      throw new NotionSyncError('Feed item create returned no page ID', {
+        title: classification.suggestedTitle,
+      });
+    }
+
+    // Read-after-write verification
+    try {
+      const verification = await notion.pages.retrieve({ page_id: response.id });
+      if (!verification) {
+        throw new NotionSyncError('Feed item created but read-after-write verification failed', {
+          pageId: response.id,
+        });
+      }
+    } catch (verifyError) {
+      if (verifyError instanceof NotionSyncError) throw verifyError;
+      throw new NotionSyncError(
+        `Feed item created but verification read failed: ${(verifyError as Error).message}`,
+        { pageId: response.id }
+      );
+    }
+
+    logger.info('Feed item created (verified)', { id: response.id });
     return response.id;
   } catch (error) {
+    if (error instanceof NotionSyncError) throw error;
     logger.error('Failed to create Feed item', { error });
-    throw error;
+    throw new NotionSyncError(
+      `Failed to create Feed item: ${(error as Error).message}`,
+      { title: classification.suggestedTitle }
+    );
   }
 }
 
@@ -812,11 +839,39 @@ export async function createWorkItem(
       },
     });
 
-    logger.info('Work Queue item created', { id: response.id, feedSource: feedPageId });
+    if (!response.id) {
+      throw new NotionSyncError('Work Queue create returned no page ID', {
+        title: classification.suggestedTitle,
+        feedSource: feedPageId,
+      });
+    }
+
+    // Read-after-write verification
+    try {
+      const verification = await notion.pages.retrieve({ page_id: response.id });
+      if (!verification) {
+        throw new NotionSyncError('Work item created but read-after-write verification failed', {
+          pageId: response.id,
+          feedSource: feedPageId,
+        });
+      }
+    } catch (verifyError) {
+      if (verifyError instanceof NotionSyncError) throw verifyError;
+      throw new NotionSyncError(
+        `Work item created but verification read failed: ${(verifyError as Error).message}`,
+        { pageId: response.id, feedSource: feedPageId }
+      );
+    }
+
+    logger.info('Work Queue item created (verified)', { id: response.id, feedSource: feedPageId });
     return response.id;
   } catch (error) {
+    if (error instanceof NotionSyncError) throw error;
     logger.error('Failed to create Work Queue item', { error });
-    throw error;
+    throw new NotionSyncError(
+      `Failed to create Work Queue item: ${(error as Error).message}`,
+      { title: classification.suggestedTitle, feedSource: feedPageId }
+    );
   }
 }
 
