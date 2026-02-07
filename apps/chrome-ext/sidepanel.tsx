@@ -22,6 +22,7 @@ import { Inbox } from "~sidepanel/components/Inbox"
 import { DataView } from "~sidepanel/components/DataView"
 import { OutreachView } from "~sidepanel/components/OutreachView"
 import { AtlasLink } from "~sidepanel/components/AtlasLink"
+import { ActionFeed } from "~sidepanel/components/ActionFeed/ActionFeed"
 import { useCommentsState } from "~src/lib/comments-hooks"
 
 // Simple Error Boundary
@@ -177,9 +178,9 @@ function SidePanelInner() {
             <DataView />
           )}
 
-          {/* VIEW: ATLAS (Browser Automation HUD) */}
+          {/* VIEW: ATLAS (Action Feed + Browser Automation HUD) */}
           {view === "atlas" && (
-            <AtlasLink />
+            <ActionFeed pollingInterval={30000} />
           )}
 
           {/* VIEW: SETTINGS */}
