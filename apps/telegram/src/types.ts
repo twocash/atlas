@@ -335,3 +335,92 @@ export interface NotionSearchResult {
   url: string;
   matchScore?: number;
 }
+
+// ==========================================
+// Action Feed Types
+// ==========================================
+
+export type ActionStatus = 'Pending' | 'Actioned' | 'Dismissed' | 'Expired' | 'Snoozed';
+
+export type ActionType = 'Triage' | 'Approval' | 'Review' | 'Alert' | 'Info';
+
+export type ActionedVia = 'Extension' | 'Telegram' | 'Notion';
+
+export type TriageDisposition = 'Capture' | 'Research' | 'Act On' | 'Dismiss';
+
+export type ApprovalDisposition = 'Approve' | 'Reject' | 'Modify';
+
+export type ReviewDisposition = 'Accept' | 'Revise' | 'Reject';
+
+export type AlertDisposition = 'Acknowledge' | 'Escalate' | 'Snooze';
+
+export interface ActionDataTriage {
+  platform: string;
+  title: string;
+  creator?: string;
+  url: string;
+  thumbnail?: string;
+  pillar?: Pillar;
+  disposition?: TriageDisposition;
+  wq_item_id?: string;
+}
+
+export interface ActionDataApproval {
+  skill_id: string;
+  skill_name: string;
+  description: string;
+  wq_item_id?: string;
+  disposition?: ApprovalDisposition;
+}
+
+export interface ActionDataReview {
+  wq_item_id: string;
+  wq_title: string;
+  output_url?: string;
+  disposition?: ReviewDisposition;
+  revision_notes?: string;
+}
+
+export interface ActionDataAlert {
+  alert_type: 'dom_breakage' | 'health_check' | 'rate_limit' | 'error';
+  platform?: string;
+  breakage_type?: 'TOTAL' | 'PARTIAL' | 'WARNING';
+  failed_selectors?: string[];
+  dev_pipeline_url?: string;
+  disposition?: AlertDisposition;
+  snooze_until?: string;
+}
+
+export interface ActionDataInfo {
+  message: string;
+  details?: string;
+  source?: string;
+}
+
+export type ActionData =
+  | ActionDataTriage
+  | ActionDataApproval
+  | ActionDataReview
+  | ActionDataAlert
+  | ActionDataInfo;
+
+export interface FeedActionProperties {
+  actionStatus: ActionStatus;
+  actionType: ActionType;
+  actionData: ActionData;
+  actionedAt?: string;
+  actionedVia?: ActionedVia;
+}
+
+export interface ActionFeedEntry {
+  id: string;
+  url: string;
+  createdAt: string;
+  title: string;
+  source: string;
+  actionStatus: ActionStatus;
+  actionType: ActionType;
+  actionData: ActionData;
+  actionedAt?: string;
+  actionedVia?: ActionedVia;
+}

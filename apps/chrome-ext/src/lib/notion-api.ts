@@ -7,11 +7,13 @@ import { STORAGE_KEYS } from "./storage"
 
 const storage = new Storage({ area: "local" })
 
-// Notion Database IDs (from phantombuster_etl.py)
+// Notion Database IDs
 export const NOTION_DBS = {
   CONTACTS: '08b9f73264b24e4b82d4c842f5a11cc8',
   ENGAGEMENTS: '25e138b54d1645a3a78b266451585de9',
   POSTS: '46448a0166ce42d1bdadc69cad0c7576',
+  FEED: '90b2b33f-4b44-4b42-870f-8d62fb8cbf18',
+  WORK_QUEUE: '3d679030-b76b-43bd-92d8-1ac51abb4a28',
 } as const
 
 const NOTION_API_BASE = 'https://api.notion.com/v1'
@@ -45,7 +47,8 @@ async function notionFetch(
  */
 export async function queryDatabase(
   dbId: string,
-  filter?: Record<string, unknown>
+  filter?: Record<string, unknown>,
+  options?: { sorts?: Array<Record<string, unknown>>; page_size?: number }
 ): Promise<NotionPage[]> {
   const allResults: NotionPage[] = []
   let hasMore = true
@@ -55,6 +58,8 @@ export async function queryDatabase(
     const body: Record<string, unknown> = {}
     if (filter) body.filter = filter
     if (cursor) body.start_cursor = cursor
+    if (options?.sorts) body.sorts = options.sorts
+    if (options?.page_size) body.page_size = options.page_size
 
     const resp = await notionFetch(`/databases/${dbId}/query`, {
       method: 'POST',
@@ -275,6 +280,89 @@ export function date(isoDate: string): { date: { start: string } } {
 
 export function relation(pageIds: string[]): { relation: Array<{ id: string }> } {
   return { relation: pageIds.map((id) => ({ id })) }
+}
+
+// --- Action Feed Helpers ---
+
+import type { ActionFeedEntry } from "~src/types/action-feed"
+
+/**
+ * Query pending Action Feed items (Pending or Snoozed)
+ */
+export async function queryPendingActionItems(): Promise<ActionFeedEntry[]> {
+  const results = await queryDatabase(
+    NOTION_DBS.FEED,
+    {
+      or: [
+        { property: 'Action Status', select: { equals: 'Pending' } },
+        { property: 'Action Status', select: { equals: 'Snoozed' } },
+      ],
+    },
+    { sorts: [{ timestamp: 'created_time', direction: 'descending' }] }
+  )
+  return results.map(parseActionFeedEntry)
+}
+
+/**
+ * Update Action properties on a Feed entry
+ */
+export async function updateFeedEntryAction(
+  pageId: string,
+  updates: Partial<{
+    actionStatus: string
+    actionData: Record<string, unknown>
+    actionedAt: string
+    actionedVia: string
+  }>
+): Promise<NotionPage> {
+  const properties: Record<string, unknown> = {}
+
+  if (updates.actionStatus) {
+    properties['Action Status'] = { select: { name: updates.actionStatus } }
+  }
+  if (updates.actionData) {
+    properties['Action Data'] = {
+      rich_text: [{ text: { content: JSON.stringify(updates.actionData) } }],
+    }
+  }
+  if (updates.actionedAt) {
+    properties['Actioned At'] = { date: { start: updates.actionedAt } }
+  }
+  if (updates.actionedVia) {
+    properties['Actioned Via'] = { select: { name: updates.actionedVia } }
+  }
+
+  return updatePage(pageId, properties)
+}
+
+function parseActionFeedEntry(page: NotionPage): ActionFeedEntry {
+  const props = page.properties as Record<string, any>
+
+  const actionDataRaw = props['Action Data']?.rich_text?.[0]?.text?.content || '{}'
+  let actionData: Record<string, any> = {}
+  try {
+    actionData = JSON.parse(actionDataRaw)
+  } catch {
+    actionData = { message: 'Parse error' }
+  }
+
+  const pageId = page.id
+  const cleanId = pageId.replace(/-/g, '')
+
+  return {
+    id: page.id,
+    url: page.url || `https://notion.so/${cleanId}`,
+    createdAt: (page as any).created_time || new Date().toISOString(),
+    title: props['Entry']?.title?.[0]?.text?.content
+      || props['Title']?.title?.[0]?.text?.content
+      || 'Untitled',
+    source: props['Source']?.select?.name || 'Unknown',
+    actionStatus: props['Action Status']?.select?.name || 'Pending',
+    actionType: props['Action Type']?.select?.name || 'Info',
+    actionData,
+    actionedAt: props['Actioned At']?.date?.start,
+    actionedVia: props['Actioned Via']?.select?.name,
+  }
 }
 
 // --- Types ---
