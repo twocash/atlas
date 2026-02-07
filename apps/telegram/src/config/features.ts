@@ -131,6 +131,15 @@ export interface FeatureFlags {
    * @default true (safe - only adds graceful acknowledgment)
    */
   pendingSelectionContext: boolean;
+
+  /**
+   * Duplicate Confirmation Guard (Bug #1 Fix)
+   * When enabled, tracks sent confirmations by message ID to prevent
+   * duplicate confirmation keyboards from being sent for the same message.
+   * Race conditions in URL/media detection can trigger multiple paths.
+   * @default false
+   */
+  duplicateConfirmationGuard: boolean;
 }
 
 /**
@@ -231,6 +240,7 @@ function loadFeatureFlags(): FeatureFlags {
     multiIntentParsing: process.env.ATLAS_MULTI_INTENT === 'true',
     // Bug Fixes
     pendingSelectionContext: process.env.ATLAS_PENDING_SELECTION_CONTEXT !== 'false', // Default ON
+    duplicateConfirmationGuard: process.env.ATLAS_DUPLICATE_CONFIRMATION_GUARD === 'true',
   };
 }
 

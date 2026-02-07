@@ -32,6 +32,59 @@ import { startPromptSelection } from '../handlers/prompt-selection-callback';
 import { getFeatureFlags } from '../config/features';
 import { triageMessage, type TriageResult } from '../cognitive/triage-skill';
 
+// ==========================================
+// Bug #1 Fix: Duplicate Confirmation Guard
+// ==========================================
+
+/**
+ * Tracks message IDs that have already had confirmations sent.
+ * Prevents duplicate confirmation keyboards from race conditions.
+ * Entries auto-expire after TTL_MS.
+ */
+const confirmationsSent = new Map<number, number>(); // messageId -> timestamp
+const CONFIRMATION_TTL_MS = 30_000; // 30 seconds
+
+/**
+ * Mark a message as having sent a confirmation.
+ * Used to prevent duplicate keyboards when multiple paths detect the same content.
+ */
+export function markConfirmationSent(messageId: number): void {
+  confirmationsSent.set(messageId, Date.now());
+
+  // Cleanup expired entries (lazy cleanup on each mark)
+  const now = Date.now();
+  for (const [id, ts] of confirmationsSent) {
+    if (now - ts > CONFIRMATION_TTL_MS) {
+      confirmationsSent.delete(id);
+    }
+  }
+}
+
+/**
+ * Check if a confirmation has already been sent for this message.
+ * Returns true if a confirmation was sent within the TTL window.
+ */
+export function hasConfirmationSent(messageId: number): boolean {
+  const ts = confirmationsSent.get(messageId);
+  if (!ts) return false;
+
+  // Check if within TTL
+  if (Date.now() - ts > CONFIRMATION_TTL_MS) {
+    confirmationsSent.delete(messageId);
+    return false;
+  }
+
+  return true;
+}
+
+/**
+ * Export tracker for testing/inspection
+ */
+export const confirmationTracker = {
+  size: () => confirmationsSent.size,
+  clear: () => confirmationsSent.clear(),
+};
+
 /**
  * Result of content detection
  */
@@ -184,14 +237,24 @@ export async function triggerContentConfirmation(
 ): Promise<boolean> {
   const userId = ctx.from?.id;
   const chatId = ctx.chat?.id;
+  const messageId = ctx.message?.message_id;
 
   if (!userId || !chatId) {
     logger.warn('Missing userId or chatId for content confirmation');
     return false;
   }
 
+  // Bug #1 Fix: Check for duplicate confirmation
+  const flags = getFeatureFlags();
+  if (flags.duplicateConfirmationGuard && messageId) {
+    if (hasConfirmationSent(messageId)) {
+      logger.info('Duplicate confirmation blocked', { messageId, url });
+      return true; // Return true to indicate message was handled
+    }
+    markConfirmationSent(messageId);
+  }
+
   try {
-    const flags = getFeatureFlags();
     let title: string;
     let triageResult: TriageResult | undefined;
 
@@ -310,10 +373,21 @@ export async function triggerInstantClassification(
 ): Promise<boolean> {
   const userId = ctx.from?.id;
   const chatId = ctx.chat?.id;
+  const messageId = ctx.message?.message_id;
 
   if (!userId || !chatId) {
     logger.warn('Missing userId or chatId for media classification');
     return false;
+  }
+
+  // Bug #1 Fix: Check for duplicate confirmation
+  const flags = getFeatureFlags();
+  if (flags.duplicateConfirmationGuard && messageId) {
+    if (hasConfirmationSent(messageId)) {
+      logger.info('Duplicate media confirmation blocked', { messageId, type: attachment.type });
+      return true; // Return true to indicate message was handled
+    }
+    markConfirmationSent(messageId);
   }
 
   try {
@@ -441,10 +515,21 @@ export async function triggerMediaConfirmation(
 ): Promise<boolean> {
   const userId = ctx.from?.id;
   const chatId = ctx.chat?.id;
+  const messageId = ctx.message?.message_id;
 
   if (!userId || !chatId) {
     logger.warn('Missing userId or chatId for media confirmation');
     return false;
+  }
+
+  // Bug #1 Fix: Check for duplicate confirmation
+  const flags = getFeatureFlags();
+  if (flags.duplicateConfirmationGuard && messageId) {
+    if (hasConfirmationSent(messageId)) {
+      logger.info('Duplicate media (Gemini) confirmation blocked', { messageId, type: attachment.type });
+      return true; // Return true to indicate message was handled
+    }
+    markConfirmationSent(messageId);
   }
 
   try {
