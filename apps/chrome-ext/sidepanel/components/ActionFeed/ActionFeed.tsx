@@ -1,4 +1,4 @@
-import React, { useCallback, useState } from 'react'
+import React, { useCallback, useEffect, useMemo, useState } from 'react'
 import { useFeedPolling } from './hooks/useFeedPolling'
 import { useActionWrite } from './hooks/useActionWrite'
 import { InfoCard } from './cards/InfoCard'
@@ -7,13 +7,18 @@ import { TriageCard } from './cards/TriageCard'
 import { ApprovalCard } from './cards/ApprovalCard'
 import { ReviewCard } from './cards/ReviewCard'
 import { BatchActions } from './BatchActions'
-import type { ActionFeedEntry } from '~src/types/action-feed'
+import { FeedFilters } from './FeedFilters'
+import { FeedSettings, type FeedSettingsData } from './FeedSettings'
+import type { ActionFeedEntry, ActionType } from '~src/types/action-feed'
 
 interface ActionFeedProps {
   pollingInterval?: number
 }
 
-export function ActionFeed({ pollingInterval = 30000 }: ActionFeedProps) {
+export function ActionFeed({ pollingInterval: initialInterval = 30000 }: ActionFeedProps) {
+  const [pollingInterval, setPollingInterval] = useState(initialInterval)
+  const [showFilters, setShowFilters] = useState(false)
+
   const { entries, isLoading, error, lastSynced, refresh } = useFeedPolling({
     intervalMs: pollingInterval,
     enabled: true,
@@ -24,6 +29,33 @@ export function ActionFeed({ pollingInterval = 30000 }: ActionFeedProps) {
   // Batch mode state
   const [batchMode, setBatchMode] = useState(false)
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set())
+
+  // Filter state
+  const [activeTypes, setActiveTypes] = useState<Set<ActionType>>(
+    new Set(['Triage', 'Approval', 'Review', 'Alert', 'Info'])
+  )
+  const [activeSources, setActiveSources] = useState<Set<string>>(new Set())
+
+  // Derive available sources
+  const availableSources = useMemo(() => {
+    const sources = new Set(entries.map(e => e.source))
+    return Array.from(sources).sort()
+  }, [entries])
+
+  // Initialize active sources when sources become available
+  useEffect(() => {
+    if (activeSources.size === 0 && availableSources.length > 0) {
+      setActiveSources(new Set(availableSources))
+    }
+  }, [availableSources, activeSources.size])
+
+  // Filter entries
+  const filteredEntries = useMemo(() => {
+    return entries.filter(entry =>
+      activeTypes.has(entry.actionType) &&
+      (activeSources.size === 0 || activeSources.has(entry.source))
+    )
+  }, [entries, activeTypes, activeSources])
 
   const handleAction = useCallback(async (
     entryId: string,
@@ -74,6 +106,37 @@ export function ActionFeed({ pollingInterval = 30000 }: ActionFeedProps) {
     setSelectedIds(new Set())
   }, [])
 
+  const handleToggleType = useCallback((type: ActionType) => {
+    setActiveTypes(prev => {
+      const next = new Set(prev)
+      if (next.has(type)) {
+        next.delete(type)
+      } else {
+        next.add(type)
+      }
+      return next
+    })
+  }, [])
+
+  const handleToggleSource = useCallback((source: string) => {
+    setActiveSources(prev => {
+      const next = new Set(prev)
+      if (next.has(source)) {
+        next.delete(source)
+      } else {
+        next.add(source)
+      }
+      return next
+    })
+  }, [])
+
+  const handleSettingsChange = useCallback((settings: FeedSettingsData) => {
+    setPollingInterval(settings.pollingIntervalMs)
+    if (settings.batchModeDefault !== batchMode && !selectedIds.size) {
+      setBatchMode(settings.batchModeDefault)
+    }
+  }, [batchMode, selectedIds.size])
+
   const renderCard = (entry: ActionFeedEntry) => {
     const cardProps = {
       entry,
@@ -114,6 +177,16 @@ export function ActionFeed({ pollingInterval = 30000 }: ActionFeedProps) {
           )}
           <button
             className={`px-2 py-0.5 rounded text-[10px] font-medium transition-all ${
+              showFilters
+                ? 'bg-gray-700 text-white'
+                : 'bg-gray-100 text-gray-500 hover:bg-gray-200'
+            }`}
+            onClick={() => setShowFilters(!showFilters)}
+          >
+            Filter
+          </button>
+          <button
+            className={`px-2 py-0.5 rounded text-[10px] font-medium transition-all ${
               batchMode
                 ? 'bg-blue-600 text-white'
                 : 'bg-gray-100 text-gray-500 hover:bg-gray-200'
@@ -137,6 +210,17 @@ export function ActionFeed({ pollingInterval = 30000 }: ActionFeedProps) {
           </button>
         </div>
       </div>
+
+      {/* Filters */}
+      {showFilters && (
+        <FeedFilters
+          activeTypes={activeTypes}
+          onToggleType={handleToggleType}
+          activeSources={activeSources}
+          availableSources={availableSources}
+          onToggleSource={handleToggleSource}
+        />
+      )}
 
       {/* Error banner */}
       {error && (
@@ -167,14 +251,23 @@ export function ActionFeed({ pollingInterval = 30000 }: ActionFeedProps) {
           {batchMode && (
             <BatchActions
               selectedIds={selectedIds}
-              entries={entries}
+              entries={filteredEntries}
               onBatchAction={handleBatchAction}
               onClearSelection={clearSelection}
             />
           )}
-          {entries.map(renderCard)}
+          {filteredEntries.length === 0 ? (
+            <div className="text-center text-gray-400 py-8 text-xs">
+              No items match current filters
+            </div>
+          ) : (
+            filteredEntries.map(renderCard)
+          )}
         </div>
       )}
+
+      {/* Settings */}
+      <FeedSettings onSettingsChange={handleSettingsChange} />
     </div>
   )
 }
