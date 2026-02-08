@@ -140,7 +140,7 @@ const DEPTH_CONFIG: Record<ResearchDepth, DepthConfig> = {
     citationStyle: "inline",
   },
   deep: {
-    maxTokens: 25000,
+    maxTokens: 65536,
     targetSources: 12,
     minSources: 8,
     description: "Academic-grade research with rigorous citations",
@@ -763,7 +763,7 @@ Your summary is the MOST IMPORTANT part. It should:
 - Summary MUST be 4-6 full paragraphs covering context, findings, limitations, and implications
 - Include at least 10-15 distinct findings with full citations
 - Bibliography must be comprehensive with full Chicago-style entries
-- Do NOT truncate your response — you have ~25,000 tokens available
+- Do NOT truncate your response — you have ~65,000 tokens available
 - Complete every section fully before ending your response`;
   }
 }
@@ -810,6 +810,14 @@ export async function executeResearch(
       console.log("[Research] First 3 citations:", response.citations.slice(0, 3));
     }
     console.log("[Research] ============================================");
+
+    // Warn if response may have been truncated (text ends without proper JSON closure)
+    if (response.text && response.text.length > 40000) {
+      const lastChars = response.text.trim().slice(-10);
+      if (!lastChars.includes('}') && !lastChars.includes('```')) {
+        console.warn(`[Research] WARNING: Response appears truncated (${response.text.length} chars, ends with: "${lastChars}")`);
+      }
+    }
 
     await registry.updateProgress(agent.id, 75, "Synthesizing findings");
 
@@ -948,6 +956,95 @@ function detectHallucination(
 }
 
 /**
+ * Attempt to repair truncated JSON responses from Gemini.
+ *
+ * When the model hits MAX_TOKENS, it often truncates mid-array or mid-object,
+ * producing JSON like: {"findings": [{"claim":"..."}, {"claim":"... (cut off)
+ *
+ * This function attempts to close open brackets/braces to recover partial data
+ * rather than falling through to regex (which loses most of the structure).
+ */
+function repairTruncatedJson(text: string): any | null {
+  // Find the JSON content (strip markdown fences if present)
+  const jsonMatch = text.match(/```json\s*([\s\S]*)/);
+  let jsonText = jsonMatch ? jsonMatch[1].replace(/\s*```\s*$/, '') : text;
+
+  // Find the start of the JSON object
+  const objStart = jsonText.indexOf('{');
+  if (objStart === -1) return null;
+  jsonText = jsonText.substring(objStart);
+
+  // Try parsing as-is first (maybe it's valid)
+  try {
+    return JSON.parse(jsonText);
+  } catch { /* expected — continue to repair */ }
+
+  // Strategy: walk through the text, track bracket depth, and close what's open
+  // First, strip any trailing incomplete string value (truncated mid-value)
+  // Look for the last complete key-value pair
+  let repaired = jsonText;
+
+  // Remove trailing incomplete string (e.g., "claim": "some text that got cu)
+  // Find last complete string value by looking for last '", ' or '"}'
+  const lastCompleteValue = repaired.lastIndexOf('",');
+  const lastCompleteObjEnd = repaired.lastIndexOf('"}');
+  const lastComplete = Math.max(lastCompleteValue, lastCompleteObjEnd);
+
+  if (lastComplete > 0) {
+    // Cut after the last complete value
+    repaired = repaired.substring(0, lastComplete + 1);
+  }
+
+  // Now close open brackets/braces
+  const openBrackets: string[] = [];
+  let inString = false;
+  let escaped = false;
+
+  for (let i = 0; i < repaired.length; i++) {
+    const ch = repaired[i];
+
+    if (escaped) {
+      escaped = false;
+      continue;
+    }
+
+    if (ch === '\\') {
+      escaped = true;
+      continue;
+    }
+
+    if (ch === '"') {
+      inString = !inString;
+      continue;
+    }
+
+    if (inString) continue;
+
+    if (ch === '{') openBrackets.push('}');
+    else if (ch === '[') openBrackets.push(']');
+    else if (ch === '}' || ch === ']') {
+      if (openBrackets.length > 0 && openBrackets[openBrackets.length - 1] === ch) {
+        openBrackets.pop();
+      }
+    }
+  }
+
+  // Close everything that's still open
+  if (openBrackets.length > 0) {
+    repaired += openBrackets.reverse().join('');
+  }
+
+  try {
+    const result = JSON.parse(repaired);
+    console.warn(`[Research] JSON REPAIR successful — recovered from truncated response (${openBrackets.length} brackets closed)`);
+    return result;
+  } catch (e) {
+    console.warn("[Research] JSON repair failed:", (e as Error).message);
+    return null;
+  }
+}
+
+/**
  * Parse Gemini's response into structured ResearchResult
  *
  * HANDLES: Malformed JSON from Gemini (incomplete arrays, multiple JSON blocks, etc.)
@@ -991,7 +1088,14 @@ async function parseResearchResponse(
       }
     }
   } catch (e) {
-    console.log("[Research] JSON parse failed, falling back to regex:", (e as Error).message);
+    console.warn("[Research] JSON parse failed, attempting repair:", (e as Error).message);
+    // Phase 3a: Try to repair truncated JSON before falling to regex
+    parsedJson = repairTruncatedJson(text);
+    if (parsedJson) {
+      console.warn("[Research] JSON repair recovered data — findings:", parsedJson.findings?.length || 0, "sources:", parsedJson.sources?.length || 0);
+    } else {
+      console.warn("[Research] JSON repair failed, falling back to regex extraction — DATA LOSS LIKELY");
+    }
   }
 
   // Use parsed JSON if available
@@ -1003,6 +1107,7 @@ async function parseResearchResponse(
     console.log("[Research] Using JSON-parsed summary, length:", summary.length);
   } else {
     // STRATEGY 2: Fall back to regex extraction
+    console.warn("[Research] WARNING: Using regex fallback for summary extraction — structured parsing failed");
     // This regex handles escaped characters in JSON strings
     const summaryMatch = text.match(/"summary"\s*:\s*"((?:[^"\\]|\\.)*)"/);
     if (summaryMatch) {
@@ -1012,7 +1117,7 @@ async function parseResearchResponse(
         .replace(/\\\\/g, '\\')
         .replace(/\[cite:\s*[\d,\s]+\]/g, '') // Remove [cite: N] or [cite: 1, 2] markers
         .trim();
-      console.log("[Research] Extracted summary via regex, length:", summary.length);
+      console.warn("[Research] Extracted summary via regex, length:", summary.length);
     }
   }
 
@@ -1034,6 +1139,7 @@ async function parseResearchResponse(
     console.log("[Research] Using JSON-parsed findings:", findings.length);
   } else {
     // Fall back to regex extraction
+    console.warn("[Research] WARNING: Using regex fallback for findings extraction — potential data loss");
     const findingsBlockMatch = text.match(/"findings"\s*:\s*\[([\s\S]*?)(?:\]\s*,|\]\s*\}|\]\s*```)/);
     if (findingsBlockMatch) {
       const findingPattern = /\{\s*"claim"\s*:\s*"((?:[^"\\]|\\.)*)"\s*,\s*"source"\s*:\s*"((?:[^"\\]|\\.)*)"\s*,\s*"url"\s*:\s*"((?:[^"\\]|\\.)*)"/g;
@@ -1046,7 +1152,7 @@ async function parseResearchResponse(
           relevance: 90,
         });
       }
-      console.log("[Research] Extracted findings via regex:", findings.length);
+      console.warn("[Research] Extracted findings via regex:", findings.length);
     }
   }
 
@@ -1060,6 +1166,7 @@ async function parseResearchResponse(
     }
     console.log("[Research] Using JSON-parsed sources:", sources.length);
   } else {
+    console.warn("[Research] WARNING: Using regex fallback for sources extraction — potential data loss");
     const sourcesBlockMatch = text.match(/"sources"\s*:\s*\[([\s\S]*?)(?:\]|\n\s*```)/);
     if (sourcesBlockMatch) {
       const urlPattern = /"(https?:\/\/[^"]+)"/g;
@@ -1069,31 +1176,38 @@ async function parseResearchResponse(
           sources.push(match[1]);
         }
       }
-      console.log("[Research] Extracted sources via regex:", sources.length);
+      console.warn("[Research] Extracted sources via regex:", sources.length);
     }
   }
 
-  // Add grounding citations if we didn't get enough findings
-  if (findings.length === 0) {
-    for (const citation of citations) {
-      if (citation.url) {
+  // ALWAYS merge grounding citations — they are the authoritative source list
+  // from Google Search and should never be discarded, even if JSON parsing
+  // extracted some data (which may be truncated/partial).
+  const existingUrls = new Set(sources);
+  const existingFindingUrls = new Set(findings.map(f => f.url));
+
+  for (const citation of citations) {
+    if (citation.url) {
+      // Add to sources if not already present
+      if (!existingUrls.has(citation.url)) {
+        sources.push(citation.url);
+        existingUrls.add(citation.url);
+      }
+      // Add as finding if not already covered
+      if (!existingFindingUrls.has(citation.url)) {
         findings.push({
           claim: `Reference: ${citation.title}`,
           source: citation.title,
           url: citation.url,
           relevance: 80,
         });
+        existingFindingUrls.add(citation.url);
       }
     }
   }
 
-  // Add citation URLs to sources if we didn't extract any
-  if (sources.length === 0) {
-    for (const citation of citations) {
-      if (citation.url && !sources.includes(citation.url)) {
-        sources.push(citation.url);
-      }
-    }
+  if (citations.length > 0) {
+    console.log(`[Research] Merged ${citations.length} grounding citations — total sources: ${sources.length}, findings: ${findings.length}`);
   }
 
   // RESOLVE REDIRECT URLs: Convert Gemini grounding redirects to actual URLs
