@@ -64,7 +64,7 @@ export interface FeatureFlags {
    * Zone Classifier
    * When enabled, routes pit crew operations through zone-based permissions
    * (auto-execute, auto-notify, approve) instead of always requiring approval.
-   * @default false
+   * @default true (disable with ATLAS_ZONE_CLASSIFIER=false)
    */
   zoneClassifier: boolean;
 
@@ -72,7 +72,7 @@ export interface FeatureFlags {
    * Swarm Dispatch
    * When enabled, spawns Claude Code sessions for autonomous skill repairs.
    * Only triggers for Zone 1/2 operations when zone classifier is also enabled.
-   * @default false
+   * @default true (disable with ATLAS_SWARM_DISPATCH=false)
    */
   swarmDispatch: boolean;
 
@@ -80,7 +80,7 @@ export interface FeatureFlags {
    * Self-Improvement Listener
    * When enabled, polls Feed 2.0 for entries tagged "self-improvement"
    * and auto-dispatches to pit crew for Zone 1/2 operations.
-   * @default false
+   * @default true (disable with ATLAS_SELF_IMPROVEMENT_LISTENER=false)
    */
   selfImprovementListener: boolean;
 
@@ -89,7 +89,7 @@ export interface FeatureFlags {
    * When enabled, uses Anthropic SDK directly instead of spawning
    * Claude Code CLI for autonomous repairs. Bypasses CLI overhead
    * (MCP servers, session init) for faster execution.
-   * @default false
+   * @default true (disable with ATLAS_API_SWARM=false)
    */
   apiSwarmDispatch: boolean;
 
@@ -247,11 +247,11 @@ function loadFeatureFlags(): FeatureFlags {
     patternDetection: process.env.ATLAS_PATTERN_DETECTION === 'true',
     autoDeployTier0: process.env.ATLAS_AUTO_DEPLOY_TIER0 === 'true',
     skillComposition: process.env.ATLAS_SKILL_COMPOSITION === 'true',
-    // Autonomous Repair (Sprint: Pit Stop)
-    zoneClassifier: process.env.ATLAS_ZONE_CLASSIFIER === 'true',
-    swarmDispatch: process.env.ATLAS_SWARM_DISPATCH === 'true',
-    selfImprovementListener: process.env.ATLAS_SELF_IMPROVEMENT_LISTENER === 'true',
-    apiSwarmDispatch: process.env.ATLAS_API_SWARM === 'true',
+    // Autonomous Repair (Sprint: Pit Stop) - Default ON, env vars are kill switches
+    zoneClassifier: process.env.ATLAS_ZONE_CLASSIFIER !== 'false',
+    swarmDispatch: process.env.ATLAS_SWARM_DISPATCH !== 'false',
+    selfImprovementListener: process.env.ATLAS_SELF_IMPROVEMENT_LISTENER !== 'false',
+    apiSwarmDispatch: process.env.ATLAS_API_SWARM !== 'false',
     // Triage Intelligence (Sprint: Triage Intelligence) - Core features, default ON
     triageSkill: process.env.ATLAS_TRIAGE_SKILL !== 'false', // Default ON
     lowConfidenceFallbackToCapture: process.env.ATLAS_LOW_CONFIDENCE_CAPTURE !== 'false', // Default ON
@@ -285,7 +285,7 @@ function loadSafetyLimits(): SafetyLimits {
     autoDisableOnErrors: parseInt(process.env.ATLAS_SKILL_AUTO_DISABLE_ERRORS || '3', 10),
     rollbackWindowHours: parseInt(process.env.ATLAS_SKILL_ROLLBACK_HOURS || '24', 10),
     // Autonomous Repair (Sprint: Pit Stop)
-    maxSwarmDispatchesPerHour: parseInt(process.env.ATLAS_SWARM_MAX_PER_HOUR || '15', 10), // Bumped from 5 for testing
+    maxSwarmDispatchesPerHour: parseInt(process.env.ATLAS_SWARM_MAX_PER_HOUR || '5', 10),
     swarmTimeoutSeconds: parseInt(process.env.ATLAS_SWARM_TIMEOUT_SECONDS || '300', 10), // 5 min - CLI startup is slow
     selfImprovementPollIntervalMs: parseInt(process.env.ATLAS_SELF_IMPROVEMENT_POLL_MS || '60000', 10),
   };
