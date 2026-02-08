@@ -93,6 +93,15 @@ export interface FeatureFlags {
    */
   apiSwarmDispatch: boolean;
 
+  /**
+   * Health Alert Producer
+   * When enabled, runs periodic health checks and emits Alert entries
+   * to Feed 2.0. Zone 1/2 issues also get 'self-improvement' keyword
+   * for autonomous repair pipeline. Zone 3 issues get Alert cards only.
+   * @default true (disable with ATLAS_HEALTH_ALERT_PRODUCER=false)
+   */
+  healthAlertProducer: boolean;
+
   // === Triage Intelligence (Sprint: Triage Intelligence) ===
 
   /**
@@ -252,6 +261,7 @@ function loadFeatureFlags(): FeatureFlags {
     swarmDispatch: process.env.ATLAS_SWARM_DISPATCH !== 'false',
     selfImprovementListener: process.env.ATLAS_SELF_IMPROVEMENT_LISTENER !== 'false',
     apiSwarmDispatch: process.env.ATLAS_API_SWARM !== 'false',
+    healthAlertProducer: process.env.ATLAS_HEALTH_ALERT_PRODUCER !== 'false',
     // Triage Intelligence (Sprint: Triage Intelligence) - Core features, default ON
     triageSkill: process.env.ATLAS_TRIAGE_SKILL !== 'false', // Default ON
     lowConfidenceFallbackToCapture: process.env.ATLAS_LOW_CONFIDENCE_CAPTURE !== 'false', // Default ON

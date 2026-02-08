@@ -526,34 +526,43 @@ export async function createActionFeedEntry(
   actionType: ActionType,
   actionData: ActionData,
   source: string,
-  title?: string
+  title?: string,
+  keywords?: string[]
 ): Promise<string> {
   const notion = getNotionClient();
   const entryTitle = title || generateActionTitle(actionType, actionData);
 
+  const properties: Record<string, any> = {
+    'Entry': {
+      title: [{ text: { content: entryTitle.substring(0, 100) } }],
+    },
+    'Source': {
+      select: { name: source },
+    },
+    'Date': {
+      date: { start: new Date().toISOString() },
+    },
+    'Action Status': {
+      select: { name: 'Pending' },
+    },
+    'Action Type': {
+      select: { name: actionType },
+    },
+    'Action Data': {
+      rich_text: [{ text: { content: JSON.stringify(actionData) } }],
+    },
+  };
+
+  if (keywords && keywords.length > 0) {
+    properties['Keywords'] = {
+      multi_select: keywords.map(k => ({ name: k })),
+    };
+  }
+
   try {
     const response = await notion.pages.create({
       parent: { database_id: FEED_DATABASE_ID },
-      properties: {
-        'Entry': {
-          title: [{ text: { content: entryTitle.substring(0, 100) } }],
-        },
-        'Source': {
-          select: { name: source },
-        },
-        'Date': {
-          date: { start: new Date().toISOString() },
-        },
-        'Action Status': {
-          select: { name: 'Pending' },
-        },
-        'Action Type': {
-          select: { name: actionType },
-        },
-        'Action Data': {
-          rich_text: [{ text: { content: JSON.stringify(actionData) } }],
-        },
-      },
+      properties,
     });
 
     logger.info('Action Feed entry created', { id: response.id, actionType });

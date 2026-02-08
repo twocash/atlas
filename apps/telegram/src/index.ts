@@ -23,6 +23,7 @@ import { initMcp, shutdownMcp } from "./mcp";
 import { startStatusServer, stopStatusServer } from "./health/status-server";
 import { initializeSkillRegistry } from "./skills";
 import { startSelfImprovementListener, stopSelfImprovementListener } from "./listeners/self-improvement";
+import { startHealthAlertProducer, stopHealthAlertProducer } from "./feed/alert-producer";
 import { existsSync, writeFileSync, unlinkSync, readFileSync } from "fs";
 import { join } from "path";
 
@@ -129,6 +130,14 @@ async function main() {
     logger.warn("Self-improvement listener failed to start (non-fatal)", { error: err });
   }
 
+  // Start health alert producer (Sprint: Action Feed Producer Wiring)
+  // Periodic health checks → Feed 2.0 Alert entries for Chrome extension + self-healing
+  try {
+    startHealthAlertProducer();
+  } catch (err) {
+    logger.warn("Health alert producer failed to start (non-fatal)", { error: err });
+  }
+
   // Start status server for Chrome extension heartbeat
   try {
     startStatusServer(3847);
@@ -144,6 +153,7 @@ async function main() {
     logger.info(`Received ${signal}, shutting down gracefully...`);
     stopScheduler();
     stopSelfImprovementListener();
+    stopHealthAlertProducer();
     stopStatusServer();
     await shutdownMcp();
     await bot.stop();
