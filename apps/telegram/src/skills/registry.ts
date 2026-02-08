@@ -254,6 +254,7 @@ export class SkillRegistry {
   private skills: Map<string, SkillDefinition> = new Map();
   private skillsDir: string;
   private watcher: ReturnType<typeof watch> | null = null;
+  private reloadTimer: ReturnType<typeof setTimeout> | null = null;
   private initialized: boolean = false;
 
   constructor(skillsDir?: string) {
@@ -395,24 +396,23 @@ export class SkillRegistry {
     try {
       // Note: fs.watch is not fully reliable on all platforms
       // This is a best-effort implementation
-      this.watcher = watch(this.skillsDir, { recursive: true }, async (eventType, filename) => {
+      this.watcher = watch(this.skillsDir, { recursive: true }, (eventType, filename) => {
         if (filename &&
             (filename.endsWith('.yaml') ||
              filename.endsWith('.yml') ||
              filename.endsWith('.md'))) {
-          logger.info('Skill file changed, reloading...', { filename, eventType });
-
-          // Debounce: wait a bit for file to be fully written
-          setTimeout(async () => {
+          // Trailing-edge debounce: reset timer on each event
+          if (this.reloadTimer) clearTimeout(this.reloadTimer);
+          this.reloadTimer = setTimeout(async () => {
+            this.reloadTimer = null;
             try {
-              // Reload all skills (simple approach)
               this.skills.clear();
               await this.loadSkillsFromDirectory(this.skillsDir);
               logger.info('Skills reloaded', { count: this.skills.size });
             } catch (error) {
               logger.error('Failed to reload skills', { error });
             }
-          }, 100);
+          }, 300);
         }
       });
 

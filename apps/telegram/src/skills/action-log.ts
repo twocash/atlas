@@ -274,7 +274,7 @@ export async function logAction(input: ActionLogInput): Promise<ActionLogResult>
 
     if (input.triageComplexityTier !== undefined) {
       patternProps['Triage Complexity'] = {
-        number: input.triageComplexityTier,
+        select: { name: `Tier ${input.triageComplexityTier}` },
       };
     }
 
@@ -286,13 +286,13 @@ export async function logAction(input: ActionLogInput): Promise<ActionLogResult>
 
     if (input.triageSuggestedPillar) {
       patternProps['Triage Suggested Pillar'] = {
-        select: { name: input.triageSuggestedPillar },
+        rich_text: [{ text: { content: input.triageSuggestedPillar } }],
       };
     }
 
     if (input.triagePillarCorrected !== undefined) {
       patternProps['Triage Pillar Corrected'] = {
-        checkbox: input.triagePillarCorrected,
+        rich_text: [{ text: { content: input.triagePillarCorrected ? 'Yes' : 'No' } }],
       };
     }
 

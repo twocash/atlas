@@ -226,9 +226,9 @@ const MAX_TOOL_ITERATIONS = 5;
 const REACTIONS = {
   READING: '👀',    // Message received, starting processing
   WORKING: '⚡',    // Tools executing
-  DONE: '✅',       // Action completed (logged to WQ, filed media, etc.)
+  DONE: '👌',       // Action completed (logged to WQ, filed media, etc.)
   CHAT: '👍',       // Chat-only response, no action taken
-  ERROR: '❌',      // Error during processing
+  ERROR: '💔',      // Error during processing
 } as const;
 
 /**

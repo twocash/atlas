@@ -516,6 +516,38 @@ async function runAutonomousRepairTests(cwd: string): Promise<SuiteResult> {
 }
 
 /**
+ * Run bug regression tests (live-bugs-feb8 and future regression suites)
+ */
+async function runRegressionTests(cwd: string): Promise<SuiteResult> {
+  console.log('\n[REGRESS] Running Bug Regression Tests...');
+  console.log('─'.repeat(50));
+
+  const result = await runCommand(
+    BUN_PATH,
+    ['test', 'test/live-bugs-feb8.test.ts'],
+    cwd,
+    60000
+  );
+  const counts = parseBunTestOutput(result.output);
+
+  if (!result.success) {
+    console.log(result.output);
+  }
+
+  const status = result.success ? '\x1b[32m[PASS]\x1b[0m' : '\x1b[31m[FAIL]\x1b[0m';
+  console.log(`  ${status} ${counts.passed} passed, ${counts.failed} failed (${result.duration}ms)`);
+
+  return {
+    name: 'Bug Regression Tests',
+    passed: counts.passed,
+    failed: counts.failed,
+    skipped: counts.skipped,
+    duration: result.duration,
+    errors: result.success ? [] : [result.output],
+  };
+}
+
+/**
  * Run integration tests (health checks, Notion connectivity)
  */
 async function runIntegrationTests(cwd: string): Promise<SuiteResult> {
@@ -648,9 +680,10 @@ async function main() {
 
   const suites: SuiteResult[] = [];
 
-  // Quick mode: Unit tests only
+  // Quick mode: Unit + Regression tests only
   if (quick) {
     suites.push(await runUnitTests(cwd));
+    suites.push(await runRegressionTests(cwd));
   }
   // Strict mode: Canaries FIRST — failure stops all subsequent suites
   else if (strict) {
@@ -662,6 +695,7 @@ async function main() {
       console.log('Fix canary failures before proceeding.\n');
     } else {
       suites.push(await runUnitTests(cwd));
+      suites.push(await runRegressionTests(cwd));
       suites.push(await runAutonomousRepairTests(cwd));
       suites.push(await runSmokeTests(cwd));
       suites.push(await runE2ETests(cwd));
@@ -672,12 +706,13 @@ async function main() {
   else if (full) {
     suites.push(await runCanaryTests(cwd));  // Canaries first - detect silent failures
     suites.push(await runUnitTests(cwd));
+    suites.push(await runRegressionTests(cwd));  // Bug regression tests
     suites.push(await runAutonomousRepairTests(cwd));  // Pit Stop sprint
     suites.push(await runSmokeTests(cwd));
     suites.push(await runE2ETests(cwd));
     suites.push(await runIntegrationTests(cwd));
   }
-  // Default mode: Canaries + Unit + Pit Stop + Smoke + Integration (strict by default)
+  // Default mode: Canaries + Unit + Regression + Pit Stop + Smoke + Integration (strict by default)
   else {
     const canaryResult = await runCanaryTests(cwd);
     suites.push(canaryResult);
@@ -687,6 +722,7 @@ async function main() {
       console.log('Fix canary failures or run with ENABLE_FALLBACKS=true to proceed.\n');
     } else {
       suites.push(await runUnitTests(cwd));
+      suites.push(await runRegressionTests(cwd));
       suites.push(await runAutonomousRepairTests(cwd));
       suites.push(await runSmokeTests(cwd));
       suites.push(await runIntegrationTests(cwd));

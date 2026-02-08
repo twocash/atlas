@@ -532,7 +532,7 @@ export async function updateWorkQueueStatus(
       page_id: pageId,
       properties: {
         'Status': {
-          status: { name: status },
+          select: { name: status },
         },
       },
     });
