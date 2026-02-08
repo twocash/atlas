@@ -1219,8 +1219,8 @@ async function executeGetSkillStatus(
   try {
     const content = await readFile(skillPath, 'utf-8');
 
-    // Parse frontmatter
-    const fmMatch = content.match(/^---\n([\s\S]*?)\n---/);
+    // Parse frontmatter (tolerate \r\n on Windows)
+    const fmMatch = content.match(/^---\r?\n([\s\S]*?)\r?\n---/);
     if (!fmMatch) {
       return {
         success: true,

@@ -450,8 +450,8 @@ async function executeListSkills(): Promise<{ success: boolean; result: unknown;
         try {
           const content = await readFile(skillPath, 'utf-8');
 
-          // Parse frontmatter
-          const match = content.match(/^---\n([\s\S]*?)\n---/);
+          // Parse frontmatter (tolerate \r\n on Windows)
+          const match = content.match(/^---\r?\n([\s\S]*?)\r?\n---/);
           if (match) {
             const frontmatter = match[1];
             const nameMatch = frontmatter.match(/name:\s*(.+)/);
