@@ -8,7 +8,7 @@
 
 ## Executive Summary
 
-Atlas 2.0 (atlas-telegram) is operational with core Telegram bot functionality, Notion integration, and Cognitive Router v1.0. However, the legacy `claude-assist` directory contains significant institutional knowledge, skills, and capabilities that must be migrated to avoid capability loss during consolidation.
+Atlas 2.0 is operational with core Telegram bot functionality, Notion integration, and Cognitive Router v1.0. However, the legacy `claude-assist` directory contains significant institutional knowledge, skills, and capabilities that must be migrated to avoid capability loss during consolidation.
 
 **Key Finding:** The most valuable assets are NOT code—they're the documented wisdom in SPARKS.md, editorial memory, system prompts, and the skills framework.
 
@@ -22,10 +22,10 @@ These documents shape how Atlas thinks and operates:
 
 | Source | Target | Status | Notes |
 |--------|--------|--------|-------|
-| `CLAUDE.md` (v3.1) | Merge into `atlas-telegram/CLAUDE.md` | 🔄 Pending | Contains Four Pillars, Session Startup, Feedback Loop |
-| `SPARKS.md` | `atlas-telegram/workspace/SPARKS.md` | ✅ Done | Already copied |
-| `PRODUCT.md` | `atlas-telegram/docs/PRODUCT.md` | 🔄 Pending | Product vision, architecture |
-| `DECISIONS.md` | `atlas-telegram/docs/DECISIONS.md` | 🔄 Pending | Architectural decisions |
+| `CLAUDE.md` (v3.1) | Merge into `apps/telegram/CLAUDE.md` | 🔄 Pending | Contains Four Pillars, Session Startup, Feedback Loop |
+| `SPARKS.md` | `apps/telegram/workspace/SPARKS.md` | ✅ Done | Already copied |
+| `PRODUCT.md` | `apps/telegram/docs/PRODUCT.md` | 🔄 Pending | Product vision, architecture |
+| `DECISIONS.md` | `apps/telegram/docs/DECISIONS.md` | 🔄 Pending | Architectural decisions |
 | `BACKLOG.md` | Reference only | ⏸ Skip | Superseded by Work Queue 2.0 |
 
 ### Category 2: SKILLS SYSTEM (Agent SDK Prep)
@@ -80,10 +80,10 @@ Direct API utilities:
 **Goal:** Atlas 2.0 has full context without losing institutional knowledge
 
 **Actions:**
-1. ✅ Create `atlas-telegram/docs/` directory
-2. 🔄 Copy PRODUCT.md → `atlas-telegram/docs/PRODUCT.md`
-3. 🔄 Copy DECISIONS.md → `atlas-telegram/docs/DECISIONS.md`
-4. 🔄 Merge CLAUDE.md wisdom into atlas-telegram/CLAUDE.md
+1. ✅ Create `apps/telegram/docs/` directory
+2. 🔄 Copy PRODUCT.md → `apps/telegram/docs/PRODUCT.md`
+3. 🔄 Copy DECISIONS.md → `apps/telegram/docs/DECISIONS.md`
+4. 🔄 Merge CLAUDE.md wisdom into apps/telegram/CLAUDE.md
 5. ✅ Verify SPARKS.md is current
 
 **Merge Strategy for CLAUDE.md:**
@@ -98,7 +98,7 @@ Direct API utilities:
 **Goal:** Atlas 2.0 can use skill system for Agent SDK
 
 **Actions:**
-1. Create `atlas-telegram/skills/` directory structure
+1. Create `apps/telegram/skills/` directory structure
 2. Copy skill template + coordination skills
 3. Update skill references for new Notion databases
 4. Add skill loading to bot startup
@@ -116,7 +116,7 @@ Direct API utilities:
 - Python → subprocess call from Bun is trivial
 
 **Actions:**
-1. Create `atlas-telegram/pipelines/` symlink or copy
+1. Create `apps/telegram/pipelines/` symlink or copy
 2. Add `/generate` command to Telegram bot
 3. Copy editorial_memory.md
 4. Copy system prompts
@@ -172,13 +172,13 @@ Work Queue 2.0: 3d679030-b76b-43bd-92d8-1ac51abb4a28
 ## Success Criteria
 
 ### Phase 1 Complete When:
-- [x] PRODUCT.md in atlas-telegram/docs/
-- [x] DECISIONS.md in atlas-telegram/docs/
+- [x] PRODUCT.md in apps/telegram/docs/
+- [x] DECISIONS.md in apps/telegram/docs/
 - [x] CLAUDE.md has Four Pillars, Session Startup, Feedback Loop
 - [x] Atlas knows about both Inbox 1.0 AND 2.0 contexts
 
 ### Phase 2 Complete When:
-- [ ] Skills directory exists in atlas-telegram/
+- [ ] Skills directory exists in apps/telegram/
 - [ ] At least 3 coordination skills are functional
 - [ ] Can invoke skill via Telegram message
 - [ ] Skills reference correct Notion databases

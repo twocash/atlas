@@ -48,7 +48,7 @@ All notable changes to Atlas Telegram Bot will be documented in this file.
 
 ### Project Structure
 ```
-atlas-telegram/
+apps/telegram/
 ├── src/
 │   ├── index.ts        # Entry point
 │   ├── bot.ts          # Telegram bot setup + routing

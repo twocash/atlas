@@ -40,7 +40,7 @@ Get the Atlas Telegram bot running in 5 minutes.
 ### 1. Clone and Install
 
 ```bash
-cd C:\github\claude-assist\atlas-telegram
+cd C:\github\atlas\apps\telegram
 
 # Install dependencies
 bun install

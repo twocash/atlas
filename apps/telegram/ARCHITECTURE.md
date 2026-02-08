@@ -189,7 +189,7 @@ Atlas: "Financial planning article — which pillar?
 ## File Structure
 
 ```
-atlas-telegram/
+apps/telegram/
 ├── README.md              # Project overview
 ├── ARCHITECTURE.md        # This file
 ├── IMPLEMENTATION.md      # Sprint plan for dev

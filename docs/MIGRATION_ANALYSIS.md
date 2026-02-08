@@ -11,7 +11,7 @@
 
 | Capability | Old Location | New Location | Notes |
 |------------|--------------|--------------|-------|
-| Telegram Interface | `atlas-telegram/` | `apps/telegram/` | Rewritten, cleaner |
+| Telegram Interface | `apps/telegram/` (legacy) | `apps/telegram/` | Rewritten, cleaner |
 | Research Agent | `atlas_research.py` | `packages/agents/src/agents/research.ts` | Now uses Gemini grounding |
 | Work Queue | `NOTION_ATLAS_INBOX_ID` | Work Queue 2.0 database | New schema, better |
 | Agent Infrastructure | Ad-hoc Python | `packages/agents/` (Agent SDK) | Proper TypeScript SDK |
