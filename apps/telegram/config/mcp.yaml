@@ -44,6 +44,8 @@ servers:
   # Claude in Chrome - Browser automation via Chrome extension
   # Requires: Chrome extension installed and running
   # Provides tools for tab management, page reading, form filling, etc.
+  # DISABLED: 2026-02-08 - Chrome extension MCP is a desktop tool, not available
+  # in the server environment. Causes degraded MCP warning on every bot startup.
   claude_in_chrome:
     command: "node"
     args: ["${CHROME_MCP_PATH:-../../apps/chrome-ext/mcp-server/index.js}"]
@@ -52,7 +54,7 @@ servers:
     timeout: 60000
     reconnectDelay: 5000
     maxReconnectAttempts: 3
-    disabled: false
+    disabled: true
 
   # Example: Add more MCP servers here
   # memory:
