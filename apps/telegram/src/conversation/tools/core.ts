@@ -7,7 +7,7 @@
 import type Anthropic from '@anthropic-ai/sdk';
 import { Client } from '@notionhq/client';
 import { logger } from '../../logger';
-import { logWQActivity, notionUrl, type Pillar } from '../audit';
+import { logWQActivity, type Pillar } from '../audit';
 import { searchNotion as globalNotionSearch } from '../../notion';
 
 // Create Notion client - log the key prefix for debugging
@@ -609,7 +609,7 @@ async function executeNotionSearch(
           const props = page.properties as Record<string, unknown>;
           results.push({
             title: getTitle(props, 'Task'),
-            url: (page as { url?: string }).url || `https://notion.so/${page.id.replace(/-/g, '')}`,
+            url: (page as { url?: string }).url || '',
             database: 'Work Queue',
             status: getSelect(props, 'Status') || undefined,
             pillar: getSelect(props, 'Pillar') || undefined,
@@ -640,7 +640,7 @@ async function executeNotionSearch(
           const props = page.properties as Record<string, unknown>;
           results.push({
             title: getTitle(props, 'Entry'),
-            url: (page as { url?: string }).url || `https://notion.so/${page.id.replace(/-/g, '')}`,
+            url: (page as { url?: string }).url || '',
             database: 'Feed',
           });
         }
@@ -734,7 +734,7 @@ async function executeWorkQueueList(
           priority: getSelect(props, 'Priority'),
           pillar: getSelect(props, 'Pillar'),
           type: getSelect(props, 'Type'),
-          url: (page as { url?: string }).url || `https://notion.so/${page.id.replace(/-/g, '')}`,
+          url: (page as { url?: string }).url || '',
         };
       }
       return null;
@@ -795,7 +795,7 @@ async function executeWorkQueueCreate(
       };
     }
 
-    const wqUrl = notionUrl(response.id);
+    const wqUrl = (response as { url?: string }).url || '';
 
     // Log creation to Feed (non-blocking, errors are caught internally)
     const feedResult = await logWQActivity({
@@ -1025,12 +1025,12 @@ async function executeWorkQueueUpdate(
       priorityValue: properties['Priority'],
     });
 
-    await notion.pages.update({
+    const updateResponse = await notion.pages.update({
       page_id: id,
       properties: properties as any,
     });
 
-    const wqUrl = notionUrl(id);
+    const wqUrl = (updateResponse as { url?: string }).url || '';
 
     // Log activity to Feed based on what changed
     let feedResult = null;
@@ -1141,7 +1141,7 @@ async function executeWorkQueueGet(
     // Extract all relevant properties
     const item = {
       id: page.id,
-      url: (page as { url?: string }).url || `https://notion.so/${page.id.replace(/-/g, '')}`,
+      url: (page as { url?: string }).url || '',
       task: getTitle(props, 'Task'),
       status: getSelect(props, 'Status'),
       priority: getSelect(props, 'Priority'),
@@ -1687,7 +1687,7 @@ async function executeNotionFetchPage(
       result: {
         id: pageId,
         title,
-        url: notionUrl(pageId),
+        url: (page as { url?: string }).url || '',
         properties,
         content: content || '(No content)',
         lastEdited: 'last_edited_time' in page ? page.last_edited_time : undefined,
@@ -1721,7 +1721,7 @@ async function executeNotionListDatabases(): Promise<{ success: boolean; result:
       return {
         id: db.id,
         name: titleProp,
-        url: notionUrl(db.id),
+        url: db.url || '',
       };
     });
 
@@ -1850,7 +1850,7 @@ async function executeNotionQueryDatabase(
       return {
         id: page.id,
         title,
-        url: notionUrl(page.id),
+        url: (page as { url?: string }).url || '',
         ...summary,
       };
     });
@@ -1938,7 +1938,7 @@ async function executeDevPipelineCreate(
       };
     }
 
-    const url = (response as { url?: string }).url || `https://notion.so/${response.id.replace(/-/g, '')}`;
+    const url = (response as { url?: string }).url || '';
 
     return {
       success: true,
@@ -2009,7 +2009,7 @@ async function executeDevPipelineList(
           handler: getSelect(props, 'Handler'),
           requestor: getSelect(props, 'Requestor'),
           resolution: getRichText(props, 'Resolution'), // What was delivered (commits, deliverables)
-          url: (page as { url?: string }).url || `https://notion.so/${page.id.replace(/-/g, '')}`,
+          url: (page as { url?: string }).url || '',
         };
       }
       return null;
@@ -2070,7 +2070,7 @@ async function executeGetChangelog(
           type: getSelect(props, 'Type'),
           status: getSelect(props, 'Status'),
           resolution: getRichText(props, 'Resolution'), // Commits and deliverables
-          url: (page as { url?: string }).url || `https://notion.so/${page.id.replace(/-/g, '')}`,
+          url: (page as { url?: string }).url || '',
         };
       }
       return null;

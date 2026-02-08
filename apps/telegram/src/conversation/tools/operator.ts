@@ -436,7 +436,7 @@ async function createBugEntry(context: BugContext): Promise<string | null> {
     });
 
     // Use URL from Notion API response (includes workspace context)
-    const url = (response as { url?: string }).url || `https://notion.so/${response.id.replace(/-/g, '')}`;
+    const url = (response as { url?: string }).url || '';
 
     logger.info('Bug entry created in Work Queue', { script: context.script, url });
     return url;

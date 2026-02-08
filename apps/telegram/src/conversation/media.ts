@@ -127,7 +127,7 @@ async function logMediaToFeed(
     });
 
     // Get URL from response
-    const url = (response as { url?: string }).url || `https://notion.so/${response.id.replace(/-/g, '')}`;
+    const url = (response as { url?: string }).url || '';
 
     logger.info('Media logged to Feed 2.0', { title, pillar: safePillar, url });
     return url;

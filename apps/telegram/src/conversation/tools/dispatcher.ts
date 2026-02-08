@@ -399,7 +399,7 @@ ${description}`;
       children: children as any,
     });
 
-    const url = (response as { url?: string }).url || `https://notion.so/${response.id.replace(/-/g, '')}`;
+    const url = (response as { url?: string }).url || '';
 
     return {
       success: true,

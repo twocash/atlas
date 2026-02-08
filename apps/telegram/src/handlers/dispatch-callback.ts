@@ -286,7 +286,7 @@ async function routeToPitCrew(
       ],
     });
 
-    const url = (response as { url?: string }).url || `https://notion.so/${response.id.replace(/-/g, '')}`;
+    const url = (response as { url?: string }).url || '';
     return { success: true, url };
   } catch (err) {
     const errorMessage = err instanceof Error ? err.message : String(err);

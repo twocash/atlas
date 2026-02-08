@@ -126,7 +126,7 @@ export async function queryFeed(
       status: extractSelect(page, "Status"),
       priority: undefined,
       createdAt: page.created_time ? new Date(page.created_time) : undefined,
-      url: getNotionPageUrl(page.id),
+      url: page.url || '',
     }));
 
     return {
@@ -202,7 +202,7 @@ export async function queryWorkQueue(
       status: extractSelect(page, "Status"),
       priority: extractSelect(page, "Priority") as Priority | undefined,
       createdAt: extractDate(page, "Queued"),
-      url: getNotionPageUrl(page.id),
+      url: page.url || '',
     }));
 
     return {
@@ -319,7 +319,7 @@ export async function searchNotion(query: string): Promise<NotionSearchResult[]>
         id: page.id,
         title,
         type,
-        url: getNotionPageUrl(page.id),
+        url: page.url || '',
       });
     }
 
@@ -448,13 +448,8 @@ export async function updateNotionPage(
 // Connection & Utilities
 // ==========================================
 
-/**
- * Get Notion page URL from page ID
- */
-export function getNotionPageUrl(pageId: string): string {
-  const cleanId = pageId.replace(/-/g, "");
-  return `https://notion.so/${cleanId}`;
-}
+// getNotionPageUrl() DELETED — was fabricating broken URLs without workspace context.
+// Use the `url` field from Notion API responses instead.
 
 /**
  * Test Notion connection - tests Feed 2.0 access
@@ -689,7 +684,7 @@ function parseActionFeedEntry(page: any): ActionFeedEntry {
 
   return {
     id: page.id,
-    url: page.url || getNotionPageUrl(page.id),
+    url: page.url || '',
     createdAt: page.created_time,
     title: extractTitle(page, 'Entry'),
     source: props['Source']?.select?.name || 'Unknown',

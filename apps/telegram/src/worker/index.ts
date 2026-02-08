@@ -131,7 +131,7 @@ async function findNextTask(): Promise<WorkQueueTask | null> {
       type: getSelect(props, 'Type') || 'Research',
       priority: getSelect(props, 'Priority') || 'P2',
       pillar: getSelect(props, 'Pillar') || 'The Grove',
-      url: page.url || `https://notion.so/${page.id.replace(/-/g, '')}`,
+      url: page.url || '',
     };
   } catch (error) {
     logger.error('[Worker] Failed to find tasks', { error });

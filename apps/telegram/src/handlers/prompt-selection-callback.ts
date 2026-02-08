@@ -691,7 +691,7 @@ async function executePromptComposition(
                 maxTokens: result.maxTokens,
                 metadata: result.metadata,
               },
-              v3Requested: true, // Interactive flow = V3 capture
+              v3Requested: !!result.prompt, // Only true when composition actually produced a prompt
             },
           });
 

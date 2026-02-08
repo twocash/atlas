@@ -292,7 +292,7 @@ async function executeDispatchDraft(
     });
 
     // Use the actual URL from Notion API (includes workspace context)
-    const url = (response as { url?: string }).url || `https://notion.so/${response.id.replace(/-/g, '')}`;
+    const url = (response as { url?: string }).url || '';
 
     return {
       success: true,

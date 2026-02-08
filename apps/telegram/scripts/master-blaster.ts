@@ -522,9 +522,15 @@ async function runRegressionTests(cwd: string): Promise<SuiteResult> {
   console.log('\n[REGRESS] Running Bug Regression Tests...');
   console.log('─'.repeat(50));
 
+  // Run all regression test files
+  const regressionFiles = [
+    'test/live-bugs-feb8.test.ts',
+    'test/v3-strict-url-fabrication.test.ts',
+  ];
+
   const result = await runCommand(
     BUN_PATH,
-    ['test', 'test/live-bugs-feb8.test.ts'],
+    ['test', ...regressionFiles],
     cwd,
     60000
   );

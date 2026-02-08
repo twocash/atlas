@@ -110,7 +110,7 @@ async function testCreateAndDelete(
     });
 
     const pageId = page.id;
-    const pageUrl = `https://notion.so/${pageId.replace(/-/g, "")}`;
+    const pageUrl = (page as { url?: string }).url || pageId;
 
     // Archive (delete) the test item
     await notion.pages.update({
@@ -242,8 +242,8 @@ async function main() {
     console.log("3. Add your integration");
     console.log("");
     console.log("Database URLs:");
-    console.log(`  Feed 2.0: https://notion.so/${FEED_DATABASE_ID.replace(/-/g, "")}`);
-    console.log(`  WQ 2.0:   https://notion.so/${WORK_QUEUE_DATABASE_ID.replace(/-/g, "")}`);
+    console.log(`  Feed 2.0 ID: ${FEED_DATABASE_ID}`);
+    console.log(`  WQ 2.0 ID:   ${WORK_QUEUE_DATABASE_ID}`);
     process.exit(1);
   } else {
     console.log("✅ ALL TESTS PASSED");

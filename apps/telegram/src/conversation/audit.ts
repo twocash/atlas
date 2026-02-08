@@ -229,7 +229,8 @@ async function createFeedEntry(entry: AuditEntry): Promise<{ id: string; url: st
     });
 
     // Use the actual URL from Notion API (includes workspace context)
-    const url = (response as { url?: string }).url || `https://notion.so/${response.id.replace(/-/g, '')}`;
+    const url = (response as { url?: string }).url || '';
+    if (!url) logger.warn('Notion response missing url field', { id: response.id });
     logger.debug('Feed entry created', { id: response.id, url });
 
     // Try to add optional fields (non-fatal if properties don't exist yet)
@@ -603,7 +604,8 @@ async function createWorkQueueEntry(
     });
 
     // Use the actual URL from Notion API (includes workspace context)
-    const url = (response as { url?: string }).url || `https://notion.so/${response.id.replace(/-/g, '')}`;
+    const url = (response as { url?: string }).url || '';
+    if (!url) logger.warn('Notion response missing url field', { id: response.id });
     logger.debug('Work Queue entry created', { id: response.id, feedId, url });
 
     // Append analysis content to Work Queue page body if provided
@@ -869,18 +871,8 @@ export async function logReclassification(
   }
 }
 
-/**
- * Generate a clickable Notion URL from a page ID
- *
- * WARNING: This constructs a bare URL without workspace context.
- * These URLs may not work correctly. Prefer using the `url` field
- * returned directly from Notion API responses when available.
- *
- * @deprecated Use the `url` field from Notion API responses instead
- */
-export function notionUrl(pageId: string): string {
-  return `https://notion.so/${pageId.replace(/-/g, '')}`;
-}
+// notionUrl() DELETED — was fabricating broken URLs without workspace context.
+// Use the `url` field from Notion API responses instead.
 
 /**
  * Activity action types for WQ mutations
@@ -962,7 +954,7 @@ export async function logWQActivity(opts: WQActivityOptions): Promise<WQActivity
       },
     });
 
-    const feedUrl = notionUrl(response.id);
+    const feedUrl = (response as { url?: string }).url || '';
     logger.info('WQ activity logged to Feed', {
       action: opts.action,
       wqItemId: opts.wqItemId,
