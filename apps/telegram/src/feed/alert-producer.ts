@@ -58,23 +58,34 @@ function dedupKey(component: string, message: string): string {
 
 /**
  * Determine zone for a health check failure.
- * Maps health component categories to permission zones:
- * - data/voice/config issues → Zone 1 (auto-execute, self-improvement)
- * - notion/claude connectivity → Zone 2 (auto-notify, self-improvement)
- * - env/critical → Zone 3 (approve, alert card only)
+ * Maps health component categories to permission zones.
+ *
+ * CONSERVATIVE POLICY: Only file-system issues that the swarm can
+ * actually fix get self-improvement tagging. API auth, connectivity,
+ * and env var issues are ALWAYS Zone 3 (human-only) — the swarm
+ * cannot fix a bad API key or a billing problem.
+ *
+ * - Zone 1: Missing data files/directories (auto-create)
+ * - Zone 2: Missing voice configs (warn-level, optional files)
+ * - Zone 3: Everything else — env vars, API auth, connectivity,
+ *           database access, schema issues (human-only)
  */
 function classifyHealthZone(check: HealthCheckResult): 1 | 2 | 3 {
   const category = check.name.split(':')[0];
 
   switch (category) {
     case 'data':
+      // Only warn-level data issues are auto-fixable (missing dirs, optional files).
+      // Fail-level data issues (SOUL.md missing) need human attention.
+      return check.status === 'warn' ? 1 : 3;
     case 'voice':
-      return 1;
+      // Voice configs are optional — missing ones are warn-level, auto-fixable
+      return check.status === 'warn' ? 2 : 3;
     case 'notion':
     case 'claude':
-      return 2;
     case 'env':
     default:
+      // API auth, connectivity, env vars — human-only, always
       return 3;
   }
 }
