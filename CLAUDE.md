@@ -316,8 +316,42 @@ Key rules:
 - **SOP-001:** Every new command MUST update `/help` system
 - **SOP-002:** Command naming conventions (lowercase, spaces for subcommands)
 - **SOP-003:** Feature shipping checklist
+- **SOP-012:** All bugs MUST be logged to Dev Pipeline via Pit Crew dispatch
 
 Help command source: `apps/telegram/src/commands/help.ts`
+
+---
+
+## Operational Model: Worktrees
+
+**Production bot always runs from the primary worktree** (`C:\github\atlas`) on `master` in a stable, committed state. It is never stopped for development work.
+
+**Repairs and enhancements happen in a separate git worktree.** This ensures:
+- Production bot is never disrupted by in-progress code changes
+- Fixes can be developed, tested, and committed independently
+- Merging to master + restarting the bot is an explicit, deliberate action
+
+### Workflow
+
+```
+C:\github\atlas\              ← PRIMARY worktree (production bot runs here)
+  └── master branch, stable commits only
+
+C:\github\atlas-repairs\      ← REPAIR worktree (development happens here)
+  └── feature/fix branches, work-in-progress
+```
+
+1. **Develop** in the repair worktree on a feature branch
+2. **Test** changes (MASTER BLASTER, spike tests)
+3. **Merge** to master when ready
+4. **Restart** production bot from primary worktree with new changes
+
+### Rules
+
+- **NEVER** edit source files in the primary worktree while the bot is running
+- **NEVER** stop the production bot just to develop a fix
+- **ALWAYS** commit to master before restarting the bot
+- The only files that change in the primary worktree at runtime are: `data/.atlas.lock`, `data/triage-patterns.json`, logs
 
 ---
 

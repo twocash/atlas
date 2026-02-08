@@ -1036,4 +1036,121 @@ Body content MUST include:
 
 ---
 
+## SOP-012: Bug Logging Protocol (Dev Pipeline)
+
+**Effective:** 2026-02-08
+**Scope:** All bugs, defects, and code quality issues discovered during development, monitoring, or code review
+
+### Overview
+
+Every bug discovered in the Atlas codebase MUST be logged to the **Dev Pipeline 2.0** Notion database via Pit Crew dispatch. No bug should exist only in a conversation, memory, or TODO comment — the Dev Pipeline is the single source of truth for all known defects.
+
+### Rule: All Bugs Go to Dev Pipeline
+
+**Every bug MUST be dispatched to the Dev Pipeline via `mcp__pit_crew__dispatch_work`, regardless of severity.**
+
+This includes:
+- Production errors caught in bot monitoring
+- Code quality issues found during review
+- Silent failures or misleading behavior
+- Memory leaks, race conditions, error handling gaps
+- Stale code, dead code paths, configuration drift
+- Log quality issues that impede debugging
+
+### Bug Discovery Sources
+
+| Source | When It Happens | Who Dispatches |
+|--------|-----------------|----------------|
+| **Production monitoring** | Watching live bot logs | Atlas (monitoring session) |
+| **Code review** | Strategic codebase scans | Atlas (review session) |
+| **Test failures** | MASTER BLASTER failures | Atlas (auto or manual) |
+| **User reports** | Jim reports via Telegram | Atlas (triage session) |
+| **Self-improvement listener** | Autonomous detection | Atlas (auto-dispatch) |
+
+### Grouping Rules
+
+**Consolidate bugs by functional area when they share:**
+- Same file or module
+- Same root cause
+- Same fix approach
+- Logical dependency (fixing one requires fixing the other)
+
+**Keep bugs separate when:**
+- Different root causes even if same file
+- Different fix complexity (don't bury a trivial fix in a medium ticket)
+- Different priority levels
+
+### Required Fields for Bug Dispatches
+
+| Field | Value | Notes |
+|-------|-------|-------|
+| **title** | `[Area] Brief description` | e.g. "Memory leaks in context manager and content flow" |
+| **priority** | P0-P3 | P0=today, P1=this week, P2=this month, P3=backlog |
+| **body** | Full SOP-008 breadcrumbs | See template below |
+
+### Bug Dispatch Body Template
+
+```markdown
+## Bug Report
+
+### Problem
+[Clear description of the bug(s)]
+
+### Impact
+- **Severity:** [Critical/High/Medium/Low]
+- **Blast radius:** [What's affected]
+- **User impact:** [How Jim is affected]
+
+### Root Cause
+[Technical analysis of why this happens]
+
+### Bugs in This Ticket
+| # | Bug | File:Line | Effort | Impact |
+|---|-----|-----------|--------|--------|
+| 1 | Description | path:line | Trivial/Small/Med | High/Med/Low |
+
+### Suggested Fix
+[Specific code changes or approach]
+
+### Evidence
+[Log output, stack traces, or code snippets that prove the bug]
+
+### Test Plan
+- [ ] How to verify the fix works
+- [ ] Regression prevention
+
+## 🎯 User Value
+[Why fixing this matters to Jim]
+
+## 🏛️ Architecture Fit
+[How the fix integrates with existing patterns]
+```
+
+### Priority Guidelines
+
+| Priority | Criteria | SLA |
+|----------|----------|-----|
+| **P0** | Data loss, security, production down | Fix today |
+| **P1** | User-facing bugs, safety limits | Fix this week |
+| **P2** | Code quality, memory leaks, log noise | Fix this month |
+| **P3** | Tech debt, dead code, cosmetic | Backlog |
+
+### Anti-Patterns
+
+❌ **Don't** leave bugs only in conversation context — they'll be lost
+❌ **Don't** put bugs in TODO comments without a Dev Pipeline ticket
+❌ **Don't** log the same bug twice — search Dev Pipeline first
+❌ **Don't** skip the body template for "trivial" bugs — document everything
+❌ **Don't** mix P0 and P3 bugs in the same ticket
+
+### Cross-References
+
+- **SOP-005:** Pit Crew dispatch protocol (how to use dispatch_work)
+- **SOP-007:** Page body communication standard (body formatting)
+- **SOP-008:** Breadcrumbs protocol (required sections)
+- **SOP-009:** Quality Gate (MASTER BLASTER catches bugs automatically)
+- **Dev Pipeline DB:** `ce6fbf1b-ee30-433d-a9e6-b338552de7c9`
+
+---
+
 *SOPs are living documents. Update as patterns emerge.*
