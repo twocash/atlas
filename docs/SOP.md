@@ -760,6 +760,16 @@ bun run verify:pipeline --with-notion --standard
 
 **NOT included in default verify** (costs API tokens).
 
+### Test Authoring Rules
+
+**Environment:** All tests run via `bun run verify` which loads `.env` from `apps/telegram/.env` and sets `ENABLE_FALLBACKS=false`. Production env vars (API keys, database IDs) are required for integration and smoke suites.
+
+**CWD Contract:** `bun test` runs from `apps/telegram/`. Tests that reference filesystem paths MUST use `process.cwd()` or CWD-relative paths, NOT `__dirname`. Reason: bun bundles test files and `__dirname` resolves to the bundle location, not the source file.
+
+**Vitest Contamination:** Some legacy tests import `vitest` (which is not installed). When `bun test` runs all files together, `vi.mock()` calls contaminate the Node `fs` module for other test files in the same process. New tests MUST use `Bun.file()` API instead of `fs.readFileSync()` to avoid this. See `architecture.test.ts` for the pattern.
+
+**Fallbacks:** Master Blaster runs with `ENABLE_FALLBACKS=false` by default. This is the correct mode. Do NOT test with fallbacks enabled unless explicitly debugging a fallback path.
+
 ### On Test Failure
 
 1. **Fix the failing test** OR

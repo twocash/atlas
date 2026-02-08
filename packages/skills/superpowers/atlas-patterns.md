@@ -150,6 +150,69 @@ All content routes to one of four life domains:
 
 ---
 
+## 8. Content Pipeline Architecture
+
+**The content pipeline is the critical path for spark capture. Do NOT modify it without understanding the full call chain.**
+
+### Call Chain (URL Share)
+
+```
+handler.ts → maybeHandleAsContentShare()        [content-flow.ts]
+  → detectContentShare()                        [content-flow.ts]
+  → isNotionUrl() → handleNotionUrl()           [notion-url.ts] (if Notion URL)
+  → triggerContentConfirmation()                [content-flow.ts]
+    → triageMessage()                           [cognitive/triage-skill.ts] (Haiku triage)
+    → startPromptSelection()                    [handlers/prompt-selection-callback.ts]
+      → createSelection()                       [conversation/prompt-selection.ts]
+      → buildPillarKeyboard()                   [handlers/prompt-selection-callback.ts]
+        → User taps: Pillar → Action → Voice
+      → composePromptFromState()                [packages/agents/.../composer.ts]
+        → resolveDrafterId()                    [packages/agents/.../composer.ts]
+        → getPromptManager().composePrompts()   [packages/agents/.../prompt-manager.ts]
+      → createFeedItem() + createWorkItem()     [notion.ts]
+```
+
+### Call Chain (Media Share)
+
+```
+handler.ts → triggerInstantClassification()     [content-flow.ts]
+  → startPromptSelection(content, 'text')       [handlers/prompt-selection-callback.ts]
+    → (same Pillar → Action → Voice flow)
+
+handler.ts → triggerMediaConfirmation()         [content-flow.ts]
+  → (Gemini analysis result included)
+  → startPromptSelection(content, 'text')       [handlers/prompt-selection-callback.ts]
+    → (same Pillar → Action → Voice flow)
+```
+
+### Prompt Composition (Shared Package)
+
+The composition engine lives in `packages/agents/src/services/prompt-composition/`:
+- `types.ts` — Pillar, ActionType, CompositionContext, PromptCompositionResult
+- `registry.ts` — PILLAR_SLUGS, PILLAR_ACTIONS, PILLAR_VOICES (source of truth for UI options)
+- `composer.ts` — resolveDrafterId(), composePrompt(), fallback chain
+
+**Drafter ID pattern:** `drafter.{pillar-slug}.{action}` (e.g., `drafter.the-grove.research`)
+**Voice ID pattern:** `voice.{voice-id}` (e.g., `voice.grove-analytical`)
+**Fallback chain:** pillar-specific → `drafter.default.{action}` → hardcoded fallback
+
+### Forbidden Patterns
+
+1. **NEVER put prompt text directly in handler.ts.** Prompts live in Notion System Prompts DB and are fetched via PromptManager. handler.ts orchestrates, it does not compose.
+2. **NEVER bypass the composition engine.** All prompt assembly goes through `composePrompt()` or `composePromptFromState()` in `packages/agents/src/services/prompt-composition/composer.ts`.
+3. **NEVER hardcode pillar-to-action mappings** outside `registry.ts`. The registry is the single source of truth.
+4. **NEVER add inline classification logic** to handler.ts. Classification flows through `triage-skill.ts` (Haiku) or `classifier.ts` (heuristic fallback).
+5. **NEVER modify the Pillar → Action → Voice selection flow** without updating both `prompt-selection-callback.ts` AND `registry.ts`.
+
+### Key Invariants
+
+- `handler.ts` imports `maybeHandleAsContentShare` from `content-flow.ts` (never inline)
+- `content-flow.ts` imports `triageMessage` from `cognitive/triage-skill.ts` (never inline)
+- `prompt-selection-callback.ts` imports composition types from `packages/agents/src` (shared package)
+- All four pillars must be represented in `PILLAR_OPTIONS`, `PILLAR_SLUGS`, `PILLAR_ACTIONS`, and `PILLAR_VOICES`
+
+---
+
 ## Forbidden Actions
 
 These require explicit approval from Jim:

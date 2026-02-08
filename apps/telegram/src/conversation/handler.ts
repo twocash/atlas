@@ -3,6 +3,29 @@
  *
  * Main entry point for the conversational UX. Claude is the front door.
  * Every message goes through Claude, which decides what to do.
+ *
+ * ═══════════════════════════════════════════════════════════════════
+ * CONTENT PIPELINE GUARDRAIL — READ BEFORE EDITING
+ * ═══════════════════════════════════════════════════════════════════
+ *
+ * This file ORCHESTRATES the content pipeline. It does NOT contain:
+ * - Prompt text (lives in Notion System Prompts DB, fetched via PromptManager)
+ * - Classification logic (lives in cognitive/triage-skill.ts and classifier.ts)
+ * - Composition logic (lives in packages/agents/src/services/prompt-composition/)
+ * - Pillar/Action/Voice config (lives in prompt-composition/registry.ts)
+ *
+ * The content flow call chain:
+ *   handler.ts → content-flow.ts → triage-skill.ts → prompt-selection-callback.ts
+ *     → prompt-composition/composer.ts → PromptManager → Notion System Prompts DB
+ *
+ * FORBIDDEN in this file:
+ * - Inline prompt text or system prompt fragments
+ * - Hardcoded pillar routing rules (use triage-skill.ts or classifier.ts)
+ * - Direct Anthropic API calls for classification (use the composition engine)
+ *
+ * See: packages/skills/superpowers/atlas-patterns.md Section 8
+ * See: apps/telegram/src/conversation/ARCHITECTURE.md
+ * ═══════════════════════════════════════════════════════════════════
  */
 
 import type { Context } from 'grammy';
