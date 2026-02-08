@@ -12,6 +12,7 @@
  * Sprint: Pit Stop (Autonomous Skill Repair)
  */
 
+import { posix } from 'path';
 import { logger } from '../logger';
 
 // ==========================================
@@ -152,10 +153,19 @@ const ZONE_2_DIRECTORIES = [
 // ==========================================
 
 /**
+ * Normalize a file path: forward slashes + resolve '..' traversal segments.
+ * Prevents path traversal attacks where 'data/skills/../../src/bot.ts'
+ * would falsely pass a startsWith('data/skills/') check.
+ */
+function normalizeFilePath(filePath: string): string {
+  return posix.normalize(filePath.replace(/\\/g, '/'));
+}
+
+/**
  * Check if a file path matches any pattern in the list
  */
 function matchesPattern(filePath: string, patterns: string[]): boolean {
-  const normalizedPath = filePath.replace(/\\/g, '/').toLowerCase();
+  const normalizedPath = normalizeFilePath(filePath).toLowerCase();
   return patterns.some(pattern => {
     const normalizedPattern = pattern.toLowerCase();
     return normalizedPath.includes(normalizedPattern);
@@ -171,7 +181,13 @@ function allFilesInDirectories(files: string[], directories: string[]): boolean 
     return false; // Empty file list cannot be verified as safe
   }
   return files.every(file => {
-    const normalizedFile = file.replace(/\\/g, '/').toLowerCase();
+    const normalizedFile = normalizeFilePath(file).toLowerCase();
+    if (normalizedFile.includes('..')) {
+      // After normalization, '..' should be resolved — if still present,
+      // the path escapes the root entirely (e.g., '../../etc/passwd')
+      logger.warn('Path traversal detected after normalization', { file, normalizedFile });
+      return false;
+    }
     return directories.some(dir => normalizedFile.startsWith(dir.toLowerCase()));
   });
 }

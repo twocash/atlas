@@ -365,6 +365,91 @@ describe('Zone Classifier', () => {
   });
 
   // ==========================================
+  // Path Traversal Security Tests
+  // ==========================================
+
+  describe('Path Traversal Prevention', () => {
+    it('data/skills/../../src/notion.ts → approve (traversal escapes safe dir)', () => {
+      const op = createOperation({
+        type: 'skill-edit',
+        tier: 0,
+        targetFiles: ['data/skills/../../src/notion.ts'],
+        description: 'Attempted traversal to src/',
+      });
+
+      const result = classifyZone(op);
+      expect(result.zone).toBe('approve');
+    });
+
+    it('data/skills/../../src/bot.ts → approve (core file via traversal)', () => {
+      const op = createOperation({
+        type: 'code-fix',
+        tier: 0,
+        targetFiles: ['data/skills/../../src/bot.ts'],
+        description: 'Attempted traversal to core file',
+      });
+
+      const result = classifyZone(op);
+      expect(result.zone).toBe('approve');
+      expect(result.ruleApplied).toBe('RULE_1_CORE');
+    });
+
+    it('data/skills/../../../.env → approve (auth file via traversal)', () => {
+      const op = createOperation({
+        type: 'config-change',
+        tier: 0,
+        targetFiles: ['data/skills/../../../.env'],
+        description: 'Attempted traversal to .env',
+      });
+
+      const result = classifyZone(op);
+      expect(result.zone).toBe('approve');
+      expect(result.ruleApplied).toBe('RULE_1_AUTH');
+    });
+
+    it('data/skills/./legitimate-skill/SKILL.md → auto-execute (benign dot segment)', () => {
+      const op = createOperation({
+        type: 'skill-create',
+        tier: 0,
+        targetFiles: ['data/skills/./legitimate-skill/SKILL.md'],
+        description: 'Benign single dot in path',
+      });
+
+      const result = classifyZone(op);
+      expect(result.zone).toBe('auto-execute');
+      expect(result.ruleApplied).toBe('RULE_5_TIER0_SKILL');
+    });
+
+    it('data/skills/foo/../bar/SKILL.md → auto-execute (traversal stays within safe dir)', () => {
+      const op = createOperation({
+        type: 'skill-create',
+        tier: 0,
+        targetFiles: ['data/skills/foo/../bar/SKILL.md'],
+        description: 'Traversal that stays within data/skills/',
+      });
+
+      const result = classifyZone(op);
+      expect(result.zone).toBe('auto-execute');
+      expect(result.ruleApplied).toBe('RULE_5_TIER0_SKILL');
+    });
+
+    it('mixed: one clean + one traversal → approve', () => {
+      const op = createOperation({
+        type: 'skill-edit',
+        tier: 0,
+        targetFiles: [
+          'data/skills/good-skill/SKILL.md',
+          'data/skills/../../src/notion.ts',
+        ],
+        description: 'Mixed clean and traversal paths',
+      });
+
+      const result = classifyZone(op);
+      expect(result.zone).toBe('approve');
+    });
+  });
+
+  // ==========================================
   // Helper Function Tests
   // ==========================================
 
