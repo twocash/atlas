@@ -44,6 +44,7 @@ import { hasPendingSelectionForUser, getSelectionByUserId, updateSelection } fro
 import type { ClassificationResult } from './types';
 import { logAction, isFeatureEnabled } from '../skills';
 import { getFeatureFlags } from '../config/features';
+import { triageMessage, type TriageResult } from '../cognitive/triage-skill';
 import {
   generateDispatchChoiceId,
   storePendingDispatch,
@@ -676,12 +677,43 @@ export async function handleConversation(ctx: Context): Promise<void> {
       ? `${responseText}\n\n${formatToolContextForHistory(toolContexts)}`
       : responseText;
 
-    // Classify the message for audit
-    const classification = await classifyMessage(messageText);
+    // Classify the message for audit — use triage system when enabled
+    const flags = getFeatureFlags();
+    let triageResult: TriageResult | null = null;
+    let classification: ClassificationResult;
+
+    if (flags.triageSkill) {
+      try {
+        triageResult = await triageMessage(messageText);
+        // Convert TriageResult → ClassificationResult for downstream compat
+        classification = {
+          pillar: triageResult.pillar,
+          requestType: triageResult.requestType,
+          confidence: triageResult.confidence,
+          workType: triageResult.requestType.toLowerCase(),
+          keywords: triageResult.keywords,
+          reasoning: triageResult.titleRationale || `Triage: ${triageResult.intent} (${triageResult.source})`,
+        };
+        logger.debug('[Handler] Triage classification used', {
+          title: triageResult.title,
+          pillar: triageResult.pillar,
+          source: triageResult.source,
+          confidence: triageResult.confidence,
+        });
+      } catch (error) {
+        logger.warn('[Handler] Triage failed, falling back to classifyMessage', { error });
+        classification = await classifyMessage(messageText);
+      }
+    } else {
+      classification = await classifyMessage(messageText);
+    }
+
+    // Smart title: use triage-generated title if available, else truncated input
+    const smartTitle = triageResult?.title || messageText.substring(0, 100) || 'Message';
 
     // Create audit trail (Feed + Work Queue)
     const auditEntry: AuditEntry = {
-      entry: messageText.substring(0, 100) || 'Message',
+      entry: smartTitle,
       pillar: classification.pillar,
       requestType: classification.requestType,
       source: 'Telegram',
