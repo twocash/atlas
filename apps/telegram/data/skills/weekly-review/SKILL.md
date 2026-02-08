@@ -1,10 +1,13 @@
 ---
 name: weekly-review
-description: Structured weekly review of all pillars and work queue
 version: 1.0.0
 tier: 2
-trigger: weekly review, week recap, what happened this week, end of week
-created: 2026-01-29T00:00:00.000Z
+description: Structured weekly review of all pillars and work queue
+triggers:
+  - weekly review
+  - week recap
+  - what happened this week
+  - end of week
 ---
 
 # weekly-review

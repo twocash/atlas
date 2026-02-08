@@ -113,7 +113,66 @@
       "examples": [
         "https://www.threads.com/@aiagents101/post/DUergIWjFjU?xmt=AQF0Dab6dUZpdQ6QbfSo4t7VakNEA0_BtRXjC7Iqyax94VHv1J4gi8TCBicAOE7_sX8tvQw&slof=1"
       ]
+    },
+    "url:www.threads.com/@sakeeb.rahman/post/duei55hkrac": {
+      "patternKey": "url:www.threads.com/@sakeeb.rahman/post/duei55hkrac",
+      "confirmedResult": {
+        "intent": "capture",
+        "pillar": "The Grove",
+        "requestType": "Research",
+        "keywords": [
+          "threads",
+          "social media",
+          "instagram"
+        ]
+      },
+      "confirmCount": 0,
+      "correctionCount": 1,
+      "lastSeen": "2026-02-08T12:47:41.873Z",
+      "examples": [
+        "https://www.threads.com/@sakeeb.rahman/post/DUei55hkRAC?xmt=AQF0aUKvhUsfkis13zG81TeIHU3-fMpzlLimgmV7vW1npSX9Ys_OReB9YR8n3Tyl3DjREzda&slof=1"
+      ]
+    },
+    "url:www.sciencedirect.com/science/article/pii/s294988212500091x": {
+      "patternKey": "url:www.sciencedirect.com/science/article/pii/s294988212500091x",
+      "confirmedResult": {
+        "intent": "capture",
+        "pillar": "The Grove",
+        "requestType": "Research",
+        "keywords": [
+          "quantum",
+          "sensing",
+          "technology",
+          "research",
+          "academic"
+        ]
+      },
+      "confirmCount": 1,
+      "correctionCount": 0,
+      "lastSeen": "2026-02-08T13:08:33.396Z",
+      "examples": [
+        "https://www.sciencedirect.com/science/article/pii/S294988212500091X"
+      ]
+    },
+    "url:www.threads.com/@omarsar0/post/dugdaw0exap": {
+      "patternKey": "url:www.threads.com/@omarsar0/post/dugdaw0exap",
+      "confirmedResult": {
+        "intent": "capture",
+        "pillar": "The Grove",
+        "requestType": "Research",
+        "keywords": [
+          "threads",
+          "machine learning",
+          "visual design"
+        ]
+      },
+      "confirmCount": 1,
+      "correctionCount": 0,
+      "lastSeen": "2026-02-08T16:19:58.892Z",
+      "examples": [
+        "https://www.threads.com/@omarsar0/post/DUgDaW0EXaP?xmt=AQF0RELDbXSpX-RBjGbD85m3JuIREr4SsaMtgE4G2jts3vEHHuy-PS4_yDaVGRsiHE-U59Ps&slof=1"
+      ]
     }
   },
-  "lastUpdated": "2026-02-08T07:02:17.866Z"
+  "lastUpdated": "2026-02-08T16:20:03.902Z"
 }
