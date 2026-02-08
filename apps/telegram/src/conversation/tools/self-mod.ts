@@ -117,6 +117,15 @@ export const SELF_MOD_TOOLS: Anthropic.Tool[] = [
     },
   },
   {
+    name: 'read_memory',
+    description: 'Read current MEMORY.md content. Use to recall persistent learnings, corrections, and patterns.',
+    input_schema: {
+      type: 'object' as const,
+      properties: {},
+      required: [],
+    },
+  },
+  {
     name: 'list_skills',
     description: 'REQUIRED when Jim asks "what skills", "what can you do", "your capabilities", or similar. Lists installed skills from data/skills/. Do NOT hallucinate skills - always call this tool first.',
     input_schema: {
@@ -159,6 +168,8 @@ export async function executeSelfModTools(
       return await executeCreateSkill(input);
     case 'read_soul':
       return await executeReadSoul();
+    case 'read_memory':
+      return await executeReadMemory();
     case 'list_skills':
       return await executeListSkills();
     case 'read_skill':
@@ -397,6 +408,24 @@ async function executeReadSoul(): Promise<{ success: boolean; result: unknown; e
     };
   } catch (error) {
     logger.error('Read soul failed', { error });
+    return { success: false, result: null, error: String(error) };
+  }
+}
+
+async function executeReadMemory(): Promise<{ success: boolean; result: unknown; error?: string }> {
+  const memoryPath = join(DATA_DIR, 'MEMORY.md');
+
+  try {
+    const content = await readFile(memoryPath, 'utf-8');
+    return {
+      success: true,
+      result: {
+        content,
+        path: 'data/MEMORY.md',
+      },
+    };
+  } catch (error) {
+    logger.error('Read memory failed', { error });
     return { success: false, result: null, error: String(error) };
   }
 }

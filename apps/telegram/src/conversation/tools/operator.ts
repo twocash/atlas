@@ -274,6 +274,20 @@ IMPORTANT: All scripts must include a header comment with @description and @risk
       required: ['action'],
     },
   },
+  {
+    name: 'get_skill_status',
+    description: 'Check health status of a specific installed skill. Validates frontmatter, file existence, and parser compatibility. Use to diagnose skill issues.',
+    input_schema: {
+      type: 'object' as const,
+      properties: {
+        name: {
+          type: 'string',
+          description: 'Skill name (directory name, e.g., "research-prompt-builder")',
+        },
+      },
+      required: ['name'],
+    },
+  },
 ];
 
 // ============================================================================
@@ -477,6 +491,8 @@ export async function executeOperatorTools(
       return await executeNotionHealthCheck();
     case 'update_self':
       return await executeUpdateSelf(input);
+    case 'get_skill_status':
+      return await executeGetSkillStatus(input);
     default:
       return null;
   }
@@ -1179,6 +1195,87 @@ async function executeUpdateSelf(
       success: false,
       result: null,
       error: `Self-update failed: ${err.message}`,
+    };
+  }
+}
+
+// ============================================================================
+// SKILL HEALTH CHECK
+// ============================================================================
+
+async function executeGetSkillStatus(
+  input: Record<string, unknown>
+): Promise<{ success: boolean; result: unknown; error?: string }> {
+  const name = input.name as string;
+  const skillDir = join(SKILLS_DIR, name);
+  const skillPath = join(skillDir, 'SKILL.md');
+
+  try {
+    await access(skillDir);
+  } catch {
+    return { success: false, result: null, error: `Skill directory not found: ${name}` };
+  }
+
+  try {
+    const content = await readFile(skillPath, 'utf-8');
+
+    // Parse frontmatter
+    const fmMatch = content.match(/^---\n([\s\S]*?)\n---/);
+    if (!fmMatch) {
+      return {
+        success: true,
+        result: {
+          name,
+          status: 'degraded',
+          issues: ['Missing YAML frontmatter (---...---)'],
+          path: `data/skills/${name}/SKILL.md`,
+        },
+      };
+    }
+
+    const frontmatter = fmMatch[1];
+    const issues: string[] = [];
+
+    const nameMatch = frontmatter.match(/name:\s*(.+)/);
+    const descMatch = frontmatter.match(/description:\s*(.+)/);
+    const triggerMatch = frontmatter.match(/trigger:\s*(.+)/);
+    const createdMatch = frontmatter.match(/created:\s*(.+)/);
+
+    if (!nameMatch) issues.push('Missing "name" field in frontmatter');
+    if (!descMatch) issues.push('Missing "description" field in frontmatter');
+    if (!triggerMatch) issues.push('Missing "trigger" field (singular string) in frontmatter');
+    if (!createdMatch) issues.push('Missing "created" timestamp in frontmatter');
+
+    // Check for common format issues
+    if (frontmatter.includes('triggers:')) {
+      issues.push('"triggers:" (plural array) found — parser expects "trigger:" (singular string)');
+    }
+
+    // List other files in skill directory
+    const files = await readdir(skillDir);
+
+    return {
+      success: true,
+      result: {
+        name: nameMatch?.[1]?.trim() || name,
+        description: descMatch?.[1]?.trim() || 'No description',
+        trigger: triggerMatch?.[1]?.trim() || '',
+        created: createdMatch?.[1]?.trim() || '',
+        status: issues.length === 0 ? 'healthy' : 'degraded',
+        issues,
+        files,
+        path: `data/skills/${name}/SKILL.md`,
+      },
+    };
+  } catch {
+    return {
+      success: true,
+      result: {
+        name,
+        status: 'missing',
+        issues: ['SKILL.md file not found in skill directory'],
+        path: `data/skills/${name}/SKILL.md`,
+      },
     };
   }
 }
