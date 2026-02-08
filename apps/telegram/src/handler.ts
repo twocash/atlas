@@ -21,6 +21,7 @@ import type {
   Decision,
   Pillar,
   Intent,
+  ActionDataTriage,
 } from "./types";
 import { extractFirstUrl, fetchUrlContent, getUrlDomain } from "./url";
 import { classifySpark } from "./classifier";
@@ -33,7 +34,7 @@ import {
   generatePillarChangeOptions,
   generateIntentChangeOptions
 } from "./clarify";
-import { createFeedItem, createWorkItem } from "./notion";
+import { createFeedItem, createWorkItem, createActionFeedEntry } from "./notion";
 import { logger } from "./logger";
 import { audit } from "./audit";
 
@@ -274,6 +275,21 @@ async function handleConfirm(
         pending.spark,
         pending.classification
       );
+    }
+
+    // Emit Triage card to Action Feed (non-blocking)
+    try {
+      const triageData: ActionDataTriage = {
+        platform: 'Telegram',
+        title: pending.classification.suggestedTitle,
+        creator: ctx.from?.username || `user:${userId}`,
+        url: pending.spark.url || '',
+        pillar: pending.classification.pillar,
+        wq_item_id: workPageId,
+      };
+      await createActionFeedEntry('Triage', triageData, 'Atlas [telegram]');
+    } catch (triageError) {
+      logger.error('Failed to create Triage card (non-blocking)', { error: triageError });
     }
 
     // Send confirmation
