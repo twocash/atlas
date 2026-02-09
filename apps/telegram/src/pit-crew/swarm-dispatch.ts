@@ -14,9 +14,11 @@
  */
 
 import { spawn } from 'child_process';
+import { readFile } from 'fs/promises';
 import { join } from 'path';
 import { logger } from '../logger';
 import { getFeatureFlags, getSafetyLimits } from '../config/features';
+import { SKILL_SCHEMA_PROMPT, validateSkillFrontmatter } from '../skills/frontmatter';
 import type { PitCrewOperation, PermissionZone } from '../skills/zone-classifier';
 
 // ==========================================
@@ -166,10 +168,12 @@ export function buildFixPrompt(task: SwarmTask, projectRoot?: string): string {
 ISSUE: ${task.context}
 FILES: ${filesStr}
 
+${SKILL_SCHEMA_PROMPT}
+
 Output format:
 1. Root cause (1-2 sentences)
 2. Files to change
-3. Exact changes needed (code snippets)
+3. Exact changes needed (code snippets matching the schema above)
 
 DO NOT make any edits. Just output the plan.`.trim();
   }
@@ -182,14 +186,17 @@ ISSUE: ${task.context}
 FILE TO FIX: ${filesStr}
 ${task.targetSkill ? `SKILL: ${task.targetSkill}` : ''}
 
+${SKILL_SCHEMA_PROMPT}
+
 INSTRUCTIONS:
-1. Read the file above
-2. Add the missing YAML frontmatter at the top
-3. Write the file
+1. Read the file listed above
+2. Fix the frontmatter to match the schema above exactly
+3. Write the corrected file
 4. Output "DONE: <what you fixed>"
 
 CONSTRAINTS:
 - Edit ONLY the file listed above
+- Frontmatter MUST pass the schema above (singular \`trigger:\`, all required fields, kebab-case name)
 - Do NOT read other files
 - Do NOT explore the codebase
 - Do NOT run tests or validation
@@ -373,10 +380,33 @@ async function executeWithClaudeCode(
       });
     });
 
-    proc.on('close', (code) => {
+    proc.on('close', async (code) => {
       if (code === 0) {
         // Parse output to extract results
         const result = parseClaudeCodeOutput(stdout);
+
+        // Post-execution validation: verify SKILL.md files match canonical schema
+        if (result.success) {
+          const skillFiles = task.operation.targetFiles.filter(f => f.endsWith('SKILL.md'));
+          for (const relPath of skillFiles) {
+            try {
+              const absPath = join(projectRoot, relPath);
+              const content = await readFile(absPath, 'utf-8');
+              const validation = validateSkillFrontmatter(content);
+              if (!validation.valid) {
+                logger.warn('Swarm output failed schema validation', {
+                  file: relPath,
+                  errors: validation.errors.slice(0, 3),
+                });
+                result.success = false;
+                result.error = `Schema validation failed for ${relPath}: ${validation.errors[0]}`;
+              }
+            } catch {
+              // File not readable — swarm may not have written it
+            }
+          }
+        }
+
         resolve(result);
       } else {
         resolve({
