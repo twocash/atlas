@@ -172,7 +172,65 @@
       "examples": [
         "https://www.threads.com/@omarsar0/post/DUgDaW0EXaP?xmt=AQF0RELDbXSpX-RBjGbD85m3JuIREr4SsaMtgE4G2jts3vEHHuy-PS4_yDaVGRsiHE-U59Ps&slof=1"
       ]
+    },
+    "url:www.linkedin.com/posts/johnbattelle_anthropic-joins-a-long-list-of-brands-that-activity-7426361367399456768-9dtl": {
+      "patternKey": "url:www.linkedin.com/posts/johnbattelle_anthropic-joins-a-long-list-of-brands-that-activity-7426361367399456768-9dtl",
+      "confirmedResult": {
+        "intent": "capture",
+        "pillar": "The Grove",
+        "requestType": "Research",
+        "keywords": [
+          "Anthropic",
+          "tech brands",
+          "LinkedIn",
+          "John Battelle"
+        ]
+      },
+      "confirmCount": 1,
+      "correctionCount": 0,
+      "lastSeen": "2026-02-08T23:33:21.272Z",
+      "examples": [
+        "https://www.linkedin.com/posts/johnbattelle_anthropic-joins-a-long-list-of-brands-that-activity-7426361367399456768-9DTl?utm_medium=ios_app&rcm=ACoAAAAAE0gBbPIL-oZLrw9FAhmnAWFPPbi2EG8&utm_source=social_share_send&utm_campaign=share_via"
+      ]
+    },
+    "url:www.threads.com/@ai.theshift/post/duhdrjbkcfj": {
+      "patternKey": "url:www.threads.com/@ai.theshift/post/duhdrjbkcfj",
+      "confirmedResult": {
+        "intent": "capture",
+        "pillar": "The Grove",
+        "requestType": "Research",
+        "keywords": [
+          "social media",
+          "AI",
+          "thread"
+        ]
+      },
+      "confirmCount": 1,
+      "correctionCount": 0,
+      "lastSeen": "2026-02-09T02:31:01.755Z",
+      "examples": [
+        "https://www.threads.com/@ai.theshift/post/DUhDrjBkcfJ?xmt=AQF0iRapAV-H6idkTIV7ocohq5LMIVNRSCK7oVO65C2vtNSgJArIA34bWT7r4xpfMEWnjdw&slof=1"
+      ]
+    },
+    "url:open.spotify.com/show/*sphrtz7cfnvomarka1j55": {
+      "patternKey": "url:open.spotify.com/show/*sphrtz7cfnvomarka1j55",
+      "confirmedResult": {
+        "intent": "capture",
+        "pillar": "Personal",
+        "requestType": "Research",
+        "keywords": [
+          "podcast",
+          "design",
+          "creativity"
+        ]
+      },
+      "confirmCount": 0,
+      "correctionCount": 1,
+      "lastSeen": "2026-02-09T02:44:29.510Z",
+      "examples": [
+        "https://open.spotify.com/show/6SPhRTZ7cfnVomARKa1J55?si=VVD3zWmZQnGHDnhpW3vaYQ"
+      ]
     }
   },
-  "lastUpdated": "2026-02-08T16:20:03.902Z"
+  "lastUpdated": "2026-02-09T02:44:34.516Z"
 }
