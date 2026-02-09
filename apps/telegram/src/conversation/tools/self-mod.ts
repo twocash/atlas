@@ -9,6 +9,7 @@ import { readFile, writeFile, mkdir } from 'fs/promises';
 import { join, dirname } from 'path';
 import { fileURLToPath } from 'url';
 import { logger } from '../../logger';
+import { parseSkillFrontmatter, validateSkillFrontmatter, generateFrontmatter } from '../../skills/frontmatter';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
@@ -355,12 +356,14 @@ async function executeCreateSkill(
   try {
     await mkdir(skillDir, { recursive: true });
 
-    const skillContent = `---
-name: ${name}
-description: ${description}
-trigger: ${trigger}
-created: ${new Date().toISOString()}
----
+    const frontmatter = generateFrontmatter({
+      name,
+      description,
+      trigger,
+      created: new Date().toISOString(),
+    });
+
+    const skillContent = `${frontmatter}
 
 # ${name}
 
@@ -374,6 +377,12 @@ ${trigger}
 
 ${instructions}
 `;
+
+    // Write-gate: validate before writing
+    const validation = validateSkillFrontmatter(skillContent);
+    if (!validation.valid) {
+      return { success: false, result: null, error: `Invalid frontmatter: ${validation.errors.join('; ')}` };
+    }
 
     await writeFile(skillPath, skillContent, 'utf-8');
 
@@ -450,18 +459,13 @@ async function executeListSkills(): Promise<{ success: boolean; result: unknown;
         try {
           const content = await readFile(skillPath, 'utf-8');
 
-          // Parse frontmatter (tolerate \r\n on Windows)
-          const match = content.match(/^---\r?\n([\s\S]*?)\r?\n---/);
-          if (match) {
-            const frontmatter = match[1];
-            const nameMatch = frontmatter.match(/name:\s*(.+)/);
-            const descMatch = frontmatter.match(/description:\s*(.+)/);
-            const triggerMatch = frontmatter.match(/trigger:\s*(.+)/);
-
+          // Use shared parser (handles Windows \r\n, normalizes drift)
+          const parsed = parseSkillFrontmatter(content);
+          if (parsed) {
             skills.push({
-              name: nameMatch?.[1]?.trim() || entry.name,
-              description: descMatch?.[1]?.trim() || 'No description',
-              trigger: triggerMatch?.[1]?.trim() || '',
+              name: parsed.name || entry.name,
+              description: parsed.description || 'No description',
+              trigger: parsed.trigger || '',
               path: `skills/${entry.name}/SKILL.md`,
             });
           }

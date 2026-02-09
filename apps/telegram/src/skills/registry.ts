@@ -21,6 +21,7 @@ import {
   createDefaultMetrics,
   SkillDefinitionSchema,
 } from './schema';
+import { parseSkillFrontmatter, extractSkillBody } from './frontmatter';
 import type { Pillar } from '../conversation/types';
 
 // =============================================================================
@@ -169,28 +170,26 @@ function parseYamlSkill(content: string, filePath: string): SkillDefinition | nu
  */
 function parseMarkdownSkill(content: string, filePath: string): SkillDefinition | null {
   try {
-    // Extract frontmatter
-    const frontmatterMatch = content.match(/^---\n([\s\S]*?)\n---/);
-    if (!frontmatterMatch) {
-      logger.warn('SKILL.md missing frontmatter', { filePath });
+    // Use shared parser (handles Windows \r\n, normalizes drift patterns)
+    const frontmatter = parseSkillFrontmatter(content);
+    if (!frontmatter) {
+      logger.warn('SKILL.md missing or malformed frontmatter', { filePath });
       return null;
     }
 
-    const frontmatter = parseYaml(frontmatterMatch[1]);
-    const body = content.slice(frontmatterMatch[0].length).trim();
+    const body = extractSkillBody(content);
 
-    // Extract name from frontmatter or directory
-    const name = frontmatter.name || basename(join(filePath, '..')); // Parent dir name
+    // Fall back to directory name if frontmatter name is empty
+    const name = frontmatter.name || basename(join(filePath, '..'));
 
     // Parse trigger from frontmatter
     const triggerText = frontmatter.trigger || '';
     const triggers: SkillTrigger[] = [];
 
     if (triggerText) {
-      // Convert markdown trigger to structured trigger
       triggers.push({
         type: 'pattern',
-        value: triggerText.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), // Escape for regex
+        value: triggerText.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'),
       });
     }
 
@@ -208,8 +207,6 @@ function parseMarkdownSkill(content: string, filePath: string): SkillDefinition 
       }
     }
 
-    // Create a basic process from markdown instructions
-    // Markdown skills are executed as "instructions" by Claude
     const process: SkillProcess = {
       type: 'agent_dispatch',
       steps: [{
@@ -221,13 +218,13 @@ function parseMarkdownSkill(content: string, filePath: string): SkillDefinition 
 
     const skill: SkillDefinition = {
       name,
-      version: '1.0.0',
+      version: frontmatter.version || '1.0.0',
       description,
       triggers: triggers.length > 0 ? triggers : [{ type: 'keyword', value: name }],
       inputs: {},
       outputs: [],
       process,
-      tier: 1, // Markdown skills are at least Tier 1 (Claude execution)
+      tier: 1,
       enabled: true,
       createdAt: frontmatter.created || new Date().toISOString(),
       updatedAt: new Date().toISOString(),
