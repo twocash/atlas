@@ -13,6 +13,7 @@ import Anthropic from '@anthropic-ai/sdk';
 import { readFile, writeFile } from 'fs/promises';
 import { existsSync } from 'fs';
 import { logger } from '../logger';
+import { SKILL_SCHEMA_PROMPT, validateSkillFrontmatter } from '../skills/frontmatter';
 import type { SwarmTask, SwarmResult } from './swarm-dispatch';
 
 // ==========================================
@@ -174,6 +175,25 @@ export async function executeWithAPI(task: SwarmTask): Promise<SwarmResult> {
       };
     }
 
+    // Write-gate: validate SKILL.md files before writing
+    if (targetFile.endsWith('SKILL.md')) {
+      const validation = validateSkillFrontmatter(fixedContent);
+      if (!validation.valid) {
+        logger.warn('[API Dispatch] Write-gate rejected SKILL.md', {
+          file: targetFile,
+          errors: validation.errors.slice(0, 3),
+        });
+        return {
+          success: false,
+          filesChanged: [],
+          testsPassed: false,
+          error: `Write-gate: ${validation.errors[0]}`,
+          plan: fixedContent.substring(0, 500),
+          durationMs: Date.now() - startTime,
+        };
+      }
+    }
+
     // Write the fixed content
     await writeFile(targetFile, fixedContent, 'utf-8');
     filesChanged.push(targetFile);
@@ -209,6 +229,7 @@ export async function executeWithAPI(task: SwarmTask): Promise<SwarmResult> {
  */
 function buildUserMessage(task: SwarmTask, fileContent: string, filePath: string): string {
   const filename = filePath.split(/[/\\]/).pop() || 'file';
+  const isSkillFile = filePath.endsWith('SKILL.md');
 
   return `Fix this file (${filename}):
 
@@ -218,7 +239,7 @@ ${fileContent}
 
 Issue to fix: ${task.context}
 ${task.targetSkill ? `Target skill: ${task.targetSkill}` : ''}
-
+${isSkillFile ? `\n${SKILL_SCHEMA_PROMPT}\n` : ''}
 Remember: Output ONLY the complete fixed file content, nothing else.`;
 }
 
