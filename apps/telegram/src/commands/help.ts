@@ -46,10 +46,12 @@ export function getHelpText(): string {
 /model &lt;name&gt;               — Switch model (auto/haiku/sonnet)
 
 <b>SESSION</b>
+/start                      — Welcome message (Telegram default)
 /new                        — Clear conversation session
 /status                     — Quick status check
 /health                     — Full system diagnostics
 /stats                      — Weekly usage &amp; work queue stats
+/rollback &lt;skill&gt;           — Roll back a skill deployment
 /help                       — This message
 
 <b>SKILLS</b>
@@ -60,7 +62,7 @@ export function getHelpText(): string {
 /stop                       — Emergency stop running skill
 
 <b>COMING SOON</b>
-/skill new                  — Create custom skill manually
+/skills new                 — Create custom skill manually
 /draft "topic"              — Generate content
 
 —

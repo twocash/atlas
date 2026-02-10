@@ -281,7 +281,7 @@ async function handleEdit(ctx: CallbackQueryContext<Context>, id: string): Promi
     `Skill editing is coming soon. For now:\n` +
     `1. Approve the skill\n` +
     `2. Edit the YAML file in data/skills/\n\n` +
-    `File: data/skills/${proposal.skill.name}/skill.yaml`,
+    `File: data/skills/${proposal.skill.name}/SKILL.md`,
     {
       parse_mode: 'HTML',
       reply_markup: buildProposalKeyboard(proposal),
