@@ -117,6 +117,8 @@ export {
 export {
   triageMessage,
   createCachedTriageResult,
+  classifyWithFallback,
+  triageForAudit,
   type TriageResult,
   type TriageCommand,
   type TriageOptions,

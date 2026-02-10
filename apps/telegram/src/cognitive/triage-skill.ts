@@ -13,7 +13,7 @@ import { z } from 'zod';
 import { TASK_MODEL_MAP } from './models';
 import { logger } from '../logger';
 import { getFeatureFlags } from '../config/features';
-import type { Pillar, RequestType } from '../conversation/types';
+import type { Pillar, RequestType, ClassificationResult } from '../conversation/types';
 import { PILLARS, REQUEST_TYPES } from '../conversation/types';
 
 // ==========================================
@@ -662,4 +662,73 @@ export function createCachedTriageResult(
     suggestedModel: 'pattern cache hit',
     source: 'pattern_cache',
   };
+}
+
+// ==========================================
+// Handler Adapters (Tech Debt Refactor)
+// ==========================================
+
+/**
+ * Classify a message with safe fallback — wraps triageMessage() for handler.ts consumption.
+ * Returns ClassificationResult (not TriageResult) for downstream compatibility.
+ */
+export async function classifyWithFallback(message: string): Promise<ClassificationResult> {
+  try {
+    const result = await triageMessage(message);
+    return {
+      pillar: result.pillar,
+      requestType: result.requestType,
+      confidence: result.confidence,
+      workType: result.requestType.toLowerCase(),
+      keywords: result.keywords,
+      reasoning: result.titleRationale || `Triage: ${result.intent} (${result.source})`,
+    };
+  } catch (error) {
+    logger.warn('[Triage] classifyWithFallback failed, returning safe default', { error });
+    return {
+      pillar: 'The Grove',
+      requestType: 'Chat',
+      confidence: 0.5,
+      workType: 'general chat',
+      keywords: [],
+      reasoning: 'Default classification (triage failed)',
+    };
+  }
+}
+
+/**
+ * Triage for audit — returns both ClassificationResult and smart title in one call.
+ * Replaces the inline TriageResult→ClassificationResult conversion in handler.ts.
+ */
+export async function triageForAudit(message: string): Promise<{
+  classification: ClassificationResult;
+  smartTitle: string;
+}> {
+  try {
+    const result = await triageMessage(message);
+    return {
+      classification: {
+        pillar: result.pillar,
+        requestType: result.requestType,
+        confidence: result.confidence,
+        workType: result.requestType.toLowerCase(),
+        keywords: result.keywords,
+        reasoning: result.titleRationale || `Triage: ${result.intent} (${result.source})`,
+      },
+      smartTitle: result.title || message.substring(0, 100) || 'Message',
+    };
+  } catch (error) {
+    logger.warn('[Triage] triageForAudit failed, returning safe defaults', { error });
+    return {
+      classification: {
+        pillar: 'The Grove',
+        requestType: 'Chat',
+        confidence: 0.5,
+        workType: 'general chat',
+        keywords: [],
+        reasoning: 'Default classification (triage failed)',
+      },
+      smartTitle: message.substring(0, 100) || 'Message',
+    };
+  }
 }

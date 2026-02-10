@@ -110,6 +110,9 @@ export interface FeatureFlags {
    * smart title generation, classification, and complexity tier routing.
    * Replaces multi-step capture pipeline with single API call.
    * @default true (core feature - disable with ATLAS_TRIAGE_SKILL=false)
+   * @deprecated Always-on since handler.ts TECH DEBT refactor (2026-02-09).
+   * Inline classification code removed — triage is the only classification path.
+   * Flag retained temporarily; remove in future cleanup pass.
    */
   triageSkill: boolean;
 

@@ -10,7 +10,7 @@
  *
  * This file ORCHESTRATES the content pipeline. It does NOT contain:
  * - Prompt text (lives in Notion System Prompts DB, fetched via PromptManager)
- * - Classification logic (lives in cognitive/triage-skill.ts and classifier.ts)
+ * - Classification logic (lives in cognitive/triage-skill.ts)
  * - Composition logic (lives in packages/agents/src/services/prompt-composition/)
  * - Pillar/Action/Voice config (lives in prompt-composition/registry.ts)
  *
@@ -18,10 +18,12 @@
  *   handler.ts → content-flow.ts → triage-skill.ts → prompt-selection-callback.ts
  *     → prompt-composition/composer.ts → PromptManager → Notion System Prompts DB
  *
- * FORBIDDEN in this file:
- * - Inline prompt text or system prompt fragments
- * - Hardcoded pillar routing rules (use triage-skill.ts or classifier.ts)
- * - Direct Anthropic API calls for classification (use the composition engine)
+ * FORBIDDEN — DO NOT ADD TO THIS FILE:
+ * - Inline classification prompts or direct Anthropic calls for classification
+ * - Any prompt text constants (all prompts live in prompt-composition system)
+ * - Classification parsing logic (handled by triage-skill.ts adapters)
+ * - Hardcoded pillar routing rules (use triage-skill.ts)
+ * - See ADR-001-handler-thin-orchestrator.md for rationale
  *
  * See: packages/skills/superpowers/atlas-patterns.md Section 8
  * See: apps/telegram/src/conversation/ARCHITECTURE.md
@@ -41,10 +43,9 @@ import { getAllTools, executeTool } from './tools';
 import { recordUsage } from './stats';
 import { maybeHandleAsContentShare, triggerMediaConfirmation, triggerInstantClassification } from './content-flow';
 import { hasPendingSelectionForUser, getSelectionByUserId, updateSelection } from './prompt-selection';
-import type { ClassificationResult } from './types';
 import { logAction, isFeatureEnabled } from '../skills';
 import { getFeatureFlags } from '../config/features';
-import { triageMessage, type TriageResult } from '../cognitive/triage-skill';
+import { classifyWithFallback, triageForAudit } from '../cognitive/triage-skill';
 import {
   generateDispatchChoiceId,
   storePendingDispatch,
@@ -244,80 +245,6 @@ async function setReaction(ctx: Context, emoji: string): Promise<void> {
   }
 }
 
-// Classification prompt (injected into tool response handling)
-const CLASSIFICATION_PROMPT = `Based on the conversation, classify this request:
-
-Return JSON with:
-- pillar: "Personal" | "The Grove" | "Consulting" | "Home/Garage"
-- requestType: "Research" | "Draft" | "Build" | "Schedule" | "Answer" | "Process" | "Quick" | "Triage" | "Chat"
-- confidence: 0-1
-- workType: 2-5 word description (e.g., "agent infrastructure", "blog content creation")
-- keywords: array of relevant terms
-- reasoning: brief explanation
-
-Classification rules:
-- Permits → always Home/Garage
-- Client mentions (DrumWave, Take Flight) → always Consulting
-- AI/LLM research → always The Grove
-- "gym", "health", "family" → Personal
-- Quick answers/chat → "Chat" or "Quick" type
-- Research requests → "Research" type
-- Writing tasks → "Draft" type`;
-
-/**
- * Parse classification from Claude response
- */
-function parseClassification(text: string): ClassificationResult | null {
-  try {
-    // Try to find JSON in the response
-    const jsonMatch = text.match(/\{[\s\S]*\}/);
-    if (jsonMatch) {
-      return JSON.parse(jsonMatch[0]) as ClassificationResult;
-    }
-  } catch {
-    // Classification parsing failed
-  }
-  return null;
-}
-
-/**
- * Classify the message using a quick Claude call
- */
-async function classifyMessage(message: string): Promise<ClassificationResult> {
-  try {
-    const response = await anthropic.messages.create({
-      model: 'claude-3-5-haiku-20241022',
-      max_tokens: 300,
-      messages: [
-        {
-          role: 'user',
-          content: `${CLASSIFICATION_PROMPT}\n\nMessage: "${message}"`,
-        },
-      ],
-    });
-
-    const textContent = response.content.find(block => block.type === 'text');
-    if (textContent?.type === 'text') {
-      const classification = parseClassification(textContent.text);
-      if (classification) {
-        return classification;
-      }
-    }
-  } catch (error) {
-    logger.error('Classification failed', { error });
-  }
-
-  // Default classification
-  return {
-    pillar: 'The Grove',
-    requestType: 'Chat',
-    confidence: 0.5,
-    workType: 'general chat',
-    keywords: [],
-    reasoning: 'Default classification (parsing failed)',
-  };
-}
-
 /**
  * Handle incoming message - Claude as front door (with tools)
  */
@@ -410,9 +337,8 @@ export async function handleConversation(ctx: Context): Promise<void> {
     await ctx.replyWithChatAction('typing');
 
     // Quick classification for pillar routing
-    const quickPillar = await classifyMessage(messageText || attachment.caption || 'media')
-      .then(c => c.pillar as Pillar)
-      .catch(() => 'The Grove' as Pillar);
+    const quickPillar = await classifyWithFallback(messageText || attachment.caption || 'media')
+      .then(c => c.pillar as Pillar);
 
     // Process with Gemini + archive + log to Feed
     mediaContext = await processMedia(ctx, attachment, quickPillar);
@@ -677,39 +603,8 @@ export async function handleConversation(ctx: Context): Promise<void> {
       ? `${responseText}\n\n${formatToolContextForHistory(toolContexts)}`
       : responseText;
 
-    // Classify the message for audit — use triage system when enabled
-    const flags = getFeatureFlags();
-    let triageResult: TriageResult | null = null;
-    let classification: ClassificationResult;
-
-    if (flags.triageSkill) {
-      try {
-        triageResult = await triageMessage(messageText);
-        // Convert TriageResult → ClassificationResult for downstream compat
-        classification = {
-          pillar: triageResult.pillar,
-          requestType: triageResult.requestType,
-          confidence: triageResult.confidence,
-          workType: triageResult.requestType.toLowerCase(),
-          keywords: triageResult.keywords,
-          reasoning: triageResult.titleRationale || `Triage: ${triageResult.intent} (${triageResult.source})`,
-        };
-        logger.debug('[Handler] Triage classification used', {
-          title: triageResult.title,
-          pillar: triageResult.pillar,
-          source: triageResult.source,
-          confidence: triageResult.confidence,
-        });
-      } catch (error) {
-        logger.warn('[Handler] Triage failed, falling back to classifyMessage', { error });
-        classification = await classifyMessage(messageText);
-      }
-    } else {
-      classification = await classifyMessage(messageText);
-    }
-
-    // Smart title: use triage-generated title if available, else truncated input
-    const smartTitle = triageResult?.title || messageText.substring(0, 100) || 'Message';
+    // Classify the message for audit — unified triage path
+    const { classification, smartTitle } = await triageForAudit(messageText);
 
     // Create audit trail (Feed + Work Queue)
     const auditEntry: AuditEntry = {
