@@ -10,7 +10,7 @@ type SubView = "posts" | "replies" | "creating"
 
 export function PostsTab() {
   const [postsState, { addPost, updatePost, removePost, refreshStats }] = usePostsState()
-  const [commentsState, { updateComment, removeComment, replaceAllComments, loadMockData }] = useCommentsState()
+  const [commentsState, { updateComment, removeComment, replaceAllComments, mergeComments, loadMockData }] = useCommentsState()
   const [subView, setSubView] = useState<SubView>("posts")
   const [isRefreshing, setIsRefreshing] = useState(false)
 
@@ -136,6 +136,7 @@ export function PostsTab() {
           onUpdateComment={updateComment}
           onRemoveComment={removeComment}
           onBulkMarkReplied={() => {}}
+          onExtractedComments={mergeComments}
         />
       </div>
     )

@@ -31,6 +31,9 @@ export interface LinkedInComment {
   // Notion sync
   notionPageId?: string         // Engagement page ID in Notion
   notionContactId?: string      // Contact page ID in Notion (for "View in Notion" link)
+
+  // Source tracking
+  extractedFromDom?: boolean    // true = DOM extraction, false/undefined = PB pipeline
 }
 
 export interface ReplyDraftRequest {

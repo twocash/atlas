@@ -152,9 +152,41 @@ export function useCommentsState(): [CommentsState, {
     await storage.set(COMMENTS_KEY, updated)
   }, [])
 
+  /**
+   * Merge extracted comments with existing ones.
+   * New comments (by ID) are prepended; existing comments are untouched.
+   * Used by DOM extraction to add comments without losing PB-sourced data.
+   */
+  const mergeComments = useCallback(async (newComments: LinkedInComment[]) => {
+    const current = await storage.get<CommentsState>(COMMENTS_KEY) || DEFAULT_COMMENTS_STATE
+    const existingIds = new Set(current.comments.map((c) => c.id))
+
+    // Also deduplicate by author profile URL + post ID to avoid duplicates across sources
+    const existingKeys = new Set(
+      current.comments.map((c) => `${c.author.profileUrl}::${c.postId}`),
+    )
+
+    const fresh = newComments.filter((c) => {
+      if (existingIds.has(c.id)) return false
+      const key = `${c.author.profileUrl}::${c.postId}`
+      if (existingKeys.has(key)) return false
+      existingKeys.add(key)
+      return true
+    })
+
+    if (fresh.length === 0) return 0
+
+    const updated: CommentsState = {
+      comments: [...fresh, ...current.comments],
+      lastFetched: new Date().toISOString(),
+    }
+    await storage.set(COMMENTS_KEY, updated)
+    return fresh.length
+  }, [])
+
   const clearComments = useCallback(async () => {
     await storage.set(COMMENTS_KEY, DEFAULT_COMMENTS_STATE)
   }, [])
 
-  return [state, { addComment, updateComment, removeComment, replaceAllComments, clearComments, loadMockData }]
+  return [state, { addComment, updateComment, removeComment, replaceAllComments, mergeComments, clearComments, loadMockData }]
 }
