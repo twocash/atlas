@@ -27,6 +27,7 @@ import { buildContentPayload } from '../conversation/content-router';
 import type { Pillar, IntentType, DepthLevel, AudienceType, StructuredContext } from '../conversation/types';
 import { logAction, isFeatureEnabled } from '../skills';
 import { safeAnswerCallback } from '../utils/telegram-helpers';
+import { registerSkip } from '../utils/url-dedup';
 
 // ==========================================
 // Intent Icons
@@ -331,7 +332,7 @@ async function handleIntentConfirm(
       await ctx.reply('Logged (links unavailable)');
     }
 
-    // Non-blocking skill logging
+    // Non-blocking skill logging — pass existingFeedId to prevent dual-write (Bug A fix)
     if (isFeatureEnabled('skillLogging')) {
       logAction({
         messageText: pending.originalText,
@@ -343,6 +344,7 @@ async function handleIntentConfirm(
         confidence: 1.0,
         classificationConfirmed: true,
         structuredContext,
+        existingFeedId: result?.feedId,
       }).catch(err => {
         logger.warn('Skill action logging failed (non-fatal)', { error: err });
       });
@@ -431,13 +433,17 @@ async function handleBack(
 async function handleIntentSkip(
   ctx: Context,
   requestId: string,
-  _pending: PendingContent
+  pending: PendingContent
 ): Promise<void> {
+  // Register URL as skipped to prevent re-prompting within TTL window
+  if (pending.url) {
+    registerSkip(pending.url);
+  }
   removePendingContent(requestId);
   await ctx.answerCallbackQuery({ text: 'Skipped' });
   try { await ctx.deleteMessage(); } catch { /* already deleted */ }
   await ctx.reply('Skipped');
-  logger.info('Intent-first content skipped', { requestId });
+  logger.info('Intent-first content skipped', { requestId, url: pending.url });
 }
 
 // ==========================================

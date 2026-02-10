@@ -680,7 +680,7 @@ export async function handleConversation(ctx: Context): Promise<void> {
     await setReaction(ctx, actionTaken ? REACTIONS.DONE : REACTIONS.CHAT);
 
     // Log action for skill pattern detection (Phase 1)
-    // Non-blocking - failures don't affect user experience
+    // Non-blocking - pass existingFeedId to prevent dual-write (Bug A fix)
     if (isFeatureEnabled('skillLogging')) {
       logAction({
         messageText,
@@ -693,6 +693,7 @@ export async function handleConversation(ctx: Context): Promise<void> {
         keywords: classification.keywords,
         workType: classification.workType,
         contentType: mediaContext ? mediaContext.type as 'image' | 'document' | 'video' | 'audio' : undefined,
+        existingFeedId: auditResult?.feedId,
       }).catch(err => {
         logger.warn('Skill action logging failed (non-fatal)', { error: err });
       });

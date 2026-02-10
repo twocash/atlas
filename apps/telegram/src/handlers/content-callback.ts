@@ -733,7 +733,7 @@ async function handleConfirm(
     }
 
     // Log action for skill pattern detection (Phase 1)
-    // Non-blocking - failures don't affect user experience
+    // Non-blocking - pass existingFeedId to prevent dual-write (Bug A fix)
     if (isFeatureEnabled('skillLogging')) {
       logAction({
         messageText: pending.originalText,
@@ -750,6 +750,7 @@ async function handleConfirm(
         contentSource: pending.attachmentInfo?.fileName?.split('.').pop() || pending.analysis.source,
         keywords: extractKeywords(pending),
         workType: inferWorkType(pending),
+        existingFeedId: result?.feedId,
       }).catch(err => {
         logger.warn('Skill action logging failed (non-fatal)', { error: err });
       });

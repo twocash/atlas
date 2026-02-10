@@ -7,6 +7,7 @@
 
 import { Client } from '@notionhq/client';
 import { logger } from '../logger';
+import { checkUrl, registerUrl, normalizeUrl } from '../utils/url-dedup';
 import type { Pillar, RequestType, FeedStatus, WQStatus, StructuredContext } from './types';
 
 // Re-export Pillar for use by other modules
@@ -248,8 +249,9 @@ async function createFeedEntry(entry: AuditEntry): Promise<{ id: string; url: st
     const optionalProps: Record<string, unknown> = {};
 
     // URL & Content Analysis fields (Universal Content Analysis)
+    // Store normalized URL for dedup matching
     if (entry.url) {
-      optionalProps['Source URL'] = { url: entry.url };
+      optionalProps['Source URL'] = { url: normalizeUrl(entry.url) };
     }
     if (entry.urlTitle) {
       optionalProps['URL Title'] = { rich_text: [{ text: { content: entry.urlTitle.substring(0, 2000) } }] };
@@ -789,6 +791,25 @@ async function linkFeedToWorkQueue(feedId: string, workQueueId: string): Promise
  */
 export async function createAuditTrail(entry: AuditEntry): Promise<AuditResult | null> {
   try {
+    // 0. URL dedup check — skip if this URL already has a Feed entry
+    if (entry.url) {
+      const dedup = await checkUrl(entry.url);
+      if (dedup.isDuplicate) {
+        logger.info('URL dedup: skipping duplicate Feed entry', {
+          url: entry.url,
+          existingFeedId: dedup.existingFeedId,
+          source: dedup.source,
+          wasSkipped: dedup.wasSkipped,
+        });
+        return dedup.existingFeedId ? {
+          feedId: dedup.existingFeedId,
+          workQueueId: '',
+          feedUrl: '',
+          workQueueUrl: '',
+        } : null;
+      }
+    }
+
     // 1. Create Feed entry
     const feed = await createFeedEntry(entry);
 
@@ -797,6 +818,11 @@ export async function createAuditTrail(entry: AuditEntry): Promise<AuditResult |
 
     // 3. Update Feed with Work Queue link (bidirectional)
     await linkFeedToWorkQueue(feed.id, workQueue.id);
+
+    // 4. Register URL in dedup cache (prevents duplicate on resend)
+    if (entry.url) {
+      registerUrl(entry.url, feed.id);
+    }
 
     logger.info('Audit trail created', {
       feedId: feed.id,

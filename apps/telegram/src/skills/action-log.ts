@@ -109,6 +109,13 @@ export interface ActionLogInput {
 
   /** Intent-First structured context (Phase 0) */
   structuredContext?: StructuredContext;
+
+  /**
+   * Existing Feed entry ID to update instead of creating a new one.
+   * Use this when createAuditTrail already created the Feed entry
+   * to avoid the dual-write duplicate (Bug A fix).
+   */
+  existingFeedId?: string;
 }
 
 /**
@@ -155,58 +162,63 @@ export async function logAction(input: ActionLogInput): Promise<ActionLogResult>
   const intentHash = generateIntentHash(input.messageText);
 
   try {
-    // Build Feed entry properties
-    const entrySummary = input.entrySummary || input.messageText.substring(0, 100);
+    let feedId: string;
 
-    // Core properties (always set)
-    const properties: Record<string, unknown> = {
-      'Entry': {
-        title: [{ text: { content: entrySummary } }],
-      },
-      'Pillar': {
-        select: { name: input.pillar || 'The Grove' },
-      },
-      'Request Type': {
-        select: { name: input.requestType },
-      },
-      'Source': {
-        select: { name: 'Telegram' },
-      },
-      'Author': {
-        select: { name: 'Atlas [Telegram]' },
-      },
-      'Confidence': {
-        number: input.confidence,
-      },
-      'Status': {
-        select: { name: 'Routed' },
-      },
-      'Date': {
-        date: { start: new Date().toISOString() },
-      },
-    };
+    if (input.existingFeedId) {
+      // Bug A fix: Use existing Feed entry from createAuditTrail instead of creating a duplicate
+      feedId = input.existingFeedId;
+      logger.debug('Using existing Feed entry for action log (dual-write prevention)', { feedId });
+    } else {
+      // No existing entry — create one (standalone logAction calls, e.g. from classify)
+      const entrySummary = input.entrySummary || input.messageText.substring(0, 100);
 
-    // Optional core fields
-    if (input.keywords && input.keywords.length > 0) {
-      properties['Keywords'] = {
-        multi_select: input.keywords.slice(0, 5).map(k => ({ name: k })),
+      const properties: Record<string, unknown> = {
+        'Entry': {
+          title: [{ text: { content: entrySummary } }],
+        },
+        'Pillar': {
+          select: { name: input.pillar || 'The Grove' },
+        },
+        'Request Type': {
+          select: { name: input.requestType },
+        },
+        'Source': {
+          select: { name: 'Telegram' },
+        },
+        'Author': {
+          select: { name: 'Atlas [Telegram]' },
+        },
+        'Confidence': {
+          number: input.confidence,
+        },
+        'Status': {
+          select: { name: 'Routed' },
+        },
+        'Date': {
+          date: { start: new Date().toISOString() },
+        },
       };
+
+      if (input.keywords && input.keywords.length > 0) {
+        properties['Keywords'] = {
+          multi_select: input.keywords.slice(0, 5).map(k => ({ name: k })),
+        };
+      }
+
+      if (input.workType) {
+        properties['Work Type'] = {
+          rich_text: [{ text: { content: input.workType } }],
+        };
+      }
+
+      const response = await notion.pages.create({
+        parent: { database_id: FEED_DATABASE_ID },
+        properties: properties as Parameters<typeof notion.pages.create>[0]['properties'],
+      });
+
+      feedId = response.id;
+      logger.debug('Base Feed entry created for action log', { feedId });
     }
-
-    if (input.workType) {
-      properties['Work Type'] = {
-        rich_text: [{ text: { content: input.workType } }],
-      };
-    }
-
-    // Create the base Feed entry
-    const response = await notion.pages.create({
-      parent: { database_id: FEED_DATABASE_ID },
-      properties: properties as Parameters<typeof notion.pages.create>[0]['properties'],
-    });
-
-    const feedId = response.id;
-    logger.debug('Base Feed entry created for action log', { feedId });
 
     // Now update with pattern-specific fields
     // These are in a separate update to be resilient to schema differences

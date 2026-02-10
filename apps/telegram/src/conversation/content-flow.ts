@@ -28,6 +28,7 @@ import type { MediaContext } from './media';
 import type { AttachmentInfo } from './attachments';
 import { startPromptSelection } from '../handlers/prompt-selection-callback';
 import { getFeatureFlags } from '../config/features';
+import { checkUrl } from '../utils/url-dedup';
 import { triageMessage, type TriageResult } from '../cognitive/triage-skill';
 
 // ==========================================
@@ -250,6 +251,20 @@ export async function triggerContentConfirmation(
       return true; // Return true to indicate message was handled
     }
     markConfirmationSent(messageId);
+  }
+
+  // URL dedup check — skip if this URL already has a Feed entry
+  const dedup = await checkUrl(url);
+  if (dedup.isDuplicate) {
+    const verb = dedup.wasSkipped ? 'skipped' : 'captured';
+    logger.info('URL dedup: blocking duplicate content confirmation', {
+      url, source: dedup.source, existingFeedId: dedup.existingFeedId, wasSkipped: dedup.wasSkipped,
+    });
+    await ctx.reply(
+      `Already ${verb}. ${dedup.existingFeedId ? '📋' : '⏭️'}`,
+      { reply_to_message_id: messageId },
+    );
+    return true; // Handled — don't show keyboard
   }
 
   try {
