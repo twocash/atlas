@@ -655,6 +655,43 @@ async function runIntegrationTests(cwd: string): Promise<SuiteResult> {
   };
 }
 
+/**
+ * Run Action Feed Producer tests (P2 Approval + P3 Review)
+ *
+ * Runs in a SEPARATE bun process to avoid mock.module leaking
+ * into the shared regression suite. These tests mock ../src/notion
+ * and ../src/config/features which would break live-bugs-feb8 BUG 2
+ * tests if run in the same process.
+ */
+async function runActionFeedProducerTests(cwd: string): Promise<SuiteResult> {
+  console.log('\n[P2/P3] Running Action Feed Producer Tests...');
+  console.log('─'.repeat(50));
+
+  const result = await runCommand(
+    BUN_PATH,
+    ['test', 'test/action-feed-producers.test.ts'],
+    cwd,
+    60000
+  );
+  const counts = parseBunTestOutput(result.output);
+
+  if (!result.success) {
+    console.log(result.output);
+  }
+
+  const status = result.success ? '\x1b[32m[PASS]\x1b[0m' : '\x1b[31m[FAIL]\x1b[0m';
+  console.log(`  ${status} ${counts.passed} passed, ${counts.failed} failed (${result.duration}ms)`);
+
+  return {
+    name: 'Action Feed Producers (P2/P3)',
+    passed: counts.passed,
+    failed: counts.failed,
+    skipped: counts.skipped,
+    duration: result.duration,
+    errors: result.success ? [] : [result.output],
+  };
+}
+
 // =============================================================================
 // MAIN
 // =============================================================================
@@ -704,6 +741,7 @@ async function main() {
     } else {
       suites.push(await runUnitTests(cwd));
       suites.push(await runRegressionTests(cwd));
+      suites.push(await runActionFeedProducerTests(cwd));
       suites.push(await runAutonomousRepairTests(cwd));
       suites.push(await runSmokeTests(cwd));
       suites.push(await runE2ETests(cwd));
@@ -715,12 +753,13 @@ async function main() {
     suites.push(await runCanaryTests(cwd));  // Canaries first - detect silent failures
     suites.push(await runUnitTests(cwd));
     suites.push(await runRegressionTests(cwd));  // Bug regression tests
+    suites.push(await runActionFeedProducerTests(cwd));  // P2/P3 sprint
     suites.push(await runAutonomousRepairTests(cwd));  // Pit Stop sprint
     suites.push(await runSmokeTests(cwd));
     suites.push(await runE2ETests(cwd));
     suites.push(await runIntegrationTests(cwd));
   }
-  // Default mode: Canaries + Unit + Regression + Pit Stop + Smoke + Integration (strict by default)
+  // Default mode: Canaries + Unit + Regression + P2/P3 + Pit Stop + Smoke + Integration (strict by default)
   else {
     const canaryResult = await runCanaryTests(cwd);
     suites.push(canaryResult);
@@ -731,6 +770,7 @@ async function main() {
     } else {
       suites.push(await runUnitTests(cwd));
       suites.push(await runRegressionTests(cwd));
+      suites.push(await runActionFeedProducerTests(cwd));
       suites.push(await runAutonomousRepairTests(cwd));
       suites.push(await runSmokeTests(cwd));
       suites.push(await runIntegrationTests(cwd));
