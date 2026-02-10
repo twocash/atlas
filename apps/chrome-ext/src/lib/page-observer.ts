@@ -1,9 +1,12 @@
 /**
  * PageObserver — Detects LinkedIn SPA navigation and page state changes.
  *
- * Uses a dual detection strategy (validated by folkX reverse-engineering):
- *   1. MutationObserver on document.body for real-time SPA detection
- *   2. Interval polling (50ms, 1s timeout) as fallback
+ * SAFETY-FIRST design:
+ *   - NO MutationObserver (avoids triggering LinkedIn anti-bot detection)
+ *   - NO aggressive polling (was 50ms, now removed)
+ *   - URL change detection via standard browser events (popstate, click intercept)
+ *   - Slow poll fallback (2s) only for SPA pushState that doesn't fire popstate
+ *   - DOM queries happen ONLY on explicit user action (Extract Comments button)
  *
  * Emits typed events: post-detected, comments-visible, page-changed
  */
@@ -18,11 +21,11 @@ export type PageObserverEvent =
 export type PageObserverCallback = (event: PageObserverEvent, url: string) => void
 
 interface PageObserverOptions {
-  /** Polling interval in ms (default: 50) */
+  /** Slow-poll interval in ms for catching pushState navigation (default: 2000) */
   pollInterval?: number
-  /** Polling timeout in ms (default: 1000) */
+  /** Timeout for waitFor() one-shot queries (default: 5000) */
   pollTimeout?: number
-  /** Whether to observe comments section appearance (default: true) */
+  /** Whether to observe comments section appearance (default: false) */
   watchComments?: boolean
 }
 
@@ -70,7 +73,11 @@ const COMMENTS_SELECTORS = [
   "section.comments-comment-list",
 ]
 
-function commentsVisible(): boolean {
+/**
+ * Check if comments section is visible on the page.
+ * Only call this on-demand (user action), never in a loop.
+ */
+export function commentsVisible(): boolean {
   return COMMENTS_SELECTORS.some(
     (sel) => document.querySelector(sel) !== null,
   )
@@ -81,56 +88,53 @@ function commentsVisible(): boolean {
 export class PageObserver {
   private callback: PageObserverCallback
   private options: Required<PageObserverOptions>
-  private observer: MutationObserver | null = null
   private pollTimer: ReturnType<typeof setInterval> | null = null
+  private popstateHandler: (() => void) | null = null
   private lastUrl: string = ""
-  private lastCommentsVisible: boolean = false
   private running: boolean = false
 
   constructor(callback: PageObserverCallback, options: PageObserverOptions = {}) {
     this.callback = callback
     this.options = {
-      pollInterval: options.pollInterval ?? 50,
-      pollTimeout: options.pollTimeout ?? 1000,
-      watchComments: options.watchComments ?? true,
+      pollInterval: options.pollInterval ?? 2000,
+      pollTimeout: options.pollTimeout ?? 5000,
+      watchComments: options.watchComments ?? false,
     }
   }
 
   /**
-   * Start observing. Sets up MutationObserver + polling fallback.
+   * Start observing. Uses lightweight browser events + slow poll.
+   *
+   * NO MutationObserver — avoids triggering LinkedIn anti-bot detection.
+   * Only detects URL changes via popstate + slow poll (for pushState).
    */
   start(): void {
     if (this.running) return
     this.running = true
     this.lastUrl = window.location.href
 
-    // Check current page state immediately
-    this.checkPageState()
+    // Check current page state once
+    this.checkUrlChange()
 
-    // MutationObserver for SPA navigation detection
-    this.observer = new MutationObserver((_mutations) => {
-      this.checkPageState()
-    })
-    this.observer.observe(document.body, {
-      childList: true,
-      subtree: true,
-    })
+    // popstate fires on back/forward navigation
+    this.popstateHandler = () => this.checkUrlChange()
+    window.addEventListener("popstate", this.popstateHandler)
 
-    // Polling fallback (folkX pattern: 50ms interval)
+    // Slow poll (2s) catches pushState SPA navigation that doesn't fire popstate
     this.pollTimer = setInterval(() => {
-      this.checkPageState()
+      this.checkUrlChange()
     }, this.options.pollInterval)
   }
 
   /**
-   * Stop observing. Cleans up observer and polling.
+   * Stop observing. Cleans up event listeners and polling.
    */
   stop(): void {
     this.running = false
 
-    if (this.observer) {
-      this.observer.disconnect()
-      this.observer = null
+    if (this.popstateHandler) {
+      window.removeEventListener("popstate", this.popstateHandler)
+      this.popstateHandler = null
     }
 
     if (this.pollTimer) {
@@ -140,41 +144,27 @@ export class PageObserver {
   }
 
   /**
-   * Check page state and emit events if conditions changed.
+   * Lightweight URL change check — no DOM queries, just string comparison.
    */
-  private checkPageState(): void {
+  private checkUrlChange(): void {
     const currentUrl = window.location.href
 
-    // URL changed → page navigation
     if (currentUrl !== this.lastUrl) {
       this.lastUrl = currentUrl
-      this.lastCommentsVisible = false
       this.callback("page-changed", currentUrl)
 
-      // Check if new page is a post
       if (isPostPage(currentUrl)) {
         this.callback("post-detected", currentUrl)
-      }
-    }
-
-    // Comments section appeared
-    if (this.options.watchComments) {
-      const nowVisible = commentsVisible()
-      if (nowVisible && !this.lastCommentsVisible) {
-        this.lastCommentsVisible = true
-        this.callback("comments-visible", currentUrl)
-      } else if (!nowVisible && this.lastCommentsVisible) {
-        this.lastCommentsVisible = false
       }
     }
   }
 
   /**
    * One-shot: wait for an element matching a selector to appear.
-   * Uses polling with configurable timeout.
+   * Uses 500ms polling with configurable timeout. Only for explicit user actions.
    */
   waitFor(selector: string, timeout?: number): Promise<Element | null> {
-    const pollMs = this.options.pollInterval
+    const pollMs = 500 // Slow poll to avoid detection
     const timeoutMs = timeout ?? this.options.pollTimeout
 
     return new Promise((resolve) => {

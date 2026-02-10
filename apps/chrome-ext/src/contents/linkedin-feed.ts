@@ -13,7 +13,7 @@
  */
 
 import type { PlasmoCSConfig } from "plasmo"
-import { PageObserver, isPostPage } from "~src/lib/page-observer"
+import { PageObserver, isPostPage, commentsVisible } from "~src/lib/page-observer"
 import { extractComments } from "~src/lib/comment-extractor"
 import { allCanariesPass } from "~src/lib/selector-registry"
 import type {
@@ -42,28 +42,27 @@ function log(...args: unknown[]): void {
   console.log(LOG_PREFIX, ...args)
 }
 
-function warn(...args: unknown[]): void {
-  console.warn(LOG_PREFIX, ...args)
+// ─── Page Observer Setup ──────────────────────────────────
+// SAFETY: Observer is passive — only detects URL changes via browser events.
+// NO MutationObserver, NO aggressive DOM polling.
+// DOM queries happen ONLY when user explicitly clicks "Extract Comments".
+
+let observer: PageObserver | null = null
+
+function ensureObserver(): PageObserver {
+  if (!observer) {
+    observer = new PageObserver((event, url) => {
+      if (event === "post-detected") {
+        log("Post detected:", url)
+      }
+    })
+    observer.start()
+  }
+  return observer
 }
 
-// ─── Page Observer Setup ──────────────────────────────────
-
-const observer = new PageObserver((event, url) => {
-  switch (event) {
-    case "post-detected":
-      log("Post detected:", url)
-      break
-    case "comments-visible":
-      log("Comments section visible on:", url)
-      break
-    case "page-changed":
-      log("Page navigated to:", url)
-      break
-  }
-})
-
-// Start observing immediately
-observer.start()
+// Start lightweight observer (URL-change only, no DOM queries)
+ensureObserver()
 log("Content script loaded on", window.location.pathname)
 
 // ─── Message Handling ─────────────────────────────────────
@@ -75,8 +74,11 @@ chrome.runtime.onMessage.addListener(
     sendResponse,
   ) => {
     // CHECK_POST_READY: sidepanel asks if we're on a post page with comments
+    // This is an on-demand check — only runs when sidepanel asks
     if (message.type === "CHECK_POST_READY") {
-      const ready = isPostPage(window.location.href) && allCanariesPass()
+      const onPostPage = isPostPage(window.location.href)
+      // Only query DOM if we're on a post page
+      const ready = onPostPage && (allCanariesPass() || commentsVisible())
       const response: PostReadyMessage = {
         type: "POST_READY",
         ready,
@@ -86,7 +88,7 @@ chrome.runtime.onMessage.addListener(
       return true
     }
 
-    // EXTRACT_COMMENTS: sidepanel triggers comment extraction
+    // EXTRACT_COMMENTS: sidepanel triggers comment extraction (user-initiated only)
     if (message.type === "EXTRACT_COMMENTS") {
       try {
         const postUrl = (message as ExtractCommentsMessage).postUrl ?? window.location.href
@@ -94,10 +96,9 @@ chrome.runtime.onMessage.addListener(
 
         const result = extractComments(postUrl)
 
+        // Log warnings once, not in a loop
         if (result.warnings.length > 0) {
-          for (const w of result.warnings) {
-            warn(w)
-          }
+          log("Extraction warnings:", result.warnings.join("; "))
         }
 
         const response: ExtractionResultMessage = {
@@ -112,7 +113,7 @@ chrome.runtime.onMessage.addListener(
         sendResponse(response)
       } catch (err) {
         const errorMessage = err instanceof Error ? err.message : "Unknown extraction error"
-        warn("Extraction failed:", errorMessage)
+        log("Extraction failed:", errorMessage)
 
         const response: ExtractionErrorMessage = {
           type: "EXTRACTION_ERROR",
@@ -130,5 +131,5 @@ chrome.runtime.onMessage.addListener(
 // ─── Cleanup on unload ────────────────────────────────────
 
 window.addEventListener("unload", () => {
-  observer.stop()
+  observer?.stop()
 })

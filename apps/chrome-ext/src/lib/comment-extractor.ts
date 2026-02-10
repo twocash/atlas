@@ -191,7 +191,8 @@ export function extractComments(postUrl?: string): ExtractionResult {
       // Page loaded but no comments — could be DOM change
       const packet = generateRepairPacket(containerEntry, url)
       repairPackets.push(packet)
-      console.warn("[Atlas DOM Extraction]", formatRepairPacketForLog(packet))
+      // Log once (not warn) to avoid console spam
+      console.log("[Atlas DOM Extraction] Repair packet generated for:", packet.selectorName)
       warnings.push(
         `Comment extraction found 0 comments. DOM structure may have changed. Repair Packet generated.`,
       )
@@ -241,14 +242,17 @@ export function extractComments(postUrl?: string): ExtractionResult {
   // Generate repair packets for sub-selectors that failed on every container
   if (containerMatch.elements.length > 0 && comments.length === 0) {
     // Had containers but couldn't extract any complete comments
+    const failedSelectors: string[] = []
     for (const entryName of ["commenter-name", "comment-text", "commenter-profile-url"]) {
       const entry = SELECTOR_REGISTRY[entryName]
       if (entry) {
         const packet = generateRepairPacket(entry, url)
         repairPackets.push(packet)
-        console.warn("[Atlas DOM Extraction]", formatRepairPacketForLog(packet))
+        failedSelectors.push(entryName)
       }
     }
+    // Single log line instead of one per selector
+    console.log("[Atlas DOM Extraction] Sub-selectors need updating:", failedSelectors.join(", "))
     warnings.push(
       `Found ${containerMatch.elements.length} comment containers but could not extract complete data. Sub-selectors may need updating.`,
     )
