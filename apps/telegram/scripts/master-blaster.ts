@@ -527,6 +527,7 @@ async function runRegressionTests(cwd: string): Promise<SuiteResult> {
     'test/live-bugs-feb8.test.ts',
     'test/v3-strict-url-fabrication.test.ts',
     'test/telegram-shortcuts-quality.test.ts',
+    'test/command-surface-audit.test.ts',
   ];
 
   const result = await runCommand(

@@ -230,7 +230,78 @@
       "examples": [
         "https://open.spotify.com/show/6SPhRTZ7cfnVomARKa1J55?si=VVD3zWmZQnGHDnhpW3vaYQ"
       ]
+    },
+    "url:www.threads.com/@omarsar0/post/duixigjfbkw": {
+      "patternKey": "url:www.threads.com/@omarsar0/post/duixigjfbkw",
+      "confirmedResult": {
+        "intent": "capture",
+        "pillar": "The Grove",
+        "requestType": "Research",
+        "keywords": []
+      },
+      "confirmCount": 1,
+      "correctionCount": 0,
+      "lastSeen": "2026-02-09T16:41:27.324Z",
+      "examples": [
+        "https://www.threads.com/@omarsar0/post/DUixIgjFBKw?xmt=AQF0QI0Ukn2VBshEgcYgWjjBfhBGW4bRefmeaQJTZdNvH0fnKx50rQQwxOkNevmUpyc9B9zV&slof=1"
+      ]
+    },
+    "url:github.com/supreme-gg-gg/instagram-cli": {
+      "patternKey": "url:github.com/supreme-gg-gg/instagram-cli",
+      "confirmedResult": {
+        "intent": "capture",
+        "pillar": "Consulting",
+        "requestType": "Research",
+        "keywords": [
+          "instagram",
+          "cli",
+          "github",
+          "repository",
+          "open-source"
+        ]
+      },
+      "confirmCount": 0,
+      "correctionCount": 1,
+      "lastSeen": "2026-02-09T16:47:38.131Z",
+      "examples": [
+        "https://github.com/supreme-gg-gg/instagram-cli"
+      ]
+    },
+    "url:www.threads.com/@aibymayank/post/duioahokiuz": {
+      "patternKey": "url:www.threads.com/@aibymayank/post/duioahokiuz",
+      "confirmedResult": {
+        "intent": "capture",
+        "pillar": "Personal",
+        "requestType": "Research",
+        "keywords": [
+          "social media",
+          "threads",
+          "ai",
+          "mayank"
+        ]
+      },
+      "confirmCount": 0,
+      "correctionCount": 1,
+      "lastSeen": "2026-02-09T16:53:15.212Z",
+      "examples": [
+        "https://www.threads.com/@aibymayank/post/DUioaHokiuZ?xmt=AQF0iNa0tdGVuVvJw1lYLbnKXRGcTK8xMN73LjIydtWBXJ_M1OpmErVLFhmPayvL0pF9tyMj&slof=1"
+      ]
+    },
+    "url:github.com/mitchellh/vouch": {
+      "patternKey": "url:github.com/mitchellh/vouch",
+      "confirmedResult": {
+        "intent": "capture",
+        "pillar": "The Grove",
+        "requestType": "Research",
+        "keywords": []
+      },
+      "confirmCount": 1,
+      "correctionCount": 0,
+      "lastSeen": "2026-02-09T17:36:23.688Z",
+      "examples": [
+        "https://github.com/mitchellh/vouch"
+      ]
     }
   },
-  "lastUpdated": "2026-02-09T02:44:34.516Z"
+  "lastUpdated": "2026-02-09T17:36:28.695Z"
 }
