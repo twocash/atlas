@@ -102,6 +102,24 @@ export interface FeatureFlags {
    */
   healthAlertProducer: boolean;
 
+  /**
+   * Approval Producer (P2)
+   * When enabled, Tier 2 skill execution requests create Approval cards
+   * in Feed 2.0 instead of executing immediately. FAIL-CLOSED: if card
+   * creation fails, the skill does NOT execute.
+   * @default true (disable with ATLAS_APPROVAL_PRODUCER=false)
+   */
+  approvalProducer: boolean;
+
+  /**
+   * Review Producer (P3)
+   * When enabled, completed research creates Review cards in Feed 2.0
+   * for human Accept/Revise/Reject disposition. FAIL-OPEN: if card
+   * creation fails, the research still delivers to Work Queue.
+   * @default true (disable with ATLAS_REVIEW_PRODUCER=false)
+   */
+  reviewProducer: boolean;
+
   // === Triage Intelligence (Sprint: Triage Intelligence) ===
 
   /**
@@ -265,6 +283,8 @@ function loadFeatureFlags(): FeatureFlags {
     selfImprovementListener: process.env.ATLAS_SELF_IMPROVEMENT_LISTENER !== 'false',
     apiSwarmDispatch: process.env.ATLAS_API_SWARM !== 'false',
     healthAlertProducer: process.env.ATLAS_HEALTH_ALERT_PRODUCER !== 'false',
+    approvalProducer: process.env.ATLAS_APPROVAL_PRODUCER !== 'false',
+    reviewProducer: process.env.ATLAS_REVIEW_PRODUCER !== 'false',
     // Triage Intelligence (Sprint: Triage Intelligence) - Core features, default ON
     triageSkill: process.env.ATLAS_TRIAGE_SKILL !== 'false', // Default ON
     lowConfidenceFallbackToCapture: process.env.ATLAS_LOW_CONFIDENCE_CAPTURE !== 'false', // Default ON

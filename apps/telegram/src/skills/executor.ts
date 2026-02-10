@@ -12,6 +12,8 @@ import { isFeatureEnabled } from '../config/features';
 import { getSkillRegistry } from './registry';
 import { logAction } from './action-log';
 import { pushActivity } from '../health/status-server';
+import { createActionFeedEntry } from '../notion';
+import type { ActionDataApproval } from '../types';
 import {
   type SkillDefinition,
   type ProcessStep,
@@ -23,6 +25,33 @@ import {
   getTierEmoji,
 } from './schema';
 import type { Pillar } from '../conversation/types';
+
+// =============================================================================
+// PENDING APPROVALS (P2 Approval Cards)
+// =============================================================================
+
+/** Context stored when a Tier 2 skill is deferred pending approval */
+export interface PendingApproval {
+  skillName: string;
+  feedPageId: string;
+  context: Omit<ExecutionContext, 'steps' | 'startTime' | 'timeout' | 'depth'>;
+  createdAt: Date;
+}
+
+/** Map of Feed page ID → pending approval context for deferred execution */
+const pendingApprovals = new Map<string, PendingApproval>();
+
+/** Get all pending approvals (for listener to query) */
+export function getPendingApprovals(): Map<string, PendingApproval> {
+  return pendingApprovals;
+}
+
+/** Remove a pending approval after it's been actioned */
+export function removePendingApproval(feedPageId: string): PendingApproval | undefined {
+  const approval = pendingApprovals.get(feedPageId);
+  pendingApprovals.delete(feedPageId);
+  return approval;
+}
 
 // =============================================================================
 // BROWSER AUTOMATION SUPPORT
@@ -744,8 +773,56 @@ export async function executeSkill(
   }
 
   // Tier 2 safety latch: Require explicit approval for external actions
+  // P2 Approval Cards: create a Feed 2.0 Approval entry instead of just blocking
   if (skill.tier >= 2 && !context.approvalLatch) {
-    logger.warn('Tier 2 skill requires approval', { skill: skill.name, tier: skill.tier });
+    if (isFeatureEnabled('approvalProducer')) {
+      // FAIL-CLOSED: If card creation fails, skill does NOT execute
+      const approvalData: ActionDataApproval = {
+        skill_id: skill.name,
+        skill_name: skill.name,
+        description: skill.description || `Tier ${skill.tier} skill requiring approval`,
+      };
+
+      try {
+        const feedPageId = await createActionFeedEntry(
+          'Approval',
+          approvalData,
+          'Atlas [telegram]',
+          `[Approval] ${skill.name}`,
+        );
+
+        // Store context for deferred execution when approved
+        pendingApprovals.set(feedPageId, {
+          skillName: skill.name,
+          feedPageId,
+          context: {
+            userId: context.userId,
+            messageText: context.messageText,
+            pillar: context.pillar,
+            input: context.input,
+            skillChain: context.skillChain,
+            parentTier: context.parentTier,
+            browserAutomationAvailable: context.browserAutomationAvailable,
+          },
+          createdAt: new Date(),
+        });
+
+        logger.info('Approval card created for Tier 2 skill', {
+          skill: skill.name,
+          feedPageId,
+          pendingCount: pendingApprovals.size,
+        });
+      } catch (error) {
+        // FAIL-CLOSED: card creation failed, skill is blocked regardless
+        logger.error('Approval card creation failed (skill blocked)', {
+          skill: skill.name,
+          error,
+        });
+      }
+    } else {
+      logger.warn('Tier 2 skill requires approval', { skill: skill.name, tier: skill.tier });
+    }
+
     return {
       success: false,
       skillName: skill.name,

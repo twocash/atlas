@@ -24,6 +24,8 @@ import { startStatusServer, stopStatusServer } from "./health/status-server";
 import { initializeSkillRegistry } from "./skills";
 import { startSelfImprovementListener, stopSelfImprovementListener } from "./listeners/self-improvement";
 import { startHealthAlertProducer, stopHealthAlertProducer } from "./feed/alert-producer";
+import { startApprovalListener, stopApprovalListener } from "./feed/approval-listener";
+import { startReviewListener, stopReviewListener } from "./feed/review-listener";
 import { existsSync, writeFileSync, unlinkSync, readFileSync } from "fs";
 import { join } from "path";
 
@@ -138,6 +140,22 @@ async function main() {
     logger.warn("Health alert producer failed to start (non-fatal)", { error: err });
   }
 
+  // Start approval listener (P2: Tier 2 skill permission gate)
+  // Polls Feed 2.0 for Approval cards that have been Actioned/Dismissed
+  try {
+    startApprovalListener();
+  } catch (err) {
+    logger.warn("Approval listener failed to start (non-fatal)", { error: err });
+  }
+
+  // Start review listener (P3: Research quality gate)
+  // Polls Feed 2.0 for Review cards with Accept/Revise/Reject disposition
+  try {
+    startReviewListener();
+  } catch (err) {
+    logger.warn("Review listener failed to start (non-fatal)", { error: err });
+  }
+
   // Start status server for Chrome extension heartbeat
   try {
     startStatusServer(3847);
@@ -154,6 +172,8 @@ async function main() {
     stopScheduler();
     stopSelfImprovementListener();
     stopHealthAlertProducer();
+    stopApprovalListener();
+    stopReviewListener();
     stopStatusServer();
     await shutdownMcp();
     await bot.stop();
