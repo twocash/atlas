@@ -1,28 +1,15 @@
 /**
  * Content script for LinkedIn feed and post detail pages.
  *
- * Plasmo CSConfig matches:
- *   - https://www.linkedin.com/feed/*
- *   - https://www.linkedin.com/posts/*
- *   - https://www.linkedin.com/feed/update/*
- *   - https://www.linkedin.com/pulse/*
+ * SAFETY-FIRST: This script does NOTHING on load. Zero DOM queries,
+ * zero observers, zero polling, zero logging. It only registers a
+ * passive message listener that Chrome manages internally.
  *
- * Coexists with the existing linkedin.ts content script (Sales Nav + profiles).
- * This script handles comment extraction and page observation for the
- * engagement intelligence pipeline.
+ * DOM interaction happens ONLY when the user explicitly clicks
+ * "Extract Comments" in the sidepanel.
  */
 
 import type { PlasmoCSConfig } from "plasmo"
-import { PageObserver, isPostPage, commentsVisible } from "~src/lib/page-observer"
-import { extractComments } from "~src/lib/comment-extractor"
-import { allCanariesPass } from "~src/lib/selector-registry"
-import type {
-  ExtractCommentsMessage,
-  CheckPostReadyMessage,
-  ExtractionResultMessage,
-  PostReadyMessage,
-  ExtractionErrorMessage,
-} from "~src/types/selectors"
 
 // ─── Plasmo Config ────────────────────────────────────────
 
@@ -34,102 +21,60 @@ export const config: PlasmoCSConfig = {
   run_at: "document_idle",
 }
 
-// ─── Logging ──────────────────────────────────────────────
-
-const LOG_PREFIX = "[Atlas Feed]"
-
-function log(...args: unknown[]): void {
-  console.log(LOG_PREFIX, ...args)
-}
-
-// ─── Page Observer Setup ──────────────────────────────────
-// SAFETY: Observer is passive — only detects URL changes via browser events.
-// NO MutationObserver, NO aggressive DOM polling.
-// DOM queries happen ONLY when user explicitly clicks "Extract Comments".
-
-let observer: PageObserver | null = null
-
-function ensureObserver(): PageObserver {
-  if (!observer) {
-    observer = new PageObserver((event, url) => {
-      if (event === "post-detected") {
-        log("Post detected:", url)
-      }
-    })
-    observer.start()
-  }
-  return observer
-}
-
-// Start lightweight observer (URL-change only, no DOM queries)
-ensureObserver()
-log("Content script loaded on", window.location.pathname)
-
-// ─── Message Handling ─────────────────────────────────────
+// ─── Message Handling (passive — only fires on explicit user action) ───
 
 chrome.runtime.onMessage.addListener(
-  (
-    message: ExtractCommentsMessage | CheckPostReadyMessage | { type: string },
-    _sender,
-    sendResponse,
-  ) => {
-    // CHECK_POST_READY: sidepanel asks if we're on a post page with comments
-    // This is an on-demand check — only runs when sidepanel asks
+  (message: { type: string; postUrl?: string }, _sender, sendResponse) => {
+    // CHECK_POST_READY: sidepanel asks if we're on a usable page
     if (message.type === "CHECK_POST_READY") {
-      const onPostPage = isPostPage(window.location.href)
-      // Only query DOM if we're on a post page
-      const ready = onPostPage && (allCanariesPass() || commentsVisible())
-      const response: PostReadyMessage = {
-        type: "POST_READY",
-        ready,
-        postUrl: window.location.href,
-      }
-      sendResponse(response)
-      return true
+      // Lazy-import to avoid running any code on load
+      import("~src/lib/page-observer").then(({ isPostPage }) => {
+        import("~src/lib/selector-registry").then(({ allCanariesPass }) => {
+          import("~src/lib/page-observer").then(({ commentsVisible }) => {
+            const onPostPage = isPostPage(window.location.href)
+            const ready = onPostPage && (allCanariesPass() || commentsVisible())
+            sendResponse({
+              type: "POST_READY",
+              ready,
+              postUrl: window.location.href,
+            })
+          })
+        })
+      })
+      return true // Keep channel open for async response
     }
 
-    // EXTRACT_COMMENTS: sidepanel triggers comment extraction (user-initiated only)
+    // EXTRACT_COMMENTS: user clicked the button in sidepanel
     if (message.type === "EXTRACT_COMMENTS") {
-      try {
-        const postUrl = (message as ExtractCommentsMessage).postUrl ?? window.location.href
-        log("Extracting comments from:", postUrl)
+      import("~src/lib/comment-extractor").then(({ extractComments }) => {
+        try {
+          const postUrl = message.postUrl ?? window.location.href
+          const result = extractComments(postUrl)
 
-        const result = extractComments(postUrl)
+          if (result.warnings.length > 0) {
+            console.log("[Atlas Feed] Extraction warnings:", result.warnings.join("; "))
+          }
 
-        // Log warnings once, not in a loop
-        if (result.warnings.length > 0) {
-          log("Extraction warnings:", result.warnings.join("; "))
+          console.log(`[Atlas Feed] Extracted ${result.comments.length} comments`)
+          sendResponse({
+            type: "EXTRACTION_RESULT",
+            comments: result.comments,
+            postUrl: result.postUrl,
+            warnings: result.warnings,
+            extractedCount: result.comments.length,
+          })
+        } catch (err) {
+          const errorMessage = err instanceof Error ? err.message : "Unknown extraction error"
+          console.log("[Atlas Feed] Extraction failed:", errorMessage)
+          sendResponse({
+            type: "EXTRACTION_ERROR",
+            error: errorMessage,
+          })
         }
-
-        const response: ExtractionResultMessage = {
-          type: "EXTRACTION_RESULT",
-          comments: result.comments,
-          postUrl: result.postUrl,
-          warnings: result.warnings,
-          extractedCount: result.comments.length,
-        }
-
-        log(`Extracted ${result.comments.length} comments`)
-        sendResponse(response)
-      } catch (err) {
-        const errorMessage = err instanceof Error ? err.message : "Unknown extraction error"
-        log("Extraction failed:", errorMessage)
-
-        const response: ExtractionErrorMessage = {
-          type: "EXTRACTION_ERROR",
-          error: errorMessage,
-        }
-        sendResponse(response)
-      }
-      return true
+      })
+      return true // Keep channel open for async response
     }
 
     return false
   },
 )
-
-// ─── Cleanup on unload ────────────────────────────────────
-
-window.addEventListener("unload", () => {
-  observer?.stop()
-})
