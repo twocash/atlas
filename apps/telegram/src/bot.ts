@@ -328,6 +328,7 @@ export function createBot(): Bot<AtlasContext> {
       await ctx.replyWithChatAction("typing");
       try {
         await briefingSystem.sendNow();
+        await ctx.reply("✅ Briefing sent.");
       } catch (error) {
         logger.error("Failed to send manual briefing", { error });
         await ctx.reply("Failed to send briefing. Check logs.");
