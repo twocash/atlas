@@ -15,6 +15,7 @@ import { handleActionIntent, handleActionCallback, cleanupPendingActions } from 
 import { handleChatIntent, clearConversationHistory } from "./chat";
 import { handleVoiceCallback } from "./voice-callback";
 import { handleContentCallback } from "./content-callback";
+import { handleIntentCallback } from "./intent-callback";
 import { handleDispatchCallback } from "./dispatch-callback";
 import { handleNotionCallback, handleNotionStatusUpdate } from "./notion-callback";
 import { handleSkillCallback, isSkillCallback } from "./skill-callback";
@@ -23,7 +24,7 @@ import {
   isPromptSelectionCallback,
   startPromptSelection,
 } from "./prompt-selection-callback";
-import { isContentCallback } from "../conversation/content-confirm";
+import { isContentCallback, isIntentCallback } from "../conversation/content-confirm";
 import { isDispatchCallback } from "../conversation/dispatch-choice";
 import { isNotionCallback } from "../conversation/notion-url";
 import { logger } from "../logger";
@@ -136,7 +137,13 @@ export async function routeCallback(ctx: Context): Promise<void> {
     return;
   }
 
-  // Content classification callbacks (Universal Content Analysis)
+  // Intent-first capture callbacks (Phase 1)
+  if (isIntentCallback(data)) {
+    await handleIntentCallback(ctx);
+    return;
+  }
+
+  // Content classification callbacks (Universal Content Analysis — legacy)
   if (isContentCallback(data)) {
     await handleContentCallback(ctx);
     return;
@@ -204,6 +211,7 @@ export {
   handleChatIntent,
   handleVoiceCallback,
   handleContentCallback,
+  handleIntentCallback,
   handlePromptSelectionCallback,
   startPromptSelection,
 };

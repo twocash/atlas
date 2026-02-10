@@ -528,6 +528,7 @@ async function runRegressionTests(cwd: string): Promise<SuiteResult> {
     'test/v3-strict-url-fabrication.test.ts',
     'test/telegram-shortcuts-quality.test.ts',
     'test/command-surface-audit.test.ts',
+    'test/intent-first-phase1.test.ts',
   ];
 
   const result = await runCommand(
@@ -692,6 +693,42 @@ async function runActionFeedProducerTests(cwd: string): Promise<SuiteResult> {
   };
 }
 
+/**
+ * Run Intent-First integration tests
+ *
+ * Runs in a SEPARATE bun process because it mocks ../src/conversation/audit,
+ * ../src/skills, and ../src/conversation/prompt-selection which would leak
+ * into other test files if run in the same process.
+ */
+async function runIntentFirstTests(cwd: string): Promise<SuiteResult> {
+  console.log('\n[INTENT] Running Intent-First Integration Tests...');
+  console.log('─'.repeat(50));
+
+  const result = await runCommand(
+    BUN_PATH,
+    ['test', 'test/intent-first-integration.test.ts'],
+    cwd,
+    60000
+  );
+  const counts = parseBunTestOutput(result.output);
+
+  if (!result.success) {
+    console.log(result.output);
+  }
+
+  const status = result.success ? '\x1b[32m[PASS]\x1b[0m' : '\x1b[31m[FAIL]\x1b[0m';
+  console.log(`  ${status} ${counts.passed} passed, ${counts.failed} failed (${result.duration}ms)`);
+
+  return {
+    name: 'Intent-First Integration',
+    passed: counts.passed,
+    failed: counts.failed,
+    skipped: counts.skipped,
+    duration: result.duration,
+    errors: result.success ? [] : [result.output],
+  };
+}
+
 // =============================================================================
 // MAIN
 // =============================================================================
@@ -742,6 +779,7 @@ async function main() {
       suites.push(await runUnitTests(cwd));
       suites.push(await runRegressionTests(cwd));
       suites.push(await runActionFeedProducerTests(cwd));
+      suites.push(await runIntentFirstTests(cwd));
       suites.push(await runAutonomousRepairTests(cwd));
       suites.push(await runSmokeTests(cwd));
       suites.push(await runE2ETests(cwd));
@@ -754,6 +792,7 @@ async function main() {
     suites.push(await runUnitTests(cwd));
     suites.push(await runRegressionTests(cwd));  // Bug regression tests
     suites.push(await runActionFeedProducerTests(cwd));  // P2/P3 sprint
+    suites.push(await runIntentFirstTests(cwd));  // Intent-First Phase 0+1
     suites.push(await runAutonomousRepairTests(cwd));  // Pit Stop sprint
     suites.push(await runSmokeTests(cwd));
     suites.push(await runE2ETests(cwd));
@@ -771,6 +810,7 @@ async function main() {
       suites.push(await runUnitTests(cwd));
       suites.push(await runRegressionTests(cwd));
       suites.push(await runActionFeedProducerTests(cwd));
+      suites.push(await runIntentFirstTests(cwd));
       suites.push(await runAutonomousRepairTests(cwd));
       suites.push(await runSmokeTests(cwd));
       suites.push(await runIntegrationTests(cwd));

@@ -44,6 +44,40 @@ export interface ToolDefinition {
   };
 }
 
+// ==========================================
+// Intent-First Structured Context (Phase 0)
+// ==========================================
+
+// What's the play?
+export const INTENT_TYPES = ['research', 'draft', 'save', 'analyze', 'capture', 'engage'] as const;
+export type IntentType = typeof INTENT_TYPES[number];
+
+// How deep?
+export const DEPTH_LEVELS = ['quick', 'standard', 'deep'] as const;
+export type DepthLevel = typeof DEPTH_LEVELS[number];
+
+// Who's this for?
+export const AUDIENCE_TYPES = ['self', 'client', 'public', 'team'] as const;
+export type AudienceType = typeof AUDIENCE_TYPES[number];
+
+// Source type (auto-detected, not user-selected)
+export const SOURCE_TYPES = ['url', 'image', 'document', 'video', 'audio', 'text', 'github', 'linkedin'] as const;
+export type SourceType = typeof SOURCE_TYPES[number];
+
+// Output format (derived or selected)
+export const FORMAT_TYPES = ['post', 'brief', 'analysis', 'report', 'thread', 'raw'] as const;
+export type FormatType = typeof FORMAT_TYPES[number] | null;
+
+// Complete structured context object
+export interface StructuredContext {
+  intent: IntentType;
+  depth: DepthLevel;
+  audience: AudienceType;
+  source_type: SourceType;
+  format: FormatType;
+  voice_hint: string | null;
+}
+
 // Tool call from Claude
 export interface ToolCall {
   id: string;

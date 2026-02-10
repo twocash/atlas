@@ -7,7 +7,7 @@
 
 import { Client } from '@notionhq/client';
 import { logger } from '../logger';
-import type { Pillar, RequestType, FeedStatus, WQStatus } from './types';
+import type { Pillar, RequestType, FeedStatus, WQStatus, StructuredContext } from './types';
 
 // Re-export Pillar for use by other modules
 export type { Pillar };
@@ -25,6 +25,13 @@ const WORK_QUEUE_DATABASE_ID = '3d679030-b76b-43bd-92d8-1ac51abb4a28';
 let feedDatabaseHealthy = true;
 let lastFeedCheck = 0;
 const FEED_CHECK_INTERVAL = 60000; // Re-check every 60 seconds
+
+/**
+ * Capitalize first letter (for Notion select option names)
+ */
+function capitalize(s: string): string {
+  return s.charAt(0).toUpperCase() + s.slice(1);
+}
 
 /**
  * Strip Markdown formatting for Notion plain text
@@ -151,6 +158,9 @@ export interface AuditEntry {
   classificationConfirmed?: boolean;  // Was this human-verified?
   classificationAdjusted?: boolean;   // Did user change the suggestion?
   originalSuggestion?: string;        // What Atlas initially suggested
+
+  // Intent-First Structured Context (Phase 0)
+  structuredContext?: StructuredContext;
 }
 
 export interface AuditResult {
@@ -272,6 +282,18 @@ async function createFeedEntry(entry: AuditEntry): Promise<{ id: string; url: st
     }
     if (entry.originalSuggestion) {
       optionalProps['Original Suggestion'] = { rich_text: [{ text: { content: entry.originalSuggestion } }] };
+    }
+
+    // Intent-First Structured Context fields
+    if (entry.structuredContext) {
+      const ctx = entry.structuredContext;
+      optionalProps['Intent'] = { select: { name: capitalize(ctx.intent) } };
+      optionalProps['Depth'] = { select: { name: capitalize(ctx.depth) } };
+      optionalProps['Audience'] = { select: { name: capitalize(ctx.audience) } };
+      optionalProps['Source Type'] = { select: { name: capitalize(ctx.source_type) } };
+      if (ctx.format) {
+        optionalProps['Format'] = { select: { name: capitalize(ctx.format) } };
+      }
     }
 
     // Update with optional fields if any exist

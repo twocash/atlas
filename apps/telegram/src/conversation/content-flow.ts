@@ -12,10 +12,7 @@ import { logger } from '../logger';
 import {
   generateRequestId,
   storePendingContent,
-  formatContentPreview,
-  buildConfirmationKeyboard,
-  buildClassificationKeyboard,
-  type PendingContent,
+  buildIntentKeyboard,
 } from './content-confirm';
 import {
   routeForAnalysis,
@@ -23,6 +20,7 @@ import {
   detectContentSource,
   extractDomain,
   type ContentAnalysis,
+  type ContentSource,
 } from './content-router';
 import { isNotionUrl, handleNotionUrl } from './notion-url';
 import type { Pillar, RequestType } from './types';
@@ -288,13 +286,37 @@ export async function triggerContentConfirmation(
       });
     }
 
-    // V3 PROGRESSIVE PROFILING: Use the new Pillar → Action → Voice flow
-    // Pass triage result for suggested pillar highlighting
-    await startPromptSelection(ctx, url, 'url', title, triageResult);
+    // INTENT-FIRST FLOW: Show intent keyboard ("What's the play?")
+    const requestId = generateRequestId();
+    const route = await routeForAnalysis(url);
+
+    storePendingContent({
+      requestId,
+      chatId,
+      userId,
+      messageId,
+      flowState: 'intent',
+      analysis: {
+        ...route,
+        title,
+        extractedAt: new Date().toISOString(),
+      } as ContentAnalysis,
+      originalText: contextText || url,
+      pillar: 'The Grove',  // Default, will be derived from context
+      requestType: 'Research',  // Default, will be derived from intent
+      timestamp: Date.now(),
+      url,
+    });
+
+    const preview = `📝 ${escapeHtml(title)}\n\n<b>What's the play?</b>`;
+    await ctx.reply(preview, {
+      parse_mode: 'HTML',
+      reply_markup: buildIntentKeyboard(requestId),
+    });
 
     return true;
   } catch (error) {
-    logger.error('Failed to trigger V3 content flow', { error, url });
+    logger.error('Failed to trigger intent-first content flow', { error, url });
     return false;
   }
 }
@@ -398,20 +420,55 @@ export async function triggerInstantClassification(
     // since we don't have a URL. The V3 flow will handle it.
     const content = caption || `[${attachment.type}${attachment.fileName ? `: ${attachment.fileName}` : ''}]`;
 
-    logger.info('Media share detected, routing to V3 progressive profiling', {
+    logger.info('Media share detected, routing to intent-first flow', {
       type: attachment.type,
       fileName: attachment.fileName,
       title,
     });
 
-    // V3 PROGRESSIVE PROFILING: Use the new Pillar → Action → Voice flow
-    await startPromptSelection(ctx, content, 'text', title);
+    // INTENT-FIRST FLOW: Show intent keyboard ("What's the play?")
+    const requestId = generateRequestId();
+
+    storePendingContent({
+      requestId,
+      chatId,
+      userId,
+      messageId,
+      flowState: 'intent',
+      analysis: {
+        source: 'generic' as ContentSource,
+        title,
+        description: content,
+        method: 'Fetch' as const,
+      } as ContentAnalysis,
+      originalText: caption || content,
+      pillar: 'The Grove',
+      requestType: 'Research',
+      timestamp: Date.now(),
+      attachmentInfo: attachment,
+    });
+
+    const preview = `📝 ${escapeHtml(title)}\n\n<b>What's the play?</b>`;
+    await ctx.reply(preview, {
+      parse_mode: 'HTML',
+      reply_markup: buildIntentKeyboard(requestId),
+    });
 
     return true;
   } catch (error) {
-    logger.error('Failed to trigger V3 media flow', { error, type: attachment.type });
+    logger.error('Failed to trigger intent-first media flow', { error, type: attachment.type });
     return false;
   }
+}
+
+/**
+ * Escape HTML special characters for Telegram HTML parse mode
+ */
+function escapeHtml(text: string): string {
+  return text
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;');
 }
 
 /**

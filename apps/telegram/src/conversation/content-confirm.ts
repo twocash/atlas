@@ -12,15 +12,21 @@
 
 import { InlineKeyboard } from 'grammy';
 import { logger } from '../logger';
-import type { Pillar, RequestType } from './types';
+import type { Pillar, RequestType, IntentType, DepthLevel, AudienceType, StructuredContext, SourceType } from './types';
 import type { ContentAnalysis, ContentSource } from './content-router';
 
 /**
- * Two-step flow state
+ * Two-step flow state (legacy classify-first)
  * - 'classify': Awaiting pillar selection (instant keyboard, no Gemini yet)
  * - 'confirm': Pillar selected, showing type confirmation (after Gemini)
+ *
+ * Intent-first flow state
+ * - 'intent': Awaiting intent selection (What's the play?)
+ * - 'depth': Awaiting depth selection (How deep?)
+ * - 'audience': Awaiting audience selection (Who's this for?)
+ * - 'confirm': Final review before creation
  */
-export type ContentFlowState = 'classify' | 'confirm';
+export type ContentFlowState = 'classify' | 'intent' | 'depth' | 'audience' | 'confirm';
 
 /**
  * Pending content awaiting confirmation
@@ -32,10 +38,10 @@ export interface PendingContent {
   messageId?: number;        // Original message ID
   confirmMessageId?: number; // Confirmation message ID (for editing)
 
-  // Two-step flow state
+  // Flow state (supports both legacy classify-first and intent-first)
   flowState: ContentFlowState;
 
-  // Content analysis (may be null during 'classify' phase)
+  // Content analysis (may be null during 'classify'/'intent' phase)
   analysis: ContentAnalysis;
   originalText: string;      // Original message text
 
@@ -46,6 +52,12 @@ export interface PendingContent {
   // Pattern learning
   originalSuggestion?: RequestType;  // What Atlas initially suggested
   classificationAdjusted?: boolean;  // Did user change the suggestion?
+
+  // Intent-First structured context (progressive capture)
+  intent?: IntentType;
+  depth?: DepthLevel;
+  audience?: AudienceType;
+  structuredContext?: StructuredContext;
 
   // Metadata
   timestamp: number;
@@ -301,6 +313,183 @@ export function buildConfirmationKeyboard(
   keyboard.text('❌ Skip', `content:${requestId}:skip`);
 
   return keyboard;
+}
+
+// ==========================================
+// Intent-First Keyboard Builders (Phase 1)
+// ==========================================
+
+/**
+ * Build the INTENT keyboard (Step 1: "What's the play?")
+ *
+ * Layout:
+ * [🔍 Research] [✏️ Draft]
+ * [📌 Save] [📊 Analyze]
+ * [📸 Capture] [💬 Engage]
+ */
+export function buildIntentKeyboard(requestId: string): InlineKeyboard {
+  const keyboard = new InlineKeyboard();
+
+  keyboard.text('🔍 Research', `intent:${requestId}:intent:research`);
+  keyboard.text('✏️ Draft', `intent:${requestId}:intent:draft`);
+  keyboard.row();
+  keyboard.text('📌 Save', `intent:${requestId}:intent:save`);
+  keyboard.text('📊 Analyze', `intent:${requestId}:intent:analyze`);
+  keyboard.row();
+  keyboard.text('📸 Capture', `intent:${requestId}:intent:capture`);
+  keyboard.text('💬 Engage', `intent:${requestId}:intent:engage`);
+  keyboard.row();
+  keyboard.text('❌ Skip', `intent:${requestId}:skip`);
+
+  return keyboard;
+}
+
+/**
+ * Build the DEPTH keyboard (Step 2: "How deep?")
+ *
+ * Layout:
+ * [⚡ Quick] [📊 Standard] [🔬 Deep Dive]
+ */
+export function buildDepthKeyboard(requestId: string): InlineKeyboard {
+  const keyboard = new InlineKeyboard();
+
+  keyboard.text('⚡ Quick', `intent:${requestId}:depth:quick`);
+  keyboard.text('📊 Standard', `intent:${requestId}:depth:standard`);
+  keyboard.text('🔬 Deep Dive', `intent:${requestId}:depth:deep`);
+  keyboard.row();
+  keyboard.text('⬅️ Back', `intent:${requestId}:back:intent`);
+  keyboard.text('❌ Skip', `intent:${requestId}:skip`);
+
+  return keyboard;
+}
+
+/**
+ * Build the AUDIENCE keyboard (Step 3: "Who's this for?")
+ *
+ * Layout:
+ * [🙋 Just Me] [💼 Client]
+ * [🌐 Public] [👥 Team]
+ */
+export function buildAudienceKeyboard(requestId: string): InlineKeyboard {
+  const keyboard = new InlineKeyboard();
+
+  keyboard.text('🙋 Just Me', `intent:${requestId}:audience:self`);
+  keyboard.text('💼 Client', `intent:${requestId}:audience:client`);
+  keyboard.row();
+  keyboard.text('🌐 Public', `intent:${requestId}:audience:public`);
+  keyboard.text('👥 Team', `intent:${requestId}:audience:team`);
+  keyboard.row();
+  keyboard.text('⬅️ Back', `intent:${requestId}:back:depth`);
+  keyboard.text('❌ Skip', `intent:${requestId}:skip`);
+
+  return keyboard;
+}
+
+/**
+ * Build the intent-first CONFIRMATION keyboard (Step 4: Review)
+ *
+ * Shows assembled context with confirm/back/skip
+ */
+export function buildIntentConfirmKeyboard(requestId: string): InlineKeyboard {
+  const keyboard = new InlineKeyboard();
+
+  keyboard.text('✅ Confirm', `intent:${requestId}:confirm`);
+  keyboard.text('⬅️ Back', `intent:${requestId}:back:audience`);
+  keyboard.text('❌ Skip', `intent:${requestId}:skip`);
+
+  return keyboard;
+}
+
+// ==========================================
+// Pillar Derivation (Phase 1)
+// ==========================================
+
+/**
+ * Derive pillar from structured context
+ *
+ * Backward-compatible: produces a Pillar value from intent+depth+audience
+ * so downstream systems (prompt composition, voice, agent routing) work unchanged.
+ */
+export function derivePillarFromContext(ctx: StructuredContext): Pillar {
+  // Audience-driven primary mapping
+  if (ctx.audience === 'client') return 'Consulting';
+  if (ctx.audience === 'public') return 'The Grove';  // public content = Grove voice
+
+  // Intent-driven secondary mapping
+  if (ctx.intent === 'research' && ctx.depth === 'deep') return 'The Grove';
+  if (ctx.intent === 'engage') return 'Consulting';  // engagement = professional
+  if (ctx.intent === 'draft' && ctx.audience === 'team') return 'The Grove';
+
+  // Source-type hints
+  if (ctx.source_type === 'github') return 'The Grove';
+  if (ctx.source_type === 'linkedin') return 'Consulting';
+
+  // Default
+  return 'Personal';
+}
+
+/**
+ * Detect source type from URL or attachment info
+ */
+export function detectSourceType(url?: string, attachmentType?: string): SourceType {
+  if (attachmentType) {
+    switch (attachmentType) {
+      case 'photo':
+      case 'image': return 'image';
+      case 'document': return 'document';
+      case 'video':
+      case 'video_note': return 'video';
+      case 'voice':
+      case 'audio': return 'audio';
+      default: return 'text';
+    }
+  }
+
+  if (url) {
+    const lower = url.toLowerCase();
+    if (lower.includes('github.com')) return 'github';
+    if (lower.includes('linkedin.com')) return 'linkedin';
+    return 'url';
+  }
+
+  return 'text';
+}
+
+// ==========================================
+// Intent-First Callback Parsing
+// ==========================================
+
+/**
+ * Parse callback data from intent-first keyboard press
+ */
+export type IntentCallbackAction = 'intent' | 'depth' | 'audience' | 'confirm' | 'skip' | 'back';
+
+export function parseIntentCallbackData(data: string): {
+  requestId: string;
+  action: IntentCallbackAction;
+  value?: string;
+} | null {
+  if (!data.startsWith('intent:')) return null;
+
+  const parts = data.split(':');
+  if (parts.length < 3) return null;
+
+  const [, requestId, action, value] = parts;
+
+  if (!['intent', 'depth', 'audience', 'confirm', 'skip', 'back'].includes(action)) return null;
+
+  return {
+    requestId,
+    action: action as IntentCallbackAction,
+    value,
+  };
+}
+
+/**
+ * Check if a callback query is for intent-first flow
+ */
+export function isIntentCallback(data: string | undefined): boolean {
+  return data?.startsWith('intent:') ?? false;
 }
 
 /**

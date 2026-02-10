@@ -47,6 +47,12 @@ async function main() {
       'Classification Adjusted',
       'Original Suggestion',
       'Context Payload',
+      // Intent-First Structured Context (Phase 0)
+      'Intent',
+      'Depth',
+      'Audience',
+      'Source Type',
+      'Format',
     ];
 
     for (const field of patternFields) {
