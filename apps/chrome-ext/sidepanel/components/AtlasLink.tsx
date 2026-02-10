@@ -11,13 +11,16 @@ interface AtlasActivity {
 
 // Status server URL (Telegram bot exposes this)
 const STATUS_SERVER_URL = 'http://localhost:3847'
-const POLL_INTERVAL = 2000 // 2 seconds
+const POLL_INTERVAL = 2000 // 2 seconds when connected
+const BACKOFF_MAX = 60000 // Back off to 60s when server is unreachable
 
 export function AtlasLink() {
   const [activities, setActivities] = useState<AtlasActivity[]>([])
   const [connected, setConnected] = useState(false)
   const [currentSkill, setCurrentSkill] = useState<string | null>(null)
   const lastSeenTimestampRef = useRef<number>(0)
+  const backoffRef = useRef<number>(POLL_INTERVAL)
+  const serverReachableRef = useRef<boolean>(false)
 
   // Poll the status server for updates
   const pollStatus = useCallback(async () => {
@@ -28,6 +31,8 @@ export function AtlasLink() {
       const data = await res.json()
       setConnected(data.connected)
       setCurrentSkill(data.currentSkill)
+      backoffRef.current = POLL_INTERVAL // Reset backoff on success
+      serverReachableRef.current = true
 
       // Convert server activities to our format, filtering out already-seen ones
       const newActivities: AtlasActivity[] = data.activities
@@ -52,18 +57,32 @@ export function AtlasLink() {
     } catch {
       setConnected(false)
       setCurrentSkill(null)
+      // Exponential backoff: double interval up to max
+      backoffRef.current = Math.min(backoffRef.current * 2, BACKOFF_MAX)
+      serverReachableRef.current = false
     }
   }, [])
 
-  // Polling effect
+  // Polling effect with adaptive interval
   useEffect(() => {
+    let timer: ReturnType<typeof setTimeout> | null = null
+    let cancelled = false
+
+    const scheduleNext = () => {
+      if (cancelled) return
+      timer = setTimeout(async () => {
+        await pollStatus()
+        scheduleNext()
+      }, backoffRef.current)
+    }
+
     // Initial poll
-    pollStatus()
+    pollStatus().then(() => scheduleNext())
 
-    // Set up interval
-    const interval = setInterval(pollStatus, POLL_INTERVAL)
-
-    return () => clearInterval(interval)
+    return () => {
+      cancelled = true
+      if (timer) clearTimeout(timer)
+    }
   }, [pollStatus])
 
   // Also listen for Chrome runtime messages (for emergency stop relay)

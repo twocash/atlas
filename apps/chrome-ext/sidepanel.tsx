@@ -58,7 +58,8 @@ class ErrorBoundary extends Component<{ children: React.ReactNode }, { hasError:
 
 // Status server URL for Atlas connection check
 const ATLAS_STATUS_URL = 'http://localhost:3847/status'
-const ATLAS_POLL_INTERVAL = 3000 // 3 seconds (slightly slower than AtlasLink)
+const ATLAS_POLL_INTERVAL = 3000 // 3 seconds when connected
+const ATLAS_BACKOFF_MAX = 60000 // Back off to 60s when server unreachable
 
 function SidePanelInner() {
   const [queue] = useQueueState()
@@ -108,25 +109,42 @@ function SidePanelInner() {
     return () => { if (interval) clearInterval(interval); portRef.current?.disconnect() }
   }, [])
 
-  // 3. Atlas Status Polling (for NavRail badge)
+  // 3. Atlas Status Polling (for NavRail badge) — with exponential backoff
   useEffect(() => {
+    let timer: ReturnType<typeof setTimeout> | null = null
+    let cancelled = false
+    let backoff = ATLAS_POLL_INTERVAL
+
     const checkAtlas = async () => {
       try {
         const res = await fetch(ATLAS_STATUS_URL)
         if (res.ok) {
           const data = await res.json()
           setAtlasConnected(data.connected === true)
+          backoff = ATLAS_POLL_INTERVAL // Reset on success
         } else {
           setAtlasConnected(false)
+          backoff = Math.min(backoff * 2, ATLAS_BACKOFF_MAX)
         }
       } catch {
         setAtlasConnected(false)
+        backoff = Math.min(backoff * 2, ATLAS_BACKOFF_MAX)
       }
     }
 
-    checkAtlas()
-    const interval = setInterval(checkAtlas, ATLAS_POLL_INTERVAL)
-    return () => clearInterval(interval)
+    const scheduleNext = () => {
+      if (cancelled) return
+      timer = setTimeout(async () => {
+        await checkAtlas()
+        scheduleNext()
+      }, backoff)
+    }
+
+    checkAtlas().then(() => scheduleNext())
+    return () => {
+      cancelled = true
+      if (timer) clearTimeout(timer)
+    }
   }, [])
 
   const isRunning = queue?.status === "running"
