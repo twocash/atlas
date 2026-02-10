@@ -12,6 +12,9 @@
 import type { Api } from 'grammy';
 import { Client } from '@notionhq/client';
 import { logger } from '../logger';
+import { isFeatureEnabled } from '../config/features';
+import { createActionFeedEntry } from '../notion';
+import type { ActionDataReview } from '../types';
 
 // ==========================================
 // Configuration
@@ -310,6 +313,28 @@ export async function runWorkerCycle(): Promise<string> {
       // Explicitly write results to Notion page body
       logger.info('[Worker] Writing results to Notion', { taskId: task.id, summaryLength: result.summary?.length });
       await syncAgentComplete(task.id, agent, result);
+
+      // P3 Review Card — FAIL-OPEN: card failure does NOT block delivery
+      if (isFeatureEnabled('reviewProducer')) {
+        try {
+          const reviewData: ActionDataReview = {
+            wq_item_id: task.id,
+            wq_title: task.title,
+            output_url: task.url || undefined,
+          };
+          await createActionFeedEntry(
+            'Review',
+            reviewData,
+            'worker',
+            `Review: ${task.title}`,
+            ['research-review']
+          );
+          logger.info('[Worker] Review card created', { taskId: task.id });
+        } catch (reviewError) {
+          logger.warn('[Worker] Review card creation failed (FAIL-OPEN)', { taskId: task.id, error: reviewError });
+        }
+      }
+
       const doneMsg = `\u2705 Done: <b>${task.title}</b>\n\u2192 ${task.url}`;
       await notifyJim(doneMsg);
       return doneMsg;

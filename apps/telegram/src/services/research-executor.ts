@@ -10,6 +10,9 @@ import { logger } from "../logger";
 import { markdownToHtml } from "../formatting";
 import { validateResearchOutput, type ResearchOutput } from "../agents/validation";
 import { HallucinationError } from "../errors";
+import { isFeatureEnabled } from "../config/features";
+import { createActionFeedEntry } from "../notion";
+import type { ActionDataReview } from "../types";
 
 // Import from @atlas/agents package
 import {
@@ -132,6 +135,26 @@ export async function runResearchAgentWithNotifications(
       logger.info("Marking agent as complete", { agentId: agent.id, hasSummary: !!result.summary });
       await registry.complete(agent.id, result);
       logger.info("Agent marked complete, event should fire", { agentId: agent.id });
+
+      // P3 Review Card — FAIL-OPEN: card failure does NOT block delivery
+      if (isFeatureEnabled('reviewProducer') && workItemId) {
+        try {
+          const reviewData: ActionDataReview = {
+            wq_item_id: workItemId,
+            wq_title: config.query.substring(0, 100),
+          };
+          await createActionFeedEntry(
+            'Review',
+            reviewData,
+            'research-agent',
+            `Review: ${config.query.substring(0, 80)}`,
+            ['research-review']
+          );
+          logger.info("Review card created", { agentId: agent.id, workItemId });
+        } catch (reviewError) {
+          logger.warn("Review card creation failed (FAIL-OPEN)", { agentId: agent.id, error: reviewError });
+        }
+      }
     } else {
       logger.warn("Research failed, marking agent as failed", { agentId: agent.id, summary: result.summary });
       await registry.fail(agent.id, result.summary || "Research failed", true);
