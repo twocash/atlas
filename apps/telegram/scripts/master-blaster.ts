@@ -694,6 +694,52 @@ async function runActionFeedProducerTests(cwd: string): Promise<SuiteResult> {
 }
 
 /**
+ * Run Bridge stability tests (Playwright + mock bridge)
+ *
+ * Runs in a SEPARATE node process from apps/chrome-ext-vite/.
+ * Requires: Playwright, ws package, Chrome, extension built.
+ * Only runs in --full mode due to Chrome/Playwright dependency.
+ */
+async function runBridgeStabilityTests(cwd: string): Promise<SuiteResult> {
+  console.log('\n[BRIDGE] Running Bridge Stability Tests...');
+  console.log('─'.repeat(50));
+
+  const bridgeCwd = join(cwd, '..', 'chrome-ext-vite');
+  const result = await runCommand(
+    'node',
+    ['test-bridge-stability.mjs'],
+    bridgeCwd,
+    120000
+  );
+
+  // Parse PASS/FAIL output (uses ANSI codes: \x1b[32mPASS\x1b[0m / \x1b[31mFAIL\x1b[0m)
+  const passMatches = result.output.match(/PASS\x1b\[0m/g) || [];
+  const failMatches = result.output.match(/FAIL\x1b\[0m/g) || [];
+  // Also match plain text for piped output
+  const plainPassMatches = result.output.match(/^\s+PASS /gm) || [];
+  const plainFailMatches = result.output.match(/^\s+FAIL /gm) || [];
+
+  const passed = Math.max(passMatches.length, plainPassMatches.length);
+  const failed = Math.max(failMatches.length, plainFailMatches.length);
+
+  if (!result.success) {
+    console.log(result.output);
+  }
+
+  const status = result.success ? '\x1b[32m[PASS]\x1b[0m' : '\x1b[31m[FAIL]\x1b[0m';
+  console.log(`  ${status} ${passed} passed, ${failed} failed (${result.duration}ms)`);
+
+  return {
+    name: 'Bridge Stability (Playwright)',
+    passed,
+    failed,
+    skipped: 0,
+    duration: result.duration,
+    errors: result.success ? [] : [result.output],
+  };
+}
+
+/**
  * Run Intent-First integration tests
  *
  * Runs in a SEPARATE bun process because it mocks ../src/conversation/audit,
@@ -781,12 +827,13 @@ async function main() {
       suites.push(await runActionFeedProducerTests(cwd));
       suites.push(await runIntentFirstTests(cwd));
       suites.push(await runAutonomousRepairTests(cwd));
+      suites.push(await runBridgeStabilityTests(cwd));
       suites.push(await runSmokeTests(cwd));
       suites.push(await runE2ETests(cwd));
       suites.push(await runIntegrationTests(cwd));
     }
   }
-  // Full mode: All suites including canaries and E2E
+  // Full mode: All suites including canaries, E2E, and bridge
   else if (full) {
     suites.push(await runCanaryTests(cwd));  // Canaries first - detect silent failures
     suites.push(await runUnitTests(cwd));
@@ -794,6 +841,7 @@ async function main() {
     suites.push(await runActionFeedProducerTests(cwd));  // P2/P3 sprint
     suites.push(await runIntentFirstTests(cwd));  // Intent-First Phase 0+1
     suites.push(await runAutonomousRepairTests(cwd));  // Pit Stop sprint
+    suites.push(await runBridgeStabilityTests(cwd));  // Bridge Playwright tests
     suites.push(await runSmokeTests(cwd));
     suites.push(await runE2ETests(cwd));
     suites.push(await runIntegrationTests(cwd));
