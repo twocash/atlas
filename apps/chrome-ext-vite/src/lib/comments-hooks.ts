@@ -3,7 +3,7 @@
  */
 
 import { useEffect, useState, useCallback } from "react"
-import { Storage } from "@plasmohq/storage"
+import { Storage } from "~src/lib/chrome-storage"
 import { STORAGE_KEYS } from "./storage"
 import type { CommentsState, LinkedInComment } from "~src/types/comments"
 import { DEFAULT_COMMENTS_STATE } from "~src/types/comments"

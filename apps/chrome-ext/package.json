@@ -11,10 +11,9 @@
     "verify:extension": "bun run scripts/test-action-feed.ts"
   },
   "dependencies": {
-    "@plasmohq/messaging": "^0.7.0",
     "@plasmohq/storage": "^1.13.0",
     "papaparse": "^5.4.1",
-    "plasmo": "^0.89.3",
+    "plasmo": "^0.90.5",
     "react": "^18.3.1",
     "react-dom": "^18.3.1",
     "sharp": "^0.34.5"
@@ -35,8 +34,6 @@
       "storage",
       "tabs",
       "alarms",
-      "scripting",
-      "activeTab",
       "contextMenus"
     ],
     "side_panel": {

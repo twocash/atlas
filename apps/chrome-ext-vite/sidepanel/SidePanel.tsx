@@ -1,5 +1,5 @@
 import React, { Component, useEffect, useState, useRef } from "react"
-import "./style.css"
+// style.css imported in main.tsx
 import { useQueueState } from "~src/lib/hooks"
 import { Header } from "~sidepanel/components/Header"
 import { NavRail, type ViewId } from "~sidepanel/components/NavRail"

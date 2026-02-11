@@ -1,0 +1,131 @@
+# ADR-001: Migrate Chrome Extension Build from Plasmo to Vite + esbuild
+
+**Status:** Accepted
+**Date:** 2026-02-09
+**Deciders:** Jim Calhoun, Atlas
+**Context:** Atlas LinkedIn Sales Nav Assistant Chrome Extension
+
+---
+
+## Context
+
+The Atlas Chrome extension was built using [Plasmo](https://docs.plasmo.com/) (v0.89.5, later upgraded to v0.90.5), a framework that wraps Parcel bundler and auto-generates manifest.json, content script injection, and other Chrome extension boilerplate.
+
+During testing on LinkedIn pages, we observed a critical error flood:
+
+```
+chrome-extension://invalid/ net::ERR_FAILED
+```
+
+This error fired **thousands of times per second** in a tight loop, creating significant risk of LinkedIn anti-bot detection and account suspension.
+
+## Investigation
+
+A multi-session investigation systematically eliminated every possible source:
+
+1. **All source code is clean.** Every built JS file was analyzed line by line. Zero `getBundleURL`, zero reconnection loops, zero `chrome-extension://invalid/` references in our code.
+
+2. **Content scripts are innocent.** A "nuclear test" removed all content scripts entirely. The errors persisted, proving the sidepanel/framework layer was the source.
+
+3. **Plasmo framework fixes attempted:**
+   - Upgraded Plasmo v0.89.5 -> v0.90.5 (no effect)
+   - Removed unused `@plasmohq/messaging` dependency (no effect)
+   - Removed unused `scripting` and `activeTab` permissions (no effect)
+   - Clean rebuild (rm -rf build .plasmo .parcel-cache) (no effect)
+   - Fresh extension install (no effect)
+
+4. **Root cause identified via DevTools Initiator column:**
+   ```
+   window.fetch    @    5fdhwcppjcvqvxsawd8pg1n51:12260
+   (anonymous)    @    5fdhwcppjcvqvxsawd8pg1n51:9579
+   ```
+   This **12,260-line phantom script** was NOT any of our built files (our largest file was 72 lines minified). It was injected by Plasmo/Parcel's internal runtime machinery — invisible in our source, invisible in our build output, but executing `window.fetch("chrome-extension://invalid/")` in a tight loop.
+
+## Decision
+
+**Replace Plasmo entirely with Vite (sidepanel) + esbuild (content scripts, background worker).**
+
+This is implemented as an A/B test:
+- `apps/chrome-ext/` — Original Plasmo build (preserved for comparison)
+- `apps/chrome-ext-vite/` — New Vite + esbuild build (zero-framework)
+
+## Architecture
+
+The new build uses three explicit, predictable build steps with zero framework magic:
+
+```
+build.mjs
+  |
+  +-- [1] Vite: sidepanel.html + React + Tailwind -> dist/sidepanel.{js,html} + dist/assets/style.css
+  |
+  +-- [2] esbuild: content scripts -> dist/content-scripts/*.js (IIFE, chrome120 target)
+  |
+  +-- [3] esbuild: background worker -> dist/background.js (IIFE, chrome120 target)
+  |
+  +-- [4] Copy: manifest.json + icons -> dist/
+```
+
+### Key changes
+
+| Aspect | Plasmo | Vite + esbuild |
+|--------|--------|----------------|
+| Bundler | Parcel (hidden) | Vite (sidepanel), esbuild (scripts) |
+| Manifest | Auto-generated | Hand-written, version-controlled |
+| Content scripts | Auto-wrapped, injected | Explicit IIFE bundles |
+| Storage | `@plasmohq/storage` | Custom `chrome-storage.ts` (57 lines) |
+| HMR/Dev | Plasmo dev server | Vite `--watch` mode |
+| Build output | 72-line minified + phantom 12K-line runtime | 4 clean, predictable JS files |
+
+### Preserved
+
+- All UI components, layout, and architecture
+- Path aliases (`~src/`, `~sidepanel/`, `~lib/`)
+- Tailwind CSS with atlas color palette
+- All 78 source files (sidepanel components, background worker, content scripts, lib utilities, types)
+
+### Removed
+
+- `@plasmohq/storage` -> replaced with 57-line `chrome-storage.ts`
+- `@plasmohq/storage/secure` -> replaced with `SecureStorage` subclass (prefix-based, no encryption needed for local extension)
+- `@plasmohq/messaging` -> was never imported (phantom dependency)
+- `PlasmoCSConfig` types -> content script config lives in manifest.json
+- All auto-generated Parcel/Plasmo runtime code
+
+## Verification
+
+Build output analysis (2026-02-09):
+
+```
+sidepanel.js:        127 lines, 271.7KB  | fetch(): 3  | chrome.runtime: 14
+background.js:         3 lines,  47.6KB  | fetch(): 10 | chrome.runtime: 5
+linkedin-feed.js:      5 lines,  10.9KB  | fetch(): 0  | chrome.runtime: 1
+linkedin.js:           3 lines,   6.5KB  | fetch(): 0  | chrome.runtime: 1
+```
+
+**Zero** `getBundleURL`, `__parcel`, `__plasmo`, `reconnect`, `hotReload`, `HMR`, or `sourceMappingURL` references.
+
+No phantom scripts. No invisible runtime injection. Every line of JavaScript in the output is traceable to our source code.
+
+## Consequences
+
+### Positive
+- Eliminates the `chrome-extension://invalid/` error flood entirely
+- Build output is fully auditable — no phantom scripts
+- Faster builds (Vite + esbuild vs Parcel)
+- No framework lock-in
+- Smaller dependency footprint (no Plasmo, no Parcel)
+
+### Negative
+- Manifest must be maintained manually (was auto-generated by Plasmo)
+- Content script registration is manual (matches/run_at in manifest.json)
+- `@plasmohq/storage` features like encrypted SecureStorage are simplified (no AES-GCM)
+
+### Neutral
+- A/B test structure means both builds coexist until Vite build is validated in production
+
+## Next Steps
+
+1. Load `chrome-ext-vite/dist/` as unpacked extension in Chrome
+2. Navigate to LinkedIn and verify zero `chrome-extension://invalid/` errors
+3. If clean: adopt Vite build as primary, archive Plasmo build
+4. If issues: compare behavior between both builds for root cause isolation
