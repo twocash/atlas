@@ -22,23 +22,63 @@ export interface UserMessage {
 
 // ─── Messages (Claude → Bridge → Client) ─────────────────────
 
-export interface StreamEvent {
-  type: "stream_event"
-  event: StreamEventPayload
-}
-
-export interface SdkMessage {
-  type: "sdk_message"
+/**
+ * Claude Code CLI protocol — `assistant` message (complete turn).
+ * Sent via `-p --output-format stream-json`.
+ */
+export interface ClaudeAssistantMessage {
+  type: "assistant"
   message: AssistantMessage
 }
 
-export interface SystemEvent {
+/**
+ * Claude Code CLI protocol — `result` message (final summary).
+ * Contains the complete text result, cost, and duration.
+ */
+export interface ClaudeResultMessage {
+  type: "result"
+  subtype: "success" | "error"
+  result?: string
+  error?: string
+  duration_ms?: number
+  total_cost_usd?: number
+  session_id?: string
+}
+
+/**
+ * Claude Code CLI protocol — `system` init message.
+ * Sent at startup with session/model info.
+ */
+export interface ClaudeSystemInit {
+  type: "system"
+  subtype: "init"
+  session_id: string
+  model: string
+  tools?: unknown[]
+}
+
+/**
+ * Bridge-originated system events (claude_connected, error, etc.)
+ */
+export interface BridgeSystemEvent {
   type: "system"
   event: string
   data?: unknown
 }
 
-export type IncomingMessage = StreamEvent | SdkMessage | SystemEvent
+export type SystemEvent = ClaudeSystemInit | BridgeSystemEvent
+
+/** Legacy streaming format (kept for future streaming support) */
+export interface StreamEvent {
+  type: "stream_event"
+  event: StreamEventPayload
+}
+
+export type IncomingMessage =
+  | ClaudeAssistantMessage
+  | ClaudeResultMessage
+  | SystemEvent
+  | StreamEvent
 
 // ─── Stream Event Payloads ───────────────────────────────────
 

@@ -12,6 +12,8 @@ import type {
   ChatMessage,
   IncomingMessage,
   ToolCallInfo,
+  ClaudeAssistantMessage,
+  ClaudeResultMessage,
 } from "../types/claude-sdk"
 
 // ─── Config ──────────────────────────────────────────────────
@@ -102,7 +104,7 @@ export function useClaudeCode(): UseClaudeCodeReturn {
     const lines = raw.split("\n").filter((l) => l.trim())
 
     for (const line of lines) {
-      let msg: IncomingMessage
+      let msg: any
       try {
         msg = JSON.parse(line)
       } catch {
@@ -112,16 +114,26 @@ export function useClaudeCode(): UseClaudeCodeReturn {
 
       if (msg.type === "system") {
         handleSystemEvent(msg)
+      } else if (msg.type === "assistant") {
+        handleAssistantMessage(msg as ClaudeAssistantMessage)
+      } else if (msg.type === "result") {
+        handleResultMessage(msg as ClaudeResultMessage)
       } else if (msg.type === "stream_event") {
+        // Legacy streaming format (future-proofing)
         handleStreamEvent(msg)
-      } else if (msg.type === "sdk_message") {
-        // Final message — finalize the streaming turn
-        finalizeStreaming()
       }
     }
   }, [])
 
-  const handleSystemEvent = useCallback((msg: { type: "system"; event: string; data?: unknown }) => {
+  const handleSystemEvent = useCallback((msg: any) => {
+    // Claude Code CLI init: { type: "system", subtype: "init", session_id, model }
+    if (msg.subtype === "init") {
+      console.log(`[claude-hook] Claude init — session: ${msg.session_id}, model: ${msg.model}`)
+      setClaudeState("connected")
+      return
+    }
+
+    // Bridge-originated events: { type: "system", event: "claude_connected" | ... }
     if (msg.event === "claude_connected") {
       setClaudeState("connected")
     } else if (msg.event === "claude_disconnected") {
@@ -131,6 +143,64 @@ export function useClaudeCode(): UseClaudeCodeReturn {
       console.warn("[claude-hook] Bridge error:", data?.message)
     }
   }, [])
+
+  // ─── Claude Code CLI Protocol Handlers ──────────────────
+
+  const handleAssistantMessage = useCallback((msg: ClaudeAssistantMessage) => {
+    const { message } = msg
+    if (!message?.content) return
+
+    // Extract text from content blocks
+    const textParts: string[] = []
+    const tools: ToolCallInfo[] = []
+
+    for (const block of message.content) {
+      if (block.type === "text") {
+        textParts.push(block.text)
+      } else if (block.type === "tool_use") {
+        tools.push({ id: block.id, name: block.name, status: "complete" })
+      }
+    }
+
+    const text = textParts.join("")
+    if (!text && tools.length === 0) return
+
+    const chatMsg: ChatMessage = {
+      id: message.id || `assistant-${Date.now()}`,
+      role: "assistant",
+      content: text,
+      timestamp: Date.now(),
+      streaming: false,
+      toolCalls: tools.length > 0 ? tools : undefined,
+    }
+
+    setMessages((prev) => [...prev, chatMsg])
+  }, [])
+
+  const handleResultMessage = useCallback((msg: ClaudeResultMessage) => {
+    if (msg.subtype === "error" && msg.error) {
+      // Show error as assistant message
+      const errorMsg: ChatMessage = {
+        id: `error-${Date.now()}`,
+        role: "assistant",
+        content: `Error: ${msg.error}`,
+        timestamp: Date.now(),
+      }
+      setMessages((prev) => [...prev, errorMsg])
+    }
+
+    // Log cost/duration for debugging
+    if (msg.duration_ms || msg.total_cost_usd) {
+      console.log(
+        `[claude-hook] Result: ${msg.duration_ms}ms, $${msg.total_cost_usd?.toFixed(4) ?? "?"}`
+      )
+    }
+
+    // Finalize any in-progress streaming
+    finalizeStreaming()
+  }, [])
+
+  // ─── Legacy Streaming Handlers (future use) ────────────
 
   const handleStreamEvent = useCallback((msg: { type: "stream_event"; event: any }) => {
     const event = msg.event
