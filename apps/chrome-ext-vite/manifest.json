@@ -52,6 +52,7 @@
     "https://api.notion.com/*",
     "https://api.phantombuster.com/*",
     "https://phantombuster.s3.amazonaws.com/*",
-    "http://localhost:3847/*"
+    "http://localhost:3847/*",
+    "http://localhost:3848/*"
   ]
 }

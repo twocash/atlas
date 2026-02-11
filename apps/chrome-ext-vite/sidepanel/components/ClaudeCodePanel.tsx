@@ -6,11 +6,16 @@
  */
 
 import React, { useState, useRef, useEffect } from "react"
-import { useClaudeCode } from "~src/lib/claude-code-hooks"
+import type { UseClaudeCodeReturn } from "~src/lib/claude-code-hooks"
 import type { ChatMessage } from "~src/types/claude-sdk"
 
-export function ClaudeCodePanel() {
-  const { status, messages, send, clearMessages } = useClaudeCode()
+/**
+ * Props are injected by SidePanel — the hook lives at SidePanel level
+ * so the WebSocket survives view switching.
+ */
+export type ClaudeCodePanelProps = UseClaudeCodeReturn
+
+export function ClaudeCodePanel({ status, messages, send, clearMessages }: ClaudeCodePanelProps) {
   const [input, setInput] = useState("")
   const messagesEndRef = useRef<HTMLDivElement>(null)
   const inputRef = useRef<HTMLTextAreaElement>(null)

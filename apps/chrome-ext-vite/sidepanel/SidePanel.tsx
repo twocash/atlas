@@ -23,6 +23,7 @@ import { OutreachView } from "~sidepanel/components/OutreachView"
 import { AtlasLink } from "~sidepanel/components/AtlasLink"
 import { ActionFeed } from "~sidepanel/components/ActionFeed/ActionFeed"
 import { ClaudeCodePanel } from "~sidepanel/components/ClaudeCodePanel"
+import { useClaudeCode } from "~src/lib/claude-code-hooks"
 import { useCommentsState } from "~src/lib/comments-hooks"
 
 // Simple Error Boundary
@@ -66,7 +67,11 @@ function SidePanelInner() {
   const [commentsState, { replaceAllComments }] = useCommentsState()
   const [view, setView] = useState<ViewId>("outreach")
   const [atlasConnected, setAtlasConnected] = useState(false)
-  const [claudeConnected, setClaudeConnected] = useState(false)
+
+  // Claude Code bridge — hook lives HERE so WebSocket survives view switching.
+  // The hook's status drives both the NavRail badge and ClaudeCodePanel props.
+  const claudeCode = useClaudeCode()
+  const claudeConnected = claudeCode.status.claude === "connected"
 
   const didAutoSwitch = useRef(false)
 
@@ -139,44 +144,6 @@ function SidePanelInner() {
     }
   }, [])
 
-  // 4. Bridge Status Polling (for Claude NavRail badge)
-  useEffect(() => {
-    let timer: ReturnType<typeof setTimeout> | null = null
-    let cancelled = false
-    let backoff = 5000
-
-    const checkBridge = async () => {
-      try {
-        const res = await fetch('http://localhost:3848/status')
-        if (res.ok) {
-          const data = await res.json()
-          setClaudeConnected(data.claude === 'connected')
-          backoff = 5000
-        } else {
-          setClaudeConnected(false)
-          backoff = Math.min(backoff * 2, 60000)
-        }
-      } catch {
-        setClaudeConnected(false)
-        backoff = Math.min(backoff * 2, 60000)
-      }
-    }
-
-    const scheduleNext = () => {
-      if (cancelled) return
-      timer = setTimeout(async () => {
-        await checkBridge()
-        scheduleNext()
-      }, backoff)
-    }
-
-    checkBridge().then(() => scheduleNext())
-    return () => {
-      cancelled = true
-      if (timer) clearTimeout(timer)
-    }
-  }, [])
-
   const isRunning = queue?.status === "running"
   const inboxCount = commentsState.comments.filter((c) => c.status === 'needs_reply' && !c.hiddenLocally).length
 
@@ -234,7 +201,7 @@ function SidePanelInner() {
 
           {/* VIEW: CLAUDE CODE */}
           {view === "claude" && (
-            <ClaudeCodePanel />
+            <ClaudeCodePanel {...claudeCode} />
           )}
 
           {/* VIEW: SETTINGS */}
