@@ -1,6 +1,6 @@
 import React from "react"
 
-export type ViewId = "inbox" | "outreach" | "studio" | "data" | "atlas" | "settings"
+export type ViewId = "inbox" | "outreach" | "studio" | "data" | "atlas" | "claude" | "settings"
 
 interface NavRailProps {
   activeView: ViewId
@@ -8,9 +8,10 @@ interface NavRailProps {
   hasActiveTask: boolean
   inboxCount?: number
   atlasConnected?: boolean
+  claudeConnected?: boolean
 }
 
-export function NavRail({ activeView, onSelect, hasActiveTask, inboxCount = 3, atlasConnected = false }: NavRailProps) {
+export function NavRail({ activeView, onSelect, hasActiveTask, inboxCount = 3, atlasConnected = false, claudeConnected = false }: NavRailProps) {
   return (
     <div className="w-14 flex flex-col items-center py-4 bg-gray-50 border-r border-gray-200 gap-6 flex-shrink-0">
 
@@ -93,7 +94,23 @@ export function NavRail({ activeView, onSelect, hasActiveTask, inboxCount = 3, a
         </svg>
       </NavButton>
 
-      {/* 6. Settings (Bottom Config) */}
+      {/* 6. Claude Code (Bridge Terminal) */}
+      <NavButton
+        id="claude"
+        label="Claude"
+        active={activeView === "claude"}
+        onClick={() => onSelect("claude")}
+        badge={true}
+        badgeColor={claudeConnected ? "green" : "gray"}
+      >
+        {/* Claude Icon - Terminal/Code */}
+        <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round">
+          <polyline points="4 17 10 11 4 5" />
+          <line x1="12" y1="19" x2="20" y2="19" />
+        </svg>
+      </NavButton>
+
+      {/* 7. Settings (Bottom Config) */}
       <div className="mt-auto">
         <NavButton
           id="settings"
