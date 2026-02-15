@@ -178,9 +178,9 @@ describe('audience-voice: resolveAudienceVoice', () => {
 // ==========================================
 
 describe('depth-config: getDepthConfig', () => {
-  it('quick: low temp, low maxTokens, concise modifier', () => {
+  it('quick: standard temp, low maxTokens, concise modifier', () => {
     const cfg = getDepthConfig('quick');
-    expect(cfg.temperature).toBe(0.5);
+    expect(cfg.temperature).toBe(0.7);
     expect(cfg.maxTokens).toBe(2048);
     expect(cfg.instructionModifier).toContain('concise');
   });
@@ -192,18 +192,20 @@ describe('depth-config: getDepthConfig', () => {
     expect(cfg.instructionModifier).toBe('');
   });
 
-  it('deep: high temp, high maxTokens, thorough modifier', () => {
+  it('deep: low temp (precision), high maxTokens, thorough+cite modifier', () => {
     const cfg = getDepthConfig('deep');
-    expect(cfg.temperature).toBe(0.8);
+    expect(cfg.temperature).toBe(0.3);
     expect(cfg.maxTokens).toBe(8192);
     expect(cfg.instructionModifier).toContain('thorough');
+    expect(cfg.instructionModifier).toContain('Cite sources');
   });
 
-  it('temperature progression: quick < standard < deep', () => {
-    const depths: DepthLevel[] = ['quick', 'standard', 'deep'];
-    const temps = depths.map(d => getDepthConfig(d).temperature);
-    expect(temps[0]).toBeLessThan(temps[1]);
-    expect(temps[1]).toBeLessThan(temps[2]);
+  it('deep temp < quick/standard temp (precision over creativity)', () => {
+    const quick = getDepthConfig('quick');
+    const standard = getDepthConfig('standard');
+    const deep = getDepthConfig('deep');
+    expect(deep.temperature).toBeLessThan(quick.temperature);
+    expect(deep.temperature).toBeLessThan(standard.temperature);
   });
 
   it('maxTokens progression: quick < standard < deep', () => {
@@ -292,8 +294,8 @@ describe('composeFromStructuredContext', () => {
   it('applies depth temperature override', async () => {
     const quick = await composeFromStructuredContext(makeInput({ depth: 'quick' }));
     const deep = await composeFromStructuredContext(makeInput({ depth: 'deep' }));
-    expect(quick.temperature).toBe(0.5);
-    expect(deep.temperature).toBe(0.8);
+    expect(quick.temperature).toBe(0.7);
+    expect(deep.temperature).toBe(0.3);
   });
 
   it('applies depth maxTokens override', async () => {

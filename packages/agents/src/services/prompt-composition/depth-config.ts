@@ -22,7 +22,7 @@ export interface DepthConfig {
 
 const DEPTH_CONFIGS: Record<DepthLevel, DepthConfig> = {
   quick: {
-    temperature: 0.5,
+    temperature: 0.7,
     maxTokens: 2048,
     instructionModifier: 'Be concise. Focus on the most important points only. Keep the response brief and actionable.',
   },
@@ -32,9 +32,9 @@ const DEPTH_CONFIGS: Record<DepthLevel, DepthConfig> = {
     instructionModifier: '',  // No modifier — standard is the baseline
   },
   deep: {
-    temperature: 0.8,
+    temperature: 0.3,
     maxTokens: 8192,
-    instructionModifier: 'Provide thorough, detailed analysis. Explore multiple perspectives. Include supporting evidence and citations where available.',
+    instructionModifier: 'Provide thorough, detailed analysis. Explore multiple perspectives. Cite sources explicitly and include supporting evidence.',
   },
 };
 
