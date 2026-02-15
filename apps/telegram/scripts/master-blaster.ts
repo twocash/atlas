@@ -775,6 +775,44 @@ async function runIntentFirstTests(cwd: string): Promise<SuiteResult> {
   };
 }
 
+/**
+ * Run Bridge Tool Dispatch pipeline tests
+ *
+ * Runs in a SEPARATE bun process from packages/bridge/.
+ * Tests the full Phase 4 tool dispatch chain: schemas, MCP server logic,
+ * bridge routing, extension executor, protocol contracts, adversarial inputs.
+ * All mocked — no live bridge or extension required.
+ */
+async function runBridgeToolDispatchTests(cwd: string): Promise<SuiteResult> {
+  console.log('\n[TOOLS] Running Bridge Tool Dispatch Tests...');
+  console.log('─'.repeat(50));
+
+  const bridgeCwd = join(cwd, '..', '..', 'packages', 'bridge');
+  const result = await runCommand(
+    BUN_PATH,
+    ['test', 'test/tool-dispatch-pipeline.test.ts'],
+    bridgeCwd,
+    60000
+  );
+  const counts = parseBunTestOutput(result.output);
+
+  if (!result.success) {
+    console.log(result.output);
+  }
+
+  const status = result.success ? '\x1b[32m[PASS]\x1b[0m' : '\x1b[31m[FAIL]\x1b[0m';
+  console.log(`  ${status} ${counts.passed} passed, ${counts.failed} failed (${result.duration}ms)`);
+
+  return {
+    name: 'Bridge Tool Dispatch',
+    passed: counts.passed,
+    failed: counts.failed,
+    skipped: counts.skipped,
+    duration: result.duration,
+    errors: result.success ? [] : [result.output],
+  };
+}
+
 // =============================================================================
 // MAIN
 // =============================================================================
@@ -827,6 +865,7 @@ async function main() {
       suites.push(await runActionFeedProducerTests(cwd));
       suites.push(await runIntentFirstTests(cwd));
       suites.push(await runAutonomousRepairTests(cwd));
+      suites.push(await runBridgeToolDispatchTests(cwd));
       suites.push(await runBridgeStabilityTests(cwd));
       suites.push(await runSmokeTests(cwd));
       suites.push(await runE2ETests(cwd));
@@ -841,6 +880,7 @@ async function main() {
     suites.push(await runActionFeedProducerTests(cwd));  // P2/P3 sprint
     suites.push(await runIntentFirstTests(cwd));  // Intent-First Phase 0+1
     suites.push(await runAutonomousRepairTests(cwd));  // Pit Stop sprint
+    suites.push(await runBridgeToolDispatchTests(cwd));  // Bridge Phase 4 tool dispatch
     suites.push(await runBridgeStabilityTests(cwd));  // Bridge Playwright tests
     suites.push(await runSmokeTests(cwd));
     suites.push(await runE2ETests(cwd));
@@ -860,6 +900,7 @@ async function main() {
       suites.push(await runActionFeedProducerTests(cwd));
       suites.push(await runIntentFirstTests(cwd));
       suites.push(await runAutonomousRepairTests(cwd));
+      suites.push(await runBridgeToolDispatchTests(cwd));
       suites.push(await runSmokeTests(cwd));
       suites.push(await runIntegrationTests(cwd));
     }

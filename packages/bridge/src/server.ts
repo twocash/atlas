@@ -24,6 +24,8 @@
 
 import type { ServerWebSocket } from "bun"
 import { spawn, type Subprocess } from "bun"
+import { resolve, dirname } from "path"
+import { fileURLToPath } from "url"
 import type { WsData, BridgeEnvelope, HandlerContext } from "./types/bridge"
 import {
   addConnection,
@@ -33,6 +35,13 @@ import {
   startHealthChecks,
   stopHealthChecks,
 } from "./connections"
+import {
+  TOOL_TIMEOUT_MS,
+  type ToolDispatchRequest,
+  type ToolDispatchResponse,
+  type ToolRequest,
+  type ToolResponse,
+} from "./types/tool-protocol"
 
 // ─── Config ──────────────────────────────────────────────────
 
@@ -40,9 +49,21 @@ const PORT = parseInt(process.env.BRIDGE_PORT || "3848", 10)
 const CLAUDE_CMD = process.env.CLAUDE_PATH || "claude"
 const startedAt = new Date().toISOString()
 
+// ─── Pending Tool Requests ───────────────────────────────────
+// Maps tool request ID → resolver. When MCP server POSTs to /tool-dispatch,
+// we hold the HTTP request open, send to extension via WebSocket, and
+// resolve when the extension sends back a tool_response with matching ID.
+
+interface PendingRequest {
+  resolve: (response: ToolDispatchResponse) => void
+  timer: ReturnType<typeof setTimeout>
+}
+
+const pendingRequests = new Map<string, PendingRequest>()
+
 // ─── Claude Process Management ───────────────────────────────
 
-let claudeProcess: Subprocess | null = null
+let claudeProcess: Subprocess<"pipe", "pipe", "pipe"> | null = null
 let claudeSessionId: string | null = null
 let claudeModel: string | null = null
 let stdoutBuffer = ""
@@ -58,13 +79,21 @@ async function spawnClaude(): Promise<{ ok: boolean; error?: string }> {
 
   console.log("[bridge] Spawning Claude Code...")
 
+  // Resolve paths relative to this file's location
+  const thisDir = dirname(fileURLToPath(import.meta.url))
+  const bridgeRoot = resolve(thisDir, "../..")   // packages/bridge/
+  const repoRoot = resolve(thisDir, "../../../") // atlas-bridge/
+  const mcpConfig = resolve(bridgeRoot, "mcp-config.json")
+
   try {
     claudeProcess = spawn({
       cmd: [CLAUDE_CMD, "-p",
         "--input-format", "stream-json",
         "--output-format", "stream-json",
         "--verbose",
+        "--mcp-config", mcpConfig,
       ],
+      cwd: repoRoot,
       stdin: "pipe",
       stdout: "pipe",
       stderr: "pipe",
@@ -235,6 +264,12 @@ function handleClientMessage(ws: ServerWebSocket<WsData>, raw: string | Buffer):
       continue
     }
 
+    // Handle tool_response from extension (routed back to MCP server via HTTP)
+    if (parsed.type === "tool_response") {
+      handleToolResponse(parsed as ToolResponse)
+      continue
+    }
+
     if (!isClaudeRunning()) {
       ws.send(JSON.stringify({
         type: "system",
@@ -258,9 +293,90 @@ function broadcastToClients(msg: any): void {
   }
 }
 
+// ─── Tool Dispatch ───────────────────────────────────────────
+
+async function handleToolDispatch(req: Request): Promise<Response> {
+  const headers = {
+    "Content-Type": "application/json",
+    "Access-Control-Allow-Origin": "*",
+  }
+
+  let body: ToolDispatchRequest
+  try {
+    body = (await req.json()) as ToolDispatchRequest
+  } catch {
+    return new Response(
+      JSON.stringify({ id: "", error: "Invalid JSON body" }),
+      { status: 400, headers },
+    )
+  }
+
+  if (!body.id || !body.name) {
+    return new Response(
+      JSON.stringify({ id: body.id || "", error: "Missing id or name" }),
+      { status: 400, headers },
+    )
+  }
+
+  // Check that at least one client is connected
+  const clients = getClientConnections()
+  if (clients.length === 0) {
+    return new Response(
+      JSON.stringify({ id: body.id, error: "No browser extension connected" }),
+      { status: 503, headers },
+    )
+  }
+
+  // Create a promise that will resolve when the extension responds
+  const response = await new Promise<ToolDispatchResponse>((resolve) => {
+    const timer = setTimeout(() => {
+      pendingRequests.delete(body.id)
+      resolve({ id: body.id, error: `Tool '${body.name}' timed out after ${TOOL_TIMEOUT_MS}ms` })
+    }, TOOL_TIMEOUT_MS)
+
+    pendingRequests.set(body.id, { resolve, timer })
+
+    // Send tool_request to all connected clients (first to respond wins)
+    const toolRequest: ToolRequest = {
+      type: "tool_request",
+      id: body.id,
+      name: body.name,
+      input: body.input,
+      timestamp: Date.now(),
+    }
+
+    const raw = JSON.stringify(toolRequest)
+    for (const ws of clients) {
+      ws.send(raw)
+    }
+  })
+
+  return new Response(JSON.stringify(response), { headers })
+}
+
+/** Called when a client sends a tool_response message via WebSocket. */
+function handleToolResponse(msg: ToolResponse): void {
+  const pending = pendingRequests.get(msg.id)
+  if (!pending) {
+    console.warn(`[bridge] tool_response for unknown id: ${msg.id}`)
+    return
+  }
+
+  clearTimeout(pending.timer)
+  pendingRequests.delete(msg.id)
+
+  const response: ToolDispatchResponse = {
+    id: msg.id,
+    result: msg.result,
+    error: msg.error,
+  }
+
+  pending.resolve(response)
+}
+
 // ─── HTTP Handler ────────────────────────────────────────────
 
-function handleHttpRequest(req: Request, server: any): Response | undefined {
+async function handleHttpRequest(req: Request, server: any): Promise<Response | undefined> {
   const url = new URL(req.url)
 
   // WebSocket upgrade for /client
@@ -317,6 +433,11 @@ function handleHttpRequest(req: Request, server: any): Response | undefined {
         "Access-Control-Allow-Origin": "*",
       },
     })
+  }
+
+  // POST /tool-dispatch — MCP server dispatches tool calls here
+  if (url.pathname === "/tool-dispatch" && req.method === "POST") {
+    return await handleToolDispatch(req)
   }
 
   // CORS preflight
@@ -378,17 +499,18 @@ startHealthChecks()
 spawnClaude()
 
 console.log(`
-  ╔══════════════════════════════════════════════╗
-  ║         Atlas Bridge v0.2.0                  ║
-  ║──────────────────────────────────────────────║
-  ║  Client WS : ws://localhost:${PORT}/client      ║
-  ║  Status    : http://localhost:${PORT}/status     ║
-  ║  Spawn     : POST http://localhost:${PORT}/spawn ║
-  ║  Kill      : POST http://localhost:${PORT}/kill  ║
-  ╚══════════════════════════════════════════════╝
+  ╔══════════════════════════════════════════════════╗
+  ║         Atlas Bridge v0.3.0                      ║
+  ║──────────────────────────────────────────────────║
+  ║  Client WS : ws://localhost:${PORT}/client          ║
+  ║  Status    : http://localhost:${PORT}/status         ║
+  ║  Spawn     : POST http://localhost:${PORT}/spawn     ║
+  ║  Kill      : POST http://localhost:${PORT}/kill      ║
+  ║  Tools     : POST http://localhost:${PORT}/tool-dispatch ║
+  ╚══════════════════════════════════════════════════╝
 
   Claude Code is managed as a child process.
-  No separate terminal needed.
+  MCP tools dispatched to extension via WebSocket.
 `)
 
 // Graceful shutdown

@@ -1,30 +1,37 @@
 # DEC-008: Atlas Bridge Architecture
 
-**Status:** Accepted
-**Date:** 2026-02-10
+**Status:** Accepted (Revised)  
+**Date:** 2026-02-10  
+**Revised:** 2026-02-11  
 **Phase:** 3 (MVP Relay)
 
 ## Context
 
-Atlas needs to connect the Chrome extension side panel to a running Claude Code instance. Claude Code supports an undocumented `--sdk-url` flag that makes it connect to a WebSocket server and exchange NDJSON messages instead of running as a terminal app.
+Atlas needs to connect the Chrome extension side panel to Claude Code. Initial research suggested Claude Code supported an undocumented `--sdk-url` flag for WebSocket connections. **This was incorrect.**
 
-The Chrome extension's MV3 service worker cannot hold persistent WebSocket connections (killed after 30s of inactivity). The side panel, however, stays alive as long as it's open.
+Live testing revealed the actual Claude Code CLI protocol: NDJSON over stdin/stdout using the flags `-p --input-format stream-json --output-format stream-json --verbose`. The bridge must spawn Claude Code as a child process and adapt stdio to WebSocket for the browser client.
 
 ## Decision
 
-Build a local Bun WebSocket relay server (`packages/bridge/`) that:
+Build a local Bun **stdio-to-WebSocket adapter** (`packages/bridge/`) that:
 
-1. **Listens on port 3848** with two endpoints:
-   - `/claude` — Claude Code connects here (single connection)
-   - `/client` — Chrome extension side panel connects here (multiple)
+1. **Spawns Claude Code as child process** with streaming JSON flags:
+   ```
+   claude -p --input-format stream-json --output-format stream-json --verbose
+   ```
 
-2. **Uses a middleware handler chain** (envelope → handler → next pattern):
-   - Phase 3: single `relayHandler` that passes messages through
-   - Phase 5+: `triageHandler` inserted before relay for cognitive routing
+2. **Listens on port 3848** with two endpoints:
+   - `/client` — Chrome extension side panel connects here
+   - `/status` — Health check endpoint (HTTP GET)
 
-3. **Wraps messages in BridgeEnvelope** with metadata (surface, sessionId, timestamp, direction) that future phases will need for routing decisions
+3. **Bridges stdio ↔ WebSocket:**
+   - Client WebSocket messages → write to Claude stdin
+   - Claude stdout lines → broadcast to all WebSocket clients
 
-4. **Lives in a feature branch** (`feature/bridge-phase3-mvp`) so if `--sdk-url` disappears from Claude Code, we delete the branch with zero production impact
+4. **Handles three message types from Claude:**
+   - `system` (subtype: `init`) — session ID, model, available tools
+   - `assistant` — streaming response content
+   - `result` — completion with duration and cost
 
 ## Architecture
 
@@ -34,41 +41,72 @@ Chrome Extension (Side Panel)
                         │
                    Atlas Bridge (Bun)
                         │
-  Claude Code ◄── WebSocket ──► ws://localhost:3848/claude
-  (--sdk-url)
+                   ┌────┴────┐
+                stdin      stdout
+                   │         │
+                   ▼         ▼
+              Claude Code (child process)
+              claude -p --input-format stream-json
+                        --output-format stream-json
+                        --verbose
 ```
 
 ### Message Flow
 
 ```
 User types in ClaudeCodePanel
-  → useClaudeCode() sends { type: "user_message", content: [...] }
-  → Bridge wraps in BridgeEnvelope
-  → relayHandler forwards to Claude Code
-  → Claude Code streams back stream_event messages
-  → Bridge wraps each in BridgeEnvelope
-  → relayHandler broadcasts to all clients
-  → useClaudeCode() accumulates text_delta events
+  → useClaudeCode() sends { type: "user", message: {...} }
+  → Bridge writes JSON line to Claude stdin
+  → Claude processes, streams to stdout
+  → Bridge reads stdout lines (NDJSON)
+  → Bridge broadcasts to all WebSocket clients
+  → useClaudeCode() handles by message type:
+      - system:init → store session, model, tools
+      - assistant → accumulate response text
+      - result → display cost, mark complete
   → ClaudeCodePanel renders streaming text
+```
+
+### Protocol Format (Actual)
+
+**Client → Bridge → Claude stdin:**
+```json
+{"type":"user","message":{"role":"user","content":"What is 2+2?"}}
+```
+
+**Claude stdout → Bridge → Client:**
+```json
+{"type":"system","subtype":"init","session_id":"uuid","model":"claude-sonnet-4-5-20250929","tools":[...]}
+{"type":"assistant","message":{"role":"assistant","content":"Four."}}
+{"type":"result","subtype":"success","duration_ms":1664,"cost_usd":0.42,"session_id":"uuid"}
 ```
 
 ## Alternatives Considered
 
+### WebSocket relay using `--sdk-url`
+**Rejected** — Protocol doesn't exist. Initial research was based on third-party implementations that wrapped stdio themselves. Claude Code CLI has no native WebSocket mode.
+
 ### Direct WebSocket from extension to Claude Code
-Rejected — no middleware insertion point for Phase 5 triage. Also, Chrome MV3 service workers can't hold WebSocket connections.
+**Rejected** — Claude Code has no WebSocket server. Also, Chrome MV3 service workers can't hold persistent connections.
 
 ### HTTP polling instead of WebSocket
-Rejected — streaming requires real-time delivery. Polling would add latency and complexity for streaming text deltas.
-
-### Shared process (embed bridge in Telegram bot)
-Rejected — different lifecycle, different machine. Bridge runs on desktop alongside Chrome; Telegram bot may run on a server.
+**Rejected** — Streaming requires real-time delivery. Polling adds latency for text deltas.
 
 ## Consequences
 
-- **Positive:** Clean separation of concerns. Bridge handles transport, handlers handle logic. Phase 5 triage inserts without rearchitecting.
-- **Positive:** Feature branch isolation means zero risk to production.
-- **Negative:** Dependency on undocumented `--sdk-url` protocol. Mitigated by branch isolation.
-- **Negative:** Extra process to start. Mitigated by clear startup instructions in the UI.
+- **Positive:** Clean separation of concerns. Bridge handles process lifecycle and transport.
+- **Positive:** Real protocol verified with live testing — no undocumented API risk.
+- **Positive:** Cost visibility built-in (`result.cost_usd` in every response).
+- **Negative:** Extra process to start. Mitigated by clear startup instructions in UI.
+- **Negative:** Claude process lifecycle tied to bridge — bridge crash kills Claude session.
+
+## Risk Update
+
+| Original Risk | Status | Notes |
+|---------------|--------|-------|
+| `--sdk-url` protocol changes/removed | **Eliminated** | Protocol doesn't exist; we use documented CLI flags |
+| MV3 service worker kills WebSocket | **Unchanged** | Side panel holds connection, not service worker |
+| Claude Code must be running | **Changed** | Bridge spawns Claude — single process start |
 
 ## File Map
 
@@ -76,21 +114,30 @@ Rejected — different lifecycle, different machine. Bridge runs on desktop alon
 packages/bridge/
 ├── package.json
 ├── tsconfig.json
+├── test-e2e.mjs            # Live E2E test (real Claude)
 └── src/
-    ├── server.ts           # Bun WebSocket server (port 3848)
-    ├── connections.ts       # Connection tracking + health checks
+    ├── server.ts           # Bun stdio-to-WebSocket adapter
+    ├── connections.ts       # Client connection tracking
     ├── handlers/
     │   ├── index.ts         # Handler chain composition
-    │   └── relay.ts         # Phase 3 passthrough handler
+    │   └── relay.ts         # Message routing
     └── types/
-        ├── sdk-protocol.ts  # Claude Code NDJSON message types
-        └── bridge.ts        # Envelope, connection, handler types
+        ├── sdk-protocol.ts  # Claude CLI NDJSON types (revised)
+        └── bridge.ts        # Envelope, connection types
 
 apps/chrome-ext-vite/
 ├── src/
-│   ├── types/claude-sdk.ts  # Client-side SDK types
+│   ├── types/claude-sdk.ts  # Client types (system, assistant, result)
 │   └── lib/claude-code-hooks.ts  # useClaudeCode() React hook
 └── sidepanel/
     └── components/
         └── ClaudeCodePanel.tsx    # Streaming chat UI
 ```
+
+## Lessons Learned
+
+1. **Third-party implementations are not protocol documentation.** Community repos (companion, claude-agent-server) implemented their own stdio wrappers — they weren't using an undocumented `--sdk-url` flag.
+
+2. **Live testing beats research.** The protocol pivot happened during verification, not planning. Spec said one thing; live testing revealed reality.
+
+3. **Stdio is simpler.** No connection management between bridge and Claude. Spawn, write, read, done.

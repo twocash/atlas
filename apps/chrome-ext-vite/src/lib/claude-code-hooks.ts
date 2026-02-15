@@ -15,6 +15,7 @@ import type {
   ClaudeAssistantMessage,
   ClaudeResultMessage,
 } from "../types/claude-sdk"
+import { executeToolRequest, type ToolRequest } from "./tool-executor"
 
 // ─── Config ──────────────────────────────────────────────────
 
@@ -112,7 +113,9 @@ export function useClaudeCode(): UseClaudeCodeReturn {
         continue
       }
 
-      if (msg.type === "system") {
+      if (msg.type === "tool_request") {
+        handleToolRequest(msg as ToolRequest)
+      } else if (msg.type === "system") {
         handleSystemEvent(msg)
       } else if (msg.type === "assistant") {
         handleAssistantMessage(msg as ClaudeAssistantMessage)
@@ -143,6 +146,25 @@ export function useClaudeCode(): UseClaudeCodeReturn {
       console.warn("[claude-hook] Bridge error:", data?.message)
     }
   }, [])
+
+  // ─── Tool Request Handler ──────────────────────────────
+
+  const handleToolRequest = useCallback(async (request: ToolRequest) => {
+    console.log(`[claude-hook] Tool request: ${request.name} (id: ${request.id})`)
+
+    const response = await executeToolRequest(request, {
+      bridgeStatus: bridgeState,
+      claudeStatus: claudeState,
+    })
+
+    // Send response back via WebSocket
+    if (wsRef.current?.readyState === WebSocket.OPEN) {
+      wsRef.current.send(JSON.stringify(response))
+      console.log(`[claude-hook] Tool response sent: ${request.name} (${response.error ? "error" : "ok"})`)
+    } else {
+      console.warn(`[claude-hook] Cannot send tool response — WebSocket not open`)
+    }
+  }, [bridgeState, claudeState])
 
   // ─── Claude Code CLI Protocol Handlers ──────────────────
 
