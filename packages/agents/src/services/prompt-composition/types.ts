@@ -25,6 +25,49 @@ export type ActionType = 'research' | 'draft' | 'capture' | 'analysis' | 'summar
 export type PillarSlug = 'the-grove' | 'personal' | 'consulting' | 'home-garage';
 
 // ==========================================
+// Intent-First Types (Phase 2)
+// Mirrored from Telegram adapter — not imported to avoid coupling
+// ==========================================
+
+/** What the user wants to do (semantic intent from UI) */
+export type IntentType = 'research' | 'draft' | 'save' | 'analyze' | 'capture' | 'engage';
+
+/** Processing depth */
+export type DepthLevel = 'quick' | 'standard' | 'deep';
+
+/** Who the output is for */
+export type AudienceType = 'self' | 'client' | 'public' | 'team';
+
+/** How the content arrived */
+export type SourceType = 'url' | 'image' | 'document' | 'video' | 'audio' | 'text' | 'github' | 'linkedin';
+
+/** Desired output format */
+export type FormatType = 'post' | 'brief' | 'analysis' | 'report' | 'thread' | 'raw' | null;
+
+/**
+ * Structured context from intent-first UI flow.
+ * Channel adapters (Telegram, Chrome extension) build this and pass it
+ * to composeFromStructuredContext() for full-fidelity composition.
+ */
+export interface StructuredCompositionInput {
+  intent: IntentType;
+  depth: DepthLevel;
+  audience: AudienceType;
+  source_type: SourceType;
+  format: FormatType;
+  voice_hint: string | null;
+
+  /** The URL or text content */
+  content: string;
+  /** Page title for context */
+  title?: string;
+  /** Original URL if applicable */
+  url?: string;
+  /** Which pillar (may be pre-derived by adapter) */
+  pillar: Pillar;
+}
+
+// ==========================================
 // State Types (for Telegram adapter)
 // ==========================================
 
@@ -127,6 +170,18 @@ export interface CompositionContext {
   title?: string;
   /** Original URL if applicable */
   url?: string;
+
+  // Intent-First extensions (Phase 2) — all optional for backward compatibility
+  /** Processing depth */
+  depth?: DepthLevel;
+  /** Target audience */
+  audience?: AudienceType;
+  /** Desired output format */
+  format?: FormatType;
+  /** How content arrived */
+  sourceType?: SourceType;
+  /** Original intent before mapping to action */
+  originalIntent?: IntentType;
 }
 
 /**
@@ -147,6 +202,14 @@ export interface PromptCompositionResult {
     voice?: string;
     /** Which lens was applied (future) */
     lens?: string;
+    /** Original intent (if composed from structured context) */
+    originalIntent?: IntentType;
+    /** Depth level applied */
+    depth?: DepthLevel;
+    /** Target audience */
+    audience?: AudienceType;
+    /** Output format */
+    format?: FormatType;
   };
 }
 

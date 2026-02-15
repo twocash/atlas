@@ -41,6 +41,14 @@ export type {
   PillarSlug,
   ActionType,
 
+  // Intent-First types (Phase 2)
+  IntentType,
+  DepthLevel,
+  AudienceType,
+  SourceType,
+  FormatType,
+  StructuredCompositionInput,
+
   // State types
   PromptSelectionState,
 
@@ -66,6 +74,7 @@ export {
   // Main composition
   composePrompt,
   composePromptFromState,
+  composeFromStructuredContext,
 
   // ID resolution
   buildPromptIds,
@@ -78,6 +87,14 @@ export {
   validateSelection,
   validateContext,
 } from './composer';
+
+// ==========================================
+// Intent-First Mappers (Phase 2)
+// ==========================================
+
+export { mapIntentToAction, inferFormat } from './intent-mapper';
+export { resolveAudienceVoice } from './audience-voice';
+export { getDepthConfig, type DepthConfig } from './depth-config';
 
 // ==========================================
 // Registry Functions

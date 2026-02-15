@@ -530,6 +530,8 @@ async function runRegressionTests(cwd: string): Promise<SuiteResult> {
     'test/command-surface-audit.test.ts',
     'test/intent-first-phase1.test.ts',
     'test/skill-dispatch-fault-tolerance.test.ts',
+    'test/intent-first-phase2.test.ts',
+    'test/structured-composition-scenarios.test.ts',
   ];
 
   const result = await runCommand(

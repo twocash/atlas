@@ -12,11 +12,15 @@ import type {
   PromptCompositionIds,
   PromptCompositionResult,
   PromptSelectionState,
+  StructuredCompositionInput,
   ValidationError,
 } from './types';
 
 import { getPillarSlug, pillarSupportsAction, pillarHasVoice } from './registry';
 import { getPromptManager, type PromptVariables } from '../prompt-manager';
+import { mapIntentToAction, inferFormat } from './intent-mapper';
+import { resolveAudienceVoice } from './audience-voice';
+import { getDepthConfig } from './depth-config';
 
 // ==========================================
 // Drafter/Voice ID Resolution
@@ -263,6 +267,88 @@ export async function composePromptFromState(
     title: state.title,
     url: state.contentType === 'url' ? state.content : undefined,
   });
+}
+
+// ==========================================
+// Structured Context Composition (Phase 2)
+// ==========================================
+
+/**
+ * Compose a prompt from structured context (intent-first flow).
+ *
+ * Orchestrates the full mapping pipeline:
+ * 1. intent-mapper: IntentType → ActionType
+ * 2. intent-mapper: infer format if null
+ * 3. audience-voice: audience → default voice
+ * 4. depth-config: depth → temperature/maxTokens overrides
+ * 5. Delegates to composePrompt() with enriched CompositionContext
+ * 6. Applies depth overrides to the result
+ *
+ * @example
+ * ```typescript
+ * const result = await composeFromStructuredContext({
+ *   intent: 'research',
+ *   depth: 'deep',
+ *   audience: 'client',
+ *   source_type: 'url',
+ *   format: null,
+ *   voice_hint: null,
+ *   content: 'https://example.com/article',
+ *   title: 'Interesting Article',
+ *   pillar: 'Consulting',
+ * });
+ * ```
+ */
+export async function composeFromStructuredContext(
+  input: StructuredCompositionInput
+): Promise<PromptCompositionResult> {
+  // Step 1: Map intent → action
+  const action = mapIntentToAction(input.intent);
+
+  // Step 2: Infer format if not explicitly set
+  const format = input.format ?? inferFormat(input.intent, input.depth);
+
+  // Step 3: Resolve voice from audience (or use explicit hint)
+  const voice = resolveAudienceVoice(input.audience, input.pillar, input.voice_hint);
+
+  // Step 4: Get depth config
+  const depthCfg = getDepthConfig(input.depth);
+
+  // Step 5: Build enriched CompositionContext
+  const ctx: CompositionContext = {
+    pillar: input.pillar,
+    action,
+    voice,
+    content: input.content,
+    title: input.title,
+    url: input.url,
+    // Phase 2 extensions
+    depth: input.depth,
+    audience: input.audience,
+    format,
+    sourceType: input.source_type,
+    originalIntent: input.intent,
+  };
+
+  // Step 6: Delegate to existing composition pipeline
+  const result = await composePrompt(ctx);
+
+  // Step 7: Apply depth overrides
+  result.temperature = depthCfg.temperature;
+  result.maxTokens = depthCfg.maxTokens;
+
+  // Append depth instruction modifier if present
+  if (depthCfg.instructionModifier) {
+    result.prompt = result.prompt + '\n\n' + depthCfg.instructionModifier;
+  }
+
+  // Enrich metadata
+  result.metadata.originalIntent = input.intent;
+  result.metadata.depth = input.depth;
+  result.metadata.audience = input.audience;
+  result.metadata.format = format;
+
+  return result;
 }
 
 // ==========================================
