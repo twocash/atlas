@@ -21,6 +21,17 @@ export interface LinkedInComment {
   commentUrl?: string           // Direct link to comment thread
   commentedAt: string           // ISO date
 
+  // Thread structure (Phase B)
+  threadDepth: number           // 0 = top-level, 1 = reply, 2 = reply-to-reply
+  parentAuthorName?: string     // Who they're replying to (undefined for top-level)
+  childCount: number            // Number of direct replies to this comment
+
+  // Identity (Phase B)
+  isMe: boolean                 // true if this comment was authored by the logged-in user
+
+  // DOM fingerprint (Phase B) — for scroll-to-view without mutating LinkedIn DOM
+  domSignature?: string         // base64(authorUrl + textFragment + index)
+
   // Reply tracking
   status: 'needs_reply' | 'draft_in_progress' | 'replied' | 'no_reply_needed'
   draftReply?: string           // Current draft

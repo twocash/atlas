@@ -97,6 +97,9 @@ export function useCommentsState(): [CommentsState, {
         content: "Great insights on the concentration risks! How do you see edge computing evolving to handle the latency requirements for real-time AI applications?",
         commentUrl: "https://www.linkedin.com/feed/update/urn:li:activity:7421974761578336256",
         commentedAt: new Date(Date.now() - 2 * 60 * 60 * 1000).toISOString(),
+        threadDepth: 0,
+        childCount: 0,
+        isMe: false,
         status: "needs_reply",
       },
       {
@@ -115,6 +118,9 @@ export function useCommentsState(): [CommentsState, {
         content: "The Stargate comparison is spot on. We're betting big on federated learning for exactly this reason.",
         commentUrl: "https://www.linkedin.com/feed/update/urn:li:activity:7421974761578336256",
         commentedAt: new Date(Date.now() - 5 * 60 * 60 * 1000).toISOString(),
+        threadDepth: 0,
+        childCount: 0,
+        isMe: false,
         status: "needs_reply",
       },
       {
@@ -133,6 +139,9 @@ export function useCommentsState(): [CommentsState, {
         content: "This aligns with our research on AI sovereignty. Would love to discuss potential collaboration on the governance implications.",
         commentUrl: "https://www.linkedin.com/feed/update/urn:li:activity:7421974761578336256",
         commentedAt: new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString(),
+        threadDepth: 0,
+        childCount: 0,
+        isMe: false,
         status: "needs_reply",
       },
     ]

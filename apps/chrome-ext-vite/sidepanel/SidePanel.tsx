@@ -4,24 +4,12 @@ import { useQueueState } from "~src/lib/hooks"
 import { Header } from "~sidepanel/components/Header"
 import { NavRail, type ViewId } from "~sidepanel/components/NavRail"
 
-// Import your existing components
-import { PostsTab } from "~sidepanel/components/PostsTab"
-import { AdHocReply } from "~sidepanel/components/AdHocReply"
-import { TaskQueue } from "~sidepanel/components/TaskQueue"
-import { ProgressBar } from "~sidepanel/components/ProgressBar"
-import { Controls } from "~sidepanel/components/Controls"
-import { RunSummary } from "~sidepanel/components/RunSummary"
-import { ExportResults } from "~sidepanel/components/ExportResults"
-import { CsvImport } from "~sidepanel/components/CsvImport"
-import { ModelSelector } from "~sidepanel/components/ModelSelector"
-import { ApiKeySetup } from "~sidepanel/components/ApiKeySetup"
-import { EnrichmentImport } from "~sidepanel/components/EnrichmentImport"
-import { DebugLogViewer } from "~sidepanel/components/DebugLogViewer"
-import { Inbox } from "~sidepanel/components/Inbox"
-import { DataView } from "~sidepanel/components/DataView"
-import { OutreachView } from "~sidepanel/components/OutreachView"
-import { AtlasLink } from "~sidepanel/components/AtlasLink"
-import { ActionFeed } from "~sidepanel/components/ActionFeed/ActionFeed"
+// Phase B: 4-view architecture
+import { RadarView } from "~sidepanel/components/RadarView"
+import { FocusView } from "~sidepanel/components/FocusView"
+import { NetworkView } from "~sidepanel/components/NetworkView"
+import { AtlasSystemView } from "~sidepanel/components/AtlasSystemView"
+
 import { useCommentsState } from "~src/lib/comments-hooks"
 
 // Simple Error Boundary
@@ -63,8 +51,9 @@ const ATLAS_BACKOFF_MAX = 60000 // Back off to 60s when server unreachable
 function SidePanelInner() {
   const [queue] = useQueueState()
   const [commentsState, { replaceAllComments }] = useCommentsState()
-  const [view, setView] = useState<ViewId>("outreach")
+  const [view, setView] = useState<ViewId>("focus")
   const [atlasConnected, setAtlasConnected] = useState(false)
+  const [trackedCount, setTrackedCount] = useState(0)
 
   const didAutoSwitch = useRef(false)
 
@@ -72,34 +61,64 @@ function SidePanelInner() {
     replaceAllComments(comments)
   }
 
-  // 1. Smart Context Switching (The "AI" feel)
+  // Track count of tracked posts for NavRail badge
+  useEffect(() => {
+    async function loadTrackedCount() {
+      try {
+        const result = await chrome.storage.local.get("atlas:tracked-posts")
+        const state = result["atlas:tracked-posts"]
+        setTrackedCount(state?.posts?.length ?? 0)
+      } catch {
+        setTrackedCount(0)
+      }
+    }
+    loadTrackedCount()
+    const listener = (changes: Record<string, chrome.storage.StorageChange>) => {
+      if ("atlas:tracked-posts" in changes) {
+        loadTrackedCount()
+      }
+    }
+    chrome.storage.local.onChanged.addListener(listener)
+    return () => chrome.storage.local.onChanged.removeListener(listener)
+  }, [])
+
+  // Smart Context Switching — maps LinkedIn page to appropriate view
   useEffect(() => {
     if (didAutoSwitch.current) return
     chrome.tabs.query({ active: true, currentWindow: true }, (tabs) => {
       const url = tabs[0]?.url || ""
 
-      // Priority: If Queue is running, show queue
-      if (queue?.status === "running") {
-        setView("outreach")
-        didAutoSwitch.current = true
-        return
+      // Post detail page or feed → Focus (reply work)
+      if (url.includes("/feed/update/") || url.includes("/posts/")) {
+        setView("focus")
       }
-
-      // Priority: Context
-      if (url.includes("/sales/")) setView("outreach")
-      else if (url.includes("/feed") || url.includes("/in/")) setView("studio")
+      // Sales Navigator → Network
+      else if (url.includes("/sales/")) {
+        setView("network")
+      }
+      // Feed browsing → Radar (overview)
+      else if (url.includes("/feed") || url.includes("/in/")) {
+        setView("radar")
+      }
+      // Default → Focus
 
       didAutoSwitch.current = true
     })
-  }, [queue?.status])
+  }, [])
 
-  // 2. Heartbeat (Keep Service Worker Alive)
-  // Uses chrome.alarms (in background/index.ts) instead of persistent port.
-  // Persistent ports cause chrome-extension://invalid/ errors when the MV3
-  // service worker sleeps and the port reconnect loop fires repeatedly.
-  // The background already has: chrome.alarms.create("atlas-keepalive", { periodInMinutes: 0.5 })
+  // Cache identity on LinkedIn pages
+  useEffect(() => {
+    chrome.tabs.query({ active: true, currentWindow: true }, (tabs) => {
+      const tab = tabs[0]
+      if (tab?.id && tab.url?.includes("linkedin.com")) {
+        chrome.tabs.sendMessage(tab.id, { type: "CACHE_IDENTITY" }).catch(() => {
+          // Content script not ready — expected on non-LinkedIn pages
+        })
+      }
+    })
+  }, [])
 
-  // 3. Atlas Status Polling (for NavRail badge) — with exponential backoff
+  // Atlas Status Polling (for NavRail badge) — with exponential backoff
   useEffect(() => {
     let timer: ReturnType<typeof setTimeout> | null = null
     let cancelled = false
@@ -137,8 +156,9 @@ function SidePanelInner() {
     }
   }, [])
 
-  const isRunning = queue?.status === "running"
-  const inboxCount = commentsState.comments.filter((c) => c.status === 'needs_reply' && !c.hiddenLocally).length
+  const focusCount = commentsState.comments.filter(
+    (c) => (c.status === 'needs_reply' || c.status === 'draft_in_progress') && !c.hiddenLocally
+  ).length
 
   return (
     <div className="flex h-screen bg-gray-50 overflow-hidden font-sans">
@@ -146,8 +166,8 @@ function SidePanelInner() {
       <NavRail
         activeView={view}
         onSelect={setView}
-        hasActiveTask={isRunning}
-        inboxCount={inboxCount}
+        focusCount={focusCount}
+        trackedCount={trackedCount}
         atlasConnected={atlasConnected}
       />
 
@@ -156,58 +176,10 @@ function SidePanelInner() {
         <Header connected={!!queue} onSyncComplete={handleSyncComplete} />
 
         <div className="flex-1 overflow-hidden relative flex flex-col">
-
-          {/* VIEW: INBOX */}
-          {view === "inbox" && (
-            <Inbox />
-          )}
-
-          {/* VIEW: OUTREACH (Notion-integrated segments) */}
-          {view === "outreach" && (
-            <OutreachView />
-          )}
-
-          {/* VIEW: STUDIO (Merged Posts + Reply) */}
-          {view === "studio" && (
-            <div className="h-full flex flex-col overflow-y-auto p-2">
-              <div className="mb-6">
-                <h3 className="text-xs font-bold text-gray-400 uppercase tracking-wider mb-2 px-1">Quick Reply</h3>
-                <AdHocReply />
-              </div>
-              <div className="border-t border-gray-100 pt-4">
-                <h3 className="text-xs font-bold text-gray-400 uppercase tracking-wider mb-2 px-1">Post Analytics</h3>
-                <PostsTab />
-              </div>
-            </div>
-          )}
-
-          {/* VIEW: DATA (Passive Tasks) */}
-          {view === "data" && (
-            <DataView />
-          )}
-
-          {/* VIEW: ATLAS (Action Feed + Browser Automation HUD) */}
-          {view === "atlas" && (
-            <ActionFeed pollingInterval={30000} />
-          )}
-
-          {/* VIEW: SETTINGS */}
-          {view === "settings" && (
-            <div className="h-full overflow-y-auto p-4 space-y-6">
-              <section>
-                <h2 className="text-sm font-bold text-gray-900 mb-3">Intelligence</h2>
-                <ModelSelector />
-                <div className="mt-2"><ApiKeySetup /></div>
-              </section>
-              <section className="pt-4 border-t border-gray-100">
-                <h2 className="text-sm font-bold text-gray-900 mb-3">Debug Logs</h2>
-                <div className="h-64 border rounded bg-gray-50 overflow-hidden"><DebugLogViewer /></div>
-                <div className="mt-2 text-[10px] text-gray-400">
-                  Shows sync progress, phantom fetches, Notion updates, and errors.
-                </div>
-              </section>
-            </div>
-          )}
+          {view === "radar" && <RadarView />}
+          {view === "focus" && <FocusView />}
+          {view === "network" && <NetworkView />}
+          {view === "atlas" && <AtlasSystemView atlasConnected={atlasConnected} />}
         </div>
       </div>
     </div>

@@ -246,6 +246,62 @@ export const SELECTOR_REGISTRY: SelectorRegistry = {
     canary: false,
   },
 
+  // ── Feed Identity Module (logged-in user) ───────────────
+  "feed-identity-profile-url": {
+    name: "feed-identity-profile-url",
+    layers: [
+      {
+        type: "css",
+        selector: ".feed-identity-module__actor-meta a[href*='/in/']",
+        description: "Profile link in feed identity module (left sidebar)",
+      },
+      {
+        type: "css",
+        selector: ".global-nav__me-photo-container a[href*='/in/']",
+        description: "Profile link in global nav photo container",
+      },
+      {
+        type: "css",
+        selector: "a.ember-view[href*='/in/'].global-nav__primary-link-me-menu-trigger",
+        description: "Global nav 'Me' dropdown trigger with profile href",
+      },
+      {
+        type: "xpath",
+        selector: "//div[contains(@class,'feed-identity-module')]//a[contains(@href,'/in/')]",
+        description: "Any profile link within feed identity module",
+      },
+      {
+        type: "heuristic",
+        selector: "//nav//a[contains(@href,'/in/')][.//img[contains(@class,'photo')]]",
+        description: "Nav anchor to /in/ profile with photo child element",
+      },
+    ],
+    canary: false,
+  },
+
+  // ── Post Container (for track button injection) ────────
+  "post-container": {
+    name: "post-container",
+    layers: [
+      {
+        type: "css",
+        selector: ".feed-shared-update-v2",
+        description: "Feed shared update v2 container",
+      },
+      {
+        type: "css",
+        selector: "div[data-urn^='urn:li:activity']",
+        description: "Element with activity URN data attribute",
+      },
+      {
+        type: "xpath",
+        selector: "//div[contains(@class,'feed-shared-update')]",
+        description: "Feed shared update container",
+      },
+    ],
+    canary: false,
+  },
+
   // ── Reply Indicator (thread nesting) ─────────────────────
   "reply-indicator": {
     name: "reply-indicator",

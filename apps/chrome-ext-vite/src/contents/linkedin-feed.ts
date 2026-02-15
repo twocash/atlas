@@ -15,6 +15,8 @@
 import { isPostPage, commentsVisible } from "~src/lib/page-observer"
 import { allCanariesPass } from "~src/lib/selector-registry"
 import { extractComments } from "~src/lib/comment-extractor"
+import { ensureIdentityCached } from "~src/lib/identity-cache"
+import { scrollToComment } from "~src/lib/dom-resolver"
 
 console.log("[Atlas Feed CS] Content script loaded on:", window.location.href)
 
@@ -34,12 +36,33 @@ chrome.runtime.onMessage.addListener(
       return false // Synchronous response, no need to keep channel open
     }
 
+    // SCROLL_TO_COMMENT: sidepanel requests scroll to a specific comment
+    if (message.type === "SCROLL_TO_COMMENT") {
+      const signature = (message as any).domSignature as string
+      const found = scrollToComment(signature)
+      sendResponse({
+        type: "SCROLL_RESULT",
+        found,
+      })
+      return false // Synchronous response
+    }
+
+    // CACHE_IDENTITY: sidepanel requests identity extraction
+    if (message.type === "CACHE_IDENTITY") {
+      ensureIdentityCached().then((profileUrl) => {
+        sendResponse({
+          type: "IDENTITY_RESULT",
+          profileUrl,
+          cached: profileUrl !== null,
+        })
+      })
+      return true // Async response
+    }
+
     // EXTRACT_COMMENTS: user clicked the button in sidepanel
     if (message.type === "EXTRACT_COMMENTS") {
-      try {
-        const postUrl = message.postUrl ?? window.location.href
-        const result = extractComments(postUrl)
-
+      const postUrl = message.postUrl ?? window.location.href
+      extractComments(postUrl).then((result) => {
         if (result.warnings.length > 0) {
           console.log("[Atlas Feed] Extraction warnings:", result.warnings.join("; "))
         }
@@ -52,15 +75,15 @@ chrome.runtime.onMessage.addListener(
           warnings: result.warnings,
           extractedCount: result.comments.length,
         })
-      } catch (err) {
+      }).catch((err) => {
         const errorMessage = err instanceof Error ? err.message : "Unknown extraction error"
         console.log("[Atlas Feed] Extraction failed:", errorMessage)
         sendResponse({
           type: "EXTRACTION_ERROR",
           error: errorMessage,
         })
-      }
-      return false // Synchronous response
+      })
+      return true // Async response
     }
 
     return false

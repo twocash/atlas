@@ -51,6 +51,34 @@ export const PB_PHANTOM_SLOTS = {
   A: PB_PHANTOM_CONFIG,
 } as const
 
+// ─── Pipeline Stages (Phase B) ───────────────────────────
+
+/** Micro-funnel pipeline stages for tracked posts */
+export type PipelineStage = 'watching' | 'extracting' | 'replying' | 'cultivating'
+
+/**
+ * A post the user is actively tracking through the engagement pipeline.
+ * Extends MonitoredPost with pipeline progress tracking.
+ */
+export interface TrackedPost extends MonitoredPost {
+  pipelineStage: PipelineStage
+  trackedAt: string             // ISO date when user clicked "Track"
+  commentCount: number          // Total comments extracted from DOM
+  repliedCount: number          // Comments Jim has replied to
+  followedCount: number         // Follow-ups queued from cultivate toast
+}
+
+export interface TrackedPostsState {
+  posts: TrackedPost[]
+  lastUpdated?: string
+}
+
+export const DEFAULT_TRACKED_POSTS_STATE: TrackedPostsState = {
+  posts: [],
+}
+
+// ─── Monitored Posts State ───────────────────────────────
+
 export interface PostsState {
   posts: MonitoredPost[]
   lastUpdated?: string

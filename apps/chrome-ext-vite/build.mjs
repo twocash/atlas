@@ -36,6 +36,7 @@ console.log('[2/4] Building content scripts with esbuild...')
 const contentScripts = [
   { entry: 'src/contents/linkedin-feed.ts', out: 'content-scripts/linkedin-feed.js' },
   { entry: 'src/contents/linkedin.ts', out: 'content-scripts/linkedin.js' },
+  { entry: 'src/contents/track-button.ts', out: 'content-scripts/track-button.js' },
 ]
 
 for (const { entry, out } of contentScripts) {

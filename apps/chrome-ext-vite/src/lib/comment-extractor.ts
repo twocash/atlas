@@ -24,6 +24,8 @@ import {
 } from "./selector-registry"
 import { generateRepairPacket, formatRepairPacketForLog } from "./selector-diagnostics"
 import { extractActivityId } from "./page-observer"
+import { generateDomSignature } from "./dom-resolver"
+import { getCachedIdentity } from "./identity-cache"
 
 // ─── Types ────────────────────────────────────────────────
 
@@ -86,6 +88,7 @@ function extractSingleComment(
   postUrl: string,
   postTitle: string,
   isReply: boolean,
+  commentIndex: number,
 ): { comment: LinkedInComment; profileUrl: string } | null {
   // Name
   const nameEntry = getEntry("commenter-name")
@@ -125,6 +128,14 @@ function extractSingleComment(
     priority: "",             // Populated in Phase B
   }
 
+  // Phase B: generate DOM fingerprint for scroll-to-view
+  const textFragment = content.slice(0, 80)
+  const domSig = generateDomSignature({
+    authorUrl: profileUrl,
+    textFragment,
+    index: commentIndex,
+  })
+
   const comment: LinkedInComment = {
     id: generateCommentId(postUrl),
     postId: extractActivityId(postUrl) ?? postUrl,
@@ -133,6 +144,10 @@ function extractSingleComment(
     content,
     commentUrl: isReply ? undefined : `${postUrl}#comment-${author.name.replace(/\s+/g, "-")}`,
     commentedAt,
+    threadDepth: isReply ? 1 : 0,
+    childCount: 0,
+    isMe: false,
+    domSignature: domSig,
     status: "needs_reply",
     extractedFromDom: true,
   }
@@ -170,10 +185,14 @@ function extractPostTitle(): string {
  *
  * Returns newest-first, deduplicates by commenter URL + post URL.
  */
-export function extractComments(postUrl?: string): ExtractionResult {
+export async function extractComments(postUrl?: string): Promise<ExtractionResult> {
   const url = postUrl ?? window.location.href
   const warnings: string[] = []
   const repairPackets: RepairPacket[] = []
+
+  // Get cached identity for isMe detection
+  const identity = await getCachedIdentity().catch(() => null)
+  const myProfileUrl = identity?.profileUrl ?? null
 
   // Health check: are canary elements present?
   const canaryPassed = allCanariesPass()
@@ -211,6 +230,7 @@ export function extractComments(postUrl?: string): ExtractionResult {
   const replyEntry = SELECTOR_REGISTRY["reply-indicator"]
 
   // Process containers — DOM order is typically newest-first on LinkedIn
+  let commentIndex = 0
   for (const container of containerMatch.elements) {
     // Determine if this is a reply (nested comment)
     let isReply = false
@@ -223,15 +243,28 @@ export function extractComments(postUrl?: string): ExtractionResult {
       }
     }
 
-    const result = extractSingleComment(container, url, postTitle, isReply)
-    if (!result) continue
+    const result = extractSingleComment(container, url, postTitle, isReply, commentIndex)
+    if (!result) {
+      commentIndex++
+      continue
+    }
 
     // Dedup
     const key = deduplicationKey(result.profileUrl, url)
-    if (seen.has(key)) continue
+    if (seen.has(key)) {
+      commentIndex++
+      continue
+    }
     seen.add(key)
 
+    // Phase B: set isMe if profile URL matches cached identity
+    if (myProfileUrl && result.profileUrl === myProfileUrl) {
+      result.comment.isMe = true
+      result.comment.status = "no_reply_needed"
+    }
+
     comments.push(result.comment)
+    commentIndex++
   }
 
   // Update lastVerified on container entry

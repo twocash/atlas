@@ -42,6 +42,14 @@
       ],
       "js": ["content-scripts/linkedin.js"],
       "run_at": "document_idle"
+    },
+    {
+      "matches": [
+        "https://www.linkedin.com/feed*",
+        "https://www.linkedin.com/posts/*"
+      ],
+      "js": ["content-scripts/track-button.js"],
+      "run_at": "document_idle"
     }
   ],
   "side_panel": {
