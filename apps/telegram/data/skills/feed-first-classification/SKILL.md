@@ -1,10 +1,10 @@
 ---
 name: feed-first-classification
 description: Complete workflow for processing every request through Feed 2.0 with full metadata analysis
+trigger: task request, bug report, research query, unclear interaction
+created: 2026-02-05T00:00:00Z
 version: 1.0.0
 tier: core
-trigger: any task request, bug report, research query, unclear interaction
-created: 2026-02-05T00:00:00.000Z
 ---
 
 # feed-first-classification

@@ -45,7 +45,8 @@ import { maybeHandleAsContentShare, triggerMediaConfirmation, triggerInstantClas
 import { hasPendingSelectionForUser, getSelectionByUserId, updateSelection } from './prompt-selection';
 import { logAction, isFeatureEnabled } from '../skills';
 import { getFeatureFlags } from '../config/features';
-import { classifyWithFallback, triageForAudit } from '../cognitive/triage-skill';
+import { classifyWithFallback, triageForAudit, triageMessage } from '../cognitive/triage-skill';
+import type { TriageResult } from '../cognitive/triage-skill';
 import {
   generateDispatchChoiceId,
   storePendingDispatch,
@@ -370,6 +371,35 @@ export async function handleConversation(ctx: Context): Promise<void> {
     }
   }
 
+  // PRE-FLIGHT TRIAGE: Detect command intent before sending to Claude
+  // This fixes the meta-request bug where "log a bug about X" gets captured
+  // as a task instead of executing the command. The triage result is reused
+  // for audit later (no duplicate API call).
+  let preflightTriage: TriageResult | null = null;
+  try {
+    preflightTriage = await triageMessage(messageText);
+
+    // Command intent: rewrite userContent so Claude structures the ticket properly
+    if (preflightTriage.intent === 'command' && preflightTriage.command) {
+      const cmd = preflightTriage.command;
+      userContent = [
+        `[USER COMMAND: ${cmd.verb} ${cmd.target}${cmd.priority ? ` priority=${cmd.priority}` : ''}]`,
+        `Pillar: ${preflightTriage.pillar}`,
+        ``,
+        cmd.description,
+      ].join('\n');
+
+      logger.info('Pre-flight triage: command intent detected', {
+        verb: cmd.verb,
+        target: cmd.target,
+        priority: cmd.priority,
+        descriptionLength: cmd.description.length,
+      });
+    }
+  } catch (err) {
+    logger.warn('Pre-flight triage failed (non-fatal, continuing with raw text)', { error: err });
+  }
+
   // Get conversation history
   const conversation = await getConversation(userId);
 
@@ -388,8 +418,10 @@ export async function handleConversation(ctx: Context): Promise<void> {
     const tools = getAllTools();
 
     // Detect if message requires tool use (create/add operations)
-    const lowerMessage = messageText.toLowerCase();
-    const requiresToolUse = /\b(create|add|log|make|put|track|file|submit)\b.*\b(bug|feature|task|item|pipeline|queue|notion)\b/i.test(messageText) ||
+    // Also force tool use when pre-flight triage detected command intent
+    const isCommandIntent = preflightTriage?.intent === 'command' && !!preflightTriage.command;
+    const requiresToolUse = isCommandIntent ||
+                           /\b(create|add|log|make|put|track|file|submit)\b.*\b(bug|feature|task|item|pipeline|queue|notion)\b/i.test(messageText) ||
                            /\b(dev.?pipeline|work.?queue)\b/i.test(messageText);
 
     // Call Claude with tools
@@ -603,8 +635,30 @@ export async function handleConversation(ctx: Context): Promise<void> {
       ? `${responseText}\n\n${formatToolContextForHistory(toolContexts)}`
       : responseText;
 
-    // Classify the message for audit — unified triage path
-    const { classification, smartTitle } = await triageForAudit(messageText);
+    // Classify the message for audit — reuse pre-flight triage if available
+    // This avoids a redundant Haiku API call (pre-flight already ran)
+    let classification: { pillar: Pillar; requestType: string; confidence: number; workType: string; keywords: string[]; reasoning: string; };
+    let smartTitle: string;
+
+    if (preflightTriage) {
+      classification = {
+        pillar: preflightTriage.pillar as Pillar,
+        requestType: preflightTriage.requestType,
+        confidence: preflightTriage.confidence,
+        workType: preflightTriage.requestType.toLowerCase(),
+        keywords: preflightTriage.keywords,
+        reasoning: preflightTriage.titleRationale || `Triage: ${preflightTriage.intent} (${preflightTriage.source})`,
+      };
+      // For command intents, use the extracted description as title (not the meta-request)
+      smartTitle = preflightTriage.intent === 'command' && preflightTriage.command
+        ? preflightTriage.command.description.substring(0, 100)
+        : (preflightTriage.title || messageText.substring(0, 100) || 'Message');
+    } else {
+      // Fallback: pre-flight failed, run triage now
+      const auditTriage = await triageForAudit(messageText);
+      classification = auditTriage.classification;
+      smartTitle = auditTriage.smartTitle;
+    }
 
     // Create audit trail (Feed + Work Queue)
     const auditEntry: AuditEntry = {

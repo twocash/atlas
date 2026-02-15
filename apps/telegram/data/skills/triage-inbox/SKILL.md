@@ -1,10 +1,10 @@
 ---
 name: triage-inbox
-version: 1.0.0
-tier: 2
 description: Process captured items in the Inbox, classify and route
 trigger: triage inbox, process inbox, what's in the inbox, check inbox, triage
-created: 2026-01-29T00:00:00.000Z
+created: 2026-01-15T00:00:00Z
+version: 1.0.0
+tier: 2
 ---
 
 # triage-inbox

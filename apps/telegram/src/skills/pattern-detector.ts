@@ -361,7 +361,7 @@ function generateProposal(pattern: DetectedPattern): SkillProposal {
   };
 
   return {
-    id: `proposal-${Date.now()}-${name}`,
+    id: `p-${Date.now()}-${name.substring(0, 20)}`,
     pattern,
     skill,
     createdAt: new Date().toISOString(),
