@@ -202,6 +202,7 @@ import {
   triggerInstantClassification,
   triggerMediaConfirmation,
 } from '../src/conversation/content-flow';
+import { clearCache as clearDedupCache } from '../src/utils/url-dedup';
 
 import seeds from './fixtures/intent-first-seeds.json';
 
@@ -769,6 +770,7 @@ describe('Group 6: Rapid-Fire / Collision', () => {
 describe('Group 7: V3 Media Path Isolation', () => {
   beforeEach(() => {
     clearAllPending();
+    clearDedupCache(); // Prevent state leak from Group 6 skip → registerSkip
     mockStartPromptSelection.mockClear();
     mockPagesCreate.mockClear();
   });

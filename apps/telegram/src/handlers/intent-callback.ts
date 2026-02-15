@@ -28,6 +28,13 @@ import type { Pillar, IntentType, DepthLevel, AudienceType, StructuredContext } 
 import { logAction, isFeatureEnabled } from '../skills';
 import { safeAnswerCallback } from '../utils/telegram-helpers';
 import { registerSkip } from '../utils/url-dedup';
+import {
+  runResearchAgentWithNotifications,
+  sendCompletionNotification,
+} from '../services/research-executor';
+import type { ResearchConfig } from '../../../../packages/agents/src';
+import { getSkillRegistry, initializeSkillRegistry } from '../skills/registry';
+import { executeSkill } from '../skills/executor';
 
 // ==========================================
 // Intent Icons
@@ -358,6 +365,23 @@ async function handleIntentConfirm(
       pillar: pending.pillar,
       feedId: result?.feedId,
     });
+
+    // EXECUTION DISPATCH: Route through skill registry first, then fall back to Gemini
+    if (pending.url && result?.feedId && result?.workQueueId) {
+      dispatchSkillOrResearch(
+        ctx, pending, structuredContext, result.feedId, result.workQueueId,
+        result.feedUrl, result.workQueueUrl
+      ).catch(err => {
+        logger.error('Execution dispatch failed (non-fatal)', { error: err, requestId });
+      });
+    } else if (!pending.url && structuredContext.intent === 'research' && result?.workQueueId) {
+      // Non-URL research (plain text query) → Gemini directly
+      dispatchResearchAgent(
+        ctx, pending, structuredContext, result.workQueueId, result.workQueueUrl
+      ).catch(err => {
+        logger.error('Research dispatch failed (non-fatal)', { error: err, requestId });
+      });
+    }
   } catch (error) {
     logger.error('Failed to create audit trail from intent-first confirmation', { error, requestId });
     await ctx.reply('Failed to log content. Please try again.');
@@ -444,6 +468,167 @@ async function handleIntentSkip(
   try { await ctx.deleteMessage(); } catch { /* already deleted */ }
   await ctx.reply('Skipped');
   logger.info('Intent-first content skipped', { requestId, url: pending.url });
+}
+
+// ==========================================
+// Skill-First Execution Dispatch
+// ==========================================
+
+/**
+ * Route URL through skill registry first, fall back to Gemini research.
+ *
+ * Priority order:
+ *   1. Domain-specific skills (threads-lookup, linkedin-lookup, twitter-lookup) — priority 100
+ *   2. Generic url-extract skill — priority 10
+ *   3. Gemini Research Agent — fallback for 'research' intent when no skill matches
+ *
+ * This mirrors the V3 prompt-selection-callback.ts:648-696 pattern.
+ */
+async function dispatchSkillOrResearch(
+  ctx: Context,
+  pending: PendingContent,
+  structuredContext: StructuredContext,
+  feedId: string,
+  workItemId: string,
+  feedUrl?: string,
+  workQueueUrl?: string
+): Promise<void> {
+  const url = pending.url!;
+  const title = pending.analysis?.title || pending.originalText.substring(0, 80);
+
+  try {
+    await initializeSkillRegistry();
+    const registry = getSkillRegistry();
+
+    const match = registry.findBestMatch(url, { pillar: pending.pillar as any });
+
+    if (match) {
+      logger.info('Skill matched for intent-first URL', {
+        skill: match.skill.name,
+        score: match.score,
+        url,
+        pillar: pending.pillar,
+        intent: structuredContext.intent,
+      });
+
+      const depthMap: Record<string, string> = {
+        quick: 'light', standard: 'standard', deep: 'deep',
+      };
+
+      await ctx.reply(
+        `🔧 Running <b>${match.skill.name}</b> skill...\n\n` +
+        `"${escapeHtml(title)}"`,
+        { parse_mode: 'HTML' }
+      );
+
+      await executeSkill(match.skill, {
+        userId: pending.userId,
+        messageText: pending.originalText,
+        pillar: pending.pillar as any,
+        approvalLatch: true,  // User already confirmed via intent-first keyboard
+        input: {
+          url,
+          title,
+          pillar: pending.pillar,
+          feedId,
+          workQueueId: workItemId,
+          workQueueUrl,
+          feedUrl,
+          depth: depthMap[structuredContext.depth] || 'standard',
+          telegramChatId: pending.chatId,
+        },
+      });
+
+      logger.info('Skill execution completed from intent-first flow', {
+        skill: match.skill.name,
+        intent: structuredContext.intent,
+        pillar: pending.pillar,
+      });
+      return;
+    }
+  } catch (skillError) {
+    logger.error('Skill dispatch failed, falling back to research agent', {
+      error: skillError instanceof Error ? skillError.message : String(skillError),
+      url,
+    });
+  }
+
+  // No skill matched (or skill failed) — fall back to Gemini for research intent
+  if (structuredContext.intent === 'research') {
+    await dispatchResearchAgent(ctx, pending, structuredContext, workItemId, workQueueUrl);
+  } else {
+    logger.info('No skill matched and intent is not research — skipping execution', {
+      url,
+      intent: structuredContext.intent,
+    });
+  }
+}
+
+// ==========================================
+// Research Agent Dispatch (Gemini fallback)
+// ==========================================
+
+/**
+ * Dispatch the Research Agent after intent-first confirmation.
+ * Fires non-blocking — audit trail is already created.
+ * Used as fallback when no skill matches the URL.
+ */
+async function dispatchResearchAgent(
+  ctx: Context,
+  pending: PendingContent,
+  structuredContext: StructuredContext,
+  workItemId: string,
+  workQueueUrl?: string
+): Promise<void> {
+  const chatId = pending.chatId;
+  const rawUrl = pending.url;
+  const title = pending.analysis?.title || pending.originalText.substring(0, 80);
+
+  // Frame URL as a research question — bare URLs don't trigger Gemini grounding
+  let query: string;
+  if (rawUrl) {
+    query = `Research and analyze the content at ${rawUrl}` +
+      (title !== rawUrl ? ` ("${title}")` : '') +
+      `. Summarize the key points, identify the author and context, and provide relevant background information.`;
+  } else {
+    query = pending.originalText;
+  }
+
+  // Map intent-first depth to research depth
+  const depthMap: Record<string, 'light' | 'standard' | 'deep'> = {
+    quick: 'light',
+    standard: 'standard',
+    deep: 'deep',
+  };
+
+  const config: ResearchConfig = {
+    query,
+    depth: depthMap[structuredContext.depth] || 'standard',
+    pillar: pending.pillar as any,
+  };
+
+  const depthLabel = config.depth === 'light' ? 'Quick' : config.depth === 'deep' ? 'Deep' : 'Standard';
+  await ctx.reply(
+    `🔬 Starting <b>${depthLabel}</b> research...\n\n` +
+    `"${escapeHtml(title)}"`,
+    { parse_mode: 'HTML' }
+  );
+
+  logger.info('Dispatching research agent from intent-first flow', {
+    query: query.substring(0, 80),
+    depth: config.depth,
+    pillar: pending.pillar,
+    workItemId,
+  });
+
+  const { agent, result } = await runResearchAgentWithNotifications(
+    config,
+    chatId,
+    ctx.api,
+    workItemId
+  );
+
+  await sendCompletionNotification(ctx.api, chatId, agent, result, workQueueUrl);
 }
 
 // ==========================================

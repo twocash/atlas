@@ -267,17 +267,17 @@ export async function triggerContentConfirmation(
     return true; // Handled — don't show keyboard
   }
 
-  try {
-    let title: string;
-    let triageResult: TriageResult | undefined;
+  // Each enrichment step is individually fault-tolerant.
+  // The keyboard MUST always show — enrichment failures degrade gracefully.
+  const fallbackTitle = contextText || `Content from ${extractDomain(url)}`;
+  let title = fallbackTitle;
+  let triageResult: TriageResult | undefined;
 
-    if (flags.triageSkill) {
-      // TRIAGE INTELLIGENCE: Use unified Haiku triage for smart title + classification
+  if (flags.triageSkill) {
+    try {
       const triageInput = contextText ? `${url}\n\n${contextText}` : url;
       triageResult = await triageMessage(triageInput);
-
-      // Use triage-generated title, fallback to URL domain
-      title = triageResult.title || contextText || `Content from ${extractDomain(url)}`;
+      title = triageResult.title || fallbackTitle;
 
       logger.info('Triage skill completed', {
         url,
@@ -289,21 +289,40 @@ export async function triggerContentConfirmation(
         title,
         latencyMs: triageResult.latencyMs,
       });
-    } else {
-      // Legacy: Use context text or generic title
-      const route = await routeForAnalysis(url);
-      title = contextText || `${route.source} content from ${extractDomain(url)}`;
+    } catch (triageError) {
+      logger.warn('Triage failed, using fallback title', {
+        error: triageError instanceof Error ? triageError.message : String(triageError),
+        url,
+      });
+    }
+  }
 
+  // Route analysis — non-fatal, use fallback if it fails
+  let route: { source: ContentSource; method: string; domain?: string; needsBrowser?: boolean } = {
+    source: 'generic' as ContentSource,
+    method: 'Fetch',
+  };
+  try {
+    route = await routeForAnalysis(url);
+    if (!flags.triageSkill) {
+      title = contextText || `${route.source} content from ${extractDomain(url)}`;
       logger.info('Content share detected (triage skill disabled)', {
         url,
         source: route.source,
         title,
       });
     }
+  } catch (routeError) {
+    logger.warn('Route analysis failed, using fallback', {
+      error: routeError instanceof Error ? routeError.message : String(routeError),
+      url,
+    });
+  }
 
-    // INTENT-FIRST FLOW: Show intent keyboard ("What's the play?")
+  // CRITICAL: storePendingContent + ctx.reply MUST always execute.
+  // If these fail, we have a real problem (not a silent degradation).
+  try {
     const requestId = generateRequestId();
-    const route = await routeForAnalysis(url);
 
     storePendingContent({
       requestId,
@@ -331,7 +350,7 @@ export async function triggerContentConfirmation(
 
     return true;
   } catch (error) {
-    logger.error('Failed to trigger intent-first content flow', { error, url });
+    logger.error('Failed to show intent keyboard (critical)', { error, url });
     return false;
   }
 }
