@@ -26,7 +26,11 @@ export interface SignatureComponents {
  */
 export function generateDomSignature(components: SignatureComponents): string {
   const payload = `${components.authorUrl}|${components.textFragment}|${components.index}`
-  return btoa(payload)
+  // btoa() can't handle Unicode — encode to UTF-8 bytes first
+  const bytes = new TextEncoder().encode(payload)
+  let binary = ""
+  for (const b of bytes) binary += String.fromCharCode(b)
+  return btoa(binary)
 }
 
 /**
@@ -35,7 +39,10 @@ export function generateDomSignature(components: SignatureComponents): string {
  */
 export function parseDomSignature(signature: string): SignatureComponents | null {
   try {
-    const decoded = atob(signature)
+    const binary = atob(signature)
+    // Reverse the UTF-8 encoding from generateDomSignature
+    const bytes = Uint8Array.from(binary, (c) => c.charCodeAt(0))
+    const decoded = new TextDecoder().decode(bytes)
     const parts = decoded.split("|")
     if (parts.length < 3) return null
 

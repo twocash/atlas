@@ -1,17 +1,19 @@
 /**
- * FocusView — Engagement cards for reply work.
+ * FocusView — The primary engagement workflow view.
  *
- * Replaces the old Inbox view. Shows tier-colored comment cards
- * sorted by priority, with inline reply drafting and cultivate toast.
+ * Replaces old Inbox + CommentQueue. Full pipeline:
+ *   Extract Comments → tier-colored cards → Draft Reply → Mark Replied → Cultivate
  *
- * Includes collapsible AdHocReply section at the top.
+ * Includes collapsible AdHocReply at top, Extract button,
+ * and click-to-reply on each FocusCard (opens ReplyHelper).
  */
 
 import React, { useState, useMemo } from "react"
 import { useCommentsState } from "~src/lib/comments-hooks"
 import { AdHocReply } from "./AdHocReply"
-import { CommentQueue } from "./CommentQueue"
+import { ReplyHelper } from "./ReplyHelper"
 import type { LinkedInComment } from "~src/types/comments"
+import type { ExtractionResultMessage, ExtractionErrorMessage } from "~src/types/selectors"
 
 // Tier colors for comment priority
 const TIER_BORDER: Record<string, string> = {
@@ -25,9 +27,12 @@ const TIER_BORDER: Record<string, string> = {
 type FilterMode = "needs_reply" | "all" | "replied"
 
 export function FocusView() {
-  const [commentsState] = useCommentsState()
+  const [commentsState, { updateComment, removeComment, mergeComments }] = useCommentsState()
   const [filter, setFilter] = useState<FilterMode>("needs_reply")
   const [adHocExpanded, setAdHocExpanded] = useState(false)
+  const [selectedComment, setSelectedComment] = useState<LinkedInComment | null>(null)
+  const [isExtracting, setIsExtracting] = useState(false)
+  const [extractionStatus, setExtractionStatus] = useState<string | null>(null)
 
   const filteredComments = useMemo(() => {
     const comments = commentsState.comments.filter((c) => !c.hiddenLocally)
@@ -42,7 +47,7 @@ export function FocusView() {
     }
   }, [commentsState.comments, filter])
 
-  // Sort by priority tier: High → Medium → Standard → Low
+  // Sort by priority tier: High > Medium > Standard > Low
   const priorityOrder: Record<string, number> = { High: 0, Medium: 1, Standard: 2, Low: 3, "": 4 }
   const sortedComments = useMemo(() => {
     return [...filteredComments].sort((a, b) => {
@@ -57,6 +62,98 @@ export function FocusView() {
   const needsReplyCount = commentsState.comments.filter(
     (c) => (c.status === "needs_reply" || c.status === "draft_in_progress") && !c.hiddenLocally
   ).length
+
+  // ─── Extract Comments from LinkedIn page ────────────────
+
+  const handleExtractComments = async () => {
+    setIsExtracting(true)
+    setExtractionStatus("Extracting from LinkedIn...")
+
+    try {
+      const [tab] = await chrome.tabs.query({ active: true, currentWindow: true })
+      if (!tab?.id) {
+        setExtractionStatus("No active tab found")
+        setTimeout(() => setExtractionStatus(null), 3000)
+        return
+      }
+
+      const response = await chrome.tabs.sendMessage(tab.id, { type: "EXTRACT_COMMENTS" }) as
+        | ExtractionResultMessage
+        | ExtractionErrorMessage
+
+      if (response.type === "EXTRACTION_ERROR") {
+        setExtractionStatus(`Error: ${response.error}`)
+        setTimeout(() => setExtractionStatus(null), 5000)
+        return
+      }
+
+      if (response.type === "EXTRACTION_RESULT") {
+        const result = response as ExtractionResultMessage
+        if (result.comments.length === 0) {
+          const warning = result.warnings[0] || "No comments found on this page"
+          setExtractionStatus(warning)
+          setTimeout(() => setExtractionStatus(null), 5000)
+          return
+        }
+
+        const newCount = await mergeComments(result.comments)
+        setExtractionStatus(
+          `${result.extractedCount} extracted, ${newCount} new`
+        )
+        setTimeout(() => setExtractionStatus(null), 5000)
+      }
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : "Extraction failed"
+      if (msg.includes("Could not establish connection") || msg.includes("Receiving end does not exist")) {
+        setExtractionStatus("Navigate to a LinkedIn post page first")
+      } else {
+        setExtractionStatus(`Error: ${msg}`)
+      }
+      setTimeout(() => setExtractionStatus(null), 5000)
+    } finally {
+      setIsExtracting(false)
+    }
+  }
+
+  // ─── Reply Actions ──────────────────────────────────────
+
+  const handleMarkReplied = async (comment: LinkedInComment, finalReply: string) => {
+    // Persist immediately
+    await updateComment({
+      ...comment,
+      status: "replied",
+      finalReply,
+      repliedAt: new Date().toISOString(),
+    })
+
+    // Auto-advance to next unreplied comment
+    const unreplied = sortedComments.filter(
+      (c) => c.id !== comment.id && (c.status === "needs_reply" || c.status === "draft_in_progress")
+    )
+    if (unreplied.length > 0) {
+      setSelectedComment(unreplied[0])
+    } else {
+      setSelectedComment(null)
+    }
+  }
+
+  const handleHideComment = (comment: LinkedInComment) => {
+    updateComment({ ...comment, hiddenLocally: true })
+  }
+
+  // ─── Render ─────────────────────────────────────────────
+
+  // If a comment is selected, show ReplyHelper full-screen
+  if (selectedComment) {
+    return (
+      <ReplyHelper
+        key={selectedComment.id}
+        comment={selectedComment}
+        onClose={() => setSelectedComment(null)}
+        onMarkReplied={handleMarkReplied}
+      />
+    )
+  }
 
   return (
     <div className="h-full flex flex-col overflow-hidden">
@@ -89,13 +186,48 @@ export function FocusView() {
         </div>
       </div>
 
+      {/* Extract Comments Button */}
+      <div className="px-3 py-2 border-b border-gray-100">
+        <button
+          onClick={handleExtractComments}
+          disabled={isExtracting}
+          className="w-full py-2 bg-atlas-600 text-white text-xs font-medium rounded-lg hover:bg-atlas-700 disabled:opacity-50 disabled:cursor-wait transition-colors flex items-center justify-center gap-2"
+        >
+          {isExtracting ? (
+            <>
+              <svg className="animate-spin h-3 w-3" viewBox="0 0 24 24">
+                <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" fill="none" />
+                <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
+              </svg>
+              Extracting...
+            </>
+          ) : (
+            <>
+              <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
+              </svg>
+              Extract Comments from Page
+            </>
+          )}
+        </button>
+        {extractionStatus && (
+          <div className={`mt-1 text-[10px] text-center ${
+            extractionStatus.startsWith("Error") || extractionStatus.startsWith("Navigate")
+              ? "text-amber-600"
+              : "text-green-600"
+          }`}>
+            {extractionStatus}
+          </div>
+        )}
+      </div>
+
       {/* Collapsible Ad-Hoc Reply */}
       <div className="border-b border-gray-100">
         <button
           onClick={() => setAdHocExpanded(!adHocExpanded)}
           className="w-full flex items-center justify-between px-3 py-1.5 text-[10px] text-gray-400 hover:text-gray-600 hover:bg-gray-50 transition-colors"
         >
-          <span>Quick Reply</span>
+          <span>Quick Reply (ad-hoc)</span>
           <svg
             className={`w-3 h-3 transition-transform ${adHocExpanded ? "rotate-180" : ""}`}
             fill="none"
@@ -125,13 +257,18 @@ export function FocusView() {
               {filter === "needs_reply" ? "All caught up!" : "No comments yet"}
             </p>
             <p className="text-[10px] mt-1 text-gray-300">
-              Extract comments from a LinkedIn post to get started
+              Navigate to a LinkedIn post and click "Extract Comments" to begin
             </p>
           </div>
         ) : (
           <div className="p-2 space-y-2">
             {sortedComments.map((comment) => (
-              <FocusCard key={comment.id} comment={comment} />
+              <FocusCard
+                key={comment.id}
+                comment={comment}
+                onReply={() => setSelectedComment(comment)}
+                onHide={() => handleHideComment(comment)}
+              />
             ))}
           </div>
         )}
@@ -142,14 +279,20 @@ export function FocusView() {
 
 // ─── Focus Card ─────────────────────────────────────────
 
-function FocusCard({ comment }: { comment: LinkedInComment }) {
+interface FocusCardProps {
+  comment: LinkedInComment
+  onReply: () => void
+  onHide: () => void
+}
+
+function FocusCard({ comment, onReply, onHide }: FocusCardProps) {
   const tierBorder = TIER_BORDER[comment.author.priority] ?? TIER_BORDER[""]
   const isReplied = comment.status === "replied"
   const isDraft = comment.status === "draft_in_progress"
 
-  const handlePeek = () => {
+  const handlePeek = (e: React.MouseEvent) => {
+    e.stopPropagation()
     if (!comment.domSignature) return
-    // Send SCROLL_TO_COMMENT to the active tab's content script
     chrome.tabs.query({ active: true, currentWindow: true }, (tabs) => {
       if (tabs[0]?.id) {
         chrome.tabs.sendMessage(tabs[0].id, {
@@ -162,7 +305,8 @@ function FocusCard({ comment }: { comment: LinkedInComment }) {
 
   return (
     <div
-      className={`border-l-4 ${tierBorder} bg-white rounded-lg shadow-sm p-3 transition-all hover:shadow-md ${
+      onClick={onReply}
+      className={`border-l-4 ${tierBorder} bg-white rounded-lg shadow-sm p-3 transition-all hover:shadow-md cursor-pointer ${
         isReplied ? "opacity-60" : ""
       }`}
     >
@@ -206,7 +350,7 @@ function FocusCard({ comment }: { comment: LinkedInComment }) {
         {comment.content}
       </p>
 
-      {/* Footer: status + time */}
+      {/* Footer: status + actions */}
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-1.5">
           {isDraft && (
@@ -225,9 +369,20 @@ function FocusCard({ comment }: { comment: LinkedInComment }) {
             </span>
           )}
         </div>
-        <span className="text-[9px] text-gray-300">
-          {formatTimeAgo(comment.commentedAt)}
-        </span>
+        <div className="flex items-center gap-2">
+          <button
+            onClick={(e) => {
+              e.stopPropagation()
+              onHide()
+            }}
+            className="text-[9px] text-gray-300 hover:text-gray-500 transition-colors"
+          >
+            Hide
+          </button>
+          <span className="text-[9px] text-gray-300">
+            {formatTimeAgo(comment.commentedAt)}
+          </span>
+        </div>
       </div>
     </div>
   )

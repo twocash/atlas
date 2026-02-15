@@ -16,8 +16,6 @@ export function ReplyHelper({ comment, onClose, onMarkReplied }: ReplyHelperProp
   const [selectedModel, setSelectedModel] = useState("claude-haiku")
   const [showModelPicker, setShowModelPicker] = useState(false)
   const [isTopEngager, setIsTopEngager] = useState(false)
-  const [cultivateToast, setCultivateToast] = useState<"hidden" | "visible" | "dismissed">("hidden")
-  const cultivateTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const textareaRef = useRef<HTMLTextAreaElement>(null)
 
   // Auto-generate initial draft if none exists
@@ -98,39 +96,30 @@ Reply ONLY with the draft text, no preamble or explanation.`
   }
 
   const handleOpenThread = () => {
-    const url = comment.commentUrl || `https://www.linkedin.com/feed/update/urn:li:activity:${comment.postId}`
+    const url = comment.commentUrl || `https://www.linkedin.com/feed/update/${comment.postId}`
     // Reuse the same window instead of opening new tabs
     window.open(url, "atlas_linkedin_thread")
   }
 
   const handleMarkReplied = async () => {
-    // Update Notion if we have a page ID
+    // Persist immediately — don't wait for toast
+    onMarkReplied(comment, draft)
+
+    // Update Notion if we have a page ID (fire-and-forget)
     if (comment.notionPageId) {
-      try {
-        await chrome.runtime.sendMessage({
-          name: "MARK_ENGAGEMENT_REPLIED",
-          body: {
-            notionPageId: comment.notionPageId,
-            replyText: draft,
-            notionContactId: comment.notionContactId,
-            isTopEngager,
-          },
-        })
-      } catch (e) {
-        console.error("Failed to update Notion:", e)
-      }
+      chrome.runtime.sendMessage({
+        name: "MARK_ENGAGEMENT_REPLIED",
+        body: {
+          notionPageId: comment.notionPageId,
+          replyText: draft,
+          notionContactId: comment.notionContactId,
+          isTopEngager,
+        },
+      }).catch((e) => console.error("Failed to update Notion:", e))
     }
 
-    // Show cultivate toast
-    setCultivateToast("visible")
-    cultivateTimerRef.current = setTimeout(async () => {
-      if (cultivateToast !== "dismissed") {
-        // Auto-queue follow-up
-        await queueFollowUp()
-        setCultivateToast("hidden")
-        onMarkReplied(comment, draft)
-      }
-    }, 3000)
+    // Queue follow-up (fire-and-forget)
+    queueFollowUp().catch(() => {})
   }
 
   const queueFollowUp = async () => {
@@ -138,7 +127,6 @@ Reply ONLY with the draft text, no preamble or explanation.`
       const FOLLOWS_KEY = "atlas:pending-follows"
       const result = await chrome.storage.local.get(FOLLOWS_KEY)
       const follows = result[FOLLOWS_KEY] ?? []
-      // Avoid duplicates
       if (!follows.some((f: any) => f.profileUrl === comment.author.profileUrl)) {
         follows.push({
           profileUrl: comment.author.profileUrl,
@@ -151,15 +139,6 @@ Reply ONLY with the draft text, no preamble or explanation.`
     } catch (e) {
       console.error("Failed to queue follow-up:", e)
     }
-  }
-
-  const handleUndoCultivate = () => {
-    if (cultivateTimerRef.current) {
-      clearTimeout(cultivateTimerRef.current)
-    }
-    setCultivateToast("dismissed")
-    // Still mark as replied but skip the follow queue
-    onMarkReplied(comment, draft)
   }
 
   const handleSelectAllAndCopy = async () => {
@@ -332,28 +311,12 @@ Reply ONLY with the draft text, no preamble or explanation.`
             </button>
             <button
               onClick={handleMarkReplied}
-              disabled={!draft || isGenerating || cultivateToast === "visible"}
+              disabled={!draft || isGenerating}
               className="flex-1 text-xs py-2 bg-green-600 text-white rounded hover:bg-green-700 disabled:opacity-50 transition-colors"
             >
-              {cultivateToast === "visible" ? "Replied!" : "✓ Mark Replied"}
+              ✓ Mark Replied
             </button>
           </div>
-
-          {/* Cultivate Toast */}
-          {cultivateToast === "visible" && (
-            <div className="mt-2 flex items-center justify-between bg-green-50 border border-green-200 rounded-lg px-3 py-2 animate-slide-in">
-              <div className="flex items-center gap-2">
-                <span className="text-green-600 text-xs font-medium">Queued for Follow</span>
-                <span className="text-[9px] text-green-400">{comment.author.name}</span>
-              </div>
-              <button
-                onClick={handleUndoCultivate}
-                className="text-[10px] text-green-600 hover:text-green-800 font-medium underline"
-              >
-                Undo
-              </button>
-            </div>
-          )}
         </div>
       </div>
     </div>

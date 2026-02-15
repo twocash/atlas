@@ -142,7 +142,7 @@ function extractSingleComment(
     postTitle,
     author,
     content,
-    commentUrl: isReply ? undefined : `${postUrl}#comment-${author.name.replace(/\s+/g, "-")}`,
+    commentUrl: postUrl,
     commentedAt,
     threadDepth: isReply ? 1 : 0,
     childCount: 0,
