@@ -135,11 +135,19 @@ export async function getPendingProposals(): Promise<SkillProposal[]> {
 }
 
 /**
- * Get proposal by ID
+ * Find a proposal by exact ID or prefix match (for truncated callback IDs).
+ * Exact match takes priority; prefix match is fallback for Telegram's 64-byte limit.
+ */
+function findInQueue(proposals: SkillProposal[], id: string): SkillProposal | undefined {
+  return proposals.find(p => p.id === id) || proposals.find(p => p.id.startsWith(id));
+}
+
+/**
+ * Get proposal by ID (supports prefix matching for truncated callback IDs)
  */
 export async function getProposal(id: string): Promise<SkillProposal | null> {
   const state = await loadQueue();
-  return state.proposals.find(p => p.id === id) || null;
+  return findInQueue(state.proposals, id) || null;
 }
 
 /**
@@ -155,7 +163,7 @@ export async function getProposalsByTier(tier: number): Promise<SkillProposal[]>
  */
 export async function approveProposalById(id: string): Promise<SkillDefinition | null> {
   const state = await loadQueue();
-  const proposal = state.proposals.find(p => p.id === id);
+  const proposal = findInQueue(state.proposals, id);
 
   if (!proposal) {
     logger.warn('Proposal not found for approval', { id });
@@ -167,10 +175,23 @@ export async function approveProposalById(id: string): Promise<SkillDefinition |
     return null;
   }
 
-  const skill = doApprove(proposal);
-  await saveQueue();
-
-  return skill;
+  try {
+    const skill = doApprove(proposal);
+    await saveQueue();
+    return skill;
+  } catch (error) {
+    // Reject proposals with invalid skill definitions (e.g., bad names from pattern detector)
+    logger.error('Proposal has invalid skill definition, auto-rejecting', {
+      id: proposal.id,
+      name: proposal.skill.name,
+      error,
+    });
+    proposal.status = 'rejected';
+    proposal.rejectionReason = `Invalid skill definition: ${error instanceof Error ? error.message : String(error)}`;
+    proposal.processedAt = new Date().toISOString();
+    await saveQueue();
+    return null;
+  }
 }
 
 /**
@@ -178,7 +199,7 @@ export async function approveProposalById(id: string): Promise<SkillDefinition |
  */
 export async function rejectProposalById(id: string, reason: string): Promise<boolean> {
   const state = await loadQueue();
-  const proposal = state.proposals.find(p => p.id === id);
+  const proposal = findInQueue(state.proposals, id);
 
   if (!proposal) {
     logger.warn('Proposal not found for rejection', { id });
@@ -205,11 +226,22 @@ export async function approveAllPending(): Promise<SkillDefinition[]> {
 
   const approved: SkillDefinition[] = [];
   for (const proposal of pending) {
-    const skill = doApprove(proposal);
-    approved.push(skill);
+    try {
+      const skill = doApprove(proposal);
+      approved.push(skill);
+    } catch (error) {
+      logger.error('Skipping invalid proposal during batch approve', {
+        id: proposal.id,
+        name: proposal.skill.name,
+        error,
+      });
+      proposal.status = 'rejected';
+      proposal.rejectionReason = `Invalid skill definition: ${error instanceof Error ? error.message : String(error)}`;
+      proposal.processedAt = new Date().toISOString();
+    }
   }
 
-  if (approved.length > 0) {
+  if (approved.length > 0 || pending.length > 0) {
     await saveQueue();
     logger.info('All pending proposals approved', { count: approved.length });
   }
@@ -226,8 +258,19 @@ export async function approveAllTier0(): Promise<SkillDefinition[]> {
 
   const approved: SkillDefinition[] = [];
   for (const proposal of tier0) {
-    const skill = doApprove(proposal);
-    approved.push(skill);
+    try {
+      const skill = doApprove(proposal);
+      approved.push(skill);
+    } catch (error) {
+      logger.error('Skipping invalid Tier 0 proposal', {
+        id: proposal.id,
+        name: proposal.skill.name,
+        error,
+      });
+      proposal.status = 'rejected';
+      proposal.rejectionReason = `Invalid skill definition: ${error instanceof Error ? error.message : String(error)}`;
+      proposal.processedAt = new Date().toISOString();
+    }
   }
 
   if (approved.length > 0) {

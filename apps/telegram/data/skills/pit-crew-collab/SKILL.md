@@ -1,10 +1,10 @@
 ---
 name: pit-crew-collab
+description: Real-time collaboration workflow between Atlas and Pit Crew through Notion page bodies
+trigger: collaborate with pit crew, discuss with pit crew, post update to pit crew, check pit crew status
+created: 2026-02-03T00:00:00Z
 version: 1.0.0
 tier: 1
-description: Real-time collaboration workflow between Atlas and Pit Crew through Notion page bodies. Enables agent-to-agent development planning with human-in-the-loop review.
-trigger: collaborate with pit crew, discuss with pit crew, post update to pit crew, check pit crew status
-created: 2026-02-03T00:00:00.000Z
 ---
 
 # Skill: Pit Crew Collaboration

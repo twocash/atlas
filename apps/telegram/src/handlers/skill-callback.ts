@@ -27,7 +27,31 @@ import { getTierEmoji } from '../skills/schema';
 // =============================================================================
 
 // Format: skill:<action>:<proposalId>
-// Actions: approve, reject, edit, details, batch
+// Actions: approve, reject, edit, details, skip, batch, rc (reject-confirm)
+//
+// Telegram limits callback_data to 64 bytes. We cap proposal IDs at 40 chars
+// and use short action codes for multi-part callbacks:
+//   reject-confirm → rc, reasons → nu/wp/nn
+
+/** Max proposal ID length in callback data (Telegram 64-byte limit) */
+const MAX_CALLBACK_ID = 40;
+
+/** Truncate proposal ID to fit within Telegram callback_data limits */
+function safeId(id: string): string {
+  return id.length > MAX_CALLBACK_ID ? id.substring(0, MAX_CALLBACK_ID) : id;
+}
+
+/** Short reason codes for reject-confirm (saves ~20 bytes) */
+const REASON_SHORT_TO_LONG: Record<string, string> = {
+  'nu': 'not-useful',
+  'wp': 'wrong-pattern',
+  'nn': 'not-now',
+};
+const REASON_LONG_TO_SHORT: Record<string, string> = {
+  'not-useful': 'nu',
+  'wrong-pattern': 'wp',
+  'not-now': 'nn',
+};
 
 /**
  * Check if callback data is a skill callback
@@ -45,9 +69,10 @@ function parseCallback(data: string): { action: string; id?: string } | null {
     return null;
   }
 
+  // Rejoin parts[2..] because proposal IDs may contain colons
   return {
     action: parts[1],
-    id: parts[2],
+    id: parts.length > 2 ? parts.slice(2).join(':') : undefined,
   };
 }
 
@@ -60,16 +85,17 @@ function parseCallback(data: string): { action: string; id?: string } | null {
  */
 export function buildProposalKeyboard(proposal: SkillProposal): InlineKeyboard {
   const kb = new InlineKeyboard();
+  const id = safeId(proposal.id);
 
   // Main actions
-  kb.text('✅ Approve', `skill:approve:${proposal.id}`)
-    .text('✏️ Edit', `skill:edit:${proposal.id}`)
-    .text('❌ Reject', `skill:reject:${proposal.id}`)
+  kb.text('✅ Approve', `skill:approve:${id}`)
+    .text('✏️ Edit', `skill:edit:${id}`)
+    .text('❌ Reject', `skill:reject:${id}`)
     .row();
 
   // Secondary actions
-  kb.text('📋 Details', `skill:details:${proposal.id}`)
-    .text('⏭️ Skip', `skill:skip:${proposal.id}`);
+  kb.text('📋 Details', `skill:details:${id}`)
+    .text('⏭️ Skip', `skill:skip:${id}`);
 
   return kb;
 }
@@ -84,7 +110,7 @@ export function buildPendingListKeyboard(proposals: SkillProposal[]): InlineKeyb
   for (let i = 0; i < Math.min(proposals.length, 5); i++) {
     const p = proposals[i];
     const emoji = getTierEmoji(p.skill.tier);
-    kb.text(`${emoji} ${i + 1}. ${p.skill.name.substring(0, 15)}`, `skill:details:${p.id}`);
+    kb.text(`${emoji} ${i + 1}. ${p.skill.name.substring(0, 15)}`, `skill:details:${safeId(p.id)}`);
     if ((i + 1) % 2 === 0) kb.row();
   }
 
@@ -108,12 +134,13 @@ export function buildPendingListKeyboard(proposals: SkillProposal[]): InlineKeyb
  * Build confirmation keyboard for rejection
  */
 function buildRejectConfirmKeyboard(proposalId: string): InlineKeyboard {
+  const id = safeId(proposalId);
   return new InlineKeyboard()
-    .text('❌ Not useful', `skill:reject-confirm:${proposalId}:not-useful`)
-    .text('🔄 Wrong pattern', `skill:reject-confirm:${proposalId}:wrong-pattern`)
+    .text('❌ Not useful', `skill:rc:${id}:nu`)
+    .text('🔄 Wrong pattern', `skill:rc:${id}:wp`)
     .row()
-    .text('⏳ Not now', `skill:reject-confirm:${proposalId}:not-now`)
-    .text('↩️ Cancel', `skill:details:${proposalId}`);
+    .text('⏳ Not now', `skill:rc:${id}:nn`)
+    .text('↩️ Cancel', `skill:details:${id}`);
 }
 
 // =============================================================================
@@ -148,11 +175,26 @@ export async function handleSkillCallback(ctx: CallbackQueryContext<Context>): P
         await handleReject(ctx, parsed.id!);
         break;
 
-      case 'reject-confirm':
-        // Format: skill:reject-confirm:<id>:<reason>
-        const parts = data.split(':');
-        await handleRejectConfirm(ctx, parts[2], parts[3]);
+      case 'reject-confirm': {
+        // Legacy format: skill:reject-confirm:<id>:<reason>
+        // Reason is always the last segment; ID is everything between action and reason
+        const rcParts = data.split(':');
+        const rcReason = rcParts[rcParts.length - 1];
+        const rcId = rcParts.slice(2, -1).join(':');
+        await handleRejectConfirm(ctx, rcId, rcReason);
         break;
+      }
+
+      case 'rc': {
+        // Short format: skill:rc:<id>:<shortReason>
+        // Reason (2-char code) is always the last segment
+        const rcShortParts = data.split(':');
+        const shortReason = rcShortParts[rcShortParts.length - 1];
+        const rcShortId = rcShortParts.slice(2, -1).join(':');
+        const fullReason = REASON_SHORT_TO_LONG[shortReason] || shortReason;
+        await handleRejectConfirm(ctx, rcShortId, fullReason);
+        break;
+      }
 
       case 'edit':
         await handleEdit(ctx, parsed.id!);

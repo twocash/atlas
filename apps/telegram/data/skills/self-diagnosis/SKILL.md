@@ -1,10 +1,10 @@
 ---
 name: self-diagnosis
-version: 1.0.0
-tier: 2
 description: When Atlas hits a limitation, diagnose and dispatch for self-improvement
 trigger: error encountered, capability missing, tool failure, I can't do X
-created: 2026-02-03T00:00:00.000Z
+created: 2026-02-03T00:00:00Z
+version: 1.0.0
+tier: 2
 ---
 
 # Self-Diagnosis Skill
