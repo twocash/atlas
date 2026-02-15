@@ -33,6 +33,11 @@ import {
   sendCompletionNotification,
 } from '../services/research-executor';
 import type { ResearchConfig } from '../../../../packages/agents/src';
+import {
+  composeFromStructuredContext,
+  inferFormat as composeInferFormat,
+  type StructuredCompositionInput,
+} from '../../../../packages/agents/src/services/prompt-composition';
 import { getSkillRegistry, initializeSkillRegistry } from '../skills/registry';
 import { executeSkill } from '../skills/executor';
 
@@ -217,7 +222,7 @@ async function handleAudienceSelection(
     depth: pending.depth || 'standard',
     audience,
     source_type: sourceType,
-    format: inferFormat(pending.intent || 'capture', pending.depth || 'standard'),
+    format: composeInferFormat(pending.intent || 'capture', pending.depth || 'standard'),
     voice_hint: null,
   };
 
@@ -366,18 +371,50 @@ async function handleIntentConfirm(
       feedId: result?.feedId,
     });
 
+    // PROMPT COMPOSITION: Build composed prompt from structured context (Phase 2)
+    let compositionResult: Awaited<ReturnType<typeof composeFromStructuredContext>> | undefined;
+    try {
+      const compositionInput: StructuredCompositionInput = {
+        intent: structuredContext.intent,
+        depth: structuredContext.depth,
+        audience: structuredContext.audience,
+        source_type: structuredContext.source_type,
+        format: structuredContext.format,
+        voice_hint: structuredContext.voice_hint,
+        content: pending.originalText,
+        title: pending.analysis?.title,
+        url: pending.url,
+        pillar: pending.pillar as any,
+      };
+
+      compositionResult = await composeFromStructuredContext(compositionInput);
+      logger.info('Prompt composed from structured context', {
+        requestId,
+        drafter: compositionResult.metadata.drafter,
+        voice: compositionResult.metadata.voice,
+        depth: compositionResult.metadata.depth,
+        temperature: compositionResult.temperature,
+        maxTokens: compositionResult.maxTokens,
+      });
+    } catch (composeErr) {
+      logger.warn('Prompt composition failed, dispatch will use defaults', {
+        error: composeErr instanceof Error ? composeErr.message : String(composeErr),
+        requestId,
+      });
+    }
+
     // EXECUTION DISPATCH: Route through skill registry first, then fall back to Gemini
     if (pending.url && result?.feedId && result?.workQueueId) {
       dispatchSkillOrResearch(
         ctx, pending, structuredContext, result.feedId, result.workQueueId,
-        result.feedUrl, result.workQueueUrl
+        result.feedUrl, result.workQueueUrl, compositionResult
       ).catch(err => {
         logger.error('Execution dispatch failed (non-fatal)', { error: err, requestId });
       });
     } else if (!pending.url && structuredContext.intent === 'research' && result?.workQueueId) {
       // Non-URL research (plain text query) → Gemini directly
       dispatchResearchAgent(
-        ctx, pending, structuredContext, result.workQueueId, result.workQueueUrl
+        ctx, pending, structuredContext, result.workQueueId, result.workQueueUrl, compositionResult
       ).catch(err => {
         logger.error('Research dispatch failed (non-fatal)', { error: err, requestId });
       });
@@ -491,7 +528,8 @@ async function dispatchSkillOrResearch(
   feedId: string,
   workItemId: string,
   feedUrl?: string,
-  workQueueUrl?: string
+  workQueueUrl?: string,
+  compositionResult?: Awaited<ReturnType<typeof composeFromStructuredContext>>
 ): Promise<void> {
   const url = pending.url!;
   const title = pending.analysis?.title || pending.originalText.substring(0, 80);
@@ -536,6 +574,10 @@ async function dispatchSkillOrResearch(
           feedUrl,
           depth: depthMap[structuredContext.depth] || 'standard',
           telegramChatId: pending.chatId,
+          // Phase 2: composed prompt for skills that can use it
+          composedPrompt: compositionResult?.prompt,
+          composedTemperature: compositionResult?.temperature,
+          composedMaxTokens: compositionResult?.maxTokens,
         },
       });
 
@@ -555,7 +597,7 @@ async function dispatchSkillOrResearch(
 
   // No skill matched (or skill failed) — fall back to Gemini for research intent
   if (structuredContext.intent === 'research') {
-    await dispatchResearchAgent(ctx, pending, structuredContext, workItemId, workQueueUrl);
+    await dispatchResearchAgent(ctx, pending, structuredContext, workItemId, workQueueUrl, compositionResult);
   } else {
     logger.info('No skill matched and intent is not research — skipping execution', {
       url,
@@ -578,7 +620,8 @@ async function dispatchResearchAgent(
   pending: PendingContent,
   structuredContext: StructuredContext,
   workItemId: string,
-  workQueueUrl?: string
+  workQueueUrl?: string,
+  compositionResult?: Awaited<ReturnType<typeof composeFromStructuredContext>>
 ): Promise<void> {
   const chatId = pending.chatId;
   const rawUrl = pending.url;
@@ -605,6 +648,11 @@ async function dispatchResearchAgent(
     query,
     depth: depthMap[structuredContext.depth] || 'standard',
     pillar: pending.pillar as any,
+    // Phase 2: inject composition system's instructions via voiceInstructions
+    ...(compositionResult && {
+      voice: 'custom' as const,
+      voiceInstructions: compositionResult.prompt,
+    }),
   };
 
   const depthLabel = config.depth === 'light' ? 'Quick' : config.depth === 'deep' ? 'Deep' : 'Standard';
@@ -680,20 +728,7 @@ function mapSourceTypeToContentType(
   }
 }
 
-/**
- * Infer output format from intent + depth
- */
-function inferFormat(intent: IntentType, depth: DepthLevel): import('../conversation/types').FormatType {
-  if (intent === 'draft') {
-    return depth === 'deep' ? 'report' : 'post';
-  }
-  if (intent === 'research') {
-    return depth === 'deep' ? 'analysis' : 'brief';
-  }
-  if (intent === 'engage') return 'thread';
-  if (intent === 'capture' || intent === 'save') return 'raw';
-  return null;
-}
+// inferFormat() removed — now owned by composition package (composeInferFormat)
 
 /**
  * Build keywords from context
