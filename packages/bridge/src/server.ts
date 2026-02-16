@@ -1,22 +1,24 @@
 /**
- * Atlas Bridge Server — stdio-to-WebSocket adapter for Claude Code.
+ * Atlas Bridge Server — WebSocket adapter for Claude Code.
  *
  * Architecture:
- *   The bridge spawns Claude Code as a child process using
- *   `claude -p --input-format stream-json --output-format stream-json --verbose`
- *   and bridges its stdin/stdout to WebSocket clients.
+ *   The bridge spawns Claude Code with `--sdk-url` so that Claude
+ *   connects BACK to the bridge via WebSocket. This avoids the
+ *   stdin/stdout MCP startup hang and enables richer control
+ *   (permission gating, MCP hot-reload, session resume).
  *
  * Endpoints:
- *   ws://localhost:3848/client  — Chrome extension side panel connects here
- *   GET /status                 — Bridge health check (JSON)
- *   POST /spawn                 — Spawn Claude Code process (if not running)
- *   POST /kill                  — Kill Claude Code process
+ *   ws://localhost:3848/client         — Chrome extension connects here
+ *   ws://localhost:3848/ws/cli/:id     — Claude Code connects back here
+ *   GET /status                        — Bridge health check (JSON)
+ *   POST /spawn                        — Spawn Claude Code process
+ *   POST /kill                         — Kill Claude Code process
+ *   POST /tool-dispatch                — MCP tool dispatch from extension
  *
- * Protocol:
- *   Client → Bridge: { type: "user_message", content: [{ type: "text", text: "..." }] }
- *   Bridge → Claude: { type: "user", message: { role: "user", content: "..." } }
- *   Claude → Bridge: NDJSON lines (system, assistant, result)
- *   Bridge → Client: forwarded NDJSON lines as WebSocket frames
+ * Protocol (SDK URL mode):
+ *   Client → Bridge → Claude: NDJSON over WebSocket (/ws/cli/:id)
+ *   Claude → Bridge → Client: NDJSON over WebSocket (/client)
+ *   MCP servers configured via mcp_set_servers control request after init.
  *
  * Usage:
  *   bun run packages/bridge/src/server.ts
@@ -26,6 +28,7 @@ import type { ServerWebSocket } from "bun"
 import { spawn, type Subprocess } from "bun"
 import { resolve, dirname } from "path"
 import { fileURLToPath } from "url"
+import { randomUUID } from "crypto"
 import type { WsData, BridgeEnvelope, HandlerContext } from "./types/bridge"
 import { processEnvelope } from "./handlers"
 import {
@@ -64,14 +67,23 @@ const pendingRequests = new Map<string, PendingRequest>()
 
 // ─── Claude Process Management ───────────────────────────────
 
-let claudeProcess: Subprocess<"pipe", "pipe", "pipe"> | null = null
+let claudeProcess: Subprocess | null = null
+let cliSocket: ServerWebSocket<WsData> | null = null
+let expectedCliSessionId: string | null = null
+let pendingForCli: string[] = []
 let claudeSessionId: string | null = null
 let claudeModel: string | null = null
 let claudeReady = false
-let stdoutBuffer = ""
+let mcpConfigured = false
+let mcpRequestId: string | null = null
+let autoRespawn = true
 
 function isClaudeRunning(): boolean {
   return claudeProcess !== null && claudeProcess.exitCode === null
+}
+
+function isClaudeConnected(): boolean {
+  return cliSocket !== null
 }
 
 async function spawnClaude(): Promise<{ ok: boolean; error?: string }> {
@@ -79,53 +91,71 @@ async function spawnClaude(): Promise<{ ok: boolean; error?: string }> {
     return { ok: true }
   }
 
-  console.log("[bridge] Spawning Claude Code...")
+  autoRespawn = true
+  console.log("[bridge] Spawning Claude Code (SDK URL mode)...")
 
-  // Resolve paths relative to this file's location
   const thisDir = dirname(fileURLToPath(import.meta.url))
-  const bridgeRoot = resolve(thisDir, "../..")   // packages/bridge/
-  const repoRoot = resolve(thisDir, "../../../") // atlas-bridge/
-  const mcpConfig = resolve(bridgeRoot, "mcp-config.json")
+  const repoRoot = resolve(thisDir, "../../../")
+
+  // Generate a unique session ID for Claude to connect back on
+  expectedCliSessionId = randomUUID()
+  const sdkUrl = `ws://localhost:${PORT}/ws/cli/${expectedCliSessionId}`
 
   try {
     claudeProcess = spawn({
-      cmd: [CLAUDE_CMD, "-p",
-        "--input-format", "stream-json",
+      cmd: [
+        CLAUDE_CMD,
+        "--sdk-url", sdkUrl,
+        "--print",
         "--output-format", "stream-json",
+        "--input-format", "stream-json",
         "--verbose",
-        "--mcp-config", mcpConfig,
+        "-p", "",
       ],
       cwd: repoRoot,
-      stdin: "pipe",
+      stdin: "ignore",
       stdout: "pipe",
       stderr: "pipe",
     })
 
-    // Read stdout line by line (NDJSON)
-    readClaudeStdout()
-    readClaudeStderr()
+    // Read stdout/stderr for logging only (messages arrive via WebSocket)
+    readProcessStdout()
+    readProcessStderr()
+
+    // Watch for process exit
+    claudeProcess.exited.then((code) => {
+      console.log(`[bridge] Claude process exited with code ${code}`)
+      claudeProcess = null
+      if (cliSocket) {
+        // Process died but WS still open — close WS to trigger handleCliClose cleanup
+        try { cliSocket.close(1000, "process exited") } catch {}
+      } else {
+        // WS already closed or never connected
+        expectedCliSessionId = null
+        pendingForCli = []
+        scheduleRespawn()
+      }
+    })
 
     // Wait briefly for the process to start
     await new Promise((r) => setTimeout(r, 500))
 
-    if (claudeProcess.exitCode !== null) {
+    if (claudeProcess?.exitCode !== null && claudeProcess?.exitCode !== undefined) {
       const error = `Claude exited immediately with code ${claudeProcess.exitCode}`
       console.error(`[bridge] ${error}`)
       claudeProcess = null
+      expectedCliSessionId = null
       return { ok: false, error }
     }
 
-    console.log("[bridge] Claude Code process started (PID:", claudeProcess.pid, ")")
+    console.log(`[bridge] Claude Code started (PID: ${claudeProcess!.pid}), awaiting WebSocket callback...`)
+    console.log(`[bridge] SDK URL: ${sdkUrl}`)
 
-    // Notify all clients
-    broadcastToClients({ type: "system", event: "claude_connected" })
-
-    // Warn if Claude doesn't send init within 15s
+    // Warn if Claude doesn't connect back within 15s
     setTimeout(() => {
-      if (isClaudeRunning() && !claudeReady) {
-        console.warn("[bridge] WARNING: Claude process running for 15s but no init message received")
-        console.warn("[bridge] This usually means Claude Code is stuck during startup")
-        console.warn("[bridge] Check: does 'claude -p --output-format stream-json' work in this terminal?")
+      if (isClaudeRunning() && !cliSocket) {
+        console.warn("[bridge] WARNING: Claude running 15s but no WebSocket connection")
+        console.warn("[bridge] Verify 'claude' supports --sdk-url flag")
       }
     }, 15_000)
 
@@ -134,70 +164,52 @@ async function spawnClaude(): Promise<{ ok: boolean; error?: string }> {
     const error = `Failed to spawn Claude: ${err.message}`
     console.error(`[bridge] ${error}`)
     claudeProcess = null
+    expectedCliSessionId = null
     return { ok: false, error }
   }
 }
 
 function killClaude(): void {
+  autoRespawn = false // Prevent auto-respawn during intentional kill
+
+  if (cliSocket) {
+    try { cliSocket.close(1000, "bridge shutting down") } catch {}
+    cliSocket = null
+  }
+
   if (claudeProcess) {
     console.log("[bridge] Killing Claude Code process...")
     claudeProcess.kill()
     claudeProcess = null
-    claudeSessionId = null
-    claudeModel = null
-    claudeReady = false
-    broadcastToClients({ type: "system", event: "claude_disconnected" })
   }
+
+  expectedCliSessionId = null
+  pendingForCli = []
+  claudeSessionId = null
+  claudeModel = null
+  claudeReady = false
+  mcpConfigured = false
+  mcpRequestId = null
+  broadcastToClients({ type: "system", event: "claude_disconnected" })
 }
 
-async function readClaudeStdout(): Promise<void> {
-  if (!claudeProcess?.stdout) {
-    console.error("[bridge] No stdout pipe available")
-    return
-  }
-
-  console.log("[bridge] Stdout reader started, waiting for Claude output...")
-  const reader = claudeProcess.stdout.getReader()
-  const decoder = new TextDecoder()
-  let firstChunk = true
-
-  try {
-    while (true) {
-      const { done, value } = await reader.read()
-      if (done) break
-
-      if (firstChunk) {
-        console.log("[bridge] First stdout chunk received from Claude")
-        firstChunk = false
-      }
-
-      stdoutBuffer += decoder.decode(value, { stream: true })
-
-      // Process complete lines
-      let newlineIdx: number
-      while ((newlineIdx = stdoutBuffer.indexOf("\n")) !== -1) {
-        const line = stdoutBuffer.slice(0, newlineIdx).trim()
-        stdoutBuffer = stdoutBuffer.slice(newlineIdx + 1)
-
-        if (!line) continue
-        handleClaudeLine(line)
-      }
+/** Schedule a respawn attempt after a delay, if auto-respawn is enabled. */
+function scheduleRespawn(): void {
+  if (!autoRespawn) return
+  console.log("[bridge] Auto-respawning Claude in 2s...")
+  setTimeout(() => {
+    if (!isClaudeRunning() && !cliSocket) {
+      spawnClaude()
     }
-  } catch (err: any) {
-    console.error("[bridge] Stdout read error:", err.message)
-  } finally {
-    console.log("[bridge] Claude stdout stream ended")
-    claudeProcess = null
-    claudeSessionId = null
-    claudeReady = false
-    broadcastToClients({ type: "system", event: "claude_disconnected" })
-  }
+  }, 2000)
 }
 
-async function readClaudeStderr(): Promise<void> {
-  if (!claudeProcess?.stderr) return
+// ─── Process stdout/stderr (logging only) ────────────────────
 
-  const reader = claudeProcess.stderr.getReader()
+async function readProcessStdout(): Promise<void> {
+  if (!claudeProcess?.stdout) return
+
+  const reader = (claudeProcess.stdout as ReadableStream).getReader()
   const decoder = new TextDecoder()
 
   try {
@@ -205,30 +217,109 @@ async function readClaudeStderr(): Promise<void> {
       const { done, value } = await reader.read()
       if (done) break
       const text = decoder.decode(value, { stream: true })
-      if (text.trim()) {
-        console.log("[claude:stderr]", text.trim())
+      for (const line of text.split("\n")) {
+        if (line.trim()) console.log("[claude:stdout]", line.trim().slice(0, 200))
       }
+    }
+  } catch {
+    // stdout closed
+  }
+}
+
+async function readProcessStderr(): Promise<void> {
+  if (!claudeProcess?.stderr) return
+
+  const reader = (claudeProcess.stderr as ReadableStream).getReader()
+  const decoder = new TextDecoder()
+
+  try {
+    while (true) {
+      const { done, value } = await reader.read()
+      if (done) break
+      const text = decoder.decode(value, { stream: true })
+      if (text.trim()) console.log("[claude:stderr]", text.trim())
     }
   } catch {
     // stderr closed
   }
 }
 
-function handleClaudeLine(line: string): void {
-  let msg: any
-  try {
-    msg = JSON.parse(line)
-  } catch {
-    console.warn("[bridge] Non-JSON from Claude:", line.slice(0, 100))
-    return
-  }
+// ─── Claude CLI WebSocket Handling ──────────────────────────
 
+function handleCliOpen(ws: ServerWebSocket<WsData>): void {
+  console.log("[bridge] Claude Code connected via WebSocket!")
+  cliSocket = ws
+  addConnection(ws)
+  // Don't flush pendingForCli here — wait until MCP is configured (flushPending)
+}
+
+function handleCliMessage(raw: string | Buffer): void {
+  const text = typeof raw === "string" ? raw : raw.toString()
+
+  // NDJSON: split by newlines, process each JSON line
+  for (const line of text.split("\n")) {
+    const trimmed = line.trim()
+    if (!trimmed) continue
+
+    let msg: any
+    try {
+      msg = JSON.parse(trimmed)
+    } catch {
+      console.warn("[bridge] Non-JSON from Claude WS:", trimmed.slice(0, 100))
+      continue
+    }
+
+    handleClaudeLine(msg)
+  }
+}
+
+function handleCliClose(): void {
+  console.log("[bridge] Claude Code WebSocket disconnected")
+  cliSocket = null
+  removeConnection("claude-ws")
+  claudeSessionId = null
+  claudeReady = false
+  mcpConfigured = false
+  mcpRequestId = null
+  broadcastToClients({ type: "system", event: "claude_disconnected" })
+
+  // If process is still alive when WS drops, kill it (exited handler fires scheduleRespawn)
+  if (isClaudeRunning()) {
+    console.log("[bridge] Process still running after WS drop — killing...")
+    claudeProcess!.kill()
+    claudeProcess = null
+    scheduleRespawn()
+  }
+}
+
+// ─── Claude Message Routing ─────────────────────────────────
+
+function handleClaudeLine(msg: any): void {
   // Extract session info from system init
   if (msg.type === "system" && msg.subtype === "init") {
     claudeSessionId = msg.session_id
     claudeModel = msg.model
     claudeReady = true
     console.log(`[bridge] Claude init — session: ${claudeSessionId}, model: ${claudeModel}`)
+
+    // Configure MCP servers now that Claude is ready
+    configureMcpServers()
+
+    // Notify clients
+    broadcastToClients({ type: "system", event: "claude_connected" })
+    return
+  }
+
+  // Handle control requests (permission gating, etc.)
+  if (msg.type === "control_request") {
+    handleControlRequest(msg)
+    return // Don't forward control requests to clients
+  }
+
+  // Absorb control responses (acks from mcp_set_servers, etc.) — don't leak to clients
+  if (msg.type === "control_response") {
+    handleControlResponse(msg)
+    return
   }
 
   // Log all message types for diagnostics
@@ -256,7 +347,7 @@ function handleClaudeLine(line: string): void {
       }
     },
     broadcastToClients: (m) => broadcastToClients(m),
-    isClaudeConnected: () => isClaudeRunning(),
+    isClaudeConnected: () => isClaudeConnected(),
   }
 
   processEnvelope(envelope, handlerContext).catch((err) => {
@@ -264,16 +355,80 @@ function handleClaudeLine(line: string): void {
   })
 }
 
+// ─── Control Requests ───────────────────────────────────────
+
+function handleControlRequest(msg: any): void {
+  const subtype = msg.request?.subtype
+
+  if (subtype === "can_use_tool") {
+    // Auto-approve tool use — MCP tools are dispatched via the bridge
+    console.log(`[bridge] Auto-approving tool: ${msg.request?.tool_name || "unknown"}`)
+    sendRawToCli({
+      type: "control_response",
+      request_id: msg.request_id,
+      response: { approved: true },
+    })
+    return
+  }
+
+  console.log(`[bridge] Unhandled control request: ${subtype}`)
+}
+
+function handleControlResponse(msg: any): void {
+  if (msg.request_id === mcpRequestId) {
+    mcpConfigured = true
+    mcpRequestId = null
+    console.log("[bridge] MCP servers configured — bridge fully ready")
+    flushPending()
+    return
+  }
+
+  console.log(`[bridge] control_response for request: ${msg.request_id}`)
+}
+
+/** Flush pending user messages to Claude once fully ready (WS + init + MCP). */
+function flushPending(): void {
+  if (pendingForCli.length === 0 || !cliSocket) return
+  console.log(`[bridge] Flushing ${pendingForCli.length} pending messages to Claude`)
+  for (const m of pendingForCli) {
+    cliSocket.send(m)
+  }
+  pendingForCli = []
+}
+
+function configureMcpServers(): void {
+  console.log("[bridge] Configuring MCP servers via control request...")
+
+  const thisDir = dirname(fileURLToPath(import.meta.url))
+  const repoRoot = resolve(thisDir, "../../../")
+
+  mcpRequestId = randomUUID()
+  sendRawToCli({
+    type: "control_request",
+    request_id: mcpRequestId,
+    request: {
+      subtype: "mcp_set_servers",
+      servers: {
+        "atlas-browser": {
+          type: "stdio",
+          command: "bun",
+          args: ["run", resolve(repoRoot, "packages/bridge/src/tools/mcp-server.ts")],
+        },
+      },
+    },
+  })
+}
+
 // ─── Client → Claude Translation ────────────────────────────
 
 function sendToClaude(clientMessage: any): void {
-  if (!isClaudeRunning() || !claudeProcess?.stdin) {
+  if (!isClaudeConnected() && !isClaudeRunning()) {
     console.warn("[bridge] Cannot send — Claude not running")
     return
   }
 
-  if (!claudeReady) {
-    console.warn("[bridge] Sending to Claude before init complete — message may be buffered")
+  if (!claudeReady || !mcpConfigured) {
+    console.log("[bridge] Claude not fully ready — queuing message")
   }
 
   // Translate client message format to Claude's stream-json format
@@ -293,16 +448,33 @@ function sendToClaude(clientMessage: any): void {
         role: "user",
         content,
       },
+      parent_tool_use_id: null,
+      session_id: "",
     }
   } else {
     // Pass through any other message types as-is
     claudeMessage = clientMessage
   }
 
-  const line = JSON.stringify(claudeMessage) + "\n"
-  console.log(`[bridge] → Claude stdin: type=${claudeMessage.type} (${line.length} bytes)`)
-  claudeProcess.stdin.write(line)
-  claudeProcess.stdin.flush()
+  const ndjson = JSON.stringify(claudeMessage) + "\n"
+  console.log(`[bridge] → Claude: type=${claudeMessage.type} (${ndjson.length} bytes)`)
+
+  if (cliSocket) {
+    cliSocket.send(ndjson)
+  } else {
+    pendingForCli.push(ndjson)
+  }
+}
+
+/** Send a raw message to CLI without translation (control messages, etc.) */
+function sendRawToCli(msg: any): void {
+  const ndjson = JSON.stringify(msg) + "\n"
+
+  if (cliSocket) {
+    cliSocket.send(ndjson)
+  } else {
+    pendingForCli.push(ndjson)
+  }
 }
 
 // ─── WebSocket Client Handling ───────────────────────────────
@@ -348,7 +520,7 @@ function handleClientMessage(ws: ServerWebSocket<WsData>, raw: string | Buffer):
         }
       },
       broadcastToClients: (msg) => broadcastToClients(msg),
-      isClaudeConnected: () => isClaudeRunning(),
+      isClaudeConnected: () => isClaudeConnected(),
     }
 
     processEnvelope(envelope, handlerContext).catch((err) => {
@@ -450,11 +622,30 @@ function handleToolResponse(msg: ToolResponse): void {
 async function handleHttpRequest(req: Request, server: any): Promise<Response | undefined> {
   const url = new URL(req.url)
 
-  // WebSocket upgrade for /client
+  // WebSocket upgrade for /client (Chrome extension)
   if (url.pathname === "/client") {
     const id = `client-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`
     const upgraded = server.upgrade(req, {
       data: { id, role: "client" as const } satisfies WsData,
+    })
+    if (!upgraded) {
+      return new Response("WebSocket upgrade failed", { status: 500 })
+    }
+    return undefined
+  }
+
+  // WebSocket upgrade for /ws/cli/:sessionId (Claude Code connects back)
+  const cliMatch = url.pathname.match(/^\/ws\/cli\/([a-f0-9-]+)$/)
+  if (cliMatch) {
+    const sessionId = cliMatch[1]
+
+    if (sessionId !== expectedCliSessionId) {
+      console.warn(`[bridge] Unexpected CLI session: ${sessionId} (expected ${expectedCliSessionId})`)
+      return new Response("Invalid session", { status: 403 })
+    }
+
+    const upgraded = server.upgrade(req, {
+      data: { id: "claude-ws", role: "claude" as const } satisfies WsData,
     })
     if (!upgraded) {
       return new Response("WebSocket upgrade failed", { status: 500 })
@@ -467,7 +658,7 @@ async function handleHttpRequest(req: Request, server: any): Promise<Response | 
     const counts = getConnectionCount()
     const body = {
       status: "ok",
-      claude: isClaudeRunning() ? "connected" : "disconnected",
+      claude: isClaudeConnected() ? "connected" : isClaudeRunning() ? "connecting" : "disconnected",
       claudeSession: claudeSessionId,
       claudeModel: claudeModel,
       clients: counts.clients,
@@ -537,25 +728,39 @@ const server = Bun.serve({
 
   websocket: {
     open(ws: ServerWebSocket<WsData>) {
-      addConnection(ws)
+      if (ws.data.role === "claude") {
+        // Claude Code connected back via --sdk-url
+        handleCliOpen(ws)
+      } else {
+        // Chrome extension client connected
+        addConnection(ws)
 
-      // Send current Claude status to newly connected client
-      ws.send(JSON.stringify({
-        type: "system",
-        event: isClaudeRunning() ? "claude_connected" : "claude_disconnected",
-        data: {
-          session_id: claudeSessionId,
-          model: claudeModel,
-        },
-      }))
+        // Send current Claude status
+        ws.send(JSON.stringify({
+          type: "system",
+          event: isClaudeConnected() ? "claude_connected" : "claude_disconnected",
+          data: {
+            session_id: claudeSessionId,
+            model: claudeModel,
+          },
+        }))
+      }
     },
 
     message(ws: ServerWebSocket<WsData>, message: string | Buffer) {
-      handleClientMessage(ws, message)
+      if (ws.data.role === "claude") {
+        handleCliMessage(message)
+      } else {
+        handleClientMessage(ws, message)
+      }
     },
 
     close(ws: ServerWebSocket<WsData>, code: number, reason: string) {
-      removeConnection(ws.data.id)
+      if (ws.data.role === "claude") {
+        handleCliClose()
+      } else {
+        removeConnection(ws.data.id)
+      }
     },
 
     ping() {
@@ -571,17 +776,18 @@ spawnClaude()
 
 console.log(`
   ╔══════════════════════════════════════════════════╗
-  ║         Atlas Bridge v0.5.0                      ║
+  ║         Atlas Bridge v0.6.0 (SDK URL)            ║
   ║──────────────────────────────────────────────────║
   ║  Client WS : ws://localhost:${PORT}/client          ║
+  ║  CLI WS    : ws://localhost:${PORT}/ws/cli/:id      ║
   ║  Status    : http://localhost:${PORT}/status         ║
   ║  Spawn     : POST http://localhost:${PORT}/spawn     ║
   ║  Kill      : POST http://localhost:${PORT}/kill      ║
   ║  Tools     : POST http://localhost:${PORT}/tool-dispatch ║
   ╚══════════════════════════════════════════════════╝
 
-  Claude Code is managed as a child process.
-  MCP tools dispatched to extension via WebSocket.
+  Claude Code connects via --sdk-url WebSocket.
+  MCP servers configured after init via control request.
 `)
 
 // Graceful shutdown
