@@ -67,6 +67,7 @@ const pendingRequests = new Map<string, PendingRequest>()
 let claudeProcess: Subprocess<"pipe", "pipe", "pipe"> | null = null
 let claudeSessionId: string | null = null
 let claudeModel: string | null = null
+let claudeReady = false
 let stdoutBuffer = ""
 
 function isClaudeRunning(): boolean {
@@ -118,6 +119,16 @@ async function spawnClaude(): Promise<{ ok: boolean; error?: string }> {
 
     // Notify all clients
     broadcastToClients({ type: "system", event: "claude_connected" })
+
+    // Warn if Claude doesn't send init within 15s
+    setTimeout(() => {
+      if (isClaudeRunning() && !claudeReady) {
+        console.warn("[bridge] WARNING: Claude process running for 15s but no init message received")
+        console.warn("[bridge] This usually means Claude Code is stuck during startup")
+        console.warn("[bridge] Check: does 'claude -p --output-format stream-json' work in this terminal?")
+      }
+    }, 15_000)
+
     return { ok: true }
   } catch (err: any) {
     const error = `Failed to spawn Claude: ${err.message}`
@@ -134,20 +145,31 @@ function killClaude(): void {
     claudeProcess = null
     claudeSessionId = null
     claudeModel = null
+    claudeReady = false
     broadcastToClients({ type: "system", event: "claude_disconnected" })
   }
 }
 
 async function readClaudeStdout(): Promise<void> {
-  if (!claudeProcess?.stdout) return
+  if (!claudeProcess?.stdout) {
+    console.error("[bridge] No stdout pipe available")
+    return
+  }
 
+  console.log("[bridge] Stdout reader started, waiting for Claude output...")
   const reader = claudeProcess.stdout.getReader()
   const decoder = new TextDecoder()
+  let firstChunk = true
 
   try {
     while (true) {
       const { done, value } = await reader.read()
       if (done) break
+
+      if (firstChunk) {
+        console.log("[bridge] First stdout chunk received from Claude")
+        firstChunk = false
+      }
 
       stdoutBuffer += decoder.decode(value, { stream: true })
 
@@ -167,6 +189,7 @@ async function readClaudeStdout(): Promise<void> {
     console.log("[bridge] Claude stdout stream ended")
     claudeProcess = null
     claudeSessionId = null
+    claudeReady = false
     broadcastToClients({ type: "system", event: "claude_disconnected" })
   }
 }
@@ -204,8 +227,12 @@ function handleClaudeLine(line: string): void {
   if (msg.type === "system" && msg.subtype === "init") {
     claudeSessionId = msg.session_id
     claudeModel = msg.model
+    claudeReady = true
     console.log(`[bridge] Claude init — session: ${claudeSessionId}, model: ${claudeModel}`)
   }
+
+  // Log all message types for diagnostics
+  console.log(`[bridge] Claude → type=${msg.type}${msg.subtype ? ` subtype=${msg.subtype}` : ""}`)
 
   // Route through handler chain (response router can observe/intercept)
   const envelope: BridgeEnvelope = {
@@ -245,6 +272,10 @@ function sendToClaude(clientMessage: any): void {
     return
   }
 
+  if (!claudeReady) {
+    console.warn("[bridge] Sending to Claude before init complete — message may be buffered")
+  }
+
   // Translate client message format to Claude's stream-json format
   let claudeMessage: any
 
@@ -269,6 +300,7 @@ function sendToClaude(clientMessage: any): void {
   }
 
   const line = JSON.stringify(claudeMessage) + "\n"
+  console.log(`[bridge] → Claude stdin: type=${claudeMessage.type} (${line.length} bytes)`)
   claudeProcess.stdin.write(line)
   claudeProcess.stdin.flush()
 }
