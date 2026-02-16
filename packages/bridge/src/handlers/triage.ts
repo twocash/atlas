@@ -79,23 +79,24 @@ export const triageHandler: HandlerFn = async (envelope, context, next) => {
       `tokens=${assembly.totalContextTokens} latency=${assembly.triageLatencyMs}ms`,
     )
 
-    if (assembly.route === "local") {
-      // Tier 0-1: handle locally
-      const localResponse = assembly.triage.command
-        ? `Command detected: ${assembly.triage.command.name}. Local command execution not yet implemented — forwarding to Claude Code.`
-        : `Quick response not available for this intent. Forwarding to Claude Code.`
+    // Construct enriched prompt
+    const prompt = constructPrompt(assembly)
+    const claudeMessage = buildClaudeMessage(prompt)
 
-      // For now, Tier 0-1 still forwards to Claude Code with the enriched prompt
-      // TODO: implement local handlers for commands, pattern-cache hits
-      const prompt = constructPrompt(assembly)
-      const claudeMessage = buildClaudeMessage(prompt)
-      context.sendToClaude(claudeMessage as any)
-    } else {
-      // Tier 2-3: construct enriched prompt and forward to Claude Code
-      const prompt = constructPrompt(assembly)
-      const claudeMessage = buildClaudeMessage(prompt)
-      context.sendToClaude(claudeMessage as any)
+    // Check Claude connection before sending
+    if (!context.isClaudeConnected()) {
+      console.warn("[triage] Claude not connected — sending error to client")
+      context.sendToClient(envelope.sourceConnectionId, {
+        type: "error",
+        data: {
+          code: "CLAUDE_NOT_CONNECTED",
+          message: "Claude Code is not connected. Try again in a moment.",
+        },
+      } as any)
+      return
     }
+
+    context.sendToClaude(claudeMessage as any)
 
     // Don't call next() — we've handled the message routing
   } catch (err) {

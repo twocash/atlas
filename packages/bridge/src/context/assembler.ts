@@ -144,15 +144,19 @@ async function assembleVoiceSlot(
   return createEmptySlot("voice", "prompt-composition")
 }
 
-/** Map triage intent → composition intent type */
+/** Map triage intent → composition IntentType
+ *
+ * Triage intents:    command, capture, query, clarify
+ * Composition types: research, draft, save, analyze, capture, engage
+ */
 function mapTriageIntentToComposition(intent: TriageResult["intent"]): string {
   const map: Record<string, string> = {
-    command: "action",
+    command: "analyze",
     capture: "capture",
-    query: "query",
-    clarify: "query",
+    query: "research",
+    clarify: "research",
   }
-  return map[intent] ?? "query"
+  return map[intent] ?? "research"
 }
 
 /** Map complexity tier → depth level */
