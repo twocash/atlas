@@ -7,12 +7,13 @@
  * 3. Settings — model selector, API keys, debug logs
  */
 
-import React, { useState } from "react"
+import React, { useState, useEffect } from "react"
 import { ActionFeed } from "./ActionFeed/ActionFeed"
 import { DataView } from "./DataView"
 import { ModelSelector } from "./ModelSelector"
 import { ApiKeySetup } from "./ApiKeySetup"
 import { DebugLogViewer } from "./DebugLogViewer"
+import { BRIDGE_URL_STORAGE_KEY, DEFAULT_BRIDGE_WS_URL } from "~src/lib/claude-code-hooks"
 
 type Section = "feed" | "data" | "settings"
 
@@ -73,6 +74,9 @@ export function AtlasSystemView({ atlasConnected = false }: { atlasConnected?: b
               <div className="mt-2"><ApiKeySetup /></div>
             </section>
             <section className="pt-4 border-t border-gray-100">
+              <BridgeUrlSetting />
+            </section>
+            <section className="pt-4 border-t border-gray-100">
               <h2 className="text-sm font-bold text-gray-900 mb-3">Debug Logs</h2>
               <div className="h-64 border rounded bg-gray-50 overflow-hidden"><DebugLogViewer /></div>
               <div className="mt-2 text-[10px] text-gray-400">
@@ -81,6 +85,66 @@ export function AtlasSystemView({ atlasConnected = false }: { atlasConnected?: b
             </section>
           </div>
         )}
+      </div>
+    </div>
+  )
+}
+
+// ─── Bridge URL Setting ────────────────────────────────────
+
+function BridgeUrlSetting() {
+  const [url, setUrl] = useState(DEFAULT_BRIDGE_WS_URL)
+  const [saved, setSaved] = useState(false)
+
+  useEffect(() => {
+    chrome.storage.local.get(BRIDGE_URL_STORAGE_KEY).then((result) => {
+      const stored = result[BRIDGE_URL_STORAGE_KEY]
+      if (stored && typeof stored === "string") setUrl(stored)
+    })
+  }, [])
+
+  const save = () => {
+    const trimmed = url.trim()
+    if (!trimmed || !trimmed.startsWith("ws")) return
+    chrome.storage.local.set({ [BRIDGE_URL_STORAGE_KEY]: trimmed })
+    setSaved(true)
+    setTimeout(() => setSaved(false), 2000)
+  }
+
+  const reset = () => {
+    setUrl(DEFAULT_BRIDGE_WS_URL)
+    chrome.storage.local.remove(BRIDGE_URL_STORAGE_KEY)
+    setSaved(true)
+    setTimeout(() => setSaved(false), 2000)
+  }
+
+  return (
+    <div>
+      <h2 className="text-sm font-bold text-gray-900 mb-2">Claude Bridge</h2>
+      <label className="block text-[11px] text-gray-500 mb-1">
+        WebSocket URL (change for remote machines)
+      </label>
+      <div className="flex gap-1">
+        <input
+          type="text"
+          value={url}
+          onChange={(e) => setUrl(e.target.value)}
+          onKeyDown={(e) => e.key === "Enter" && save()}
+          placeholder={DEFAULT_BRIDGE_WS_URL}
+          className="flex-1 text-xs px-2 py-1.5 border border-gray-200 rounded bg-white focus:outline-none focus:ring-1 focus:ring-blue-400 font-mono"
+        />
+        <button
+          onClick={save}
+          className="text-[10px] px-2 py-1 bg-blue-500 text-white rounded hover:bg-blue-600 transition-colors"
+        >
+          Save
+        </button>
+      </div>
+      <div className="flex items-center justify-between mt-1">
+        <button onClick={reset} className="text-[10px] text-gray-400 hover:text-gray-600">
+          Reset to default
+        </button>
+        {saved && <span className="text-[10px] text-green-600">Saved — reconnect to apply</span>}
       </div>
     </div>
   )

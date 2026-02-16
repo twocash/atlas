@@ -19,10 +19,23 @@ import { executeToolRequest, type ToolRequest } from "./tool-executor"
 
 // ─── Config ──────────────────────────────────────────────────
 
-const BRIDGE_WS_URL = "ws://localhost:3848/client"
+const DEFAULT_BRIDGE_WS_URL = "ws://localhost:3848/client"
+const BRIDGE_URL_STORAGE_KEY = "atlas:bridge-url"
 const RECONNECT_BASE = 2000   // 2s
 const RECONNECT_MAX = 30000   // 30s
 const RECONNECT_BACKOFF = 1.5
+
+/** Read bridge URL from chrome.storage, falling back to default. */
+async function getBridgeUrl(): Promise<string> {
+  try {
+    const result = await chrome.storage.local.get(BRIDGE_URL_STORAGE_KEY)
+    const stored = result[BRIDGE_URL_STORAGE_KEY]
+    if (stored && typeof stored === "string" && stored.startsWith("ws")) return stored
+  } catch { /* storage unavailable — use default */ }
+  return DEFAULT_BRIDGE_WS_URL
+}
+
+export { BRIDGE_URL_STORAGE_KEY, DEFAULT_BRIDGE_WS_URL }
 
 // ─── Hook ────────────────────────────────────────────────────
 
@@ -50,13 +63,15 @@ export function useClaudeCode(): UseClaudeCodeReturn {
 
   // ─── WebSocket Lifecycle ─────────────────────────────────
 
-  const connect = useCallback(() => {
+  const connect = useCallback(async () => {
     if (wsRef.current?.readyState === WebSocket.OPEN) return
     if (wsRef.current?.readyState === WebSocket.CONNECTING) return
 
     setBridgeState("connecting")
 
-    const ws = new WebSocket(BRIDGE_WS_URL)
+    const url = await getBridgeUrl()
+    console.log(`[claude-hook] Connecting to bridge: ${url}`)
+    const ws = new WebSocket(url)
 
     ws.onopen = () => {
       if (!mountedRef.current) return
