@@ -1,6 +1,6 @@
 import React from "react"
 
-export type ViewId = "radar" | "focus" | "network" | "atlas"
+export type ViewId = "radar" | "focus" | "network" | "atlas" | "claude"
 
 interface NavRailProps {
   activeView: ViewId
@@ -8,9 +8,10 @@ interface NavRailProps {
   focusCount?: number
   trackedCount?: number
   atlasConnected?: boolean
+  claudeConnected?: boolean
 }
 
-export function NavRail({ activeView, onSelect, focusCount = 0, trackedCount = 0, atlasConnected = false }: NavRailProps) {
+export function NavRail({ activeView, onSelect, focusCount = 0, trackedCount = 0, atlasConnected = false, claudeConnected = false }: NavRailProps) {
   return (
     <div className="w-14 flex flex-col items-center py-4 bg-gray-50 border-r border-gray-200 gap-6 flex-shrink-0">
 
@@ -65,7 +66,23 @@ export function NavRail({ activeView, onSelect, focusCount = 0, trackedCount = 0
         </svg>
       </NavButton>
 
-      {/* 4. Atlas — System HUD, action feed, settings */}
+      {/* 4. Claude Code — Bridge Terminal */}
+      <NavButton
+        id="claude"
+        label="Claude"
+        active={activeView === "claude"}
+        onClick={() => onSelect("claude")}
+        badge={true}
+        badgeColor={claudeConnected ? "green" : "gray"}
+      >
+        {/* Claude Icon — Terminal/Code */}
+        <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round">
+          <polyline points="4 17 10 11 4 5" />
+          <line x1="12" y1="19" x2="20" y2="19" />
+        </svg>
+      </NavButton>
+
+      {/* 5. Atlas — System HUD, action feed, settings */}
       <div className="mt-auto">
         <NavButton
           id="atlas"

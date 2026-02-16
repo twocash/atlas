@@ -4,11 +4,13 @@ import { useQueueState } from "~src/lib/hooks"
 import { Header } from "~sidepanel/components/Header"
 import { NavRail, type ViewId } from "~sidepanel/components/NavRail"
 
-// Phase B: 4-view architecture
+// Phase B: 4-view architecture + Claude bridge
 import { RadarView } from "~sidepanel/components/RadarView"
 import { FocusView } from "~sidepanel/components/FocusView"
 import { NetworkView } from "~sidepanel/components/NetworkView"
 import { AtlasSystemView } from "~sidepanel/components/AtlasSystemView"
+import { ClaudeCodePanel } from "~sidepanel/components/ClaudeCodePanel"
+import { useClaudeCode } from "~src/lib/claude-code-hooks"
 
 import { useCommentsState } from "~src/lib/comments-hooks"
 
@@ -54,6 +56,11 @@ function SidePanelInner() {
   const [view, setView] = useState<ViewId>("focus")
   const [atlasConnected, setAtlasConnected] = useState(false)
   const [trackedCount, setTrackedCount] = useState(0)
+
+  // Claude Code bridge — hook lives HERE so WebSocket survives view switching.
+  // The hook's status drives both the NavRail badge and ClaudeCodePanel props.
+  const claudeCode = useClaudeCode()
+  const claudeConnected = claudeCode.status.claude === "connected"
 
   const didAutoSwitch = useRef(false)
 
@@ -169,6 +176,7 @@ function SidePanelInner() {
         focusCount={focusCount}
         trackedCount={trackedCount}
         atlasConnected={atlasConnected}
+        claudeConnected={claudeConnected}
       />
 
       {/* MAIN CONTENT */}
@@ -180,6 +188,7 @@ function SidePanelInner() {
           {view === "focus" && <FocusView />}
           {view === "network" && <NetworkView />}
           {view === "atlas" && <AtlasSystemView atlasConnected={atlasConnected} />}
+          {view === "claude" && <ClaudeCodePanel {...claudeCode} />}
         </div>
       </div>
     </div>

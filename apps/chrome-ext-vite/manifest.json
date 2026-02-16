@@ -25,7 +25,9 @@
     "sidePanel",
     "tabs",
     "alarms",
-    "contextMenus"
+    "contextMenus",
+    "scripting",
+    "activeTab"
   ],
   "content_scripts": [
     {
@@ -56,10 +58,12 @@
     "default_path": "sidepanel.html"
   },
   "host_permissions": [
+    "<all_urls>",
     "https://www.linkedin.com/*",
     "https://api.notion.com/*",
     "https://api.phantombuster.com/*",
     "https://phantombuster.s3.amazonaws.com/*",
-    "http://localhost:3847/*"
+    "http://localhost:3847/*",
+    "http://localhost:3848/*"
   ]
 }
