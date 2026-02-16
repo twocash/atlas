@@ -575,9 +575,13 @@ async function dispatchSkillOrResearch(
           depth: depthMap[structuredContext.depth] || 'standard',
           telegramChatId: pending.chatId,
           // Phase 2: composed prompt for skills that can use it
-          composedPrompt: compositionResult?.prompt,
-          composedTemperature: compositionResult?.temperature,
-          composedMaxTokens: compositionResult?.maxTokens,
+          composedPrompt: compositionResult ? {
+            prompt: compositionResult.prompt,
+            temperature: compositionResult.temperature,
+            maxTokens: compositionResult.maxTokens,
+            metadata: compositionResult.metadata,
+          } : undefined,
+          v3Requested: !!compositionResult?.prompt,
         },
       });
 
