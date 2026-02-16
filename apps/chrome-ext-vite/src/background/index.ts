@@ -23,6 +23,7 @@ import {
   markContactsAsFollowing,
   markContactsAsFailed,
   dismissContacts,
+  syncExtractedComments,
 } from "~src/lib/sync-engine"
 
 const storage = new Storage({ area: "local" })
@@ -365,6 +366,23 @@ chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
         sendResponse({ ok: success })
       } catch (error) {
         sendResponse({ ok: false, error: String(error) })
+      }
+    })()
+    return true
+  }
+
+  if (message.name === "SYNC_EXTRACTED_COMMENTS") {
+    const { comments, postUrl, postTitle } = message.body || {}
+    ;(async () => {
+      try {
+        console.log(`[Atlas] Syncing ${comments?.length || 0} extracted comments to Notion...`)
+        const result = await syncExtractedComments(comments || [], postUrl || '', postTitle)
+        console.log('[Atlas] DOM sync complete:', result)
+        sendResponse({ ok: true, ...result })
+      } catch (error) {
+        const msg = error instanceof Error ? error.message : String(error)
+        console.error('[Atlas] DOM sync failed:', msg)
+        sendResponse({ ok: false, error: msg })
       }
     })()
     return true

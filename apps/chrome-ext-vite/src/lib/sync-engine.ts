@@ -762,18 +762,24 @@ export async function markEngagementReplied(
     })
     await debugLog('orchestrator', `✓ Engagement updated: Response Status → Posted`)
 
-    // Update contact with Top Engager flag if checked
-    if (notionContactId && isTopEngager) {
+    // Update contact: Last Active + optional Top Engager flag
+    if (notionContactId) {
       try {
-        await debugLog('orchestrator', `Setting Top Engager on contact ${notionContactId}...`)
-        await updatePage(notionContactId, {
-          '⭐ Top Engager': { checkbox: true },
-        })
-        await debugLog('orchestrator', `✓ Contact marked as ⭐ Top Engager`)
+        const contactUpdates: Record<string, unknown> = {
+          'Last Active': date(new Date().toISOString().slice(0, 10)),
+        }
+        if (isTopEngager) {
+          contactUpdates['⭐ Top Engager'] = { checkbox: true }
+          await debugLog('orchestrator', `Setting Top Engager + Last Active on contact ${notionContactId}...`)
+        } else {
+          await debugLog('orchestrator', `Updating Last Active on contact ${notionContactId}...`)
+        }
+        await updatePage(notionContactId, contactUpdates)
+        await debugLog('orchestrator', `✓ Contact updated`)
       } catch (e) {
         const msg = e instanceof Error ? e.message : String(e)
-        await debugLog('orchestrator', `Note: Could not set Top Engager: ${msg}`)
-        // Don't fail the whole operation if Top Engager property doesn't exist
+        await debugLog('orchestrator', `Note: Could not update contact: ${msg}`)
+        // Don't fail the whole operation
       }
     }
 
@@ -784,6 +790,125 @@ export async function markEngagementReplied(
     console.error(`[Sync] Failed to mark replied:`, e)
     return false
   }
+}
+
+// --- Sync Extracted Comments (DOM → Notion) ---
+
+export interface DomSyncResult {
+  contactsCreated: number
+  contactsUpdated: number
+  engagementsCreated: number
+  engagementsUpdated: number
+  errors: number
+  /** Map of profileUrl → Notion IDs for enriching comments */
+  notionIdMap: Record<string, { notionPageId: string; notionContactId: string }>
+}
+
+/**
+ * Sync DOM-extracted comments to Notion.
+ * Reuses the same upsertContact/createEngagement pipeline as PB sync.
+ */
+export async function syncExtractedComments(
+  comments: LinkedInComment[],
+  postUrl: string,
+  postTitle?: string,
+): Promise<DomSyncResult> {
+  const result: DomSyncResult = {
+    contactsCreated: 0,
+    contactsUpdated: 0,
+    engagementsCreated: 0,
+    engagementsUpdated: 0,
+    errors: 0,
+    notionIdMap: {},
+  }
+
+  if (comments.length === 0) return result
+
+  try {
+    // Prefetch contact cache for fast dedup lookups
+    await prefetchContactCache()
+
+    // Ensure the post exists in Notion
+    const postPageId = await ensurePostExists(postUrl, postTitle || 'LinkedIn Post')
+    if (!postPageId) {
+      console.error('[DomSync] Failed to create/find post in Notion')
+      result.errors++
+      return result
+    }
+
+    const state = await loadSyncState()
+
+    for (const comment of comments) {
+      // Skip own comments
+      if (comment.isMe) continue
+
+      const profileUrl = comment.author.profileUrl
+      if (!profileUrl) {
+        result.errors++
+        continue
+      }
+
+      // Build PBLead from DOM comment
+      const lead: PBLead = {
+        fullName: comment.author.name,
+        occupation: comment.author.headline,
+        profileUrl,
+        comments: comment.content,
+        hasCommented: "true",
+        commentUrl: comment.commentUrl || postUrl,
+        lastCommentedAt: comment.commentedAt,
+        postsUrl: postUrl,
+      }
+
+      try {
+        // Upsert contact (checks Notion first for dedup)
+        const contactPageId = await upsertContact(lead, state)
+        if (!contactPageId) {
+          result.errors++
+          continue
+        }
+
+        // Track whether contact was new
+        const wasNew = !state.syncedContacts[profileUrl]
+        if (wasNew) {
+          result.contactsCreated++
+          // Use profileUrl as key since DOM comments lack memberId
+          state.syncedContacts[profileUrl] = contactPageId
+        } else {
+          result.contactsUpdated++
+        }
+
+        // Create engagement
+        const engResult = await createEngagement(lead, contactPageId, postPageId, 'comment', state)
+        if (engResult?.isNew) result.engagementsCreated++
+        else if (engResult?.wasUpdated) result.engagementsUpdated++
+
+        // Store Notion IDs for enriching comments back in the sidepanel
+        const engagementPageId = engResult?.id || ''
+        result.notionIdMap[profileUrl] = {
+          notionPageId: engagementPageId,
+          notionContactId: contactPageId,
+        }
+
+        await delay(200) // Rate limit Notion API
+      } catch (e) {
+        const msg = e instanceof Error ? e.message : String(e)
+        console.error(`[DomSync] Error syncing ${comment.author.name}:`, msg)
+        result.errors++
+      }
+    }
+
+    await saveSyncState(state)
+    console.log(`[DomSync] Done: ${result.contactsCreated} new contacts, ${result.contactsUpdated} updated, ${result.engagementsCreated} new engagements`)
+  } catch (e) {
+    const msg = e instanceof Error ? e.message : String(e)
+    console.error('[DomSync] Fatal error:', msg)
+    result.errors++
+  } finally {
+    clearContactCache()
+  }
+
+  return result
 }
 
 // --- CSV Enrichment ---

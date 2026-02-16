@@ -26,6 +26,7 @@ import { generateRepairPacket, formatRepairPacketForLog } from "./selector-diagn
 import { extractActivityId } from "./page-observer"
 import { generateDomSignature } from "./dom-resolver"
 import { getCachedIdentity } from "./identity-cache"
+import { classifyContact, type PBLead } from "./classification"
 
 // ─── Types ────────────────────────────────────────────────
 
@@ -78,6 +79,22 @@ function normalizeProfileUrl(rawUrl: string): string {
   }
 }
 
+// ─── DOM → PBLead Adapter ────────────────────────────────
+
+/**
+ * Convert a LinkedInComment into a PBLead for classification.
+ * Only `occupation` (headline) is needed to drive all classification.
+ */
+export function commentToPBLead(comment: LinkedInComment): PBLead {
+  return {
+    fullName: comment.author.name,
+    occupation: comment.author.headline,
+    profileUrl: comment.author.profileUrl,
+    comments: comment.content,
+    hasCommented: "true",
+  }
+}
+
 // ─── Single Comment Extraction ────────────────────────────
 
 /**
@@ -117,15 +134,23 @@ function extractSingleComment(
     ?? timestampEl?.textContent?.trim()
     ?? new Date().toISOString()
 
-  // Build author (Phase A: no classification — fields get placeholder values)
+  // Classify contact from headline + comment text (client-side, zero API calls)
+  const classification = classifyContact({
+    fullName: name,
+    occupation: headline,
+    profileUrl,
+    comments: content,
+    hasCommented: "true",
+  })
+
   const author: CommentAuthor = {
     name,
     headline,
     profileUrl,
-    linkedInDegree: "",       // Populated in Phase B
-    sector: "",               // Populated in Phase B
-    groveAlignment: "",       // Populated in Phase B
-    priority: "",             // Populated in Phase B
+    linkedInDegree: "",
+    sector: classification.sector,
+    groveAlignment: classification.alignment,
+    priority: classification.priority,
   }
 
   // Phase B: generate DOM fingerprint for scroll-to-view

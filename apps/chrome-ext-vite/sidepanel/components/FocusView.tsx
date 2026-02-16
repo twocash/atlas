@@ -98,9 +98,52 @@ export function FocusView() {
 
         const newCount = await mergeComments(result.comments)
         setExtractionStatus(
-          `${result.extractedCount} extracted, ${newCount} new`
+          `${result.extractedCount} extracted, ${newCount} new — syncing to Notion...`
         )
-        setTimeout(() => setExtractionStatus(null), 5000)
+
+        // Fire Notion sync in background (non-blocking)
+        chrome.runtime.sendMessage({
+          name: "SYNC_EXTRACTED_COMMENTS",
+          body: {
+            comments: result.comments,
+            postUrl: result.postUrl,
+            postTitle: result.comments[0]?.postTitle,
+          },
+        })
+          .then((syncResponse: any) => {
+            if (syncResponse?.ok) {
+              const { contactsCreated, contactsUpdated, engagementsCreated, notionIdMap } = syncResponse
+              setExtractionStatus(
+                `${result.extractedCount} extracted, ${newCount} new — ${contactsCreated + contactsUpdated} contacts, ${engagementsCreated} engagements synced`
+              )
+
+              // Enrich comments with Notion IDs from sync response
+              if (notionIdMap && Object.keys(notionIdMap).length > 0) {
+                for (const comment of result.comments) {
+                  const ids = notionIdMap[comment.author.profileUrl]
+                  if (ids) {
+                    updateComment({
+                      ...comment,
+                      notionPageId: ids.notionPageId,
+                      notionContactId: ids.notionContactId,
+                    })
+                  }
+                }
+              }
+            } else {
+              setExtractionStatus(
+                `${result.extractedCount} extracted, ${newCount} new — sync error: ${syncResponse?.error || 'unknown'}`
+              )
+            }
+            setTimeout(() => setExtractionStatus(null), 8000)
+          })
+          .catch((err: Error) => {
+            console.error("[FocusView] Notion sync failed:", err)
+            setExtractionStatus(
+              `${result.extractedCount} extracted, ${newCount} new`
+            )
+            setTimeout(() => setExtractionStatus(null), 5000)
+          })
       }
     } catch (err) {
       const msg = err instanceof Error ? err.message : "Extraction failed"
