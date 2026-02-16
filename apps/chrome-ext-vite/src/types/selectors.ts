@@ -96,6 +96,7 @@ export interface ExtractionResultMessage {
   postUrl: string
   warnings: string[]
   extractedCount: number
+  repairPackets?: RepairPacket[]
 }
 
 export interface PostReadyMessage {

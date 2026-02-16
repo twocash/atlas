@@ -38,7 +38,7 @@ chrome.sidePanel?.setPanelBehavior?.({ openPanelOnActionClick: true })
 // =============================================================================
 
 import { createCaptureMenus, parseMenuItemId, type PromptComposition } from "~src/lib/capture-menus"
-import { showCapturing, showSuccess, showError } from "~src/lib/badge"
+import { showCapturing, showSuccess, showError, setBadgeCount, clearBadge } from "~src/lib/badge"
 
 const ATLAS_STATUS_SERVER = "http://localhost:3847"
 
@@ -144,6 +144,10 @@ chrome.alarms.onAlarm.addListener((alarm) => {
 
 // Track current Atlas skill for emergency stop
 let currentAtlasSkill: { skill: string; stopRequested: boolean } | null = null
+
+// Rate limiting for selector health reports
+let lastSelectorReportAt = 0
+let selectorReportCount = 0
 
 chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
   // --- Atlas Link Messages ---
@@ -378,11 +382,62 @@ chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
         console.log(`[Atlas] Syncing ${comments?.length || 0} extracted comments to Notion...`)
         const result = await syncExtractedComments(comments || [], postUrl || '', postTitle)
         console.log('[Atlas] DOM sync complete:', result)
+        // Show badge count for new engagements
+        if (result.engagementsCreated > 0) {
+          setBadgeCount(result.engagementsCreated)
+        }
         sendResponse({ ok: true, ...result })
       } catch (error) {
         const msg = error instanceof Error ? error.message : String(error)
         console.error('[Atlas] DOM sync failed:', msg)
         sendResponse({ ok: false, error: msg })
+      }
+    })()
+    return true
+  }
+
+  if (message.name === "CLEAR_BADGE") {
+    clearBadge()
+    sendResponse({ ok: true })
+    return true
+  }
+
+  if (message.name === "REPORT_SELECTOR_HEALTH") {
+    const { repairPackets, postUrl } = message.body || {}
+    ;(async () => {
+      try {
+        // Rate limit: max 3 reports per hour
+        const now = Date.now()
+        if (now - lastSelectorReportAt < 20 * 60 * 1000 && selectorReportCount >= 3) {
+          console.log('[Atlas] Selector health report rate-limited')
+          sendResponse({ ok: true, rateLimited: true })
+          return
+        }
+        if (now - lastSelectorReportAt >= 60 * 60 * 1000) {
+          selectorReportCount = 0
+        }
+
+        const { createFeedEntry } = await import("~src/lib/notion-api")
+        for (const packet of (repairPackets || []).slice(0, 3)) {
+          const notes = [
+            `Selector: ${packet.selectorName}`,
+            `Page: ${postUrl || packet.pageUrl}`,
+            `Failed: ${packet.failedAt}`,
+            `Expected: ${packet.expectedDescription}`,
+            `Classes: ${packet.visibleClasses.slice(0, 10).join(', ')}`,
+          ].join('\n')
+          await createFeedEntry(
+            `Selector Health: ${packet.selectorName}`,
+            notes,
+            "Alert"
+          )
+          selectorReportCount++
+        }
+        lastSelectorReportAt = now
+        sendResponse({ ok: true, reported: repairPackets?.length || 0 })
+      } catch (error) {
+        console.error('[Atlas] Selector health report failed:', error)
+        sendResponse({ ok: false, error: String(error) })
       }
     })()
     return true

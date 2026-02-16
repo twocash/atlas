@@ -282,6 +282,24 @@ export function relation(pageIds: string[]): { relation: Array<{ id: string }> }
   return { relation: pageIds.map((id) => ({ id })) }
 }
 
+// --- Feed 2.0 Entry Creation ---
+
+/**
+ * Create a Feed 2.0 entry (e.g., for selector health alerts)
+ */
+export async function createFeedEntry(
+  entryTitle: string,
+  notes: string,
+  type: string = "Alert"
+): Promise<NotionPage> {
+  return createPage(NOTION_DBS.FEED, {
+    Entry: title(entryTitle),
+    Type: select(type),
+    Source: select("Chrome Extension"),
+    Notes: richText(notes.slice(0, 2000)),
+  })
+}
+
 // --- Action Feed Helpers ---
 
 import type { ActionFeedEntry } from "~src/types/action-feed"

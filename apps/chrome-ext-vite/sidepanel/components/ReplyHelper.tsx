@@ -7,9 +7,10 @@ interface ReplyHelperProps {
   comment: LinkedInComment
   onClose: () => void
   onMarkReplied: (comment: LinkedInComment, finalReply: string) => void
+  onFollowQueued?: (profileUrl: string) => void
 }
 
-export function ReplyHelper({ comment, onClose, onMarkReplied }: ReplyHelperProps) {
+export function ReplyHelper({ comment, onClose, onMarkReplied, onFollowQueued }: ReplyHelperProps) {
   const [draft, setDraft] = useState(comment.draftReply || "")
   const [feedback, setFeedback] = useState("")
   const [isGenerating, setIsGenerating] = useState(false)
@@ -95,10 +96,12 @@ Reply ONLY with the draft text, no preamble or explanation.`
     await navigator.clipboard.writeText(draft)
   }
 
-  const handleOpenThread = () => {
+  const handleOpenThread = async () => {
     const url = comment.commentUrl || `https://www.linkedin.com/feed/update/${comment.postId}`
-    // Reuse the same window instead of opening new tabs
-    window.open(url, "atlas_linkedin_thread")
+    const [tab] = await chrome.tabs.query({ active: true, currentWindow: true })
+    if (tab?.id) {
+      chrome.tabs.update(tab.id, { url })
+    }
   }
 
   const handleMarkReplied = async () => {
@@ -118,8 +121,10 @@ Reply ONLY with the draft text, no preamble or explanation.`
       }).catch((e) => console.error("Failed to update Notion:", e))
     }
 
-    // Queue follow-up (fire-and-forget)
-    queueFollowUp().catch(() => {})
+    // Queue follow-up and notify parent for toast
+    queueFollowUp()
+      .then(() => onFollowQueued?.(comment.author.profileUrl))
+      .catch(() => {})
   }
 
   const queueFollowUp = async () => {

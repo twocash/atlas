@@ -49,3 +49,24 @@ export const showSuccess = (): void => setBadge('success', 3000);
  * Show "error" state (red !, clears after 5s)
  */
 export const showError = (): void => setBadge('error', 5000);
+
+/**
+ * Show a numeric badge count (e.g., new engagements extracted).
+ * count > 0: blue badge with count text
+ * count === 0: clears badge
+ */
+export function setBadgeCount(count: number): void {
+  if (count > 0) {
+    chrome.action.setBadgeText({ text: String(count) });
+    chrome.action.setBadgeBackgroundColor({ color: '#3B82F6' }); // blue-500
+  } else {
+    chrome.action.setBadgeText({ text: '' });
+  }
+}
+
+/**
+ * Clear the badge (alias for setBadgeCount(0))
+ */
+export function clearBadge(): void {
+  setBadgeCount(0);
+}

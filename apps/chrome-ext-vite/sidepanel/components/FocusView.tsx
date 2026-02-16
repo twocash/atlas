@@ -8,10 +8,11 @@
  * and click-to-reply on each FocusCard (opens ReplyHelper).
  */
 
-import React, { useState, useMemo } from "react"
+import React, { useState, useMemo, useEffect, useCallback } from "react"
 import { useCommentsState } from "~src/lib/comments-hooks"
 import { AdHocReply } from "./AdHocReply"
 import { ReplyHelper } from "./ReplyHelper"
+import { CultivateToast } from "./CultivateToast"
 import type { LinkedInComment } from "~src/types/comments"
 import type { ExtractionResultMessage, ExtractionErrorMessage } from "~src/types/selectors"
 
@@ -33,6 +34,12 @@ export function FocusView() {
   const [selectedComment, setSelectedComment] = useState<LinkedInComment | null>(null)
   const [isExtracting, setIsExtracting] = useState(false)
   const [extractionStatus, setExtractionStatus] = useState<string | null>(null)
+  const [toastProfile, setToastProfile] = useState<string | null>(null)
+
+  // Clear badge when FocusView mounts (user has opened the panel)
+  useEffect(() => {
+    chrome.runtime.sendMessage({ name: "CLEAR_BADGE" }).catch(() => {})
+  }, [])
 
   const filteredComments = useMemo(() => {
     const comments = commentsState.comments.filter((c) => !c.hiddenLocally)
@@ -58,6 +65,22 @@ export function FocusView() {
       return new Date(b.commentedAt).getTime() - new Date(a.commentedAt).getTime()
     })
   }, [filteredComments])
+
+  // Detect repeat engagers: profiles that appear across multiple posts
+  const repeatProfileUrls = useMemo(() => {
+    const profilePosts = new Map<string, Set<string>>()
+    for (const c of commentsState.comments) {
+      if (!c.author.profileUrl) continue
+      const posts = profilePosts.get(c.author.profileUrl) || new Set()
+      posts.add(c.postId)
+      profilePosts.set(c.author.profileUrl, posts)
+    }
+    const repeats = new Set<string>()
+    for (const [url, posts] of profilePosts) {
+      if (posts.size > 1) repeats.add(url)
+    }
+    return repeats
+  }, [commentsState.comments])
 
   const needsReplyCount = commentsState.comments.filter(
     (c) => (c.status === "needs_reply" || c.status === "draft_in_progress") && !c.hiddenLocally
@@ -100,6 +123,14 @@ export function FocusView() {
         setExtractionStatus(
           `${result.extractedCount} extracted, ${newCount} new — syncing to Notion...`
         )
+
+        // Report selector health issues (non-blocking, fire-and-forget)
+        if (result.repairPackets && result.repairPackets.length > 0) {
+          chrome.runtime.sendMessage({
+            name: "REPORT_SELECTOR_HEALTH",
+            body: { repairPackets: result.repairPackets, postUrl: result.postUrl },
+          }).catch(() => {})
+        }
 
         // Fire Notion sync in background (non-blocking)
         chrome.runtime.sendMessage({
@@ -184,6 +215,21 @@ export function FocusView() {
     updateComment({ ...comment, hiddenLocally: true })
   }
 
+  const handleToastUndo = useCallback(async () => {
+    if (!toastProfile) return
+    try {
+      const FOLLOWS_KEY = "atlas:pending-follows"
+      const result = await chrome.storage.local.get(FOLLOWS_KEY)
+      const follows = (result[FOLLOWS_KEY] ?? []).filter(
+        (f: any) => f.profileUrl !== toastProfile
+      )
+      await chrome.storage.local.set({ [FOLLOWS_KEY]: follows })
+    } catch (e) {
+      console.error("Failed to undo follow-up:", e)
+    }
+    setToastProfile(null)
+  }, [toastProfile])
+
   // ─── Render ─────────────────────────────────────────────
 
   // If a comment is selected, show ReplyHelper full-screen
@@ -194,6 +240,7 @@ export function FocusView() {
         comment={selectedComment}
         onClose={() => setSelectedComment(null)}
         onMarkReplied={handleMarkReplied}
+        onFollowQueued={setToastProfile}
       />
     )
   }
@@ -309,6 +356,7 @@ export function FocusView() {
               <FocusCard
                 key={comment.id}
                 comment={comment}
+                isRepeatEngager={repeatProfileUrls.has(comment.author.profileUrl)}
                 onReply={() => setSelectedComment(comment)}
                 onHide={() => handleHideComment(comment)}
               />
@@ -316,6 +364,14 @@ export function FocusView() {
           </div>
         )}
       </div>
+
+      {/* Cultivate Toast */}
+      <CultivateToast
+        visible={!!toastProfile}
+        profileUrl={toastProfile || ""}
+        onUndo={handleToastUndo}
+        onDismiss={() => setToastProfile(null)}
+      />
     </div>
   )
 }
@@ -324,26 +380,23 @@ export function FocusView() {
 
 interface FocusCardProps {
   comment: LinkedInComment
+  isRepeatEngager?: boolean
   onReply: () => void
   onHide: () => void
 }
 
-function FocusCard({ comment, onReply, onHide }: FocusCardProps) {
+function FocusCard({ comment, isRepeatEngager, onReply, onHide }: FocusCardProps) {
   const tierBorder = TIER_BORDER[comment.author.priority] ?? TIER_BORDER[""]
   const isReplied = comment.status === "replied"
   const isDraft = comment.status === "draft_in_progress"
 
-  const handlePeek = (e: React.MouseEvent) => {
+  const handleOpenThread = async (e: React.MouseEvent) => {
     e.stopPropagation()
-    if (!comment.domSignature) return
-    chrome.tabs.query({ active: true, currentWindow: true }, (tabs) => {
-      if (tabs[0]?.id) {
-        chrome.tabs.sendMessage(tabs[0].id, {
-          type: "SCROLL_TO_COMMENT",
-          domSignature: comment.domSignature,
-        })
-      }
-    })
+    const url = comment.commentUrl || `https://www.linkedin.com/feed/update/${comment.postId}`
+    const [tab] = await chrome.tabs.query({ active: true, currentWindow: true })
+    if (tab?.id) {
+      chrome.tabs.update(tab.id, { url })
+    }
   }
 
   return (
@@ -363,6 +416,9 @@ function FocusCard({ comment, onReply, onHide }: FocusCardProps) {
             {comment.isMe && (
               <span className="text-[8px] bg-blue-50 text-blue-500 px-1 rounded font-medium">You</span>
             )}
+            {isRepeatEngager && !comment.isMe && (
+              <span className="text-[8px] bg-orange-100 text-orange-700 px-1 rounded font-medium">Repeat</span>
+            )}
             {comment.threadDepth > 0 && (
               <span className="text-[8px] text-gray-400">
                 {"↳".repeat(comment.threadDepth)}
@@ -373,25 +429,27 @@ function FocusCard({ comment, onReply, onHide }: FocusCardProps) {
           <p className="text-[10px] text-gray-400 truncate">{comment.author.headline}</p>
         </div>
 
-        {/* Peek button */}
-        {comment.domSignature && (
-          <button
-            onClick={handlePeek}
-            className="p-1 text-gray-300 hover:text-blue-500 transition-colors"
-            title="Scroll to comment"
-          >
-            <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" />
-            </svg>
-          </button>
-        )}
+        {/* Open thread in active tab */}
+        <button
+          onClick={handleOpenThread}
+          className="p-1 text-gray-300 hover:text-blue-500 transition-colors"
+          title="Open thread in active tab"
+        >
+          <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" />
+          </svg>
+        </button>
       </div>
 
       {/* Comment text */}
-      <p className="text-xs text-gray-700 leading-relaxed mb-2 line-clamp-3">
+      <p className="text-xs text-gray-700 leading-relaxed mb-1 line-clamp-3">
         {comment.content}
       </p>
+      {comment.postTitle && (
+        <p className="text-[9px] text-gray-300 truncate mb-2">
+          On: {comment.postTitle}
+        </p>
+      )}
 
       {/* Footer: status + actions */}
       <div className="flex items-center justify-between">

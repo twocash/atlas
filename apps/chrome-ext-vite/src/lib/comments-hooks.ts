@@ -13,6 +13,9 @@ const storage = new Storage({ area: "local" })
 // Add comments storage key
 const COMMENTS_KEY = "atlas_comments_state"
 
+/** Maximum comments to retain in storage (oldest dropped first) */
+const MAX_COMMENTS = 200
+
 function normalizeCommentsState(raw: unknown): CommentsState {
   if (!raw || typeof raw !== "object") return DEFAULT_COMMENTS_STATE
   const s = raw as Record<string, unknown>
@@ -30,6 +33,7 @@ export function useCommentsState(): [CommentsState, {
   updateComment: (comment: LinkedInComment) => Promise<void>
   removeComment: (id: string) => Promise<void>
   replaceAllComments: (comments: LinkedInComment[]) => Promise<void>
+  mergeComments: (comments: LinkedInComment[]) => Promise<number>
   clearComments: () => Promise<void>
   loadMockData: () => Promise<void>
 }] {
@@ -168,11 +172,13 @@ export function useCommentsState(): [CommentsState, {
    */
   const mergeComments = useCallback(async (newComments: LinkedInComment[]) => {
     const current = await storage.get<CommentsState>(COMMENTS_KEY) || DEFAULT_COMMENTS_STATE
-    const existingIds = new Set(current.comments.map((c) => c.id))
+    const baseComments = current.comments
+
+    const existingIds = new Set(baseComments.map((c) => c.id))
 
     // Also deduplicate by author profile URL + post ID to avoid duplicates across sources
     const existingKeys = new Set(
-      current.comments.map((c) => `${c.author.profileUrl}::${c.postId}`),
+      baseComments.map((c) => `${c.author.profileUrl}::${c.postId}`),
     )
 
     const fresh = newComments.filter((c) => {
@@ -185,8 +191,11 @@ export function useCommentsState(): [CommentsState, {
 
     if (fresh.length === 0) return 0
 
+    // Trim to MAX_COMMENTS (drop oldest)
+    const merged = [...fresh, ...baseComments].slice(0, MAX_COMMENTS)
+
     const updated: CommentsState = {
-      comments: [...fresh, ...current.comments],
+      comments: merged,
       lastFetched: new Date().toISOString(),
     }
     await storage.set(COMMENTS_KEY, updated)

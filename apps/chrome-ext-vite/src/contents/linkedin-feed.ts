@@ -74,6 +74,7 @@ chrome.runtime.onMessage.addListener(
           postUrl: result.postUrl,
           warnings: result.warnings,
           extractedCount: result.comments.length,
+          repairPackets: result.repairPackets,
         })
       }).catch((err) => {
         const errorMessage = err instanceof Error ? err.message : "Unknown extraction error"

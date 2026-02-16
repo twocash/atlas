@@ -17,10 +17,10 @@ import { DebugLogViewer } from "./DebugLogViewer"
 type Section = "feed" | "data" | "settings"
 
 export function AtlasSystemView({ atlasConnected = false }: { atlasConnected?: boolean }) {
-  const [expanded, setExpanded] = useState<Section>("feed")
+  const [expanded, setExpanded] = useState<Section | null>("feed")
 
   const toggle = (section: Section) => {
-    setExpanded((prev) => (prev === section ? section : section))
+    setExpanded((prev) => (prev === section ? null : section))
   }
 
   return (

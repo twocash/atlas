@@ -39,6 +39,13 @@ export function NetworkView() {
     }
   }
 
+  async function navigateActiveTab(url: string) {
+    const [tab] = await chrome.tabs.query({ active: true, currentWindow: true })
+    if (tab?.id) {
+      chrome.tabs.update(tab.id, { url })
+    }
+  }
+
   async function removeFollow(profileUrl: string) {
     const updated = follows.filter((f) => f.profileUrl !== profileUrl)
     await chrome.storage.local.set({ [FOLLOWS_KEY]: updated })
@@ -85,14 +92,12 @@ export function NetworkView() {
                 className="bg-white rounded-lg shadow-sm border border-gray-100 p-3 flex items-center justify-between"
               >
                 <div className="flex-1 min-w-0">
-                  <a
-                    href={follow.profileUrl}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="text-xs font-semibold text-blue-600 hover:underline truncate block"
+                  <button
+                    onClick={() => navigateActiveTab(follow.profileUrl)}
+                    className="text-xs font-semibold text-blue-600 hover:underline truncate block text-left"
                   >
                     {follow.name}
-                  </a>
+                  </button>
                   <p className="text-[10px] text-gray-400 truncate">
                     From: {follow.fromPostTitle}
                   </p>
