@@ -2,7 +2,8 @@
  * Handler Chain — composes middleware handlers into a pipeline.
  *
  * Phase 3: single handler (relay passthrough).
- * Phase 5: [triageHandler, relayHandler] — triage intercepts before relay.
+ * Phase 5: [triageHandler, relayHandler, responseRouterHandler]
+ *          triage intercepts before relay, response router observes after.
  *
  * The chain runs handlers in order. Each handler calls next() to pass
  * control to the next handler. If a handler doesn't call next(), the
@@ -11,10 +12,16 @@
 
 import type { BridgeEnvelope, HandlerFn, HandlerContext } from "../types/bridge"
 import { relayHandler } from "./relay"
+import { triageHandler } from "./triage"
+import { responseRouterHandler } from "./response-router"
 
 // ─── Handler Chain ───────────────────────────────────────────
+// Order: triage → relay → response-router
+// Triage intercepts client→claude (may skip relay).
+// Relay forwards messages.
+// Response router observes claude→client for landing surface routing.
 
-const handlers: HandlerFn[] = [relayHandler]
+const handlers: HandlerFn[] = [triageHandler, relayHandler, responseRouterHandler]
 
 /**
  * Process a message envelope through the handler chain.

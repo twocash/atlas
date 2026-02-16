@@ -27,6 +27,7 @@ import { spawn, type Subprocess } from "bun"
 import { resolve, dirname } from "path"
 import { fileURLToPath } from "url"
 import type { WsData, BridgeEnvelope, HandlerContext } from "./types/bridge"
+import { processEnvelope } from "./handlers"
 import {
   addConnection,
   removeConnection,
@@ -206,11 +207,34 @@ function handleClaudeLine(line: string): void {
     console.log(`[bridge] Claude init — session: ${claudeSessionId}, model: ${claudeModel}`)
   }
 
-  // Forward everything to all connected clients
-  const raw = JSON.stringify(msg)
-  for (const ws of getClientConnections()) {
-    ws.send(raw)
+  // Route through handler chain (response router can observe/intercept)
+  const envelope: BridgeEnvelope = {
+    message: msg,
+    surface: "claude_code",
+    sessionId: claudeSessionId || "unknown",
+    timestamp: new Date().toISOString(),
+    direction: "claude_to_client",
+    sourceConnectionId: "claude",
   }
+
+  const handlerContext: HandlerContext = {
+    sendToClaude: (m) => sendToClaude(m),
+    sendToClient: (connId, m) => {
+      const raw = JSON.stringify(m)
+      for (const client of getClientConnections()) {
+        if (client.data.id === connId) {
+          client.send(raw)
+          break
+        }
+      }
+    },
+    broadcastToClients: (m) => broadcastToClients(m),
+    isClaudeConnected: () => isClaudeRunning(),
+  }
+
+  processEnvelope(envelope, handlerContext).catch((err) => {
+    console.error("[bridge] Claude→client handler error:", err)
+  })
 }
 
 // ─── Client → Claude Translation ────────────────────────────
@@ -270,19 +294,34 @@ function handleClientMessage(ws: ServerWebSocket<WsData>, raw: string | Buffer):
       continue
     }
 
-    if (!isClaudeRunning()) {
-      ws.send(JSON.stringify({
-        type: "system",
-        event: "error",
-        data: {
-          code: "CLAUDE_NOT_RUNNING",
-          message: "Claude Code is not running. Send POST /spawn to start it.",
-        },
-      }))
-      return
+    // Wrap in BridgeEnvelope and route through handler chain
+    const envelope: BridgeEnvelope = {
+      message: parsed,
+      surface: parsed.surface || "chrome_extension",
+      sessionId: claudeSessionId || `session-${Date.now()}`,
+      timestamp: new Date().toISOString(),
+      direction: "client_to_claude",
+      sourceConnectionId: ws.data.id,
     }
 
-    sendToClaude(parsed)
+    const handlerContext: HandlerContext = {
+      sendToClaude: (msg) => sendToClaude(msg),
+      sendToClient: (connId, msg) => {
+        const raw = JSON.stringify(msg)
+        for (const client of getClientConnections()) {
+          if (client.data.id === connId) {
+            client.send(raw)
+            break
+          }
+        }
+      },
+      broadcastToClients: (msg) => broadcastToClients(msg),
+      isClaudeConnected: () => isClaudeRunning(),
+    }
+
+    processEnvelope(envelope, handlerContext).catch((err) => {
+      console.error("[bridge] Handler chain error:", err)
+    })
   }
 }
 
@@ -500,7 +539,7 @@ spawnClaude()
 
 console.log(`
   ╔══════════════════════════════════════════════════╗
-  ║         Atlas Bridge v0.3.0                      ║
+  ║         Atlas Bridge v0.5.0                      ║
   ║──────────────────────────────────────────────────║
   ║  Client WS : ws://localhost:${PORT}/client          ║
   ║  Status    : http://localhost:${PORT}/status         ║
