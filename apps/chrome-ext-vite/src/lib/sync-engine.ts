@@ -35,6 +35,9 @@ import {
   type PBLead,
 } from "./classification"
 import type { LinkedInComment, CommentAuthor } from "~src/types/comments"
+import type { InteractionTier, TierClassificationResult } from "~src/types/classification"
+import { TIER_LABELS } from "~src/types/classification"
+import { TIER_SYSTEM_PROMPTS } from "./classification-prompts"
 
 const storage = new Storage({ area: "local" })
 
@@ -182,7 +185,7 @@ async function ensurePostExists(postUrl: string, postContent: string = ''): Prom
   }
 }
 
-async function upsertContact(lead: PBLead, state: SyncState): Promise<string | null> {
+async function upsertContact(lead: PBLead, state: SyncState, tierResult?: TierClassificationResult): Promise<string | null> {
   const memberId = lead.memberId || ''
   const rawUrl = lead.profileUrl || lead.profileLink || ''
   const name = lead.fullName || `${lead.firstName || ''} ${lead.lastName || ''}`.trim()
@@ -258,6 +261,15 @@ async function upsertContact(lead: PBLead, state: SyncState): Promise<string | n
         updates['Strategic Bucket'] = multiSelect(classification.buckets)
       }
 
+      // AI Classification tier fields (Phase B.2)
+      if (tierResult) {
+        updates['Tier'] = select(TIER_LABELS[tierResult.tier])
+        updates['Tier System Prompt'] = richText(TIER_SYSTEM_PROMPTS[tierResult.tier].slice(0, 2000))
+        updates['Grove Aligned'] = { checkbox: tierResult.tier === 'grove' }
+        updates['Classification Confidence'] = { number: Math.round(tierResult.confidence * 100) / 100 }
+        updates['Classification Method'] = select(tierResult.method === 'ai' ? 'AI' : tierResult.method === 'cached' ? 'AI (cached)' : 'Rule-based')
+      }
+
       await updatePage(existing.id, updates)
       console.log(`[Sync] Updated contact: ${name}`)
       return existing.id
@@ -320,6 +332,15 @@ async function upsertContact(lead: PBLead, state: SyncState): Promise<string | n
 
     if (classification.buckets.length > 0) {
       properties['Strategic Bucket'] = multiSelect(classification.buckets)
+    }
+
+    // AI Classification tier fields (Phase B.2)
+    if (tierResult) {
+      properties['Tier'] = select(TIER_LABELS[tierResult.tier])
+      properties['Tier System Prompt'] = richText(TIER_SYSTEM_PROMPTS[tierResult.tier].slice(0, 2000))
+      properties['Grove Aligned'] = { checkbox: tierResult.tier === 'grove' }
+      properties['Classification Confidence'] = { number: Math.round(tierResult.confidence * 100) / 100 }
+      properties['Classification Method'] = select(tierResult.method === 'ai' ? 'AI' : tierResult.method === 'cached' ? 'AI (cached)' : 'Rule-based')
     }
 
     const page = await createPage(NOTION_DBS.CONTACTS, properties)
@@ -620,6 +641,13 @@ async function fetchContactDetails(contactPageId: string): Promise<CommentAuthor
     const page = await resp.json()
     const props = page.properties as Record<string, any>
 
+    // Map Notion tier label back to InteractionTier type
+    const tierLabel = props['Tier']?.select?.name || ''
+    const tierMap: Record<string, InteractionTier> = {
+      'Grove': 'grove', 'Consulting': 'consulting',
+      'Recruiting': 'recruiting', 'General': 'general',
+    }
+
     return {
       name: props['Name']?.title?.[0]?.plain_text || 'Unknown',
       headline: props['Headline']?.rich_text?.[0]?.plain_text || '',
@@ -628,6 +656,12 @@ async function fetchContactDetails(contactPageId: string): Promise<CommentAuthor
       sector: props['Sector']?.select?.name || 'Other',
       groveAlignment: props['Grove Alignment']?.select?.name || '⭐⭐ Peripheral Interest',
       priority: props['Priority']?.select?.name || 'Standard',
+      tier: tierMap[tierLabel],
+      tierConfidence: props['Classification Confidence']?.number,
+      tierMethod: props['Classification Method']?.select?.name === 'AI' ? 'ai'
+        : props['Classification Method']?.select?.name === 'AI (cached)' ? 'cached'
+        : props['Classification Method']?.select?.name === 'Rule-based' ? 'rule_based'
+        : undefined,
     }
   } catch (e) {
     console.log('[Sync] Failed to fetch contact details:', e)
@@ -800,8 +834,21 @@ export interface DomSyncResult {
   engagementsCreated: number
   engagementsUpdated: number
   errors: number
-  /** Map of profileUrl → Notion IDs for enriching comments */
-  notionIdMap: Record<string, { notionPageId: string; notionContactId: string }>
+  /** Map of profileUrl → Notion IDs + tier for enriching comments */
+  notionIdMap: Record<string, {
+    notionPageId: string
+    notionContactId: string
+    tier?: InteractionTier
+    tierConfidence?: number
+    tierMethod?: string
+  }>
+  /** AI classification stats */
+  classification?: {
+    aiClassified: number
+    cacheHits: number
+    fallbacks: number
+    total: number
+  }
 }
 
 /**
@@ -812,6 +859,7 @@ export async function syncExtractedComments(
   comments: LinkedInComment[],
   postUrl: string,
   postTitle?: string,
+  tierResults?: Record<string, TierClassificationResult>,
 ): Promise<DomSyncResult> {
   const result: DomSyncResult = {
     contactsCreated: 0,
@@ -860,9 +908,12 @@ export async function syncExtractedComments(
         postsUrl: postUrl,
       }
 
+      // Look up tier classification for this contact
+      const tierResult = tierResults?.[profileUrl]
+
       try {
-        // Upsert contact (checks Notion first for dedup)
-        const contactPageId = await upsertContact(lead, state)
+        // Upsert contact with tier classification (checks Notion first for dedup)
+        const contactPageId = await upsertContact(lead, state, tierResult)
         if (!contactPageId) {
           result.errors++
           continue
@@ -883,11 +934,14 @@ export async function syncExtractedComments(
         if (engResult?.isNew) result.engagementsCreated++
         else if (engResult?.wasUpdated) result.engagementsUpdated++
 
-        // Store Notion IDs for enriching comments back in the sidepanel
+        // Store Notion IDs + tier for enriching comments back in the sidepanel
         const engagementPageId = engResult?.id || ''
         result.notionIdMap[profileUrl] = {
           notionPageId: engagementPageId,
           notionContactId: contactPageId,
+          tier: tierResult?.tier,
+          tierConfidence: tierResult?.confidence,
+          tierMethod: tierResult?.method,
         }
 
         await delay(200) // Rate limit Notion API
@@ -899,7 +953,9 @@ export async function syncExtractedComments(
     }
 
     await saveSyncState(state)
-    console.log(`[DomSync] Done: ${result.contactsCreated} new contacts, ${result.contactsUpdated} updated, ${result.engagementsCreated} new engagements`)
+
+    const tierCount = tierResults ? Object.keys(tierResults).length : 0
+    console.log(`[DomSync] Done: ${result.contactsCreated} new contacts, ${result.contactsUpdated} updated, ${result.engagementsCreated} new engagements, ${tierCount} classified`)
   } catch (e) {
     const msg = e instanceof Error ? e.message : String(e)
     console.error('[DomSync] Fatal error:', msg)

@@ -10,6 +10,11 @@ export interface CommentAuthor {
   sector: string                // AI/ML Specialist, Academia, etc.
   groveAlignment: string        // ⭐⭐⭐⭐ Strong Alignment, etc.
   priority: string              // High, Medium, Standard, Low
+
+  // AI Classification (Phase B.2)
+  tier?: import("./classification").InteractionTier
+  tierConfidence?: number       // 0-1 from AI classification
+  tierMethod?: "ai" | "rule_based" | "cached" | "fallback"
 }
 
 export interface LinkedInComment {

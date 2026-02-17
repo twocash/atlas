@@ -15,15 +15,9 @@ import { ReplyHelper } from "./ReplyHelper"
 import { CultivateToast } from "./CultivateToast"
 import type { LinkedInComment } from "~src/types/comments"
 import type { ExtractionResultMessage, ExtractionErrorMessage } from "~src/types/selectors"
-
-// Tier colors for comment priority
-const TIER_BORDER: Record<string, string> = {
-  High: "border-l-amber-500",
-  Medium: "border-l-blue-400",
-  Standard: "border-l-gray-300",
-  Low: "border-l-gray-200",
-  "": "border-l-gray-200",
-}
+import type { InteractionTier } from "~src/types/classification"
+import { TIER_COLORS } from "~src/lib/classification-prompts"
+import { TIER_LABELS } from "~src/types/classification"
 
 type FilterMode = "needs_reply" | "all" | "replied"
 
@@ -54,13 +48,15 @@ export function FocusView() {
     }
   }, [commentsState.comments, filter])
 
-  // Sort by priority tier: High > Medium > Standard > Low
-  const priorityOrder: Record<string, number> = { High: 0, Medium: 1, Standard: 2, Low: 3, "": 4 }
+  // Sort by AI tier: grove > consulting > recruiting > general
+  // Falls back to legacy priority if no tier assigned
+  const tierOrder: Record<string, number> = { grove: 0, consulting: 1, recruiting: 2, general: 3 }
+  const legacyPriorityOrder: Record<string, number> = { High: 0, Medium: 1, Standard: 2, Low: 3 }
   const sortedComments = useMemo(() => {
     return [...filteredComments].sort((a, b) => {
-      const pa = priorityOrder[a.author.priority] ?? 4
-      const pb = priorityOrder[b.author.priority] ?? 4
-      if (pa !== pb) return pa - pb
+      const ta = a.author.tier ? tierOrder[a.author.tier] ?? 3 : (legacyPriorityOrder[a.author.priority] ?? 3)
+      const tb = b.author.tier ? tierOrder[b.author.tier] ?? 3 : (legacyPriorityOrder[b.author.priority] ?? 3)
+      if (ta !== tb) return ta - tb
       // Secondary: newest first
       return new Date(b.commentedAt).getTime() - new Date(a.commentedAt).getTime()
     })
@@ -148,7 +144,7 @@ export function FocusView() {
                 `${result.extractedCount} extracted, ${newCount} new — ${contactsCreated + contactsUpdated} contacts, ${engagementsCreated} engagements synced`
               )
 
-              // Enrich comments with Notion IDs from sync response
+              // Enrich comments with Notion IDs + tier from sync response
               if (notionIdMap && Object.keys(notionIdMap).length > 0) {
                 for (const comment of result.comments) {
                   const ids = notionIdMap[comment.author.profileUrl]
@@ -157,6 +153,12 @@ export function FocusView() {
                       ...comment,
                       notionPageId: ids.notionPageId,
                       notionContactId: ids.notionContactId,
+                      author: {
+                        ...comment.author,
+                        ...(ids.tier && { tier: ids.tier }),
+                        ...(ids.tierConfidence !== undefined && { tierConfidence: ids.tierConfidence }),
+                        ...(ids.tierMethod && { tierMethod: ids.tierMethod as any }),
+                      },
                     })
                   }
                 }
@@ -386,7 +388,10 @@ interface FocusCardProps {
 }
 
 function FocusCard({ comment, isRepeatEngager, onReply, onHide }: FocusCardProps) {
-  const tierBorder = TIER_BORDER[comment.author.priority] ?? TIER_BORDER[""]
+  // Use AI tier colors if available, fall back to gray
+  const tier = comment.author.tier as InteractionTier | undefined
+  const colors = tier ? TIER_COLORS[tier] : null
+  const tierBorder = colors?.border ?? "border-l-gray-300"
   const isReplied = comment.status === "replied"
   const isDraft = comment.status === "draft_in_progress"
 
@@ -451,7 +456,7 @@ function FocusCard({ comment, isRepeatEngager, onReply, onHide }: FocusCardProps
         </p>
       )}
 
-      {/* Footer: status + actions */}
+      {/* Footer: status + tier + actions */}
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-1.5">
           {isDraft && (
@@ -464,9 +469,14 @@ function FocusCard({ comment, isRepeatEngager, onReply, onHide }: FocusCardProps
               Replied
             </span>
           )}
-          {comment.author.priority === "High" && !isReplied && (
-            <span className="text-[9px] bg-amber-50 text-amber-600 px-1.5 py-0.5 rounded font-medium">
-              Priority
+          {tier && colors && !isReplied && (
+            <span className={`text-[9px] ${colors.badge} px-1.5 py-0.5 rounded font-medium`}>
+              {TIER_LABELS[tier]}
+            </span>
+          )}
+          {comment.author.tierMethod === "ai" && (
+            <span className="text-[8px] text-gray-400" title={`AI confidence: ${Math.round((comment.author.tierConfidence || 0) * 100)}%`}>
+              AI
             </span>
           )}
         </div>

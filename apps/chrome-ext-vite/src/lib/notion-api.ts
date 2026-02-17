@@ -282,6 +282,14 @@ export function relation(pageIds: string[]): { relation: Array<{ id: string }> }
   return { relation: pageIds.map((id) => ({ id })) }
 }
 
+export function number(value: number): { number: number } {
+  return { number: value }
+}
+
+export function checkbox(value: boolean): { checkbox: boolean } {
+  return { checkbox: value }
+}
+
 // --- Feed 2.0 Entry Creation ---
 
 /**

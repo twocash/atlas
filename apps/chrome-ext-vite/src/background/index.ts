@@ -379,8 +379,54 @@ chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
     const { comments, postUrl, postTitle } = message.body || {}
     ;(async () => {
       try {
-        console.log(`[Atlas] Syncing ${comments?.length || 0} extracted comments to Notion...`)
-        const result = await syncExtractedComments(comments || [], postUrl || '', postTitle)
+        const commentList = comments || []
+        console.log(`[Atlas] Syncing ${commentList.length} extracted comments to Notion...`)
+
+        // Phase B.2: Batch classify contacts before syncing
+        let tierResults: Record<string, import("~src/types/classification").TierClassificationResult> | undefined
+        try {
+          const uniqueContacts = new Map<string, import("~src/types/classification").ClassificationInput>()
+          for (const c of commentList) {
+            if (c.isMe || !c.author?.profileUrl) continue
+            if (!uniqueContacts.has(c.author.profileUrl)) {
+              uniqueContacts.set(c.author.profileUrl, {
+                profileUrl: c.author.profileUrl,
+                name: c.author.name || '',
+                headline: c.author.headline || '',
+                commentText: c.content || '',
+                degree: c.author.linkedInDegree,
+              })
+            }
+          }
+
+          if (uniqueContacts.size > 0) {
+            const { classifyBatch, AnthropicClassificationProvider } = await import("~src/lib/ai-classifier")
+            const { SecureStorage } = await import("~src/lib/chrome-storage")
+            const secStore = new SecureStorage({ area: "local" })
+            await secStore.setPassword("atlas-ext-v1")
+            const apiKey = await secStore.get(STORAGE_KEYS.ANTHROPIC_KEY).catch(() => "") as string
+
+            if (apiKey) {
+              const provider = new AnthropicClassificationProvider(apiKey)
+              const batchResult = await classifyBatch(Array.from(uniqueContacts.values()), provider)
+              tierResults = batchResult.results
+              console.log(`[Atlas] Classification: ${batchResult.aiClassified} AI, ${batchResult.cacheHits} cached, ${batchResult.fallbacks} rule-based`)
+            } else {
+              // No API key — use rule-based fallback
+              const { classifyContactByRules } = await import("~src/lib/classification-rules")
+              tierResults = {}
+              for (const contact of uniqueContacts.values()) {
+                tierResults[contact.profileUrl] = classifyContactByRules(contact)
+              }
+              console.log(`[Atlas] Classification: ${uniqueContacts.size} rule-based (no API key)`)
+            }
+          }
+        } catch (classifyError) {
+          console.warn('[Atlas] Classification failed, proceeding without tiers:', classifyError)
+          // tierResults stays undefined — sync continues without tier data
+        }
+
+        const result = await syncExtractedComments(commentList, postUrl || '', postTitle, tierResults)
         console.log('[Atlas] DOM sync complete:', result)
         // Show badge count for new engagements
         if (result.engagementsCreated > 0) {
@@ -399,6 +445,39 @@ chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
   if (message.name === "CLEAR_BADGE") {
     clearBadge()
     sendResponse({ ok: true })
+    return true
+  }
+
+  if (message.name === "CLASSIFY_BATCH") {
+    const { contacts } = message.body || {}
+    ;(async () => {
+      try {
+        const { classifyBatch, AnthropicClassificationProvider } = await import("~src/lib/ai-classifier")
+        const { SecureStorage } = await import("~src/lib/chrome-storage")
+        const secStore = new SecureStorage({ area: "local" })
+        await secStore.setPassword("atlas-ext-v1")
+        const apiKey = await secStore.get(STORAGE_KEYS.ANTHROPIC_KEY).catch(() => "") as string
+
+        if (!apiKey) {
+          // No API key — classify with rules only
+          const { classifyContactByRules } = await import("~src/lib/classification-rules")
+          const results: Record<string, any> = {}
+          for (const c of contacts || []) {
+            results[c.profileUrl] = classifyContactByRules(c)
+          }
+          sendResponse({ ok: true, results, aiClassified: 0, cacheHits: 0, fallbacks: contacts?.length || 0 })
+          return
+        }
+
+        const provider = new AnthropicClassificationProvider(apiKey)
+        const result = await classifyBatch(contacts || [], provider)
+        sendResponse({ ok: true, ...result })
+      } catch (error) {
+        const msg = error instanceof Error ? error.message : String(error)
+        console.error("[Atlas] CLASSIFY_BATCH failed:", msg)
+        sendResponse({ ok: false, error: msg })
+      }
+    })()
     return true
   }
 
