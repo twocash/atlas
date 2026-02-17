@@ -17,3 +17,8 @@ export {
   estimateTokens,
   type CreateSlotOptions,
 } from "./slots"
+export { assembleDomainRagSlot } from "./domain-rag-slot"
+export { assemblePovSlot } from "./pov-slot"
+export { resolveWorkspace, normalizePillar, getWorkspaceMapping } from "./workspace-router"
+export { queryWorkspace, healthCheck } from "./anythingllm-client"
+export { fetchPovForPillar, type PovContent } from "./pov-fetcher"

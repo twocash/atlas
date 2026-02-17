@@ -2,8 +2,8 @@
  * Context Assembler — populates the 6 context slots for orchestration.
  *
  * Slot 1: Intent — triage result + structured context     (WIRED)
- * Slot 2: Domain RAG — semantic search over corpus        (STUBBED)
- * Slot 3: POV — epistemic position documents              (STUBBED)
+ * Slot 2: Domain RAG — semantic search over corpus        (WIRED)
+ * Slot 3: POV — epistemic position documents              (WIRED)
  * Slot 4: Voice — prompt composition output               (WIRED)
  * Slot 5: Browser — current page context from extension   (WIRED)
  * Slot 6: Output — landing surface + format instructions  (WIRED)
@@ -28,6 +28,8 @@ import {
   totalTokens,
   populatedSlotIds,
 } from "./slots"
+import { assembleDomainRagSlot } from "./domain-rag-slot"
+import { assemblePovSlot } from "./pov-slot"
 
 // ─── Assembly Result ──────────────────────────────────────
 
@@ -243,16 +245,6 @@ function assembleOutputSlot(landingSurface: LandingSurface): ContextSlot {
   })
 }
 
-// ─── Stubbed Slots ────────────────────────────────────────
-
-function assembleDomainRagSlot(): ContextSlot {
-  return createEmptySlot("domain_rag", "rag-stub")
-}
-
-function assemblePovSlot(): ContextSlot {
-  return createEmptySlot("pov", "pov-stub")
-}
-
 // ─── Main Assembler ───────────────────────────────────────
 
 /**
@@ -263,7 +255,7 @@ function assemblePovSlot(): ContextSlot {
  * 2. Compose voice (voice slot) — parallel with browser
  * 3. Wire browser context (browser slot)
  * 4. Determine landing surface (output slot)
- * 5. Stub domain_rag and pov slots
+ * 5. Query domain RAG + POV library (domain_rag + pov slots)
  * 6. Enforce total token budget
  */
 export async function assembleContext(
@@ -277,16 +269,16 @@ export async function assembleContext(
   const tier = triage.complexityTier as ComplexityTier
   const route = TIER_ROUTES[tier]
 
-  // Step 2-5: Assemble remaining slots (voice can be parallel with browser/output)
-  const [voiceSlot, browserSlot] = await Promise.all([
+  // Step 2-5: Assemble remaining slots in parallel
+  const [voiceSlot, browserSlot, domainRagSlot, povSlot] = await Promise.all([
     assembleVoiceSlot(triage, request.messageText),
     Promise.resolve(assembleBrowserSlot(request.browserContext)),
+    assembleDomainRagSlot(triage, request.messageText),
+    assemblePovSlot(triage),
   ])
 
   const landingSurface = determineLandingSurface(triage, request.surface)
   const outputSlot = assembleOutputSlot(landingSurface)
-  const domainRagSlot = assembleDomainRagSlot()
-  const povSlot = assemblePovSlot()
 
   // Step 6: Enforce budget
   const rawSlots: ContextSlot[] = [

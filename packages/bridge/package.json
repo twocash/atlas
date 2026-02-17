@@ -13,6 +13,7 @@
     "@types/bun": "latest"
   },
   "dependencies": {
-    "@modelcontextprotocol/sdk": "^1.26.0"
+    "@modelcontextprotocol/sdk": "^1.26.0",
+    "@notionhq/client": "^2.2.14"
   }
 }
