@@ -48,7 +48,7 @@ servers:
   # in the server environment. Causes degraded MCP warning on every bot startup.
   claude_in_chrome:
     command: "node"
-    args: ["${CHROME_MCP_PATH:-../../apps/chrome-ext/mcp-server/index.js}"]
+    args: ["${CHROME_MCP_PATH:-../../apps/chrome-ext-vite/mcp-server/index.js}"]
     env:
       CHROME_EXTENSION_ID: "${CHROME_EXTENSION_ID}"
     timeout: 60000

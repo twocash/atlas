@@ -5,7 +5,7 @@
  * Both sides develop against this contract independently.
  *
  * Integration Point: apps/telegram/src/services/chrome-extractor.ts
- * Extension Endpoint: apps/chrome-ext/src/background/api/index.ts
+ * Extension Endpoint: apps/chrome-ext-vite/src/background/index.ts
  */
 
 // ============================================

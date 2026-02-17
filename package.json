@@ -8,7 +8,7 @@
   ],
   "scripts": {
     "dev:telegram": "cd apps/telegram && bun run dev",
-    "dev:chrome": "cd apps/chrome-ext && bun run dev",
+    "dev:chrome": "cd apps/chrome-ext-vite && bun run dev",
     "dev:bridge": "cd packages/bridge && bun run dev",
     "typecheck": "bun run --filter '*' typecheck",
     "worker": "cd packages/agents && bun run worker",
