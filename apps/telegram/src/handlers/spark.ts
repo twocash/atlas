@@ -2,15 +2,11 @@
  * Atlas Telegram Bot - Spark Handler
  *
  * Handles spark intent: URL capture, classification, and Notion routing.
- * Uses V3 Progressive Profiling (Pillar → Action → Voice) flow.
+ * Uses Socratic Interview Engine for conversational context gathering.
  *
- * MIGRATION NOTE (2026-02-05):
- * Old callback handlers (handleSparkCallback, handleSparkConfirm, handleSparkDismiss)
- * have been removed. All spark capture now uses the V3 prompt selection flow via
- * startPromptSelection() from prompt-selection-callback.ts.
- *
- * If you see errors about missing handleSparkCallback, update the calling code
- * to use the new V3 flow.
+ * MIGRATION NOTE (2026-02-17):
+ * Gate 2 migration: Replaced V3 keyboard flow (Pillar → Action → Voice)
+ * with Socratic conversational engine. No inline keyboards for classification.
  */
 
 import type { Context } from "grammy";
@@ -24,7 +20,7 @@ import { extractFirstUrl, fetchUrlContent, getUrlDomain } from "../url";
 import { classifyWithClaude } from "../claude";
 import { logger } from "../logger";
 import { audit } from "../audit";
-import { startPromptSelection } from "./prompt-selection-callback";
+import { socraticInterview } from "../conversation/socratic-adapter";
 
 // Use Claude for classification
 const USE_CLAUDE = process.env.USE_CLAUDE !== "false";
@@ -105,13 +101,13 @@ export async function handleSparkIntent(
     title = classification.suggestedTitle;
   }
 
-  // V3 PROGRESSIVE PROFILING: Start the Pillar → Action → Voice flow
+  // SOCRATIC INTERVIEW: Replace keyboard flow with conversational engine
   const contentType = url ? 'url' : 'text';
   const content = url || text;
 
-  await startPromptSelection(ctx, content, contentType, title);
+  await socraticInterview(ctx, content, contentType as 'url' | 'text', title);
 
-  audit.logResponse(userId, `Started V3 progressive profiling for: ${title}`);
+  audit.logResponse(userId, `Started Socratic interview for: ${title}`);
 }
 
 /**

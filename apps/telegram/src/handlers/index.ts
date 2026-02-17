@@ -15,18 +15,13 @@ import { handleActionIntent, handleActionCallback, cleanupPendingActions } from 
 import { handleChatIntent, clearConversationHistory } from "./chat";
 import { handleVoiceCallback } from "./voice-callback";
 import { handleContentCallback } from "./content-callback";
-import { handleIntentCallback } from "./intent-callback";
 import { handleDispatchCallback } from "./dispatch-callback";
 import { handleNotionCallback, handleNotionStatusUpdate } from "./notion-callback";
 import { handleSkillCallback, isSkillCallback } from "./skill-callback";
-import {
-  handlePromptSelectionCallback,
-  isPromptSelectionCallback,
-  startPromptSelection,
-} from "./prompt-selection-callback";
-import { isContentCallback, isIntentCallback } from "../conversation/content-confirm";
+import { isContentCallback } from "../conversation/content-confirm";
 import { isDispatchCallback } from "../conversation/dispatch-choice";
 import { isNotionCallback } from "../conversation/notion-url";
+import { socraticInterview, handleSocraticAnswer } from "../conversation/socratic-adapter";
 import { logger } from "../logger";
 import { audit } from "../audit";
 import { updateState, getState, updateHeartbeat } from "../atlas-system";
@@ -114,12 +109,6 @@ export async function routeCallback(ctx: Context): Promise<void> {
 
   logger.debug("Routing callback", { data });
 
-  // Prompt selection callbacks (V3 Pillar → Action → Voice flow)
-  if (isPromptSelectionCallback(data)) {
-    await handlePromptSelectionCallback(ctx);
-    return;
-  }
-
   // Voice selection callbacks
   if (data.startsWith("voice:")) {
     await handleVoiceCallback(ctx);
@@ -134,12 +123,6 @@ export async function routeCallback(ctx: Context): Promise<void> {
     } else {
       await handleNotionCallback(ctx);
     }
-    return;
-  }
-
-  // Intent-first capture callbacks (Phase 1)
-  if (isIntentCallback(data)) {
-    await handleIntentCallback(ctx);
     return;
   }
 
@@ -211,7 +194,6 @@ export {
   handleChatIntent,
   handleVoiceCallback,
   handleContentCallback,
-  handleIntentCallback,
-  handlePromptSelectionCallback,
-  startPromptSelection,
+  socraticInterview,
+  handleSocraticAnswer,
 };

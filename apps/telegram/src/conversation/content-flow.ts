@@ -10,23 +10,17 @@
 import type { Context } from 'grammy';
 import { logger } from '../logger';
 import {
-  generateRequestId,
-  storePendingContent,
-  buildIntentKeyboard,
-} from './content-confirm';
-import {
   routeForAnalysis,
   extractUrlsFromText,
   detectContentSource,
   extractDomain,
-  type ContentAnalysis,
   type ContentSource,
 } from './content-router';
 import { isNotionUrl, handleNotionUrl } from './notion-url';
-import type { Pillar, RequestType } from './types';
+import type { Pillar } from './types';
 import type { MediaContext } from './media';
 import type { AttachmentInfo } from './attachments';
-import { startPromptSelection } from '../handlers/prompt-selection-callback';
+import { socraticInterview } from './socratic-adapter';
 import { getFeatureFlags } from '../config/features';
 import { checkUrl } from '../utils/url-dedup';
 import { triageMessage, type TriageResult } from '../cognitive/triage-skill';
@@ -140,85 +134,6 @@ export function detectContentShare(text: string): ContentDetectionResult {
 }
 
 /**
- * Infer pillar from URL domain and context
- */
-function inferPillar(url: string, context: string): Pillar {
-  const domain = extractDomain(url).toLowerCase();
-  const text = (url + ' ' + context).toLowerCase();
-
-  // The Grove: AI/tech content
-  if (
-    domain.includes('github.com') ||
-    domain.includes('anthropic') ||
-    domain.includes('openai') ||
-    domain.includes('huggingface') ||
-    text.includes('ai') ||
-    text.includes('llm') ||
-    text.includes('claude') ||
-    text.includes('gpt')
-  ) {
-    return 'The Grove';
-  }
-
-  // Consulting: Client-related domains or mentions
-  if (
-    text.includes('drumwave') ||
-    text.includes('take flight') ||
-    text.includes('client') ||
-    text.includes('consulting')
-  ) {
-    return 'Consulting';
-  }
-
-  // Home/Garage: Home improvement, vehicles, permits
-  if (
-    text.includes('permit') ||
-    text.includes('garage') ||
-    text.includes('home depot') ||
-    text.includes('lowes') ||
-    text.includes('renovation')
-  ) {
-    return 'Home/Garage';
-  }
-
-  // Personal: Health, fitness, family
-  if (
-    text.includes('gym') ||
-    text.includes('health') ||
-    text.includes('family') ||
-    text.includes('fitness')
-  ) {
-    return 'Personal';
-  }
-
-  // Default to The Grove for tech/social media content
-  if (['threads', 'twitter', 'linkedin', 'youtube', 'github'].includes(detectContentSource(url))) {
-    return 'The Grove';
-  }
-
-  return 'The Grove'; // Default
-}
-
-/**
- * Infer request type from content source
- */
-function inferRequestType(source: string): RequestType {
-  switch (source) {
-    case 'article':
-    case 'github':
-      return 'Research';
-    case 'threads':
-    case 'twitter':
-    case 'linkedin':
-      return 'Draft'; // Social content often relates to content creation
-    case 'youtube':
-      return 'Research';
-    default:
-      return 'Research';
-  }
-}
-
-/**
  * Trigger the content confirmation flow
  *
  * V3 UPDATE (2026-02-05): Now routes to V3 Progressive Profiling flow
@@ -319,38 +234,12 @@ export async function triggerContentConfirmation(
     });
   }
 
-  // CRITICAL: storePendingContent + ctx.reply MUST always execute.
-  // If these fail, we have a real problem (not a silent degradation).
+  // SOCRATIC INTERVIEW: Replace keyboard flow with conversational engine
   try {
-    const requestId = generateRequestId();
-
-    storePendingContent({
-      requestId,
-      chatId,
-      userId,
-      messageId,
-      flowState: 'intent',
-      analysis: {
-        ...route,
-        title,
-        extractedAt: new Date().toISOString(),
-      } as ContentAnalysis,
-      originalText: contextText || url,
-      pillar: 'The Grove',  // Default, will be derived from context
-      requestType: 'Research',  // Default, will be derived from intent
-      timestamp: Date.now(),
-      url,
-    });
-
-    const preview = `📝 ${escapeHtml(title)}\n\n<b>What's the play?</b>`;
-    await ctx.reply(preview, {
-      parse_mode: 'HTML',
-      reply_markup: buildIntentKeyboard(requestId),
-    });
-
-    return true;
+    const handled = await socraticInterview(ctx, url, 'url', title, triageResult);
+    return handled;
   } catch (error) {
-    logger.error('Failed to show intent keyboard (critical)', { error, url });
+    logger.error('Socratic interview failed (critical)', { error, url });
     return false;
   }
 }
@@ -392,23 +281,6 @@ export async function maybeHandleAsContentShare(ctx: Context): Promise<boolean> 
 
   // Trigger the confirmation flow
   return await triggerContentConfirmation(ctx, detection.primaryUrl, context);
-}
-
-/**
- * Get icon for media type
- */
-function getMediaIcon(type: string): string {
-  const icons: Record<string, string> = {
-    image: '🖼️',
-    photo: '🖼️',
-    document: '📄',
-    audio: '🎵',
-    voice: '🎤',
-    video: '🎬',
-    video_note: '🎬',
-    unknown: '📎',
-  };
-  return icons[type] || '📎';
 }
 
 /**
@@ -454,139 +326,19 @@ export async function triggerInstantClassification(
     // since we don't have a URL. The V3 flow will handle it.
     const content = caption || `[${attachment.type}${attachment.fileName ? `: ${attachment.fileName}` : ''}]`;
 
-    logger.info('Media share detected, routing to intent-first flow', {
+    logger.info('Media share detected, routing to Socratic interview', {
       type: attachment.type,
       fileName: attachment.fileName,
       title,
     });
 
-    // INTENT-FIRST FLOW: Show intent keyboard ("What's the play?")
-    const requestId = generateRequestId();
-
-    storePendingContent({
-      requestId,
-      chatId,
-      userId,
-      messageId,
-      flowState: 'intent',
-      analysis: {
-        source: 'generic' as ContentSource,
-        title,
-        description: content,
-        method: 'Fetch' as const,
-      } as ContentAnalysis,
-      originalText: caption || content,
-      pillar: 'The Grove',
-      requestType: 'Research',
-      timestamp: Date.now(),
-      attachmentInfo: attachment,
-    });
-
-    const preview = `📝 ${escapeHtml(title)}\n\n<b>What's the play?</b>`;
-    await ctx.reply(preview, {
-      parse_mode: 'HTML',
-      reply_markup: buildIntentKeyboard(requestId),
-    });
-
-    return true;
+    // SOCRATIC INTERVIEW: Replace keyboard flow with conversational engine
+    const handled = await socraticInterview(ctx, content, 'media', title);
+    return handled;
   } catch (error) {
     logger.error('Failed to trigger intent-first media flow', { error, type: attachment.type });
     return false;
   }
-}
-
-/**
- * Escape HTML special characters for Telegram HTML parse mode
- */
-function escapeHtml(text: string): string {
-  return text
-    .replace(/&/g, '&amp;')
-    .replace(/</g, '&lt;')
-    .replace(/>/g, '&gt;');
-}
-
-/**
- * Helper to format file size
- */
-function formatFileSize(bytes: number): string {
-  if (bytes < 1024) return `${bytes}B`;
-  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)}KB`;
-  return `${(bytes / (1024 * 1024)).toFixed(1)}MB`;
-}
-
-/**
- * Infer pillar from media context
- */
-function inferPillarFromMedia(mediaContext: MediaContext, caption: string): Pillar {
-  const text = (mediaContext.description + ' ' + caption).toLowerCase();
-
-  // Check for pillar indicators in the Gemini analysis
-  if (
-    text.includes('code') ||
-    text.includes('programming') ||
-    text.includes('api') ||
-    text.includes('claude') ||
-    text.includes('ai') ||
-    text.includes('llm')
-  ) {
-    return 'The Grove';
-  }
-
-  if (
-    text.includes('client') ||
-    text.includes('drumwave') ||
-    text.includes('take flight') ||
-    text.includes('consulting') ||
-    text.includes('invoice')
-  ) {
-    return 'Consulting';
-  }
-
-  if (
-    text.includes('permit') ||
-    text.includes('garage') ||
-    text.includes('house') ||
-    text.includes('renovation') ||
-    text.includes('home')
-  ) {
-    return 'Home/Garage';
-  }
-
-  if (
-    text.includes('health') ||
-    text.includes('gym') ||
-    text.includes('family') ||
-    text.includes('personal')
-  ) {
-    return 'Personal';
-  }
-
-  // Default based on media type
-  return 'The Grove';
-}
-
-/**
- * Infer request type from media context
- */
-function inferRequestTypeFromMedia(mediaContext: MediaContext): RequestType {
-  const text = mediaContext.description.toLowerCase();
-
-  // Screenshots of code/errors → Build
-  if (text.includes('error') || text.includes('bug') || text.includes('code')) {
-    return 'Build';
-  }
-
-  // Documents → Research
-  if (mediaContext.type === 'document') {
-    return 'Research';
-  }
-
-  // Screenshots → could be research or draft
-  if (text.includes('article') || text.includes('post') || text.includes('tweet')) {
-    return 'Draft';
-  }
-
-  return 'Research';
 }
 
 /**
@@ -638,14 +390,14 @@ export async function triggerMediaConfirmation(
       ? `${caption}\n\n[Gemini analysis: ${geminiSummary}]`
       : `[${mediaContext.type}: ${geminiSummary}]`;
 
-    logger.info('Media with Gemini analysis, routing to V3 progressive profiling', {
+    logger.info('Media with Gemini analysis, routing to Socratic interview', {
       type: mediaContext.type,
       fileName: attachment.fileName,
       title,
     });
 
-    // V3 PROGRESSIVE PROFILING: Use the new Pillar → Action → Voice flow
-    await startPromptSelection(ctx, content, 'text', title);
+    // SOCRATIC INTERVIEW: Replace keyboard flow with conversational engine
+    await socraticInterview(ctx, content, 'media', title);
 
     return true;
   } catch (error) {

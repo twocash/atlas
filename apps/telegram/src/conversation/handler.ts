@@ -15,8 +15,8 @@
  * - Pillar/Action/Voice config (lives in prompt-composition/registry.ts)
  *
  * The content flow call chain:
- *   handler.ts → content-flow.ts → triage-skill.ts → prompt-selection-callback.ts
- *     → prompt-composition/composer.ts → PromptManager → Notion System Prompts DB
+ *   handler.ts → content-flow.ts → triage-skill.ts → socratic-adapter.ts
+ *     → packages/agents/src/socratic/engine.ts → audit.ts → Notion Feed/WQ
  *
  * FORBIDDEN — DO NOT ADD TO THIS FILE:
  * - Inline classification prompts or direct Anthropic calls for classification
@@ -42,9 +42,9 @@ import { createAuditTrail, type AuditEntry } from './audit';
 import { getAllTools, executeTool } from './tools';
 import { recordUsage } from './stats';
 import { maybeHandleAsContentShare, triggerMediaConfirmation, triggerInstantClassification } from './content-flow';
-import { hasPendingSelectionForUser, getSelectionByUserId, updateSelection } from './prompt-selection';
+import { hasPendingSocraticSessionForUser } from './socratic-session';
+import { handleSocraticAnswer } from './socratic-adapter';
 import { logAction, isFeatureEnabled } from '../skills';
-import { getFeatureFlags } from '../config/features';
 import { classifyWithFallback, triageForAudit, triageMessage } from '../cognitive/triage-skill';
 import type { TriageResult } from '../cognitive/triage-skill';
 import {
@@ -281,33 +281,14 @@ export async function handleConversation(ctx: Context): Promise<void> {
       return;
     }
 
-    // BUG #2 FIX: Check if user has a pending selection and sent follow-up context
-    // This handles the case where user sends URL, then "check this out" separately
-    // Feature flag: ATLAS_PENDING_SELECTION_CONTEXT (default ON)
-    const flags = getFeatureFlags();
-    if (flags.pendingSelectionContext) {
-      const pendingSelection = getSelectionByUserId(userId);
-      if (pendingSelection && messageText.length < 100) {
-        // Short message while pending selection exists - treat as context addition
-        const isContextPhrase = /^(check|look|see|read|watch|this|here|fyi|interesting|cool|nice|for|about|regarding|re:|hey|btw|also|and|oh|note|important)/i.test(messageText.trim());
-
-        if (isContextPhrase) {
-          updateSelection(pendingSelection.requestId, {});  // Refresh TTL
-          // Note: We don't update the title here as it would require re-rendering the keyboard
-          // Instead, just acknowledge and let the existing keyboard handle it
-
-          await ctx.reply('👍 Got it — use the buttons above to classify.', {
-            reply_parameters: { message_id: pendingSelection.messageId || ctx.message?.message_id || 0 },
-          });
-          await setReaction(ctx, REACTIONS.CHAT);
-
-          logger.info('Follow-up context acknowledged for pending selection', {
-            userId,
-            requestId: pendingSelection.requestId,
-            context: messageText,
-          });
-          return;
-        }
+    // SOCRATIC SESSION: Check if user has a pending Socratic question
+    // If so, treat their text reply as the answer to the question
+    if (hasPendingSocraticSessionForUser(userId)) {
+      const handled = await handleSocraticAnswer(ctx, messageText);
+      if (handled) {
+        await setReaction(ctx, REACTIONS.DONE);
+        logger.info('Socratic answer processed', { userId });
+        return;
       }
     }
   }

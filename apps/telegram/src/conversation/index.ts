@@ -10,6 +10,11 @@ export { buildSystemPrompt, getIdentity } from './prompt';
 export { detectAttachment, formatAttachmentInfo, buildAttachmentPrompt } from './attachments';
 export { createAuditTrail, updateWorkQueueStatus, logReclassification } from './audit';
 
+// Socratic Interview Engine (Gate 2)
+export { socraticInterview, handleSocraticAnswer } from './socratic-adapter';
+export { hasPendingSocraticSession, getSocraticSession, hasPendingSocraticSessionForUser } from './socratic-session';
+export { generateRequestId, storePendingContent, getPendingContent, updatePendingContent, removePendingContent } from './pending-content';
+
 // Universal Content Analysis (Phase 5)
 export { maybeHandleAsContentShare, triggerContentConfirmation, detectContentShare } from './content-flow';
 export { routeForAnalysis, detectContentSource, extractDomain } from './content-router';
