@@ -16,6 +16,10 @@ import type {
   ClaudeResultMessage,
 } from "../types/claude-sdk"
 import { executeToolRequest, type ToolRequest } from "./tool-executor"
+import {
+  updateBridgeState as monitorUpdateBridge,
+  updateClaudeState as monitorUpdateClaude,
+} from "./bridge-status"
 
 // ─── Config ──────────────────────────────────────────────────
 
@@ -68,6 +72,7 @@ export function useClaudeCode(): UseClaudeCodeReturn {
     if (wsRef.current?.readyState === WebSocket.CONNECTING) return
 
     setBridgeState("connecting")
+    monitorUpdateBridge("connecting")
 
     const url = await getBridgeUrl()
     console.log(`[claude-hook] Connecting to bridge: ${url}`)
@@ -76,6 +81,7 @@ export function useClaudeCode(): UseClaudeCodeReturn {
     ws.onopen = () => {
       if (!mountedRef.current) return
       setBridgeState("connected")
+      monitorUpdateBridge("connected")
       reconnectDelay.current = RECONNECT_BASE
       console.log("[claude-hook] Bridge connected")
     }
@@ -84,12 +90,14 @@ export function useClaudeCode(): UseClaudeCodeReturn {
       if (!mountedRef.current) return
       setBridgeState("disconnected")
       setClaudeState("disconnected")
+      monitorUpdateBridge("disconnected")
       scheduleReconnect()
     }
 
     ws.onerror = () => {
       if (!mountedRef.current) return
       setBridgeState("error")
+      monitorUpdateBridge("error")
     }
 
     ws.onmessage = (event) => {
@@ -148,14 +156,17 @@ export function useClaudeCode(): UseClaudeCodeReturn {
     if (msg.subtype === "init") {
       console.log(`[claude-hook] Claude init — session: ${msg.session_id}, model: ${msg.model}`)
       setClaudeState("connected")
+      monitorUpdateClaude("connected")
       return
     }
 
     // Bridge-originated events: { type: "system", event: "claude_connected" | ... }
     if (msg.event === "claude_connected") {
       setClaudeState("connected")
+      monitorUpdateClaude("connected")
     } else if (msg.event === "claude_disconnected") {
       setClaudeState("disconnected")
+      monitorUpdateClaude("disconnected")
     } else if (msg.event === "error") {
       const data = msg.data as { message?: string } | undefined
       console.warn("[claude-hook] Bridge error:", data?.message)
