@@ -172,24 +172,36 @@ export function useCommentsState(): [CommentsState, {
    */
   const mergeComments = useCallback(async (newComments: LinkedInComment[]) => {
     const current = await storage.get<CommentsState>(COMMENTS_KEY) || DEFAULT_COMMENTS_STATE
-    const baseComments = current.comments
+    const baseComments = [...current.comments] // Clone for mutation
 
     const existingIds = new Set(baseComments.map((c) => c.id))
 
     // Also deduplicate by author profile URL + post ID to avoid duplicates across sources
-    const existingKeys = new Set(
-      baseComments.map((c) => `${c.author.profileUrl}::${c.postId}`),
+    const existingKeyMap = new Map(
+      baseComments.map((c, i) => [`${c.author.profileUrl}::${c.postId}`, i]),
     )
 
     const fresh = newComments.filter((c) => {
       if (existingIds.has(c.id)) return false
       const key = `${c.author.profileUrl}::${c.postId}`
-      if (existingKeys.has(key)) return false
-      existingKeys.add(key)
+      const existingIdx = existingKeyMap.get(key)
+      if (existingIdx !== undefined) {
+        // Gate 1.5: Upgrade existing comment status — never downgrade "replied" to "needs_reply"
+        const existing = baseComments[existingIdx]
+        if (c.status === 'replied' && existing.status === 'needs_reply') {
+          baseComments[existingIdx] = {
+            ...existing,
+            status: 'replied',
+            hasMyReply: c.hasMyReply || existing.hasMyReply,
+          }
+        }
+        return false
+      }
+      existingKeyMap.set(key, baseComments.length) // Prevent future dupes in same batch
       return true
     })
 
-    if (fresh.length === 0) return 0
+    if (fresh.length === 0 && baseComments.every((c, i) => c === current.comments[i])) return 0
 
     // Trim to MAX_COMMENTS (drop oldest)
     const merged = [...fresh, ...baseComments].slice(0, MAX_COMMENTS)

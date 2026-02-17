@@ -302,6 +302,34 @@ export const SELECTOR_REGISTRY: SelectorRegistry = {
     canary: false,
   },
 
+  // ── Author Reply Indicator (Gate 1.5 — detect Jim's replies) ─
+  "author-reply-indicator": {
+    name: "author-reply-indicator",
+    layers: [
+      {
+        type: "css",
+        selector: ".comments-comment-entity--reply a.comments-comment-meta__description-container[href*='/in/']",
+        description: "Profile link within a reply comment entity (2025+ DOM)",
+      },
+      {
+        type: "css",
+        selector: ".comments-reply-item a[href*='/in/']",
+        description: "Profile link within a reply item (legacy DOM)",
+      },
+      {
+        type: "xpath",
+        selector: ".//article[contains(@class,'reply')]//a[contains(@href,'/in/')][1]",
+        description: "First profile link in a reply article element",
+      },
+      {
+        type: "heuristic",
+        selector: ".//*[contains(@class,'reply')]//*[contains(@class,'comment-meta')]//a[contains(@href,'/in/')]",
+        description: "Profile link in comment-meta within a reply-classed ancestor",
+      },
+    ],
+    canary: false,
+  },
+
   // ── Reply Indicator (thread nesting) ─────────────────────
   "reply-indicator": {
     name: "reply-indicator",

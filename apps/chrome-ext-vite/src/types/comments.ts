@@ -38,6 +38,10 @@ export interface LinkedInComment {
 
   // Identity (Phase B)
   isMe: boolean                 // true if this comment was authored by the logged-in user
+  hasMyReply?: boolean          // true if logged-in user has replied to this comment (Gate 1.5)
+
+  // State reconciliation (Gate 1.5)
+  reconciledFromNotion?: boolean  // true if status was set from Notion engagement record, not DOM
 
   // DOM fingerprint (Phase B) — for scroll-to-view without mutating LinkedIn DOM
   domSignature?: string         // base64(authorUrl + textFragment + index)

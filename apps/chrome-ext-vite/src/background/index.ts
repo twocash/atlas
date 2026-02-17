@@ -411,10 +411,35 @@ chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
   }
 
   if (message.name === "MARK_ENGAGEMENT_REPLIED") {
-    const { notionPageId, replyText, notionContactId, isTopEngager } = message.body || {}
+    const { commentId, notionPageId, replyText, notionContactId, isTopEngager } = message.body || {}
     ;(async () => {
       try {
         const success = await markEngagementReplied(notionPageId, replyText, notionContactId, isTopEngager)
+
+        // Gate 1.5: Write-back — update comment status in chrome.storage as safety net
+        if (success && commentId) {
+          try {
+            const stateRaw = await chrome.storage.local.get("atlas_comments_state")
+            const state = stateRaw?.atlas_comments_state as { comments?: any[]; lastFetched?: string } | undefined
+            if (state?.comments) {
+              const idx = state.comments.findIndex((c: any) => c.id === commentId)
+              if (idx >= 0) {
+                state.comments[idx] = {
+                  ...state.comments[idx],
+                  status: "replied",
+                  finalReply: replyText,
+                  repliedAt: new Date().toISOString(),
+                }
+                await chrome.storage.local.set({ atlas_comments_state: state })
+                console.log(`[Atlas] Write-back: comment ${commentId} marked replied in chrome.storage`)
+              }
+            }
+          } catch (wbErr) {
+            // Non-fatal: sidepanel already updated local state
+            console.warn('[Atlas] Write-back failed (non-fatal):', wbErr)
+          }
+        }
+
         sendResponse({ ok: success })
       } catch (error) {
         sendResponse({ ok: false, error: String(error) })

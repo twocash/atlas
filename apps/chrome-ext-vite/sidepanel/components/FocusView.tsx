@@ -153,6 +153,12 @@ export function FocusView() {
                       ...comment,
                       notionPageId: ids.notionPageId,
                       notionContactId: ids.notionContactId,
+                      // Gate 1.5: reconcile status from Notion
+                      ...(ids.reconciled && {
+                        status: 'replied' as const,
+                        reconciledFromNotion: true,
+                        hasMyReply: true,
+                      }),
                       author: {
                         ...comment.author,
                         ...(ids.tier && { tier: ids.tier }),
