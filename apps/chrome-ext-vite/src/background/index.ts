@@ -293,6 +293,47 @@ chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
     return true
   }
 
+  // --- Claude Code Bridge Dispatch (Gate 1.7) ---
+
+  if (message.name === "CLAUDE_CODE_DISPATCH") {
+    ;(async () => {
+      try {
+        const { enrichedContext, composedPrompt, routingDecision } = message.body || {}
+        if (!enrichedContext) {
+          sendResponse({ ok: false, error: "Missing enrichedContext" })
+          return
+        }
+
+        const { connect, send, isConnected } = await import("~src/lib/bridge-client")
+
+        // Ensure Bridge connection
+        if (!isConnected()) {
+          await connect()
+          // Brief wait for WebSocket handshake
+          await new Promise((r) => setTimeout(r, 500))
+        }
+
+        // Build ContentBlock[] from enrichment + composed prompt
+        const blocks = [...(enrichedContext.contextBlocks || [])]
+        if (composedPrompt?.systemPrompt) {
+          blocks.push({ type: "text", text: composedPrompt.systemPrompt })
+        }
+        if (composedPrompt?.strategyBlock) {
+          blocks.push({ type: "text", text: composedPrompt.strategyBlock })
+        }
+
+        const sent = send(blocks)
+        console.log(`[Atlas] CLAUDE_CODE_DISPATCH: ${sent ? "sent" : "failed"} (${blocks.length} blocks, ${enrichedContext.totalChars} chars)`)
+        sendResponse({ ok: sent })
+      } catch (e) {
+        const msg = e instanceof Error ? e.message : String(e)
+        console.error("[Atlas] CLAUDE_CODE_DISPATCH failed:", msg)
+        sendResponse({ ok: false, error: msg })
+      }
+    })()
+    return true
+  }
+
   // --- Post Monitoring ---
 
   if (message.name === "MONITOR_POST") {

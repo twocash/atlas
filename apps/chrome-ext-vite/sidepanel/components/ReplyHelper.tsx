@@ -11,6 +11,7 @@ import {
   type SocraticReplyResult,
 } from "~src/lib/reply-strategy"
 import { cancelSocraticSession } from "~src/lib/socratic-adapter"
+import { SocraticInterview, type SocraticInterviewState } from "./SocraticInterview"
 
 interface ReplyHelperProps {
   comment: LinkedInComment
@@ -27,11 +28,7 @@ export function ReplyHelper({ comment, onClose, onMarkReplied, onFollowQueued }:
   const [showModelPicker, setShowModelPicker] = useState(false)
   const [isTopEngager, setIsTopEngager] = useState(false)
   const [strategy, setStrategy] = useState<ReplyStrategy | null>(null)
-  const [socraticInterview, setSocraticInterview] = useState<{
-    sessionId: string
-    questions: SocraticQuestion[]
-    confidence: number
-  } | null>(null)
+  const [socraticInterview, setSocraticInterview] = useState<SocraticInterviewState | null>(null)
   const textareaRef = useRef<HTMLTextAreaElement>(null)
 
   // Run Socratic assessment on mount — either resolves (auto-draft) or asks questions
@@ -348,37 +345,13 @@ export function ReplyHelper({ comment, onClose, onMarkReplied, onFollowQueued }:
           </div>
         )}
 
-        {/* Socratic Interview */}
+        {/* Socratic Interview (Gate 1.7: extracted component) */}
         {socraticInterview && (
-          <div className="px-4 py-3 bg-amber-50 border-b border-amber-200">
-            <div className="flex items-center justify-between mb-2">
-              <span className="text-[10px] font-medium text-amber-800">
-                Quick context check ({Math.round(socraticInterview.confidence * 100)}% confidence)
-              </span>
-              <button
-                onClick={handleSkipInterview}
-                className="text-[9px] text-amber-600 hover:text-amber-800 underline"
-              >
-                Skip
-              </button>
-            </div>
-            {socraticInterview.questions.map((q, qi) => (
-              <div key={qi} className="mb-2 last:mb-0">
-                <div className="text-xs text-gray-800 mb-1.5">{q.text}</div>
-                <div className="flex flex-wrap gap-1.5">
-                  {q.options.map((opt) => (
-                    <button
-                      key={opt.value}
-                      onClick={() => handleSocraticAnswer(opt.value, qi)}
-                      className="text-[10px] px-2.5 py-1.5 bg-white border border-amber-300 text-amber-800 rounded-md hover:bg-amber-100 hover:border-amber-400 transition-colors"
-                    >
-                      {opt.label}
-                    </button>
-                  ))}
-                </div>
-              </div>
-            ))}
-          </div>
+          <SocraticInterview
+            interview={socraticInterview}
+            onAnswer={handleSocraticAnswer}
+            onSkip={handleSkipInterview}
+          />
         )}
 
         {/* Draft Area */}

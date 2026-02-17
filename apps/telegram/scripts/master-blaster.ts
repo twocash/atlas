@@ -778,6 +778,7 @@ async function runChromeExtUnitTests(cwd: string): Promise<SuiteResult> {
       'test/socratic-adapter.test.ts',           // Socratic Gate 1
       'test/socratic-context-builder.test.ts',   // Socratic Gate 1
       'test/cognitive-router.test.ts',            // Cognitive Router Gate 1.6
+      'test/context-enrichment.test.ts',          // Context Enrichment Gate 1.7
     ],
     chromeExtCwd,
     60000

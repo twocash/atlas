@@ -16,6 +16,8 @@ import { evaluateRules } from './strategy-rules'
 import { composeReplyPrompt, type ComposedPrompt } from './reply-prompts'
 import { assessReplyContext, submitSocraticAnswer } from './socratic-adapter'
 import { resolveRouteWithBridgeStatus } from './cognitive-router'
+import { enrichContext } from './context-enrichment'
+import type { ClaudeCodeDispatchRequest } from '~src/types/context-enrichment'
 
 export interface ReplyStrategy {
   archetype: string
@@ -190,4 +192,32 @@ export async function submitSocraticAndGetStrategy(
   // Error → fall through to existing pipeline
   const strategy = await getReplyStrategy(comment, instruction)
   return { type: 'ready', strategy }
+}
+
+// ==========================================
+// Claude Code Dispatch (Gate 1.7)
+// ==========================================
+
+/**
+ * Dispatch to Claude Code via Bridge when routing picks claude_code.
+ * Enriches context with Notion contact data + engagements,
+ * then sends to background for Bridge dispatch.
+ */
+export async function dispatchToClaudeCode(
+  comment: LinkedInComment,
+  composedPrompt: ComposedPrompt,
+  routingDecision: RoutingDecision,
+): Promise<void> {
+  const enrichedContext = await enrichContext(comment.author.profileUrl)
+
+  const request: ClaudeCodeDispatchRequest = {
+    enrichedContext,
+    composedPrompt,
+    routingDecision,
+  }
+
+  chrome.runtime.sendMessage({
+    name: 'CLAUDE_CODE_DISPATCH',
+    body: request,
+  })
 }
