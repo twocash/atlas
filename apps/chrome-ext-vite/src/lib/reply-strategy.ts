@@ -10,10 +10,12 @@
 
 import type { LinkedInComment } from '~src/types/comments'
 import type { SocraticQuestion } from '~src/types/socratic'
+import type { RoutingDecision } from '~src/types/routing'
 import { getStrategyConfig, type StrategyConfig } from './strategy-config'
 import { evaluateRules } from './strategy-rules'
 import { composeReplyPrompt, type ComposedPrompt } from './reply-prompts'
 import { assessReplyContext, submitSocraticAnswer } from './socratic-adapter'
+import { resolveRouteWithBridgeStatus } from './cognitive-router'
 
 export interface ReplyStrategy {
   archetype: string
@@ -23,6 +25,8 @@ export interface ReplyStrategy {
   composedPrompt: ComposedPrompt
   /** Socratic assessment confidence (if assessment ran) */
   socraticConfidence?: number
+  /** Gate 1.6: Cognitive routing decision (tier × bridge → backend) */
+  routingDecision?: RoutingDecision
 }
 
 /** Result from Socratic-aware strategy computation */
@@ -48,6 +52,7 @@ export async function getReplyStrategy(
       confidence: 0,
       matchedRule: 'no_config',
       composedPrompt: composeReplyPrompt(null, 'fallback', [], comment, instruction),
+      routingDecision: resolveRouteWithBridgeStatus(comment.author.tier, 'draft'),
     }
   }
 
@@ -63,12 +68,16 @@ export async function getReplyStrategy(
     instruction
   )
 
+  // Gate 1.6: Resolve routing decision based on contact tier + bridge status
+  const routingDecision = resolveRouteWithBridgeStatus(comment.author.tier, 'draft')
+
   return {
     archetype: evaluation.archetype,
     modifiers: evaluation.modifiers,
     confidence: evaluation.confidence,
     matchedRule: evaluation.matchedRule,
     composedPrompt,
+    routingDecision,
   }
 }
 
@@ -94,6 +103,7 @@ export async function getQuickReplyStrategy(
       comment,
       instruction
     ),
+    routingDecision: resolveRouteWithBridgeStatus(comment.author.tier, 'draft'),
   }
 }
 
