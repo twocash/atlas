@@ -1,7 +1,8 @@
 /**
  * useClaudeCode() — React hook for the Claude Code bridge connection.
  *
- * Manages WebSocket lifecycle, message parsing, and streaming state.
+ * Gate 1.7: Delegates WebSocket lifecycle to bridge-client.ts singleton.
+ * Retains React state management, message parsing, and streaming state.
  * Exposes a simple send/messages/status API to ClaudeCodePanel.
  */
 
@@ -17,29 +18,16 @@ import type {
 } from "../types/claude-sdk"
 import { executeToolRequest, type ToolRequest } from "./tool-executor"
 import {
-  updateBridgeState as monitorUpdateBridge,
   updateClaudeState as monitorUpdateClaude,
+  onStatusChange,
 } from "./bridge-status"
-
-// ─── Config ──────────────────────────────────────────────────
-
-const DEFAULT_BRIDGE_WS_URL = "ws://localhost:3848/client"
-const BRIDGE_URL_STORAGE_KEY = "atlas:bridge-url"
-const RECONNECT_BASE = 2000   // 2s
-const RECONNECT_MAX = 30000   // 30s
-const RECONNECT_BACKOFF = 1.5
-
-/** Read bridge URL from chrome.storage, falling back to default. */
-async function getBridgeUrl(): Promise<string> {
-  try {
-    const result = await chrome.storage.local.get(BRIDGE_URL_STORAGE_KEY)
-    const stored = result[BRIDGE_URL_STORAGE_KEY]
-    if (stored && typeof stored === "string" && stored.startsWith("ws")) return stored
-  } catch { /* storage unavailable — use default */ }
-  return DEFAULT_BRIDGE_WS_URL
-}
-
-export { BRIDGE_URL_STORAGE_KEY, DEFAULT_BRIDGE_WS_URL }
+import {
+  connect as bridgeConnect,
+  disconnect as bridgeDisconnect,
+  send as bridgeSend,
+  sendRaw,
+  onMessage,
+} from "./bridge-client"
 
 // ─── Hook ────────────────────────────────────────────────────
 
@@ -55,71 +43,12 @@ export function useClaudeCode(): UseClaudeCodeReturn {
   const [claudeState, setClaudeState] = useState<"connected" | "disconnected">("disconnected")
   const [messages, setMessages] = useState<ChatMessage[]>([])
 
-  const wsRef = useRef<WebSocket | null>(null)
-  const reconnectTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
-  const reconnectDelay = useRef(RECONNECT_BASE)
   const mountedRef = useRef(true)
 
   // Streaming state — tracks the current assistant turn being streamed
   const streamingText = useRef("")
   const streamingMsgId = useRef<string | null>(null)
   const toolCalls = useRef<ToolCallInfo[]>([])
-
-  // ─── WebSocket Lifecycle ─────────────────────────────────
-
-  const connect = useCallback(async () => {
-    if (wsRef.current?.readyState === WebSocket.OPEN) return
-    if (wsRef.current?.readyState === WebSocket.CONNECTING) return
-
-    setBridgeState("connecting")
-    monitorUpdateBridge("connecting")
-
-    const url = await getBridgeUrl()
-    console.log(`[claude-hook] Connecting to bridge: ${url}`)
-    const ws = new WebSocket(url)
-
-    ws.onopen = () => {
-      if (!mountedRef.current) return
-      setBridgeState("connected")
-      monitorUpdateBridge("connected")
-      reconnectDelay.current = RECONNECT_BASE
-      console.log("[claude-hook] Bridge connected")
-    }
-
-    ws.onclose = () => {
-      if (!mountedRef.current) return
-      setBridgeState("disconnected")
-      setClaudeState("disconnected")
-      monitorUpdateBridge("disconnected")
-      scheduleReconnect()
-    }
-
-    ws.onerror = () => {
-      if (!mountedRef.current) return
-      setBridgeState("error")
-      monitorUpdateBridge("error")
-    }
-
-    ws.onmessage = (event) => {
-      if (!mountedRef.current) return
-      handleIncomingMessage(event.data as string)
-    }
-
-    wsRef.current = ws
-  }, [])
-
-  const scheduleReconnect = useCallback(() => {
-    if (reconnectTimer.current) clearTimeout(reconnectTimer.current)
-    reconnectTimer.current = setTimeout(() => {
-      if (mountedRef.current) {
-        reconnectDelay.current = Math.min(
-          reconnectDelay.current * RECONNECT_BACKOFF,
-          RECONNECT_MAX,
-        )
-        connect()
-      }
-    }, reconnectDelay.current)
-  }, [connect])
 
   // ─── Message Processing ──────────────────────────────────
 
@@ -155,17 +84,14 @@ export function useClaudeCode(): UseClaudeCodeReturn {
     // Claude Code CLI init: { type: "system", subtype: "init", session_id, model }
     if (msg.subtype === "init") {
       console.log(`[claude-hook] Claude init — session: ${msg.session_id}, model: ${msg.model}`)
-      setClaudeState("connected")
       monitorUpdateClaude("connected")
       return
     }
 
     // Bridge-originated events: { type: "system", event: "claude_connected" | ... }
     if (msg.event === "claude_connected") {
-      setClaudeState("connected")
       monitorUpdateClaude("connected")
     } else if (msg.event === "claude_disconnected") {
-      setClaudeState("disconnected")
       monitorUpdateClaude("disconnected")
     } else if (msg.event === "error") {
       const data = msg.data as { message?: string } | undefined
@@ -183,9 +109,9 @@ export function useClaudeCode(): UseClaudeCodeReturn {
       claudeStatus: claudeState,
     })
 
-    // Send response back via WebSocket
-    if (wsRef.current?.readyState === WebSocket.OPEN) {
-      wsRef.current.send(JSON.stringify(response))
+    // Send response back via bridge-client
+    const sent = sendRaw(JSON.stringify(response))
+    if (sent) {
       console.log(`[claude-hook] Tool response sent: ${request.name} (${response.error ? "error" : "ok"})`)
     } else {
       console.warn(`[claude-hook] Cannot send tool response — WebSocket not open`)
@@ -341,7 +267,8 @@ export function useClaudeCode(): UseClaudeCodeReturn {
   // ─── Send ────────────────────────────────────────────────
 
   const send = useCallback((text: string) => {
-    if (!wsRef.current || wsRef.current.readyState !== WebSocket.OPEN) {
+    const sent = bridgeSend([{ type: "text", text }])
+    if (!sent) {
       console.warn("[claude-hook] Cannot send — bridge not connected")
       return
     }
@@ -354,13 +281,6 @@ export function useClaudeCode(): UseClaudeCodeReturn {
       timestamp: Date.now(),
     }
     setMessages((prev) => [...prev, userMsg])
-
-    // Send to bridge
-    const payload = {
-      type: "user_message",
-      content: [{ type: "text", text }],
-    }
-    wsRef.current.send(JSON.stringify(payload))
   }, [])
 
   const clearMessages = useCallback(() => {
@@ -371,17 +291,30 @@ export function useClaudeCode(): UseClaudeCodeReturn {
 
   useEffect(() => {
     mountedRef.current = true
-    connect()
+
+    // Sync bridge-status → React state
+    const unsubStatus = onStatusChange((status) => {
+      if (!mountedRef.current) return
+      setBridgeState(status.bridge)
+      setClaudeState(status.claude)
+    })
+
+    // Route incoming messages to hook handlers
+    const unsubMessages = onMessage((raw) => {
+      if (!mountedRef.current) return
+      handleIncomingMessage(raw)
+    })
+
+    // Connect via bridge-client singleton
+    bridgeConnect()
 
     return () => {
       mountedRef.current = false
-      if (reconnectTimer.current) clearTimeout(reconnectTimer.current)
-      if (wsRef.current) {
-        wsRef.current.onclose = null // prevent reconnect on unmount
-        wsRef.current.close()
-      }
+      unsubStatus()
+      unsubMessages()
+      bridgeDisconnect()
     }
-  }, [connect])
+  }, [handleIncomingMessage])
 
   return {
     status: { bridge: bridgeState, claude: claudeState },

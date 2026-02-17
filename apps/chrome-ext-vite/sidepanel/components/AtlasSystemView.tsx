@@ -13,7 +13,7 @@ import { DataView } from "./DataView"
 import { ModelSelector } from "./ModelSelector"
 import { ApiKeySetup } from "./ApiKeySetup"
 import { DebugLogViewer } from "./DebugLogViewer"
-import { BRIDGE_URL_STORAGE_KEY, DEFAULT_BRIDGE_WS_URL } from "~src/lib/claude-code-hooks"
+import { BRIDGE_URL_STORAGE_KEY, DEFAULT_BRIDGE_WS_URL } from "~src/lib/bridge-client"
 
 type Section = "feed" | "data" | "settings"
 
