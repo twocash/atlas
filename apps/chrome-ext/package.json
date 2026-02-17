@@ -8,7 +8,8 @@
     "build": "plasmo build",
     "package": "plasmo package",
     "test:action-feed": "bun run scripts/test-action-feed.ts",
-    "verify:extension": "bun run scripts/test-action-feed.ts"
+    "test:reply-strategy": "bun run scripts/test-reply-strategy.ts",
+    "verify:extension": "bun run scripts/test-action-feed.ts && bun run scripts/test-reply-strategy.ts"
   },
   "dependencies": {
     "@plasmohq/storage": "^1.13.0",

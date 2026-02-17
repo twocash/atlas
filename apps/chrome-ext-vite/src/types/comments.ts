@@ -15,6 +15,11 @@ export interface CommentAuthor {
   tier?: import("./classification").InteractionTier
   tierConfidence?: number       // 0-1 from AI classification
   tierMethod?: "ai" | "rule_based" | "cached" | "fallback"
+
+  // Reply Strategy fields (populated from Notion contact record)
+  strategicBucket?: string        // "Enterprise Clients", "Content Amplifiers", etc.
+  relationshipStage?: string      // "New", "Engaged", "Cultivating", etc.
+  linkedInIsOpenToWork?: boolean   // Open to Work badge detected
 }
 
 export interface LinkedInComment {

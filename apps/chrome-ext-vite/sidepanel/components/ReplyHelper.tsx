@@ -2,6 +2,7 @@ import { useState, useRef, useEffect } from "react"
 import type { LinkedInComment } from "~src/types/comments"
 import { GROVE_CONTEXT } from "~src/types/comments"
 import { MODEL_OPTIONS } from "~src/types/llm"
+import { getReplyStrategy, type ReplyStrategy } from "~src/lib/reply-strategy"
 
 interface ReplyHelperProps {
   comment: LinkedInComment
@@ -17,7 +18,15 @@ export function ReplyHelper({ comment, onClose, onMarkReplied, onFollowQueued }:
   const [selectedModel, setSelectedModel] = useState("claude-haiku")
   const [showModelPicker, setShowModelPicker] = useState(false)
   const [isTopEngager, setIsTopEngager] = useState(false)
+  const [strategy, setStrategy] = useState<ReplyStrategy | null>(null)
   const textareaRef = useRef<HTMLTextAreaElement>(null)
+
+  // Compute strategy eagerly on mount (for badges) — non-blocking
+  useEffect(() => {
+    getReplyStrategy(comment)
+      .then(setStrategy)
+      .catch((e) => console.warn("Strategy computation failed:", e))
+  }, [])
 
   // Auto-generate initial draft if none exists
   useEffect(() => {
@@ -29,20 +38,20 @@ export function ReplyHelper({ comment, onClose, onMarkReplied, onFollowQueued }:
   const generateDraft = async (instruction?: string) => {
     setIsGenerating(true)
 
-    const systemPrompt = `${GROVE_CONTEXT}
+    // Get strategy (use cached if available, or compute fresh)
+    let strat = strategy
+    if (!strat || instruction) {
+      try {
+        strat = await getReplyStrategy(comment, instruction)
+        setStrategy(strat)
+      } catch {
+        // Strategy failed — fall through to fallback below
+      }
+    }
 
-You are drafting a reply to a LinkedIn comment. Be concise and authentic.
-${instruction ? `User's specific request: ${instruction}` : ''}
-
-The comment is on Jim's post titled: "${comment.postTitle}"
-
-Commenter info:
-- Name: ${comment.author.name}
-- Headline: ${comment.author.headline}
-- Sector: ${comment.author.sector}
-- Grove Alignment: ${comment.author.groveAlignment}
-
-Reply ONLY with the draft text, no preamble or explanation.`
+    // Build system prompt: strategy-composed or GROVE_CONTEXT fallback
+    const systemPrompt = strat?.composedPrompt?.systemPrompt
+      || buildFallbackSystemPrompt(comment, instruction)
 
     const userPrompt = draft && instruction
       ? `Current draft:\n"${draft}"\n\nTheir comment:\n"${comment.content}"\n\nRefine the draft based on: ${instruction}`
@@ -238,6 +247,27 @@ Reply ONLY with the draft text, no preamble or explanation.`
           </div>
         </div>
 
+        {/* Strategy Badges */}
+        {strategy && !strategy.composedPrompt.usedFallback && (
+          <div className="px-4 py-1.5 bg-white border-b border-gray-200 flex items-center gap-1.5 flex-wrap">
+            <span className="text-[9px] text-gray-400 mr-1">Strategy:</span>
+            <span className="text-[9px] px-1.5 py-0.5 bg-blue-100 text-blue-700 rounded font-medium capitalize">
+              {strategy.archetype.replace(/_/g, ' ')}
+            </span>
+            {strategy.modifiers.map((mod) => (
+              <span
+                key={mod}
+                className="text-[9px] px-1.5 py-0.5 bg-purple-100 text-purple-700 rounded capitalize"
+              >
+                {mod.replace(/_/g, ' ')}
+              </span>
+            ))}
+            {strategy.confidence < 0.5 && (
+              <span className="text-[9px] text-amber-500">(low confidence)</span>
+            )}
+          </div>
+        )}
+
         {/* Draft Area */}
         <div className="flex-1 flex flex-col p-4 overflow-hidden">
           <div className="flex items-center justify-between mb-1">
@@ -306,24 +336,42 @@ Reply ONLY with the draft text, no preamble or explanation.`
               disabled={!draft || isGenerating}
               className="flex-1 text-xs py-2 bg-white border border-gray-300 text-gray-700 rounded hover:bg-gray-50 disabled:opacity-50 transition-colors"
             >
-              📋 Copy Reply
+              Copy Reply
             </button>
             <button
               onClick={handleOpenThread}
               className="flex-1 text-xs py-2 bg-white border border-gray-300 text-gray-700 rounded hover:bg-gray-50 transition-colors"
             >
-              ↗ Open Thread
+              Open Thread
             </button>
             <button
               onClick={handleMarkReplied}
               disabled={!draft || isGenerating}
               className="flex-1 text-xs py-2 bg-green-600 text-white rounded hover:bg-green-700 disabled:opacity-50 transition-colors"
             >
-              ✓ Mark Replied
+              Mark Replied
             </button>
           </div>
         </div>
       </div>
     </div>
   )
+}
+
+/** Fallback system prompt when strategy config is unavailable */
+function buildFallbackSystemPrompt(comment: LinkedInComment, instruction?: string): string {
+  return `${GROVE_CONTEXT}
+
+You are drafting a reply to a LinkedIn comment. Be concise and authentic.
+${instruction ? `User's specific request: ${instruction}` : ''}
+
+The comment is on Jim's post titled: "${comment.postTitle}"
+
+Commenter info:
+- Name: ${comment.author.name}
+- Headline: ${comment.author.headline}
+- Sector: ${comment.author.sector}
+- Grove Alignment: ${comment.author.groveAlignment}
+
+Reply ONLY with the draft text, no preamble or explanation.`
 }

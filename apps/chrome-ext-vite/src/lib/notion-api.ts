@@ -14,6 +14,7 @@ export const NOTION_DBS = {
   POSTS: '46448a0166ce42d1bdadc69cad0c7576',
   FEED: '90b2b33f-4b44-4b42-870f-8d62fb8cbf18',
   WORK_QUEUE: '3d679030-b76b-43bd-92d8-1ac51abb4a28',
+  REPLY_STRATEGY_CONFIG: 'ae8f00f271aa4fe48c6432f4cd8f6e4f',
 } as const
 
 const NOTION_API_BASE = 'https://api.notion.com/v1'
@@ -288,6 +289,80 @@ export function number(value: number): { number: number } {
 
 export function checkbox(value: boolean): { checkbox: boolean } {
   return { checkbox: value }
+}
+
+// --- Block Content (Page Body) ---
+
+/**
+ * Fetch child blocks of a Notion page (page body content).
+ * Returns flat array of block objects. Handles pagination.
+ */
+export async function getPageBlocks(pageId: string): Promise<any[]> {
+  const allBlocks: any[] = []
+  let cursor: string | undefined
+
+  do {
+    const params = new URLSearchParams({ page_size: '100' })
+    if (cursor) params.set('start_cursor', cursor)
+
+    const resp = await notionFetch(`/blocks/${pageId}/children?${params}`)
+    if (!resp.ok) {
+      const text = await resp.text()
+      throw new Error(`Notion blocks fetch failed: ${resp.status} - ${text.slice(0, 200)}`)
+    }
+
+    const data = await resp.json()
+    allBlocks.push(...data.results)
+    cursor = data.has_more ? data.next_cursor : undefined
+  } while (cursor)
+
+  return allBlocks
+}
+
+/**
+ * Convert Notion blocks to plain text (preserving structure for LLM consumption).
+ */
+export function blocksToText(blocks: any[]): string {
+  return blocks
+    .map((block) => {
+      const type = block.type as string
+      const rich = block[type]?.rich_text
+      const text = extractBlockText(rich)
+
+      switch (type) {
+        case 'paragraph':
+          return text
+        case 'heading_1':
+          return `# ${text}`
+        case 'heading_2':
+          return `## ${text}`
+        case 'heading_3':
+          return `### ${text}`
+        case 'bulleted_list_item':
+          return `- ${text}`
+        case 'numbered_list_item':
+          return `1. ${text}`
+        case 'quote':
+          return `> ${text}`
+        case 'callout':
+          return `> ${text}`
+        case 'code':
+          return `\`\`\`\n${text}\n\`\`\``
+        case 'divider':
+          return '---'
+        case 'toggle':
+          return text
+        default:
+          return text
+      }
+    })
+    .filter(Boolean)
+    .join('\n')
+}
+
+function extractBlockText(richText: any[] | undefined): string {
+  if (!richText || !Array.isArray(richText)) return ''
+  return richText.map((t: any) => t.plain_text || t.text?.content || '').join('')
 }
 
 // --- Feed 2.0 Entry Creation ---

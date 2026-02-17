@@ -134,9 +134,20 @@ async function sendCapture(
 
 // Keepalive alarm (backup for heartbeat port)
 chrome.alarms.create("atlas-keepalive", { periodInMinutes: ALARM_KEEPALIVE_MINUTES })
+
+// Strategy config refresh alarm (hourly batch fetch from Notion)
+chrome.alarms.create("atlas-strategy-refresh", { periodInMinutes: 60 })
+
 chrome.alarms.onAlarm.addListener((alarm) => {
   if (alarm.name === "atlas-keepalive") {
     // Just keep the service worker alive
+  }
+
+  if (alarm.name === "atlas-strategy-refresh") {
+    import("~src/lib/strategy-config")
+      .then(({ refreshStrategyConfig }) => refreshStrategyConfig())
+      .then(() => console.log("[Atlas] Strategy config refreshed via alarm"))
+      .catch((e) => console.warn("[Atlas] Strategy config refresh failed:", e))
   }
 })
 
@@ -445,6 +456,27 @@ chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
   if (message.name === "CLEAR_BADGE") {
     clearBadge()
     sendResponse({ ok: true })
+    return true
+  }
+
+  if (message.name === "REFRESH_STRATEGY_CONFIG") {
+    ;(async () => {
+      try {
+        const { refreshStrategyConfig } = await import("~src/lib/strategy-config")
+        const config = await refreshStrategyConfig()
+        sendResponse({
+          ok: true,
+          archetypes: Object.keys(config.archetypes).length,
+          modifiers: Object.keys(config.modifiers).length,
+          rules: config.rules.length,
+          hasCoreVoice: !!config.coreVoice,
+        })
+      } catch (error) {
+        const msg = error instanceof Error ? error.message : String(error)
+        console.error("[Atlas] Manual strategy refresh failed:", msg)
+        sendResponse({ ok: false, error: msg })
+      }
+    })()
     return true
   }
 
