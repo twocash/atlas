@@ -395,8 +395,10 @@ describe("composeReplyPrompt", () => {
     expect(result.systemPrompt).toContain("Grove") // From GROVE_CONTEXT
   })
 
-  it("stays within token budget (2000 chars for strategy block)", () => {
+  it("stays within token budget (2500 chars for strategy block — Gate 1.8)", () => {
     // Create a config with verbose content that would exceed budget
+    // Core voice (800) + archetype (800) = 1600 non-negotiable chars
+    // Remaining ~900 chars for modifiers — only mod1 (600+header) fits
     const verboseConfig = makeConfig({
       coreVoice: makeEntry({
         type: "core_voice",
@@ -415,7 +417,7 @@ describe("composeReplyPrompt", () => {
           name: "Modifier 1",
           conditions: "sector != \"\"",
           priority: 10,
-          content: "C".repeat(600), // Would push past 2000
+          content: "C".repeat(600), // Fits in remaining budget
         }),
         mod2: makeEntry({
           type: "modifier",
@@ -423,15 +425,15 @@ describe("composeReplyPrompt", () => {
           name: "Modifier 2",
           conditions: "sector != \"\"",
           priority: 20,
-          content: "D".repeat(600),
+          content: "D".repeat(600), // Dropped — exceeds budget
         }),
       },
       rules: [],
     })
 
     const result = composeReplyPrompt(verboseConfig, "verbose", ["mod1", "mod2"], comment)
-    // Strategy block should be truncated/trimmed to stay within budget
-    expect(result.strategyBlock.length).toBeLessThanOrEqual(2100) // Allow small overhead from section headers
+    // Strategy block should stay within 2500 char budget (+ small header overhead)
+    expect(result.strategyBlock.length).toBeLessThanOrEqual(2600)
   })
 
   it("includes strategic bucket and relationship stage when available", () => {
