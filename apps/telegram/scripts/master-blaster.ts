@@ -535,11 +535,12 @@ async function runRegressionTests(cwd: string): Promise<SuiteResult> {
     'test/v3-strict-url-fabrication.test.ts',
     'test/telegram-shortcuts-quality.test.ts',
     'test/command-surface-audit.test.ts',
-    'test/intent-first-phase1.test.ts',
-    'test/skill-dispatch-fault-tolerance.test.ts',
+    // Gate 2: removed intent-first-phase1.test.ts (deleted — keyboard flows replaced by Socratic)
+    // Gate 2: removed skill-dispatch-fault-tolerance.test.ts (deleted — keyboard callback paths removed)
     'test/intent-first-phase2.test.ts',
     'test/structured-composition-scenarios.test.ts',
     'test/v3-pipeline-lifecycle.test.ts',
+    'src/conversation/__tests__/architecture.test.ts',  // Gate 2: Socratic architecture constraints
   ];
 
   const result = await runCommand(
@@ -750,48 +751,16 @@ async function runBridgeStabilityTests(cwd: string): Promise<SuiteResult> {
   };
 }
 
-/**
- * Run Intent-First integration tests
- *
- * Runs in a SEPARATE bun process because it mocks ../src/conversation/audit,
- * ../src/skills, and ../src/conversation/prompt-selection which would leak
- * into other test files if run in the same process.
- */
-async function runIntentFirstTests(cwd: string): Promise<SuiteResult> {
-  console.log('\n[INTENT] Running Intent-First Integration Tests...');
-  console.log('─'.repeat(50));
-
-  const result = await runCommand(
-    BUN_PATH,
-    ['test', 'test/intent-first-integration.test.ts'],
-    cwd,
-    60000
-  );
-  const counts = parseBunTestOutput(result.output);
-
-  if (!result.success) {
-    console.log(result.output);
-  }
-
-  const status = result.success ? '\x1b[32m[PASS]\x1b[0m' : '\x1b[31m[FAIL]\x1b[0m';
-  console.log(`  ${status} ${counts.passed} passed, ${counts.failed} failed (${result.duration}ms)`);
-
-  return {
-    name: 'Intent-First Integration',
-    passed: counts.passed,
-    failed: counts.failed,
-    skipped: counts.skipped,
-    duration: result.duration,
-    errors: result.success ? [] : [result.output],
-  };
-}
+// Gate 2: removed runIntentFirstTests() — test/intent-first-integration.test.ts deleted
+// (keyboard callback integration paths replaced by Socratic Interview Engine)
 
 /**
- * Run Chrome Extension unit tests (dom-to-notion + ai-classification)
+ * Run Chrome Extension unit tests (dom-to-notion + ai-classification + Socratic)
  *
  * Runs in a SEPARATE bun process from apps/chrome-ext-vite/.
- * Tests the DOM extraction → Notion sync pipeline and the
- * 4-tier AI classification system (Phase B.2).
+ * Tests the DOM extraction → Notion sync pipeline, the
+ * 4-tier AI classification system (Phase B.2), and the
+ * Socratic Interview Engine adapter surface (Gate 1).
  */
 async function runChromeExtUnitTests(cwd: string): Promise<SuiteResult> {
   console.log('\n[CHROME] Running Chrome Extension Unit Tests...');
@@ -800,7 +769,15 @@ async function runChromeExtUnitTests(cwd: string): Promise<SuiteResult> {
   const chromeExtCwd = join(cwd, '..', 'chrome-ext-vite');
   const result = await runCommand(
     BUN_PATH,
-    ['test', 'test/dom-to-notion.test.ts', 'test/ai-classification.test.ts', 'test/reply-strategy.test.ts'],
+    [
+      'test',
+      'test/dom-to-notion.test.ts',
+      'test/ai-classification.test.ts',
+      'test/reply-strategy.test.ts',
+      'test/smoke-adapter.test.ts',             // Socratic Gate 1
+      'test/socratic-adapter.test.ts',           // Socratic Gate 1
+      'test/socratic-context-builder.test.ts',   // Socratic Gate 1
+    ],
     chromeExtCwd,
     60000
   );
@@ -916,21 +893,28 @@ async function runReplyStrategyTests(cwd: string): Promise<SuiteResult> {
 }
 
 /**
- * Run Bridge Tool Dispatch pipeline tests
+ * Run Bridge unit tests
  *
  * Runs in a SEPARATE bun process from packages/bridge/.
- * Tests the full Phase 4 tool dispatch chain: schemas, MCP server logic,
- * bridge routing, extension executor, protocol contracts, adversarial inputs.
+ * Tests the full Phase 4 tool dispatch chain, orchestration pipeline,
+ * SDK URL resolution, and master-blaster orchestration integration.
  * All mocked — no live bridge or extension required.
  */
 async function runBridgeToolDispatchTests(cwd: string): Promise<SuiteResult> {
-  console.log('\n[TOOLS] Running Bridge Tool Dispatch Tests...');
+  console.log('\n[BRIDGE] Running Bridge Unit Tests...');
   console.log('─'.repeat(50));
 
   const bridgeCwd = join(cwd, '..', '..', 'packages', 'bridge');
   const result = await runCommand(
     BUN_PATH,
-    ['test', 'test/tool-dispatch-pipeline.test.ts'],
+    [
+      'test',
+      'test/tool-dispatch-pipeline.test.ts',
+      'test/orchestration.test.ts',
+      'test/orchestration-integration.test.ts',
+      'test/master-blaster-orchestration.test.ts',
+      'test/master-blaster-sdk-url.test.ts',
+    ],
     bridgeCwd,
     60000
   );
@@ -944,7 +928,57 @@ async function runBridgeToolDispatchTests(cwd: string): Promise<SuiteResult> {
   console.log(`  ${status} ${counts.passed} passed, ${counts.failed} failed (${result.duration}ms)`);
 
   return {
-    name: 'Bridge Tool Dispatch',
+    name: 'Bridge Unit Tests',
+    passed: counts.passed,
+    failed: counts.failed,
+    skipped: counts.skipped,
+    duration: result.duration,
+    errors: result.success ? [] : [result.output],
+  };
+}
+
+/**
+ * Run Agents package unit tests
+ *
+ * Runs in a SEPARATE bun process from packages/agents/.
+ * Tests the Socratic Interview Engine core (Gate 0), context assessor,
+ * Notion config, markdown parsing, worker logic, and research truncation.
+ */
+async function runAgentsUnitTests(cwd: string): Promise<SuiteResult> {
+  console.log('\n[AGENTS] Running Agents Unit Tests...');
+  console.log('─'.repeat(50));
+
+  const agentsCwd = join(cwd, '..', '..', 'packages', 'agents');
+  const result = await runCommand(
+    BUN_PATH,
+    [
+      'test',
+      'test/socratic-engine.test.ts',
+      'test/socratic-context-assessor.test.ts',
+      'test/socratic-notion-config.test.ts',
+      'test/notion-markdown.test.ts',
+      'test/worker-logic.test.ts',
+      'test/research-json-truncation.test.ts',
+    ],
+    agentsCwd,
+    60000
+  );
+  const counts = parseBunTestOutput(result.output);
+
+  if (!result.success) {
+    console.log(result.output);
+  } else {
+    const lines = result.output.split('\n').filter(l => /\.(test\.ts)/.test(l));
+    for (const line of lines) {
+      console.log(`  ${line.trim()}`);
+    }
+  }
+
+  const status = result.success ? '\x1b[32m[PASS]\x1b[0m' : '\x1b[31m[FAIL]\x1b[0m';
+  console.log(`  ${status} ${counts.passed} passed, ${counts.failed} failed (${result.duration}ms)`);
+
+  return {
+    name: 'Agents Unit Tests',
     passed: counts.passed,
     failed: counts.failed,
     skipped: counts.skipped,
@@ -986,11 +1020,12 @@ async function main() {
 
   const suites: SuiteResult[] = [];
 
-  // Quick mode: Unit + Regression + Chrome Extension tests
+  // Quick mode: Unit + Regression + Chrome Extension + Agents tests
   if (quick) {
     suites.push(await runUnitTests(cwd));
     suites.push(await runRegressionTests(cwd));
     suites.push(await runChromeExtUnitTests(cwd));
+    suites.push(await runAgentsUnitTests(cwd));
   }
   // Strict mode: Canaries FIRST — failure stops all subsequent suites
   else if (strict) {
@@ -1004,12 +1039,13 @@ async function main() {
       suites.push(await runUnitTests(cwd));
       suites.push(await runRegressionTests(cwd));
       suites.push(await runActionFeedProducerTests(cwd));
-      suites.push(await runIntentFirstTests(cwd));
+      // Gate 2: removed runIntentFirstTests() — deleted with keyboard flows
       suites.push(await runAutonomousRepairTests(cwd));
       suites.push(await runBridgeToolDispatchTests(cwd));
       suites.push(await runChromeExtUnitTests(cwd));  // Chrome Extension unit tests
       suites.push(await runChromeExtBuild(cwd));  // Chrome Extension build verification
       suites.push(await runReplyStrategyTests(cwd));  // Reply Strategy integration
+      suites.push(await runAgentsUnitTests(cwd));  // Agents package unit tests
       suites.push(await runBridgeStabilityTests(cwd));
       suites.push(await runSmokeTests(cwd));
       suites.push(await runE2ETests(cwd));
@@ -1022,18 +1058,19 @@ async function main() {
     suites.push(await runUnitTests(cwd));
     suites.push(await runRegressionTests(cwd));  // Bug regression tests
     suites.push(await runActionFeedProducerTests(cwd));  // P2/P3 sprint
-    suites.push(await runIntentFirstTests(cwd));  // Intent-First Phase 0+1
+    // Gate 2: removed runIntentFirstTests() — deleted with keyboard flows
     suites.push(await runAutonomousRepairTests(cwd));  // Pit Stop sprint
-    suites.push(await runBridgeToolDispatchTests(cwd));  // Bridge Phase 4 tool dispatch
+    suites.push(await runBridgeToolDispatchTests(cwd));  // Bridge unit tests
     suites.push(await runChromeExtUnitTests(cwd));  // Chrome Extension unit tests
     suites.push(await runChromeExtBuild(cwd));  // Chrome Extension build verification
     suites.push(await runReplyStrategyTests(cwd));  // Reply Strategy integration
+    suites.push(await runAgentsUnitTests(cwd));  // Agents package unit tests
     suites.push(await runBridgeStabilityTests(cwd));  // Bridge Playwright tests
     suites.push(await runSmokeTests(cwd));
     suites.push(await runE2ETests(cwd));
     suites.push(await runIntegrationTests(cwd));
   }
-  // Default mode: Canaries + Unit + Regression + P2/P3 + Pit Stop + Chrome Ext + Smoke + Integration (strict by default)
+  // Default mode: Canaries + Unit + Regression + all surfaces + Smoke + Integration (strict by default)
   else {
     const canaryResult = await runCanaryTests(cwd);
     suites.push(canaryResult);
@@ -1045,12 +1082,13 @@ async function main() {
       suites.push(await runUnitTests(cwd));
       suites.push(await runRegressionTests(cwd));
       suites.push(await runActionFeedProducerTests(cwd));
-      suites.push(await runIntentFirstTests(cwd));
+      // Gate 2: removed runIntentFirstTests() — deleted with keyboard flows
       suites.push(await runAutonomousRepairTests(cwd));
       suites.push(await runBridgeToolDispatchTests(cwd));
       suites.push(await runChromeExtUnitTests(cwd));  // Chrome Extension unit tests
       suites.push(await runChromeExtBuild(cwd));  // Chrome Extension build verification
       suites.push(await runReplyStrategyTests(cwd));  // Reply Strategy integration
+      suites.push(await runAgentsUnitTests(cwd));  // Agents package unit tests
       suites.push(await runSmokeTests(cwd));
       suites.push(await runIntegrationTests(cwd));
     }
@@ -1063,29 +1101,66 @@ async function main() {
   const totalSkipped = suites.reduce((sum, s) => sum + s.skipped, 0);
   const totalDuration = endTime.getTime() - startTime.getTime();
 
-  // Summary
+  // Per-surface summary with grouped headers
+  const surfaceMap: Record<string, string[]> = {
+    'Telegram': ['Unit Tests', 'Canaries', 'Regression', 'Action Feed Producers', 'Autonomous Repair', 'Smoke Tests', 'E2E Tests', 'Integration Tests'],
+    'Chrome': ['Chrome Extension Unit Tests', 'Chrome Extension Build', 'Reply Strategy Integration'],
+    'Bridge': ['Bridge Unit Tests', 'Bridge Stability'],
+    'Agents': ['Agents Unit Tests'],
+  };
+
   console.log('\n');
   console.log('====================================');
   console.log('   SUMMARY');
   console.log('====================================');
 
-  for (const suite of suites) {
-    const status = suite.failed === 0 ? '\x1b[32m✓\x1b[0m' : '\x1b[31m✗\x1b[0m';
-    console.log(`${status} ${suite.name.padEnd(25)} ${suite.passed}/${suite.passed + suite.failed}`);
+  for (const [surface, suiteNames] of Object.entries(surfaceMap)) {
+    const surfaceSuites = suites.filter(s => suiteNames.includes(s.name));
+    if (surfaceSuites.length === 0) continue;
+
+    const surfacePassed = surfaceSuites.reduce((sum, s) => sum + s.passed, 0);
+    const surfaceFailed = surfaceSuites.reduce((sum, s) => sum + s.failed, 0);
+    const surfaceStatus = surfaceFailed === 0 ? '\x1b[32m✓\x1b[0m' : '\x1b[31m✗\x1b[0m';
+    console.log(`\n  ${surfaceStatus} ── ${surface} (${surfacePassed}/${surfacePassed + surfaceFailed}) ──`);
+
+    for (const suite of surfaceSuites) {
+      const status = suite.failed === 0 ? '\x1b[32m  ✓\x1b[0m' : '\x1b[31m  ✗\x1b[0m';
+      console.log(`  ${status} ${suite.name.padEnd(30)} ${suite.passed}/${suite.passed + suite.failed}`);
+    }
   }
 
-  console.log('────────────────────────────────────');
-  console.log(`   Total: ${totalPassed} passed, ${totalFailed} failed`);
+  // Any suites not in a surface group (shouldn't happen, but safety net)
+  const allGroupedNames = Object.values(surfaceMap).flat();
+  const ungrouped = suites.filter(s => !allGroupedNames.includes(s.name));
+  for (const suite of ungrouped) {
+    const status = suite.failed === 0 ? '\x1b[32m✓\x1b[0m' : '\x1b[31m✗\x1b[0m';
+    console.log(`${status} ${suite.name.padEnd(30)} ${suite.passed}/${suite.passed + suite.failed}`);
+  }
+
+  console.log('\n────────────────────────────────────');
+  console.log(`   Total: ${totalPassed} passed, ${totalFailed} failed, ${totalSkipped} skipped`);
+  console.log(`   Surfaces: ${Object.keys(surfaceMap).length} | Suites: ${suites.length}`);
   console.log(`   Duration: ${(totalDuration / 1000).toFixed(2)}s`);
   console.log('====================================');
 
+  // Subprocess health check: flag suites that ran 0 tests (silent PATH/spawn failures)
+  const ghostSuites = suites.filter(s => s.passed === 0 && s.failed === 0 && s.skipped === 0);
+  if (ghostSuites.length > 0) {
+    console.log('\n\x1b[33m⚠️  SUBPROCESS HEALTH WARNING — ghost suites detected (0 pass / 0 fail / 0 skip):\x1b[0m');
+    for (const ghost of ghostSuites) {
+      console.log(`   \x1b[33m→ ${ghost.name}\x1b[0m (${ghost.duration}ms) — likely bun not in PATH or file not found`);
+    }
+    console.log('   Check that bun is installed and test file paths are correct.\n');
+  }
+
   // Final result
-  if (totalFailed === 0) {
+  const hasGhosts = ghostSuites.length > 0;
+  if (totalFailed === 0 && !hasGhosts) {
     console.log('\n\x1b[32m   RESULT: ALL SYSTEMS GO\x1b[0m');
     console.log('\n');
     process.exit(0);
   } else {
-    console.log('\n\x1b[31m   RESULT: FAILURES DETECTED\x1b[0m');
+    console.log(`\n\x1b[31m   RESULT: ${hasGhosts && totalFailed === 0 ? 'GHOST SUITES DETECTED' : 'FAILURES DETECTED'}\x1b[0m`);
     console.log('\n');
 
     // Print detailed errors

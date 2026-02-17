@@ -156,6 +156,26 @@ bun run test:claude  # Test Claude connection
 bun run typecheck    # Type check
 ```
 
+### Master Blaster (Multi-Surface Test Verification)
+
+```bash
+bun run scripts/master-blaster.ts              # Default mode (strict)
+bun run scripts/master-blaster.ts --quick      # Quick: unit + regression + chrome + agents
+bun run scripts/master-blaster.ts --full       # Full: all suites including E2E + bridge
+bun run scripts/master-blaster.ts --strict     # Strict: canary-gated, halts on first failure
+```
+
+**4 Test Surfaces:**
+
+| Surface | Runner | Test Files |
+|---------|--------|------------|
+| **Telegram** | `bun test` | `test/*.test.ts`, `src/**/*.test.ts` (unit, regression, canary, smoke, E2E) |
+| **Chrome** | `bun test` | `apps/chrome-ext-vite/test/*.test.ts` (dom-to-notion, ai-classification, reply-strategy, socratic-adapter, socratic-context-builder, smoke-adapter) |
+| **Bridge** | `bun test` | `packages/bridge/test/*.test.ts` (tool-dispatch, orchestration, master-blaster-orchestration, sdk-url) |
+| **Agents** | `bun test` | `packages/agents/test/*.test.ts` (socratic-engine, context-assessor, notion-config, notion-markdown, worker-logic, research-json-truncation) |
+
+**Health checks:** Ghost suite detection flags any suite with 0 pass / 0 fail / 0 skip (catches silent PATH failures).
+
 ---
 
 ## File Overview
