@@ -17,6 +17,7 @@ import {
   findContactByLinkedInUrl,
   findPostByUrl,
   getEngagementsNeedingReply,
+  getEngagementsByPost,
   findEngagement,
   prefetchContactCache,
   clearContactCache,
@@ -841,6 +842,7 @@ export interface DomSyncResult {
     tier?: InteractionTier
     tierConfidence?: number
     tierMethod?: string
+    reconciled?: boolean  // Gate 1.5: contact already handled in Notion
   }>
   /** AI classification stats */
   classification?: {
@@ -882,6 +884,31 @@ export async function syncExtractedComments(
       console.error('[DomSync] Failed to create/find post in Notion')
       result.errors++
       return result
+    }
+
+    // ── Layer 2 (Gate 1.5): Notion State Reconciliation ──────
+    // Batch-query Engagements with "Posted" or "No Reply Needed" for this post.
+    // Build lookup of Contact page IDs that are already handled, so we don't
+    // re-tag them as "Needs Reply" during the per-comment loop.
+    const repliedContactIds = new Set<string>()
+    try {
+      const handledEngagements = await getEngagementsByPost(postPageId)
+      for (const eng of handledEngagements) {
+        // Extract Contact relation page ID from Notion response
+        const contactRel = eng.properties?.['Contact'] as Record<string, unknown> | undefined
+        if (contactRel && 'relation' in contactRel) {
+          const relations = (contactRel as { relation: Array<{ id: string }> }).relation
+          for (const rel of relations) {
+            repliedContactIds.add(rel.id)
+          }
+        }
+      }
+      if (repliedContactIds.size > 0) {
+        console.log(`[DomSync] Reconciliation: ${repliedContactIds.size} contacts already handled for this post`)
+      }
+    } catch (e) {
+      // Safe fallback: if reconciliation fails, all comments stay "needs_reply"
+      console.warn('[DomSync] Reconciliation query failed (safe fallback):', e instanceof Error ? e.message : String(e))
     }
 
     const state = await loadSyncState()
@@ -934,6 +961,9 @@ export async function syncExtractedComments(
         if (engResult?.isNew) result.engagementsCreated++
         else if (engResult?.wasUpdated) result.engagementsUpdated++
 
+        // Gate 1.5: Check if this contact was already handled (from Notion reconciliation)
+        const isReconciled = repliedContactIds.has(contactPageId)
+
         // Store Notion IDs + tier for enriching comments back in the sidepanel
         const engagementPageId = engResult?.id || ''
         result.notionIdMap[profileUrl] = {
@@ -942,6 +972,7 @@ export async function syncExtractedComments(
           tier: tierResult?.tier,
           tierConfidence: tierResult?.confidence,
           tierMethod: tierResult?.method,
+          reconciled: isReconciled || undefined,
         }
 
         await delay(200) // Rate limit Notion API

@@ -196,6 +196,7 @@ export function ReplyHelper({ comment, onClose, onMarkReplied, onFollowQueued }:
       chrome.runtime.sendMessage({
         name: "MARK_ENGAGEMENT_REPLIED",
         body: {
+          commentId: comment.id,
           notionPageId: comment.notionPageId,
           replyText: draft,
           notionContactId: comment.notionContactId,

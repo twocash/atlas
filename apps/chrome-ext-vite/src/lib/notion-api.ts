@@ -227,6 +227,28 @@ export async function getEngagementsNeedingReply(): Promise<NotionPage[]> {
 }
 
 /**
+ * Get engagements for a specific post that have been handled (Posted or No Reply Needed).
+ * Used by Layer 2 (Gate 1.5) Notion reconciliation to avoid re-tagging
+ * comments that Jim already replied to in a previous session.
+ *
+ * Returns pages with Contact relation and Response Status for building
+ * a reconciliation lookup map.
+ */
+export async function getEngagementsByPost(postPageId: string): Promise<NotionPage[]> {
+  return queryDatabase(NOTION_DBS.ENGAGEMENTS, {
+    and: [
+      { property: 'Post', relation: { contains: postPageId } },
+      {
+        or: [
+          { property: 'Response Status', select: { equals: 'Posted' } },
+          { property: 'Response Status', select: { equals: 'No Reply Needed' } },
+        ],
+      },
+    ],
+  })
+}
+
+/**
  * Check if an engagement already exists for a contact + post combination
  */
 export async function findEngagement(

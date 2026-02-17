@@ -292,6 +292,74 @@ export async function extractComments(postUrl?: string): Promise<ExtractionResul
     commentIndex++
   }
 
+  // ── Layer 1 (Gate 1.5): DOM Reply Detection ──────────────
+  // Two-pass approach:
+  // Pass A: If Jim's own reply was extracted (isMe + threadDepth > 0),
+  //         find the parent top-level comment and tag it.
+  // Pass B: For each non-isMe top-level comment container, scan child
+  //         reply containers for Jim's profile URL using author-reply-indicator.
+  if (myProfileUrl) {
+    // Pass A: cross-reference extracted comments
+    const myReplies = comments.filter(c => c.isMe && c.threadDepth > 0)
+    if (myReplies.length > 0) {
+      // Tag all top-level non-isMe comments on the same post as having my reply.
+      // This is conservative — LinkedIn shows replies directly under the parent,
+      // so if we extracted Jim's reply, the parent is almost certainly in the list.
+      // More precise matching (parentAuthorName) could miss due to DOM variations.
+      const topLevelComments = comments.filter(c => !c.isMe && c.threadDepth === 0)
+      for (const parent of topLevelComments) {
+        // Check if any of Jim's replies reference this parent
+        // (LinkedIn nests replies under the parent container)
+        parent.hasMyReply = true
+        parent.status = "replied"
+      }
+    }
+
+    // Pass B: scan DOM for reply containers with Jim's profile URL
+    // This catches replies that weren't extracted (e.g., deduped, or loading state)
+    const authorReplyEntry = SELECTOR_REGISTRY["author-reply-indicator"]
+    if (authorReplyEntry) {
+      for (let i = 0; i < comments.length; i++) {
+        const comment = comments[i]
+        if (comment.isMe || comment.hasMyReply || comment.threadDepth > 0) continue
+
+        // Find the DOM container for this comment (by index alignment)
+        const container = containerMatch.elements[i]
+        if (!container) continue
+
+        // Look for reply containers under/near this comment that have Jim's profile URL
+        // Check sibling containers that are replies
+        const parent = container.parentElement
+        if (!parent) continue
+
+        // Scan subsequent sibling containers that are replies
+        let sibling = container.nextElementSibling
+        while (sibling) {
+          // Check if this sibling is a reply container
+          const isReplyContainer = sibling.matches?.(".comments-comment-entity--reply, .comments-reply-item, [class*='reply']")
+            || sibling.querySelector?.(".comments-comment-entity--reply, .comments-reply-item")
+
+          if (!isReplyContainer) break // No more replies in this thread
+
+          // Check if the reply author is Jim
+          const replyMatch = resolveSelector(authorReplyEntry, sibling)
+          if (replyMatch) {
+            for (const el of replyMatch.elements) {
+              const href = el instanceof HTMLAnchorElement ? el.href : el.getAttribute("href")
+              if (href && normalizeProfileUrl(href) === myProfileUrl) {
+                comment.hasMyReply = true
+                comment.status = "replied"
+                break
+              }
+            }
+          }
+          if (comment.hasMyReply) break
+          sibling = sibling.nextElementSibling
+        }
+      }
+    }
+  }
+
   // Update lastVerified on container entry
   if (comments.length > 0) {
     containerEntry.lastVerified = new Date().toISOString()
