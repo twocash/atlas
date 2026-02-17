@@ -15,6 +15,7 @@ export const NOTION_DBS = {
   FEED: '90b2b33f-4b44-4b42-870f-8d62fb8cbf18',
   WORK_QUEUE: '3d679030-b76b-43bd-92d8-1ac51abb4a28',
   REPLY_STRATEGY_CONFIG: 'ae8f00f271aa4fe48c6432f4cd8f6e4f',
+  SOCRATIC_INTERVIEW_CONFIG: '25a3f30643fd49eeb11b6f26761475bd',
 } as const
 
 const NOTION_API_BASE = 'https://api.notion.com/v1'

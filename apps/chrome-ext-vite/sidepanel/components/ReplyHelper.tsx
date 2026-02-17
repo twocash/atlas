@@ -2,7 +2,15 @@ import { useState, useRef, useEffect } from "react"
 import type { LinkedInComment } from "~src/types/comments"
 import { GROVE_CONTEXT } from "~src/types/comments"
 import { MODEL_OPTIONS } from "~src/types/llm"
-import { getReplyStrategy, type ReplyStrategy } from "~src/lib/reply-strategy"
+import type { SocraticQuestion } from "~src/types/socratic"
+import {
+  getReplyStrategy,
+  getSocraticReplyStrategy,
+  submitSocraticAndGetStrategy,
+  type ReplyStrategy,
+  type SocraticReplyResult,
+} from "~src/lib/reply-strategy"
+import { cancelSocraticSession } from "~src/lib/socratic-adapter"
 
 interface ReplyHelperProps {
   comment: LinkedInComment
@@ -19,21 +27,87 @@ export function ReplyHelper({ comment, onClose, onMarkReplied, onFollowQueued }:
   const [showModelPicker, setShowModelPicker] = useState(false)
   const [isTopEngager, setIsTopEngager] = useState(false)
   const [strategy, setStrategy] = useState<ReplyStrategy | null>(null)
+  const [socraticInterview, setSocraticInterview] = useState<{
+    sessionId: string
+    questions: SocraticQuestion[]
+    confidence: number
+  } | null>(null)
   const textareaRef = useRef<HTMLTextAreaElement>(null)
 
-  // Compute strategy eagerly on mount (for badges) — non-blocking
+  // Run Socratic assessment on mount — either resolves (auto-draft) or asks questions
   useEffect(() => {
-    getReplyStrategy(comment)
-      .then(setStrategy)
-      .catch((e) => console.warn("Strategy computation failed:", e))
+    getSocraticReplyStrategy(comment)
+      .then((result) => {
+        if (result.type === 'ready') {
+          setStrategy(result.strategy)
+        } else if (result.type === 'interview') {
+          setSocraticInterview(result)
+        }
+      })
+      .catch((e) => {
+        console.warn("Socratic assessment failed, falling back:", e)
+        getReplyStrategy(comment).then(setStrategy)
+      })
   }, [])
 
-  // Auto-generate initial draft if none exists
+  // Auto-generate initial draft if none exists AND no interview pending
   useEffect(() => {
-    if (!draft && !isGenerating) {
+    if (!draft && !isGenerating && !socraticInterview) {
       generateDraft()
     }
-  }, [])
+  }, [socraticInterview])
+
+  const handleSocraticAnswer = async (answerValue: string, questionIndex: number = 0) => {
+    if (!socraticInterview) return
+
+    try {
+      const result = await submitSocraticAndGetStrategy(
+        socraticInterview.sessionId,
+        answerValue,
+        questionIndex,
+        comment
+      )
+
+      if (result.type === 'ready') {
+        setSocraticInterview(null)
+        setStrategy(result.strategy)
+        // Auto-generate draft now that interview is complete
+        if (!draft) {
+          setIsGenerating(true)
+          const systemPrompt = result.strategy.composedPrompt?.systemPrompt
+            || buildFallbackSystemPrompt(comment)
+          const userPrompt = `Their comment:\n"${comment.content}"\n\nDraft a reply.`
+          try {
+            const response = await chrome.runtime.sendMessage({
+              name: "LLM_QUERY",
+              body: { systemPrompt, prompt: userPrompt, maxTokens: 500, model: selectedModel },
+            })
+            if (response?.text) setDraft(response.text)
+          } catch {}
+          setIsGenerating(false)
+        }
+      } else if (result.type === 'interview') {
+        setSocraticInterview(result)
+      }
+    } catch (e) {
+      console.warn("Socratic answer failed:", e)
+      setSocraticInterview(null)
+      // Fall through to regular draft generation
+      generateDraft()
+    }
+  }
+
+  const handleSkipInterview = () => {
+    if (socraticInterview) {
+      cancelSocraticSession(socraticInterview.sessionId)
+      setSocraticInterview(null)
+      // Fall through to existing pipeline
+      getReplyStrategy(comment)
+        .then(setStrategy)
+        .catch(() => {})
+      generateDraft()
+    }
+  }
 
   const generateDraft = async (instruction?: string) => {
     setIsGenerating(true)
@@ -262,9 +336,47 @@ export function ReplyHelper({ comment, onClose, onMarkReplied, onFollowQueued }:
                 {mod.replace(/_/g, ' ')}
               </span>
             ))}
+            {strategy.socraticConfidence !== undefined && (
+              <span className="text-[9px] px-1.5 py-0.5 bg-emerald-100 text-emerald-700 rounded">
+                Socratic {Math.round(strategy.socraticConfidence * 100)}%
+              </span>
+            )}
             {strategy.confidence < 0.5 && (
               <span className="text-[9px] text-amber-500">(low confidence)</span>
             )}
+          </div>
+        )}
+
+        {/* Socratic Interview */}
+        {socraticInterview && (
+          <div className="px-4 py-3 bg-amber-50 border-b border-amber-200">
+            <div className="flex items-center justify-between mb-2">
+              <span className="text-[10px] font-medium text-amber-800">
+                Quick context check ({Math.round(socraticInterview.confidence * 100)}% confidence)
+              </span>
+              <button
+                onClick={handleSkipInterview}
+                className="text-[9px] text-amber-600 hover:text-amber-800 underline"
+              >
+                Skip
+              </button>
+            </div>
+            {socraticInterview.questions.map((q, qi) => (
+              <div key={qi} className="mb-2 last:mb-0">
+                <div className="text-xs text-gray-800 mb-1.5">{q.text}</div>
+                <div className="flex flex-wrap gap-1.5">
+                  {q.options.map((opt) => (
+                    <button
+                      key={opt.value}
+                      onClick={() => handleSocraticAnswer(opt.value, qi)}
+                      className="text-[10px] px-2.5 py-1.5 bg-white border border-amber-300 text-amber-800 rounded-md hover:bg-amber-100 hover:border-amber-400 transition-colors"
+                    >
+                      {opt.label}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            ))}
           </div>
         )}
 

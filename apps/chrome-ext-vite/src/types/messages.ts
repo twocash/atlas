@@ -57,3 +57,27 @@ export interface LlmQueryMessage {
     maxTokens?: number
   }
 }
+
+// Socratic Interview Messages
+export interface SocraticAssessMessage {
+  name: "SOCRATIC_ASSESS"
+  body: {
+    comment: import("./comments").LinkedInComment
+  }
+}
+
+export interface SocraticAnswerMessage {
+  name: "SOCRATIC_ANSWER"
+  body: {
+    sessionId: string
+    answerValue: string
+    questionIndex?: number
+  }
+}
+
+export interface SocraticCancelMessage {
+  name: "SOCRATIC_CANCEL"
+  body: {
+    sessionId: string
+  }
+}

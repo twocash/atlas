@@ -25,6 +25,11 @@ import {
   dismissContacts,
   syncExtractedComments,
 } from "~src/lib/sync-engine"
+import {
+  assessReplyContext as socraticAssessReplyContext,
+  submitSocraticAnswer as socraticSubmitAnswer,
+  cancelSocraticSession as socraticCancelSession,
+} from "~src/lib/socratic-adapter"
 
 const storage = new Storage({ area: "local" })
 
@@ -254,6 +259,38 @@ chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
       model: message.body?.model,
     }).then((result) => sendResponse(result))
     return true // Keep channel open for async response
+  }
+
+  // --- Socratic Interview ---
+
+  if (message.name === "SOCRATIC_ASSESS") {
+    try {
+      const result = socraticAssessReplyContext(message.body?.comment)
+      sendResponse(result)
+    } catch (e) {
+      sendResponse({ type: 'error', message: e instanceof Error ? e.message : 'Assessment failed' })
+    }
+    return true
+  }
+
+  if (message.name === "SOCRATIC_ANSWER") {
+    try {
+      const result = socraticSubmitAnswer(
+        message.body?.sessionId,
+        message.body?.answerValue,
+        message.body?.questionIndex ?? 0
+      )
+      sendResponse(result)
+    } catch (e) {
+      sendResponse({ type: 'error', message: e instanceof Error ? e.message : 'Answer failed' })
+    }
+    return true
+  }
+
+  if (message.name === "SOCRATIC_CANCEL") {
+    socraticCancelSession(message.body?.sessionId)
+    sendResponse({ ok: true })
+    return true
   }
 
   // --- Post Monitoring ---
