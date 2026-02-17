@@ -39,15 +39,19 @@ console.log("Atlas Orchestrator Initialized")
 chrome.sidePanel?.setPanelBehavior?.({ openPanelOnActionClick: true })
 
 // =============================================================================
-// V3 ACTIVE CAPTURE: 4-Level Hierarchical Menus
+// SIMPLIFIED CAPTURE: Domain-Based Auto-Routing (Gate 1.8)
 // =============================================================================
 
-import { createCaptureMenus, parseMenuItemId, type PromptComposition } from "~src/lib/capture-menus"
+import { createCaptureMenus, MENU_IDS } from "~src/lib/capture-menus"
+import { extractBasicContext } from "~src/lib/capture-context-extractor"
+import { routeCapture, routeQuickCapture } from "~src/lib/capture-router"
+import { PILLAR_LABELS } from "~src/types/capture"
+import type { CaptureContext, CaptureRouterResult } from "~src/types/capture"
 import { showCapturing, showSuccess, showError, setBadgeCount, clearBadge } from "~src/lib/badge"
 
 const ATLAS_STATUS_SERVER = "http://localhost:3847"
 
-// Create 4-level hierarchical menus on install/update
+// Create simplified capture menus on install/update
 chrome.runtime.onInstalled.addListener(() => {
   createCaptureMenus()
 })
@@ -56,58 +60,51 @@ chrome.runtime.onInstalled.addListener(() => {
 chrome.contextMenus.onClicked.addListener(async (info, tab) => {
   const menuItemId = info.menuItemId as string
 
-  // Quick capture (bypass prompt composition)
-  if (menuItemId === "atlas-quick") {
-    await sendCapture(info, tab, { pillar: "Personal" })
+  // Quick capture — bypass domain classification
+  if (menuItemId === MENU_IDS.QUICK) {
+    const context = extractBasicContext(info, tab)
+    const routing = routeQuickCapture()
+    await sendCapture(context, routing)
     return
   }
 
-  // Parse 4-level hierarchical menu selection
-  const config = parseMenuItemId(menuItemId)
-  if (!config) {
-    // Intermediate menu click (pillar or action level), ignore
-    console.log("Atlas: Intermediate menu click, waiting for voice selection:", menuItemId)
+  // Capture with Atlas — domain-based auto-routing
+  if (menuItemId === MENU_IDS.CAPTURE) {
+    const context = extractBasicContext(info, tab)
+    const routing = routeCapture(context)
+
+    if (routing.socraticQuestion) {
+      console.log(`[Atlas Capture] Socratic: ${routing.socraticQuestion}`)
+    }
+
+    console.log(
+      `[Atlas Capture] ${context.domain} → ${PILLAR_LABELS[routing.pillar]} (${routing.classifiedBy})`,
+    )
+
+    await sendCapture(context, routing)
     return
   }
 
-  // Full 4-level selection: Pillar -> Action -> Voice
-  await sendCapture(info, tab, {
-    pillar: config.pillar,
-    action: config.action,
-    voice: config.voice,
-    promptIds: config.promptIds,
-  })
+  // Root or separator click — ignore
+  console.log("[Atlas Capture] Menu click ignored:", menuItemId)
 })
 
-interface CaptureOptions {
-  pillar: string
-  action?: string
-  voice?: string
-  promptIds?: PromptComposition
-}
-
 async function sendCapture(
-  info: chrome.contextMenus.OnClickData,
-  tab: chrome.tabs.Tab | undefined,
-  options: CaptureOptions
+  context: CaptureContext,
+  routing: CaptureRouterResult,
 ) {
-  const url = info.linkUrl || info.pageUrl || tab?.url
-  if (!url) {
-    console.error("Atlas: No URL to capture")
+  if (!context.url) {
+    console.error("[Atlas Capture] No URL to capture")
     return
   }
 
   showCapturing()
 
-  const selectedText = info.selectionText || undefined
-  const title = tab?.title || url
-
-  console.log("Atlas: Capturing with V3 Active Capture", {
-    url,
-    pillar: options.pillar,
-    action: options.action,
-    voice: options.voice,
-    promptIds: options.promptIds,
+  console.log("[Atlas Capture] Dispatching", {
+    url: context.url,
+    pillar: PILLAR_LABELS[routing.pillar],
+    backend: routing.routingDecision.backend,
+    classifiedBy: routing.classifiedBy,
   })
 
   try {
@@ -115,10 +112,14 @@ async function sendCapture(
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
-        url,
-        title,
-        selectedText,
-        ...options,
+        url: context.url,
+        title: context.title,
+        selectedText: context.selectedText,
+        pillar: PILLAR_LABELS[routing.pillar],
+        domain: context.domain,
+        classifiedBy: routing.classifiedBy,
+        backend: routing.routingDecision.backend,
+        rationale: routing.rationale,
       }),
     })
 
@@ -126,14 +127,14 @@ async function sendCapture(
 
     if (result.ok) {
       showSuccess()
-      console.log("Atlas: V3 capture successful")
+      console.log("[Atlas Capture] Success")
     } else {
       showError()
-      console.error("Atlas: V3 capture failed", result.error)
+      console.error("[Atlas Capture] Failed", result.error)
     }
   } catch (err) {
     showError()
-    console.warn("Atlas: Backend offline", err)
+    console.warn("[Atlas Capture] Backend offline", err)
   }
 }
 

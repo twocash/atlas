@@ -14,9 +14,13 @@ import type { StrategyConfig } from './strategy-config'
 import type { LinkedInComment } from '~src/types/comments'
 import { GROVE_CONTEXT } from '~src/types/comments'
 
-// Budget for the modifier stack only. Core voice + archetype are always full.
-// ~4 chars per token. 2400 chars ≈ 600 tokens — room for 2-3 modifiers.
-const MODIFIER_CHAR_BUDGET = 2400
+// Gate 1.8: Total strategy block budget (prompt 2000→2500, response 1500→1000, total 3500 unchanged)
+// ~4 chars per token. 2500 chars ≈ 625 tokens for the full strategy block.
+const STRATEGY_BLOCK_BUDGET = 2500
+
+// Modifier budget is dynamically computed from remaining space after core voice + archetype.
+// Fallback cap if core voice + archetype are tiny/empty.
+const MODIFIER_CHAR_BUDGET_MAX = 2400
 
 export interface ComposedPrompt {
   systemPrompt: string
@@ -67,37 +71,50 @@ function buildStrategyBlock(
   modifierSlugs: string[]
 ): string {
   const parts: string[] = []
+  let usedChars = 0
 
   // 1. Core Voice — full content, non-negotiable
   if (config.coreVoice?.content) {
-    parts.push(`## Core Voice\n${config.coreVoice.content}`)
+    const section = `## Core Voice\n${config.coreVoice.content}`
+    parts.push(section)
+    usedChars += section.length
   }
 
   // 2. Archetype voice — full content, non-negotiable
   const archetype = config.archetypes[archetypeSlug]
   if (archetype?.content) {
-    parts.push(`## Voice: ${archetype.name}\n${archetype.content}`)
+    const section = `## Voice: ${archetype.name}\n${archetype.content}`
+    const joinerCost = parts.length > 0 ? 2 : 0  // "\n\n" between parts
+    parts.push(section)
+    usedChars += section.length + joinerCost
   }
 
-  // 3. Modifiers — budget-constrained, sorted by priority, lowest dropped first
+  // 3. Modifiers — budget is remaining space in the strategy block
   if (modifierSlugs.length > 0) {
-    const modHeader = '## Context Modifiers\n'
-    let modCharCount = modHeader.length
-    const modifierParts: string[] = []
+    const remainingBudget = Math.min(
+      STRATEGY_BLOCK_BUDGET - usedChars - 2, // -2 for "\n\n" joiner
+      MODIFIER_CHAR_BUDGET_MAX,
+    )
 
-    for (const slug of modifierSlugs) {
-      const mod = config.modifiers[slug]
-      if (!mod?.content) continue
+    if (remainingBudget > 0) {
+      const modHeader = '## Context Modifiers\n'
+      let modCharCount = modHeader.length
+      const modifierParts: string[] = []
 
-      const section = `### ${mod.name}\n${mod.content}`
-      const joinerCost = modifierParts.length > 0 ? 2 : 0
-      if (modCharCount + section.length + joinerCost > MODIFIER_CHAR_BUDGET) break
-      modifierParts.push(section)
-      modCharCount += section.length + joinerCost
-    }
+      for (const slug of modifierSlugs) {
+        const mod = config.modifiers[slug]
+        if (!mod?.content) continue
 
-    if (modifierParts.length > 0) {
-      parts.push(`${modHeader}${modifierParts.join('\n\n')}`)
+        const section = `### ${mod.name}\n${mod.content}`
+        const joinerCost = modifierParts.length > 0 ? 2 : 0
+        if (modCharCount + section.length + joinerCost > remainingBudget) break
+        modifierParts.push(section)
+        modCharCount += section.length + joinerCost
+      }
+
+      if (modifierParts.length > 0) {
+        parts.push(`${modHeader}${modifierParts.join('\n\n')}`)
+      }
     }
   }
 
