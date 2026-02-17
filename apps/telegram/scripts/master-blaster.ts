@@ -1,12 +1,19 @@
 /**
  * MASTER BLASTER - Unified Quality Verification System
  *
- * Chains all test suites into a single verification command.
- * Run this BEFORE human testing to catch regressions early.
+ * Chains ALL test suites across the FULL Atlas surface into a single
+ * verification command. Covers Telegram bot, Chrome Extension, Bridge,
+ * and cross-cutting integration tests.
+ *
+ * Surfaces tested:
+ *   - Telegram Bot: unit, regression, canary, smoke, E2E, integration
+ *   - Chrome Extension: unit (DOM→Notion, AI classification), build
+ *   - Bridge: tool dispatch pipeline, Playwright stability
+ *   - Cross-cutting: health checks, Notion connectivity, Claude API
  *
  * Usage:
- *   bun run verify              # Default: unit + smoke tests
- *   bun run verify:quick        # Fast: unit tests only
+ *   bun run verify              # Default: all surfaces (strict)
+ *   bun run verify:quick        # Fast: unit + regression + chrome ext
  *   bun run verify:full         # Full: all suites including E2E
  *
  * Exit Codes:
@@ -780,6 +787,89 @@ async function runIntentFirstTests(cwd: string): Promise<SuiteResult> {
 }
 
 /**
+ * Run Chrome Extension unit tests (dom-to-notion + ai-classification)
+ *
+ * Runs in a SEPARATE bun process from apps/chrome-ext-vite/.
+ * Tests the DOM extraction → Notion sync pipeline and the
+ * 4-tier AI classification system (Phase B.2).
+ */
+async function runChromeExtUnitTests(cwd: string): Promise<SuiteResult> {
+  console.log('\n[CHROME] Running Chrome Extension Unit Tests...');
+  console.log('─'.repeat(50));
+
+  const chromeExtCwd = join(cwd, '..', 'chrome-ext-vite');
+  const result = await runCommand(
+    BUN_PATH,
+    ['test', 'test/dom-to-notion.test.ts', 'test/ai-classification.test.ts'],
+    chromeExtCwd,
+    60000
+  );
+  const counts = parseBunTestOutput(result.output);
+
+  // LOUD failures — always show output if anything went wrong
+  if (!result.success) {
+    console.log(result.output);
+  } else {
+    // Even on success, show a brief summary line per test file
+    const lines = result.output.split('\n').filter(l => /\.(test\.ts)/.test(l));
+    for (const line of lines) {
+      console.log(`  ${line.trim()}`);
+    }
+  }
+
+  const status = result.success ? '\x1b[32m[PASS]\x1b[0m' : '\x1b[31m[FAIL]\x1b[0m';
+  console.log(`  ${status} ${counts.passed} passed, ${counts.failed} failed (${result.duration}ms)`);
+
+  return {
+    name: 'Chrome Extension Unit Tests',
+    passed: counts.passed,
+    failed: counts.failed,
+    skipped: counts.skipped,
+    duration: result.duration,
+    errors: result.success ? [] : [result.output],
+  };
+}
+
+/**
+ * Run Chrome Extension build verification
+ *
+ * Ensures the extension builds cleanly (esbuild content scripts + Vite sidepanel).
+ * A build failure here means the extension is unshippable.
+ */
+async function runChromeExtBuild(cwd: string): Promise<SuiteResult> {
+  console.log('\n[BUILD] Running Chrome Extension Build...');
+  console.log('─'.repeat(50));
+
+  const chromeExtCwd = join(cwd, '..', 'chrome-ext-vite');
+  const result = await runCommand(
+    'node',
+    ['build.mjs'],
+    chromeExtCwd,
+    60000
+  );
+
+  // Check for esbuild/vite success markers
+  const hasEsbuildSuccess = result.output.includes('esbuild') || result.output.includes('.js');
+  const hasBuildOutput = result.success;
+
+  if (!result.success) {
+    console.log(result.output);
+  }
+
+  const status = result.success ? '\x1b[32m[PASS]\x1b[0m' : '\x1b[31m[FAIL]\x1b[0m';
+  console.log(`  ${status} Chrome Extension build ${result.success ? 'clean' : 'FAILED'} (${result.duration}ms)`);
+
+  return {
+    name: 'Chrome Extension Build',
+    passed: result.success ? 1 : 0,
+    failed: result.success ? 0 : 1,
+    skipped: 0,
+    duration: result.duration,
+    errors: result.success ? [] : [result.output],
+  };
+}
+
+/**
  * Run Bridge Tool Dispatch pipeline tests
  *
  * Runs in a SEPARATE bun process from packages/bridge/.
@@ -850,10 +940,11 @@ async function main() {
 
   const suites: SuiteResult[] = [];
 
-  // Quick mode: Unit + Regression tests only
+  // Quick mode: Unit + Regression + Chrome Extension tests
   if (quick) {
     suites.push(await runUnitTests(cwd));
     suites.push(await runRegressionTests(cwd));
+    suites.push(await runChromeExtUnitTests(cwd));
   }
   // Strict mode: Canaries FIRST — failure stops all subsequent suites
   else if (strict) {
@@ -870,6 +961,8 @@ async function main() {
       suites.push(await runIntentFirstTests(cwd));
       suites.push(await runAutonomousRepairTests(cwd));
       suites.push(await runBridgeToolDispatchTests(cwd));
+      suites.push(await runChromeExtUnitTests(cwd));  // Chrome Extension unit tests
+      suites.push(await runChromeExtBuild(cwd));  // Chrome Extension build verification
       suites.push(await runBridgeStabilityTests(cwd));
       suites.push(await runSmokeTests(cwd));
       suites.push(await runE2ETests(cwd));
@@ -885,12 +978,14 @@ async function main() {
     suites.push(await runIntentFirstTests(cwd));  // Intent-First Phase 0+1
     suites.push(await runAutonomousRepairTests(cwd));  // Pit Stop sprint
     suites.push(await runBridgeToolDispatchTests(cwd));  // Bridge Phase 4 tool dispatch
+    suites.push(await runChromeExtUnitTests(cwd));  // Chrome Extension unit tests
+    suites.push(await runChromeExtBuild(cwd));  // Chrome Extension build verification
     suites.push(await runBridgeStabilityTests(cwd));  // Bridge Playwright tests
     suites.push(await runSmokeTests(cwd));
     suites.push(await runE2ETests(cwd));
     suites.push(await runIntegrationTests(cwd));
   }
-  // Default mode: Canaries + Unit + Regression + P2/P3 + Pit Stop + Smoke + Integration (strict by default)
+  // Default mode: Canaries + Unit + Regression + P2/P3 + Pit Stop + Chrome Ext + Smoke + Integration (strict by default)
   else {
     const canaryResult = await runCanaryTests(cwd);
     suites.push(canaryResult);
@@ -905,6 +1000,8 @@ async function main() {
       suites.push(await runIntentFirstTests(cwd));
       suites.push(await runAutonomousRepairTests(cwd));
       suites.push(await runBridgeToolDispatchTests(cwd));
+      suites.push(await runChromeExtUnitTests(cwd));  // Chrome Extension unit tests
+      suites.push(await runChromeExtBuild(cwd));  // Chrome Extension build verification
       suites.push(await runSmokeTests(cwd));
       suites.push(await runIntegrationTests(cwd));
     }
