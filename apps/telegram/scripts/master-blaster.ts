@@ -800,7 +800,7 @@ async function runChromeExtUnitTests(cwd: string): Promise<SuiteResult> {
   const chromeExtCwd = join(cwd, '..', 'chrome-ext-vite');
   const result = await runCommand(
     BUN_PATH,
-    ['test', 'test/dom-to-notion.test.ts', 'test/ai-classification.test.ts'],
+    ['test', 'test/dom-to-notion.test.ts', 'test/ai-classification.test.ts', 'test/reply-strategy.test.ts'],
     chromeExtCwd,
     60000
   );
@@ -864,6 +864,52 @@ async function runChromeExtBuild(cwd: string): Promise<SuiteResult> {
     passed: result.success ? 1 : 0,
     failed: result.success ? 0 : 1,
     skipped: 0,
+    duration: result.duration,
+    errors: result.success ? [] : [result.output],
+  };
+}
+
+/**
+ * Run Reply Strategy integration tests (Master Blaster protocol)
+ *
+ * Runs from apps/chrome-ext/ — validates the full Reply Strategy pipeline
+ * against live Notion data: connectivity, schema, rules engine, prompt
+ * composition, fallback chain, cache lifecycle, and E2E pipeline.
+ * Requires NOTION_API_KEY env var.
+ */
+async function runReplyStrategyTests(cwd: string): Promise<SuiteResult> {
+  console.log('\n[STRATEGY] Running Reply Strategy Integration Tests...');
+  console.log('─'.repeat(50));
+
+  const chromeExtLegacyCwd = join(cwd, '..', 'chrome-ext');
+  const result = await runCommand(
+    BUN_PATH,
+    ['run', 'scripts/test-reply-strategy.ts'],
+    chromeExtLegacyCwd,
+    120000 // 2 min — fetches page bodies from Notion
+  );
+
+  // Parse the custom PASS/FAIL/SKIP format (not bun:test)
+  const passMatches = result.output.match(/✅/g) || [];
+  const failMatches = result.output.match(/❌/g) || [];
+  const skipMatches = result.output.match(/⏭️/g) || [];
+
+  const passed = passMatches.length;
+  const failed = failMatches.length;
+  const skipped = skipMatches.length;
+
+  if (!result.success) {
+    console.log(result.output);
+  }
+
+  const status = result.success ? '\x1b[32m[PASS]\x1b[0m' : '\x1b[31m[FAIL]\x1b[0m';
+  console.log(`  ${status} ${passed} passed, ${failed} failed, ${skipped} skipped (${result.duration}ms)`);
+
+  return {
+    name: 'Reply Strategy Integration',
+    passed,
+    failed,
+    skipped,
     duration: result.duration,
     errors: result.success ? [] : [result.output],
   };
@@ -963,6 +1009,7 @@ async function main() {
       suites.push(await runBridgeToolDispatchTests(cwd));
       suites.push(await runChromeExtUnitTests(cwd));  // Chrome Extension unit tests
       suites.push(await runChromeExtBuild(cwd));  // Chrome Extension build verification
+      suites.push(await runReplyStrategyTests(cwd));  // Reply Strategy integration
       suites.push(await runBridgeStabilityTests(cwd));
       suites.push(await runSmokeTests(cwd));
       suites.push(await runE2ETests(cwd));
@@ -980,6 +1027,7 @@ async function main() {
     suites.push(await runBridgeToolDispatchTests(cwd));  // Bridge Phase 4 tool dispatch
     suites.push(await runChromeExtUnitTests(cwd));  // Chrome Extension unit tests
     suites.push(await runChromeExtBuild(cwd));  // Chrome Extension build verification
+    suites.push(await runReplyStrategyTests(cwd));  // Reply Strategy integration
     suites.push(await runBridgeStabilityTests(cwd));  // Bridge Playwright tests
     suites.push(await runSmokeTests(cwd));
     suites.push(await runE2ETests(cwd));
@@ -1002,6 +1050,7 @@ async function main() {
       suites.push(await runBridgeToolDispatchTests(cwd));
       suites.push(await runChromeExtUnitTests(cwd));  // Chrome Extension unit tests
       suites.push(await runChromeExtBuild(cwd));  // Chrome Extension build verification
+      suites.push(await runReplyStrategyTests(cwd));  // Reply Strategy integration
       suites.push(await runSmokeTests(cwd));
       suites.push(await runIntegrationTests(cwd));
     }
