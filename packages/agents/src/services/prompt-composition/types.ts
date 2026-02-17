@@ -258,6 +258,16 @@ export interface PillarOption {
 }
 
 // ==========================================
+// Socratic Integration Types
+// ==========================================
+
+/**
+ * Re-export from socratic module for convenience.
+ * The canonical definition lives in packages/agents/src/socratic/types.ts.
+ */
+export type { SocraticCompositionInput } from '../../socratic/types';
+
+// ==========================================
 // Validation Types
 // ==========================================
 

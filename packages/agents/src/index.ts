@@ -106,6 +106,40 @@ export {
   type ComposedPrompt,
 } from "./services";
 
+// Socratic Interview Engine
+export {
+  SocraticEngine,
+  getSocraticEngine,
+  assessContext,
+  reassessWithAnswer,
+  analyzeGaps,
+  generateQuestions,
+  mapAnswer,
+  getSocraticConfig,
+  refreshSocraticConfig,
+  invalidateCache,
+  injectConfig,
+  CONTEXT_WEIGHTS,
+  type EngineState,
+  type EngineResult,
+  type SocraticSession,
+  type ResolvedContext,
+  type ConfidenceRegime,
+  type SocraticConfig,
+  type SocraticConfigEntry,
+  type ConfigEntryType,
+  type Surface,
+  type ContextSlot,
+  type ContextSignals,
+  type SlotAssessment,
+  type ConfidenceAssessment,
+  type SocraticQuestion,
+  type QuestionOption,
+  type MappedAnswer,
+  type SocraticCompositionInput,
+  type GapAnalysis,
+} from './socratic';
+
 // Prompt Composition Service (V3 Active Capture)
 export {
   // Main composition
