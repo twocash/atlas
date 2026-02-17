@@ -11,6 +11,9 @@
  * to block and all analysis to silently fail with empty content.
  *
  * Fixed: a56ca9a (2026-02-16)
+ *
+ * Gate 2 update: intent-callback.ts and prompt-selection-callback.ts deleted.
+ * Tests for deleted files removed; remaining tests guard surviving call sites.
  */
 
 import { describe, it, expect } from 'bun:test';
@@ -31,9 +34,8 @@ function readSrc(relativePath: string): string {
 
 describe('composedPrompt call site contracts', () => {
   // All files that dispatch to skills or tools with composedPrompt
+  // Gate 2: intent-callback.ts and prompt-selection-callback.ts deleted
   const callSiteFiles = [
-    'handlers/intent-callback.ts',
-    'handlers/prompt-selection-callback.ts',
     'health/status-server.ts',
   ];
 
@@ -283,44 +285,10 @@ describe('prompt composition result consistency', () => {
 
 // =============================================================================
 // 8. REGRESSION: The exact pattern that broke (string where object expected)
+// Gate 2: intent-callback.ts and prompt-selection-callback.ts deleted.
+// Original tests verified the fix in a56ca9a. Tests removed since call sites
+// no longer exist — the Socratic engine replaces the keyboard flow entirely.
 // =============================================================================
-
-describe('regression: composedPrompt string-vs-object', () => {
-  it('intent-callback does NOT pass compositionResult?.prompt as bare string', () => {
-    const source = readSrc('handlers/intent-callback.ts');
-
-    // This exact pattern was the bug: passing .prompt directly (a string)
-    // instead of wrapping in { prompt: ..., temperature: ..., ... }
-    const brokenPattern = /composedPrompt:\s*compositionResult\?\.prompt\s*,/;
-    expect(brokenPattern.test(source)).toBe(false);
-  });
-
-  it('intent-callback wraps compositionResult in full object', () => {
-    const source = readSrc('handlers/intent-callback.ts');
-
-    // The fix: ternary producing an object
-    expect(source).toContain('composedPrompt: compositionResult ? {');
-    expect(source).toContain('prompt: compositionResult.prompt');
-    expect(source).toContain('temperature: compositionResult.temperature');
-    expect(source).toContain('maxTokens: compositionResult.maxTokens');
-    expect(source).toContain('metadata: compositionResult.metadata');
-  });
-
-  it('intent-callback sets v3Requested with boolean coercion', () => {
-    const source = readSrc('handlers/intent-callback.ts');
-    expect(source).toContain('v3Requested: !!compositionResult?.prompt');
-  });
-
-  it('prompt-selection-callback uses the correct object pattern', () => {
-    const source = readSrc('handlers/prompt-selection-callback.ts');
-
-    // This is the reference implementation — must stay correct
-    expect(source).toContain('prompt: result.prompt');
-    expect(source).toContain('temperature: result.temperature');
-    expect(source).toContain('maxTokens: result.maxTokens');
-    expect(source).toContain('v3Requested: !!result.prompt');
-  });
-});
 
 // =============================================================================
 // 9. GUARD: Future call sites must follow the contract

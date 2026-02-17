@@ -21,33 +21,13 @@ function readSrc(relativePath: string): string {
 }
 
 // =============================================================================
-// RC1: v3Requested guard in prompt-selection-callback.ts
+// RC1: v3Requested guard
+// Gate 2: prompt-selection-callback.ts deleted — Socratic engine replaces
+// keyboard flow. Only surviving call site (status-server.ts) is tested.
 // =============================================================================
 
 describe('RC1: v3Requested guard', () => {
-  const callbackSource = readSrc('handlers/prompt-selection-callback.ts');
-
-  it('v3Requested is NOT hardcoded to true', () => {
-    // The bug was: v3Requested: true (hardcoded)
-    // Should NOT have a bare "v3Requested: true" that isn't in a comment
-    const lines = callbackSource.split('\n');
-    for (const line of lines) {
-      const trimmed = line.trim();
-      if (trimmed.startsWith('//') || trimmed.startsWith('*')) continue;
-      // Allow "v3Requested: true" in object literals passed to tests, but NOT in the main flow
-      // The key pattern to reject: "v3Requested: true," without !! or conditional
-      if (trimmed === 'v3Requested: true,' || trimmed === 'v3Requested: true') {
-        // Check it's not inside a comment block
-        expect(trimmed).not.toBe('v3Requested: true,');
-      }
-    }
-  });
-
-  it('v3Requested is guarded by !!result.prompt', () => {
-    expect(callbackSource).toContain('v3Requested: !!result.prompt');
-  });
-
-  it('status-server.ts already guards v3Requested correctly', () => {
+  it('status-server.ts guards v3Requested correctly', () => {
     const statusSource = readSrc('health/status-server.ts');
     expect(statusSource).toContain('!!composedPrompt?.prompt');
   });

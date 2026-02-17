@@ -11,14 +11,16 @@
 import type { Context } from 'grammy';
 import { logger } from '../logger';
 import {
-  getPendingContent,
-  updatePendingContent,
-  removePendingContent,
   parseCallbackData,
   buildConfirmationKeyboard,
   formatContentPreview,
   type PendingContent,
 } from '../conversation/content-confirm';
+import {
+  getPendingContent,
+  updatePendingContent,
+  removePendingContent,
+} from '../conversation/pending-content';
 import { createAuditTrail, type AuditEntry } from '../conversation/audit';
 import { buildContentPayload } from '../conversation/content-router';
 import { type Pillar as MediaPillar } from '../conversation/media';
