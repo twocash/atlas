@@ -106,13 +106,15 @@ When writing specs for new features, include:
 
 Before marking any Work Queue item as "Done":
 
-- [ ] Feature works in Telegram
-- [ ] Help system updated (SOP-001)
+- [ ] Feature works in its target surface (Telegram / Chrome Extension / Bridge)
+- [ ] Help system updated (SOP-001) (if Telegram command)
 - [ ] **Run MASTER BLASTER verification (`bun run verify`)** ← REQUIRED (SOP-009)
+- [ ] MASTER BLASTER covers ALL Atlas surfaces (Telegram + Chrome Ext + Bridge)
 - [ ] Notion Work Queue item updated with Output link
-- [ ] Tested on mobile (if applicable)
-- [ ] No console errors in bot logs
+- [ ] Tested on mobile/browser (if applicable)
+- [ ] No console errors in bot/extension logs
 - [ ] **Verify test coverage bug auto-created** (if Pit Crew feature)
+- [ ] **New test files added to Master Blaster runner** (if new tests were created)
 
 ---
 
@@ -653,9 +655,11 @@ What this unlocks for Jim:
 
 ### Overview
 
-MASTER BLASTER is Atlas's unified quality verification system. It chains all test suites into a single command that MUST pass before any feature goes to human testing.
+MASTER BLASTER is Atlas's unified quality verification system. It chains ALL test suites across the FULL Atlas surface — Telegram bot, Chrome Extension, Bridge, and cross-cutting integrations — into a single command that MUST pass before any feature goes to human testing.
 
 **Vision:** Ship feature → Auto-bug for test coverage → Run MASTER BLASTER → Pass → Human testing
+
+**Philosophy:** Loud, informative fails — not silent fallbacks. Every surface of Atlas is verified end-to-end.
 
 ### Rule: No Ship Without Verification
 
@@ -666,13 +670,13 @@ This is a hard gate. Do not proceed to human testing with failing tests.
 ### Commands
 
 ```bash
-# Default: Unit + Smoke + Integration tests
+# Default: All surfaces, strict mode (fallbacks disabled)
 bun run verify
 
-# Quick: Unit tests only (fast feedback)
+# Quick: Unit + regression + chrome ext unit (fast feedback)
 bun run verify:quick
 
-# Full: All suites including E2E
+# Full: All suites including E2E + Playwright bridge
 bun run verify:full
 ```
 
@@ -686,13 +690,33 @@ bun run verify:full
 
 ### Test Suites
 
-| Suite | Command | What It Tests |
-|-------|---------|---------------|
+#### Telegram Bot Surface (`apps/telegram/`)
+
+| Suite | Runner | What It Tests |
+|-------|--------|---------------|
 | **Canary Tests** | `scripts/canary-tests.ts` | Silent failures, degraded output |
 | **Unit Tests** | `bun test` | Individual functions/classes |
+| **Regression Tests** | `test/*.test.ts` (9 files) | Bug regressions, intent-first, composition |
+| **Action Feed Producers** | `test/action-feed-producers.test.ts` | P2/P3 approval + review producers |
+| **Intent-First Integration** | `test/intent-first-integration.test.ts` | Full intent routing flow |
+| **Autonomous Repair (Pit Stop)** | Inline | Zone classifier, swarm dispatch, permissions |
 | **Smoke Tests** | `scripts/smoke-test-all.ts` | All APIs, tools, integrations |
 | **E2E Tests** | `src/health/test-runner.ts` | End-to-end workflows |
-| **Integration** | Inline | Health checks, connectivity |
+| **Integration** | Inline | Health checks, Notion, Claude API |
+
+#### Chrome Extension Surface (`apps/chrome-ext-vite/`)
+
+| Suite | Runner | What It Tests |
+|-------|--------|---------------|
+| **Unit Tests** | `test/dom-to-notion.test.ts` + `test/ai-classification.test.ts` | DOM extraction, Notion sync, 4-tier AI classification |
+| **Build Verification** | `node build.mjs` | esbuild content scripts + Vite sidepanel build clean |
+
+#### Bridge Surface (`packages/bridge/`)
+
+| Suite | Runner | What It Tests |
+|-------|--------|---------------|
+| **Tool Dispatch Pipeline** | `test/tool-dispatch-pipeline.test.ts` | Schema validation, MCP routing, protocol contracts |
+| **Bridge Stability (Playwright)** | `test-bridge-stability.mjs` | WebSocket relay, Chrome extension integration |
 
 ### Canary Tests (Silent Failure Detection)
 
