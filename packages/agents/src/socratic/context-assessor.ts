@@ -31,6 +31,13 @@ function assessContactData(signals: ContextSignals): SlotAssessment {
   const gaps: string[] = [];
 
   const data = signals.contactData;
+
+  // URL content shares (articles, social media posts) don't require contact data.
+  // Treat the slot as fully satisfied to avoid asking "who is this person?" for URLs.
+  if (!data && signals.contentSignals?.hasUrl) {
+    return { slot, weight, completeness: 1, contribution: weight, gaps: [] };
+  }
+
   if (!data || !data.isKnown) {
     return { slot, weight, completeness: 0, contribution: 0, gaps: ['No contact data available'] };
   }

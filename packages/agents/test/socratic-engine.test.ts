@@ -317,6 +317,64 @@ describe('Socratic Engine', () => {
     });
   });
 
+  describe('URL content shares do NOT ask contact questions (P0 regression)', () => {
+    it('Threads URL with classification resolves without contact questions', async () => {
+      const threadsSignals: ContextSignals = {
+        contentSignals: {
+          topic: 'AI agents discussion',
+          title: 'Thread: AI Agents',
+          hasUrl: true,
+          url: 'https://www.threads.com/@omarsar0/post/DUgDaW0EXaP',
+          contentLength: 200,
+          sentiment: 'positive',
+        },
+        classification: {
+          intent: 'capture',
+          pillar: 'The Grove',
+          confidence: 0.8,
+        },
+      };
+
+      const result = await engine.assess(threadsSignals, 'telegram');
+
+      // With contact_data N/A for URLs + decent content + classification,
+      // should auto-resolve or ask about content/classification — NOT contacts
+      if (result.type === 'question') {
+        for (const q of result.questions) {
+          expect(q.targetSlot).not.toBe('contact_data');
+        }
+      }
+      // Auto-resolve is also acceptable
+    });
+
+    it('Twitter URL share does not generate contact_data questions', async () => {
+      const twitterSignals: ContextSignals = {
+        contentSignals: {
+          topic: 'ML research',
+          title: 'Karpathy on ML scaling',
+          hasUrl: true,
+          url: 'https://x.com/karpathy/status/1234567890',
+        },
+      };
+
+      const result = await engine.assess(twitterSignals, 'telegram');
+
+      if (result.type === 'question') {
+        for (const q of result.questions) {
+          expect(q.targetSlot).not.toBe('contact_data');
+        }
+      }
+    });
+
+    it('text message WITHOUT URL still asks contact questions when relevant', async () => {
+      // Empty signals (no URL) should still have contact_data as a possible gap
+      const result = await engine.assess(EMPTY_SIGNALS, 'chrome');
+
+      // This should generate questions — and contact_data is a valid target
+      expect(result.type).toBe('question');
+    });
+  });
+
   describe('Config unavailable', () => {
     it('returns error when config is null', async () => {
       invalidateCache();

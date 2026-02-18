@@ -108,6 +108,27 @@ describe('Content Pipeline Architecture', () => {
     });
   });
 
+  describe('content-router.ts detects social media URLs (P0 regression)', () => {
+    it('detects threads.com as social media', async () => {
+      const content = await readFileContent(join(CONVERSATION, 'content-router.ts'));
+      // Must match threads.com (not just threads.net)
+      expect(content).toMatch(/threads\.com/);
+    });
+
+    it('detectContentSource handles threads.com URLs', async () => {
+      // Dynamic import to test the actual function
+      const { detectContentSource } = await import('../content-router');
+      expect(detectContentSource('https://www.threads.com/@omarsar0/post/DUgDaW0EXaP')).toBe('threads');
+      expect(detectContentSource('https://threads.com/@test/post/ABC123')).toBe('threads');
+    });
+
+    it('detectContentSource handles twitter/x URLs', async () => {
+      const { detectContentSource } = await import('../content-router');
+      expect(detectContentSource('https://twitter.com/karpathy/status/123')).toBe('twitter');
+      expect(detectContentSource('https://x.com/elonmusk/status/456')).toBe('twitter');
+    });
+  });
+
   describe('handler.ts does NOT contain inline prompt logic', () => {
     it('does not contain system prompt strings', async () => {
       const content = await readFileContent(join(CONVERSATION, 'handler.ts'));

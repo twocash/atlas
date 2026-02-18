@@ -83,7 +83,7 @@ export function detectContentSource(url: string): ContentSource {
     const hostname = new URL(url).hostname.toLowerCase();
 
     // Social media - requires browser extraction with hydration gates
-    if (hostname.includes('threads.net')) return 'threads';
+    if (hostname.includes('threads.net') || hostname.includes('threads.com')) return 'threads';
     if (hostname.includes('twitter.com') || hostname.includes('x.com')) return 'twitter';
     if (hostname.includes('linkedin.com')) return 'linkedin';
 

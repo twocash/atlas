@@ -167,6 +167,101 @@ describe('Context Assessor', () => {
     });
   });
 
+  describe('URL content shares → contact_data N/A (P0 regression)', () => {
+    it('URL share without contact data: contact_data slot fully satisfied', () => {
+      const signals: ContextSignals = {
+        contentSignals: {
+          topic: 'AI agents',
+          title: 'Thread about AI agents',
+          hasUrl: true,
+          url: 'https://www.threads.com/@omarsar0/post/DUgDaW0EXaP',
+          contentLength: 200,
+        },
+      };
+
+      const result = assessContext(signals);
+      const contactSlot = result.slots.find(s => s.slot === 'contact_data');
+
+      // Contact data should be treated as N/A (not a gap) for URL shares
+      expect(contactSlot!.completeness).toBe(1);
+      expect(contactSlot!.gaps.length).toBe(0);
+    });
+
+    it('URL share: contact_data NOT in top gaps', () => {
+      const signals: ContextSignals = {
+        contentSignals: {
+          topic: 'AI trends',
+          hasUrl: true,
+          url: 'https://www.threads.com/@test/post/ABC123',
+        },
+      };
+
+      const result = assessContext(signals);
+      const gapSlots = result.topGaps.map(g => g.slot);
+
+      // contact_data should NOT appear as a gap for URL content
+      expect(gapSlots).not.toContain('contact_data');
+    });
+
+    it('URL share with classification: higher confidence than without URL fix', () => {
+      const signals: ContextSignals = {
+        contentSignals: {
+          topic: 'AI governance',
+          hasUrl: true,
+          url: 'https://twitter.com/karpathy/status/123',
+          title: 'AI Governance Thread',
+        },
+        classification: {
+          intent: 'capture',
+          pillar: 'The Grove',
+          confidence: 0.8,
+        },
+      };
+
+      const result = assessContext(signals);
+      // With contact_data N/A (0.30 contributed), content (0.25 partial),
+      // classification (0.20 partial), skill_req (0.10 default) → should be >0.5
+      expect(result.overallConfidence).toBeGreaterThan(0.5);
+    });
+
+    it('non-URL text without contact data: contact_data IS a gap (unchanged behavior)', () => {
+      const signals: ContextSignals = {
+        contentSignals: {
+          topic: 'Random thought',
+          title: 'Idea about something',
+        },
+      };
+
+      const result = assessContext(signals);
+      const gapSlots = result.topGaps.map(g => g.slot);
+
+      // Non-URL content should still flag missing contact data
+      expect(gapSlots).toContain('contact_data');
+    });
+
+    it('URL share WITH known contact: normal contact scoring (not overridden)', () => {
+      const signals: ContextSignals = {
+        contactData: {
+          name: 'Jane Smith',
+          relationship: 'colleague',
+          isKnown: true,
+        },
+        contentSignals: {
+          topic: 'AI trends',
+          hasUrl: true,
+          url: 'https://linkedin.com/posts/janesmith',
+        },
+      };
+
+      const result = assessContext(signals);
+      const contactSlot = result.slots.find(s => s.slot === 'contact_data');
+
+      // When contact data IS provided, normal scoring applies
+      expect(contactSlot!.completeness).toBeGreaterThan(0);
+      expect(contactSlot!.completeness).toBeLessThan(1);
+    });
+  });
+
   describe('reassessWithAnswer', () => {
     it('incorporates new contact data and increases confidence', () => {
       const original = assessContext({});
