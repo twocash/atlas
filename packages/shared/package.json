@@ -29,6 +29,10 @@
     "./error-escalation": {
       "types": "./dist/error-escalation.d.ts",
       "import": "./dist/error-escalation.js"
+    },
+    "./test-failure-reporter": {
+      "types": "./dist/test-failure-reporter.d.ts",
+      "import": "./dist/test-failure-reporter.js"
     }
   },
   "scripts": {
