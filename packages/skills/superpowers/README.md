@@ -9,6 +9,8 @@ Every skill produces verifiable output, enabling human verification.
 
 ## Skills
 
+### Agent Coordination
+
 | Skill | Purpose | When |
 |-------|---------|------|
 | `atlas-onboarding` | Load context before work | Session start |
@@ -17,6 +19,17 @@ Every skill produces verifiable output, enabling human verification.
 | `atlas-debug` | Root cause investigation | Any bug fix |
 | `atlas-completion` | Verification checklist | Before marking done |
 | `atlas-mcp-hunter` | Find/install MCP servers | Capability expansion |
+
+### Voice & Content (Layer 1 Knowledge Architecture)
+
+| Skill | Purpose | When |
+|-------|---------|------|
+| `jim-voice-writing-style` | Jim's voice DNA, style guide, quality checklist | Any content generation — executive comms, strategy docs, client deliverables |
+| `linkedin-thinkpiece` | LinkedIn thought leadership architecture (reveal-and-reframe structure, 3 modes) | LinkedIn pieces, thinkpieces, strategic tech commentary |
+
+**These are MANDATORY for content generation tasks.** Read before writing anything that represents Jim's voice.
+
+*Synced from Claude.ai Atlas PM project on 2026-02-17.*
 
 ## Usage
 
