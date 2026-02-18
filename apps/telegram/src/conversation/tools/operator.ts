@@ -11,6 +11,7 @@ import { readFile, appendFile, access, mkdir, writeFile, unlink, readdir } from 
 import { join, resolve, normalize, extname, dirname } from 'path';
 import { fileURLToPath } from 'url';
 import { Client } from '@notionhq/client';
+import { NOTION_DB } from '@atlas/shared/config';
 import { logger } from '../../logger';
 import { getScheduledTasks, registerTask, unregisterTask, type ScheduledTask } from '../../scheduler';
 import { restartMcp, getMcpStatus, listMcpTools } from '../../mcp';
@@ -33,8 +34,8 @@ const SCHEDULES_DIR = join(WORKSPACE_ROOT, 'data/schedules');
 
 const ALLOWED_EXTENSIONS = ['.ts', '.js', '.py', '.sh'];
 
-// Work Queue for Bug tracking
-const WORK_QUEUE_DB_ID = '3d679030-b76b-43bd-92d8-1ac51abb4a28';
+// Work Queue for Bug tracking (from @atlas/shared/config)
+const WORK_QUEUE_DB_ID = NOTION_DB.WORK_QUEUE;
 
 // Lazy-loaded Notion client
 let _notion: Client | null = null;

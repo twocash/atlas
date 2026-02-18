@@ -15,6 +15,7 @@ import { config } from "dotenv";
 config({ override: true });
 
 import { Client } from "@notionhq/client";
+import { NOTION_DB } from "@atlas/shared/config";
 
 console.log("═══════════════════════════════════════════════════════════════");
 console.log("       Atlas Neuro-Link Pre-Flight Protocol");
@@ -63,8 +64,8 @@ if (process.env.NOTION_API_KEY) {
   const notion = new Client({ auth: process.env.NOTION_API_KEY });
 
   const DBS = {
-    WORK_QUEUE: "3d679030-b76b-43bd-92d8-1ac51abb4a28",
-    DEV_PIPELINE: "ce6fbf1b-ee30-433d-a9e6-b338552de7c9",
+    WORK_QUEUE: NOTION_DB.WORK_QUEUE,
+    DEV_PIPELINE: NOTION_DB.DEV_PIPELINE,
   };
 
   // Check Work Queue

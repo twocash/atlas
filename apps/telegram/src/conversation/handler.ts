@@ -45,6 +45,7 @@ import { maybeHandleAsContentShare, triggerMediaConfirmation, triggerInstantClas
 import { hasPendingSocraticSessionForUser } from './socratic-session';
 import { handleSocraticAnswer } from './socratic-adapter';
 import { logAction, isFeatureEnabled } from '../skills';
+import { reportFailure } from '@atlas/shared/error-escalation';
 import { classifyWithFallback, triageForAudit, triageMessage } from '../cognitive/triage-skill';
 import type { TriageResult } from '../cognitive/triage-skill';
 import { enrichWithContextSlots, type EnrichmentResult } from './context-enrichment';
@@ -767,6 +768,7 @@ export async function handleConversation(ctx: Context): Promise<void> {
 
   } catch (error) {
     logger.error('Conversation handler error', { error, userId });
+    reportFailure('conversation-handler', error, { userId });
     await setReaction(ctx, REACTIONS.ERROR);
     await ctx.reply("Something went wrong. Please try again.");
   }

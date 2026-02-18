@@ -6,6 +6,7 @@
 
 import type Anthropic from '@anthropic-ai/sdk';
 import { Client } from '@notionhq/client';
+import { NOTION_DB } from '@atlas/shared/config';
 import { logger } from '../../logger';
 import { logWQActivity, type Pillar } from '../audit';
 import { searchNotion as globalNotionSearch } from '../../notion';
@@ -15,12 +16,10 @@ const notionApiKey = process.env.NOTION_API_KEY;
 console.log('[INIT] Notion client init, key prefix:', notionApiKey?.substring(0, 10) + '...');
 const notion = new Client({ auth: notionApiKey });
 
-// Notion DATA SOURCE IDs — from spec, verified correct
-// Database page IDs for Notion SDK
-const FEED_DATABASE_ID = '90b2b33f-4b44-4b42-870f-8d62fb8cbf18';
-const WORK_QUEUE_DATABASE_ID = '3d679030-b76b-43bd-92d8-1ac51abb4a28';
-const DEV_PIPELINE_DATABASE_ID = 'ce6fbf1b-ee30-433d-a9e6-b338552de7c9';
-// NO INBOX — Telegram replaces it per spec
+// Canonical IDs from @atlas/shared/config — single source of truth
+const FEED_DATABASE_ID = NOTION_DB.FEED;
+const WORK_QUEUE_DATABASE_ID = NOTION_DB.WORK_QUEUE;
+const DEV_PIPELINE_DATABASE_ID = NOTION_DB.DEV_PIPELINE;
 
 // Helper to safely extract property values from Notion pages
 function getTitle(props: Record<string, unknown>, key: string): string {

@@ -16,11 +16,12 @@
  */
 
 import { Client } from '@notionhq/client';
+import { NOTION_DB } from '@atlas/shared/config';
 import { seedPatterns, type TriagePattern } from '../cognitive/triage-patterns';
 import { generatePatternKey } from '../cognitive/triage-patterns';
 
-// Database ID (canonical - from CLAUDE.md)
-const FEED_DATABASE_ID = '90b2b33f-4b44-4b42-870f-8d62fb8cbf18';
+// Feed 2.0 database ID (from @atlas/shared/config)
+const FEED_DATABASE_ID = NOTION_DB.FEED;
 
 // Parse command line args
 const args = process.argv.slice(2);

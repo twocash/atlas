@@ -7,10 +7,11 @@ import { config } from 'dotenv';
 config({ override: true });
 
 import { Client } from '@notionhq/client';
+import { NOTION_DB } from '@atlas/shared/config';
 
 const notion = new Client({ auth: process.env.NOTION_API_KEY });
-const DEV_PIPELINE_ID = 'ce6fbf1b-ee30-433d-a9e6-b338552de7c9';
-const WORK_QUEUE_ID = '3d679030-b76b-43bd-92d8-1ac51abb4a28';
+const DEV_PIPELINE_ID = NOTION_DB.DEV_PIPELINE;
+const WORK_QUEUE_ID = NOTION_DB.WORK_QUEUE;
 
 interface UpdateItem {
   id: string;

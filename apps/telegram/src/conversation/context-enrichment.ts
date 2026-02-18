@@ -13,6 +13,7 @@
 import { assembleContext, type AssemblyResult } from "../../../../packages/bridge/src/context"
 import type { OrchestrationRequest, SlotId, ComplexityTier } from "../../../../packages/bridge/src/types/orchestration"
 import type { TriageResult } from "../cognitive/triage-skill"
+import { reportFailure } from "@atlas/shared/error-escalation"
 import { logger } from "../logger"
 
 // ─── Types ───────────────────────────────────────────────
@@ -117,6 +118,7 @@ export async function enrichWithContextSlots(
       stack: (err as Error).stack,
       assemblyLatencyMs,
     })
+    reportFailure("context-enrichment", err, { assemblyLatencyMs })
     throw err
   }
 }

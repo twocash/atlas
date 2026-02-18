@@ -21,6 +21,14 @@
     "./notion": {
       "types": "./dist/notion/index.d.ts",
       "import": "./dist/notion/index.js"
+    },
+    "./config": {
+      "types": "./dist/config.d.ts",
+      "import": "./dist/config.js"
+    },
+    "./error-escalation": {
+      "types": "./dist/error-escalation.d.ts",
+      "import": "./dist/error-escalation.js"
     }
   },
   "scripts": {

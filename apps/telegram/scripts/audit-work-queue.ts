@@ -8,12 +8,13 @@ import { config } from 'dotenv';
 import { join, dirname } from 'path';
 import { fileURLToPath } from 'url';
 import { writeFileSync } from 'fs';
+import { NOTION_DB } from '@atlas/shared/config';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 config({ path: join(__dirname, '..', '.env'), override: true });
 
 const notion = new Client({ auth: process.env.NOTION_API_KEY });
-const WORK_QUEUE_ID = '3d679030-b76b-43bd-92d8-1ac51abb4a28';
+const WORK_QUEUE_ID = NOTION_DB.WORK_QUEUE;
 
 async function main() {
   const results = await notion.databases.query({

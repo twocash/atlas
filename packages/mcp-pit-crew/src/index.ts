@@ -20,12 +20,13 @@ import {
 import { readFile, writeFile, mkdir, readdir } from 'fs/promises';
 import { join } from 'path';
 import { Client } from '@notionhq/client';
+import { NOTION_DB } from '@atlas/shared/config';
 import { convertMarkdownToNotionBlocks } from '@atlas/shared/notion';
 
 // === NOTION CLIENT ===
 // Re-enabled for guaranteed URL return (Neuro-Link Sprint)
 const notion = new Client({ auth: process.env.NOTION_API_KEY });
-const DEV_PIPELINE_DATABASE_ID = 'ce6fbf1b-ee30-433d-a9e6-b338552de7c9';
+const DEV_PIPELINE_DATABASE_ID = NOTION_DB.DEV_PIPELINE;
 
 // === AUTO-BUG CONFIGURATION ===
 // When enabled, automatically creates "Test Coverage" bugs when features are shipped

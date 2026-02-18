@@ -6,8 +6,9 @@
  */
 
 import { Client } from '@notionhq/client';
+import { NOTION_DB } from '@atlas/shared/config';
 
-const WORK_QUEUE_DB_ID = '3d679030-b76b-43bd-92d8-1ac51abb4a28';
+const WORK_QUEUE_DB_ID = NOTION_DB.WORK_QUEUE;
 
 async function testWorkQueueUpdate() {
   console.log('🧪 Testing work_queue_update edge cases...\n');

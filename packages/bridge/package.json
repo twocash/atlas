@@ -13,6 +13,7 @@
     "@types/bun": "latest"
   },
   "dependencies": {
+    "@atlas/shared": "workspace:*",
     "@modelcontextprotocol/sdk": "^1.26.0",
     "@notionhq/client": "^2.2.14"
   }

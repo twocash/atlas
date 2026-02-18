@@ -15,16 +15,17 @@ import { getFeatureFlags, getSafetyLimits } from '../config/features';
 import { classifyZone, createOperation, type PitCrewOperation } from '../skills/zone-classifier';
 import { executeSwarmFix, type SwarmTask, type SwarmResult } from '../pit-crew/swarm-dispatch';
 import { executeWithAPI } from '../pit-crew/api-dispatch';
+import { NOTION_DB } from '@atlas/shared/config';
 
 // ==========================================
 // Constants
 // ==========================================
 
-/** Feed 2.0 Database ID (canonical from CLAUDE.md) */
-const FEED_DB_ID = '90b2b33f-4b44-4b42-870f-8d62fb8cbf18';
+/** Feed 2.0 Database ID (from @atlas/shared/config) */
+const FEED_DB_ID = NOTION_DB.FEED;
 
 /** Work Queue 2.0 Database ID (for creating tasks) */
-const WORK_QUEUE_DB_ID = '3d679030-b76b-43bd-92d8-1ac51abb4a28';
+const WORK_QUEUE_DB_ID = NOTION_DB.WORK_QUEUE;
 
 // ==========================================
 // State

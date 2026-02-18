@@ -8,17 +8,18 @@
  */
 
 import { Client } from "@notionhq/client";
+import { NOTION_DB } from '@atlas/shared/config';
 import { logger } from "../logger";
 
-// Hardcoded check against Canonical IDs (from CLAUDE.md)
+// Schema validation against canonical IDs from @atlas/shared/config
 const REQUIRED_SCHEMA: Record<string, { name: string; properties: string[] }> = {
   // Work Queue 2.0
-  '3d679030-b76b-43bd-92d8-1ac51abb4a28': {
+  [NOTION_DB.WORK_QUEUE]: {
     name: 'Work Queue 2.0',
     properties: ['Task', 'Status', 'Priority', 'Type', 'Pillar']
   },
   // Dev Pipeline
-  'ce6fbf1b-ee30-433d-a9e6-b338552de7c9': {
+  [NOTION_DB.DEV_PIPELINE]: {
     name: 'Dev Pipeline',
     properties: ['Discussion', 'Status', 'Priority', 'Type']
   }

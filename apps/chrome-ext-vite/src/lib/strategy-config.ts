@@ -190,7 +190,9 @@ export async function getStrategyConfig(): Promise<StrategyConfig | null> {
         console.warn('[Strategy] Using stale cache as fallback')
         return stale.config
       }
-    } catch {}
+    } catch (staleErr) {
+      console.error('[Strategy] Stale cache read also failed:', staleErr)
+    }
 
     return null
   }

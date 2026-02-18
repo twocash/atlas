@@ -6,6 +6,7 @@
  */
 
 import { Client } from '@notionhq/client';
+import { NOTION_DB } from '@atlas/shared/config';
 import type {
   TelemetrySnapshot,
   PromotionDecision,
@@ -16,8 +17,8 @@ import { getLocalStore, type JsonLocalStore } from './local-store';
 import type { LogWatcher, LogStats } from './log-watcher';
 import type { PatternRegistry } from './pattern-registry';
 
-// Feed 2.0 Database ID (canonical)
-const FEED_DATABASE_ID = '90b2b33f-4b44-4b42-870f-8d62fb8cbf18';
+// Feed 2.0 Database ID (from @atlas/shared/config)
+const FEED_DATABASE_ID = NOTION_DB.FEED;
 
 // ==========================================
 // Telemetry Aggregator Class

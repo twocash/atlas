@@ -41,6 +41,7 @@ function getGemini(): GoogleGenAI {
 
 // Notion client for Feed 2.0
 import { Client } from '@notionhq/client';
+import { NOTION_DB } from '@atlas/shared/config';
 
 let notionClient: Client | null = null;
 
@@ -51,8 +52,8 @@ function getNotion(): Client {
   return notionClient;
 }
 
-// Feed 2.0 database ID
-const FEED_DB_ID = '90b2b33f-4b44-4b42-870f-8d62fb8cbf18';
+// Feed 2.0 database ID (from @atlas/shared/config)
+const FEED_DB_ID = NOTION_DB.FEED;
 
 /**
  * Log media to Feed 2.0 in Notion

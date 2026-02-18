@@ -13,7 +13,9 @@
 import { config } from 'dotenv';
 config({ override: true });
 
-const FEED_DATABASE_ID = '90b2b33f-4b44-4b42-870f-8d62fb8cbf18';
+import { NOTION_DB } from '@atlas/shared/config';
+
+const FEED_DATABASE_ID = NOTION_DB.FEED;
 
 async function main() {
   console.log('╔══════════════════════════════════════════════════════════════╗');

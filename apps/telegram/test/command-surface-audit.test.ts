@@ -254,10 +254,10 @@ describe('/health command correctness', () => {
       'utf-8'
     );
 
-    // Canonical database IDs from CLAUDE.md
-    expect(content).toContain('90b2b33f-4b44-4b42-870f-8d62fb8cbf18'); // Feed 2.0
-    expect(content).toContain('3d679030-b76b-43bd-92d8-1ac51abb4a28'); // Work Queue 2.0
-    expect(content).toContain('ce6fbf1b-ee30-433d-a9e6-b338552de7c9'); // Dev Pipeline
+    // Canonical database IDs are now imported from @atlas/shared/config
+    expect(content).toContain('NOTION_DB.FEED'); // Feed 2.0
+    expect(content).toContain('NOTION_DB.WORK_QUEUE'); // Work Queue 2.0
+    expect(content).toContain('NOTION_DB.DEV_PIPELINE'); // Dev Pipeline
   });
 
   it('does NOT reference any legacy database IDs', async () => {

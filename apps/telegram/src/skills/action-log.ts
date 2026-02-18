@@ -8,6 +8,7 @@
  */
 
 import { Client } from '@notionhq/client';
+import { NOTION_DB } from '@atlas/shared/config';
 import { logger } from '../logger';
 import { isFeatureEnabled } from '../config/features';
 import { generateIntentHash, type IntentHashResult } from './intent-hash';
@@ -16,8 +17,8 @@ import type { Pillar, RequestType, StructuredContext } from '../conversation/typ
 // Initialize Notion client
 const notion = new Client({ auth: process.env.NOTION_API_KEY });
 
-// Feed 2.0 database ID (canonical - from CLAUDE.md)
-const FEED_DATABASE_ID = '90b2b33f-4b44-4b42-870f-8d62fb8cbf18';
+// Feed 2.0 database ID (from @atlas/shared/config)
+const FEED_DATABASE_ID = NOTION_DB.FEED;
 
 /**
  * Action types for logging

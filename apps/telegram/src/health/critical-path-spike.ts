@@ -14,6 +14,7 @@ import { config } from 'dotenv';
 config({ override: true });
 
 import { Client } from '@notionhq/client';
+import { NOTION_DB } from '@atlas/shared/config';
 import { logger } from '../logger';
 
 // Test result structure
@@ -39,10 +40,10 @@ interface SpikeReport {
   critical: boolean; // True if ANY test failed
 }
 
-// Canonical database IDs - hardcoded for reliability
-const DB_WORK_QUEUE = '3d679030-b76b-43bd-92d8-1ac51abb4a28';
-const DB_FEED = '90b2b33f-4b44-4b42-870f-8d62fb8cbf18';
-const DB_DEV_PIPELINE = 'ce6fbf1b-ee30-433d-a9e6-b338552de7c9';
+// Canonical IDs from @atlas/shared/config
+const DB_WORK_QUEUE = NOTION_DB.WORK_QUEUE;
+const DB_FEED = NOTION_DB.FEED;
+const DB_DEV_PIPELINE = NOTION_DB.DEV_PIPELINE;
 
 // Test utilities
 async function runSpikeTest(

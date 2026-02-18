@@ -13,11 +13,12 @@
 import type Anthropic from '@anthropic-ai/sdk';
 import { Client } from '@notionhq/client';
 import { convertMarkdownToNotionBlocks } from '@atlas/shared/notion';
+import { NOTION_DB } from '@atlas/shared/config';
 import { logger } from '../../logger';
 import { executeMcpTool, isMcpTool, getMcpStatus } from '../../mcp';
 
-// Database ID from docs/DATABASE-IDS-CANONICAL.md
-const DB_WORK_QUEUE = '3d679030-b76b-43bd-92d8-1ac51abb4a28';
+// Canonical IDs from @atlas/shared/config
+const DB_WORK_QUEUE = NOTION_DB.WORK_QUEUE;
 
 /**
  * Extract Notion page ID from URL
@@ -325,7 +326,7 @@ async function routeToPitCrew(params: {
 // Fallback: Direct Dev Pipeline Creation
 // ==========================================
 
-const DEV_PIPELINE_DATABASE_ID = 'ce6fbf1b-ee30-433d-a9e6-b338552de7c9';
+const DEV_PIPELINE_DATABASE_ID = NOTION_DB.DEV_PIPELINE;
 
 async function createDirectDevPipelineItem(params: {
   title: string;

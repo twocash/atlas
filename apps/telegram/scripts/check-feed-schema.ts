@@ -3,12 +3,13 @@ import { Client } from '@notionhq/client';
 import { config } from 'dotenv';
 import { join, dirname } from 'path';
 import { fileURLToPath } from 'url';
+import { NOTION_DB } from '@atlas/shared/config';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 config({ path: join(__dirname, '..', '.env'), override: true });
 
 const notion = new Client({ auth: process.env.NOTION_API_KEY });
-const FEED_ID = '90b2b33f-4b44-4b42-870f-8d62fb8cbf18';
+const FEED_ID = NOTION_DB.FEED;
 
 async function main() {
   const db = await notion.databases.retrieve({ database_id: FEED_ID });

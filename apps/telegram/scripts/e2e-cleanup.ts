@@ -9,13 +9,14 @@
 
 import { Client } from '@notionhq/client';
 import { TEST_MARKERS } from './e2e-test-matrix';
+import { NOTION_DB } from '@atlas/shared/config';
 
 // ==========================================
-// Config
+// Config — Canonical IDs from @atlas/shared/config
 // ==========================================
 
-const FEED_DB = '90b2b33f-4b44-4b42-870f-8d62fb8cbf18';
-const WORK_QUEUE_DB = '3d679030-b76b-43bd-92d8-1ac51abb4a28';
+const FEED_DB = NOTION_DB.FEED;
+const WORK_QUEUE_DB = NOTION_DB.WORK_QUEUE;
 
 // ==========================================
 // Notion Client

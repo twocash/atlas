@@ -12,6 +12,7 @@ export { checkNotionAccess, formatHealthCheck, ensureNotionAccess } from './noti
 export { runCriticalPathSpikes } from './critical-path-spike';
 
 import { Client } from '@notionhq/client';
+import { NOTION_DB } from '@atlas/shared/config';
 import Anthropic from '@anthropic-ai/sdk';
 import { readFile, access } from 'fs/promises';
 import { join, dirname } from 'path';
@@ -318,7 +319,7 @@ async function checkNotionDatabases(): Promise<HealthCheckResult[]> {
     message: dbAccess.feed
       ? 'Feed 2.0 database accessible'
       : 'Feed 2.0 NOT accessible - CHECK FOR WRONG DATABASE ID IN CODE (not sharing)',
-    details: { databaseId: '90b2b33f-4b44-4b42-870f-8d62fb8cbf18' }
+    details: { databaseId: NOTION_DB.FEED }
   });
 
   results.push({
@@ -327,7 +328,7 @@ async function checkNotionDatabases(): Promise<HealthCheckResult[]> {
     message: dbAccess.workQueue
       ? 'Work Queue 2.0 database accessible'
       : 'Work Queue 2.0 NOT accessible - CHECK FOR WRONG DATABASE ID IN CODE (not sharing)',
-    details: { databaseId: '3d679030-b76b-43bd-92d8-1ac51abb4a28' }
+    details: { databaseId: NOTION_DB.WORK_QUEUE }
   });
 
   // Import and call the actual tool functions to test the real code paths

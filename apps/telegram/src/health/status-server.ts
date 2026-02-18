@@ -10,6 +10,7 @@
 
 import { Hono } from 'hono';
 import { cors } from 'hono/cors';
+import { NOTION_DB } from '@atlas/shared/config';
 import { logger } from '../logger';
 import type { Pillar } from '../conversation/types';
 
@@ -261,9 +262,9 @@ async function processCapture(capture: CaptureRequest) {
     const { Client } = await import('@notionhq/client');
     const notion = new Client({ auth: process.env.NOTION_API_KEY });
 
-    // Database IDs (canonical)
-    const FEED_DB = '90b2b33f-4b44-4b42-870f-8d62fb8cbf18';
-    const WORK_QUEUE_DB = '3d679030-b76b-43bd-92d8-1ac51abb4a28';
+    // Canonical IDs from @atlas/shared/config
+    const FEED_DB = NOTION_DB.FEED;
+    const WORK_QUEUE_DB = NOTION_DB.WORK_QUEUE;
 
     const entryTitle = title || url;
     const capturedAt = new Date().toISOString();

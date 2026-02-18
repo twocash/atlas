@@ -5,6 +5,7 @@
  */
 
 import type Anthropic from '@anthropic-ai/sdk';
+import { NOTION_DB } from '@atlas/shared/config';
 import { logger } from '../../logger';
 
 export const AGENT_TOOLS: Anthropic.Tool[] = [
@@ -265,7 +266,7 @@ async function executeDispatchDraft(
   const { Client } = await import('@notionhq/client');
   const notion = new Client({ auth: process.env.NOTION_API_KEY });
 
-  const WORK_QUEUE_DATABASE_ID = '3d679030-b76b-43bd-92d8-1ac51abb4a28';
+  const WORK_QUEUE_DATABASE_ID = NOTION_DB.WORK_QUEUE;
 
   try {
     const taskTitle = `Draft: ${topic} (${format})`;

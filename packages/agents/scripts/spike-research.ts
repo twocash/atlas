@@ -21,6 +21,7 @@
  */
 
 import { Client } from '@notionhq/client';
+import { NOTION_DB } from '@atlas/shared/config';
 import type { ResearchConfig } from '../src/agents/research';
 import { readFileSync } from 'fs';
 import { resolve } from 'path';
@@ -53,7 +54,7 @@ try {
 // Configuration
 // ==========================================
 
-const WORK_QUEUE_DB_ID = '3d679030-b76b-43bd-92d8-1ac51abb4a28';
+const WORK_QUEUE_DB_ID = NOTION_DB.WORK_QUEUE;
 
 // ==========================================
 // CLI Parsing

@@ -8,12 +8,13 @@ import { config } from 'dotenv';
 import { join, dirname } from 'path';
 import { fileURLToPath } from 'url';
 import { writeFileSync } from 'fs';
+import { NOTION_DB } from '@atlas/shared/config';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 config({ path: join(__dirname, '..', '.env'), override: true });
 
 const notion = new Client({ auth: process.env.NOTION_API_KEY });
-const DEV_PIPELINE_ID = 'ce6fbf1b-ee30-433d-a9e6-b338552de7c9';
+const DEV_PIPELINE_ID = NOTION_DB.DEV_PIPELINE;
 
 async function main() {
   const results = await notion.databases.query({
