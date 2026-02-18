@@ -83,6 +83,7 @@
       "version": "0.1.0",
       "dependencies": {
         "@modelcontextprotocol/sdk": "^1.26.0",
+        "@notionhq/client": "^2.2.14",
       },
       "devDependencies": {
         "@types/bun": "latest",
