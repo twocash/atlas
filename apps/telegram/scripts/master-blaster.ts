@@ -24,6 +24,7 @@
 import { config } from 'dotenv';
 import { join } from 'path';
 import { spawn } from 'child_process';
+import { reportTestFailure, getBugsCreatedCount } from '@atlas/shared/test-failure-reporter';
 
 // Load environment variables
 config({ path: join(import.meta.dir, '..', '.env'), override: true });
@@ -944,6 +945,64 @@ async function runAgentsUnitTests(cwd: string): Promise<SuiteResult> {
 }
 
 // =============================================================================
+// AUTO-BUG LOGGING
+// =============================================================================
+
+/** Map suite name → subsystem for Dev Pipeline entries */
+const SUITE_SUBSYSTEM: Record<string, string> = {
+  'Unit Tests': 'Telegram',
+  'Canary Tests': 'Telegram',
+  'Bug Regression Tests': 'Telegram',
+  'Action Feed Producers (P2/P3)': 'Telegram',
+  'Autonomous Repair (Pit Stop)': 'Telegram',
+  'Smoke Tests': 'Telegram',
+  'E2E Tests': 'Telegram',
+  'Integration Tests': 'Telegram',
+  'Chrome Extension Unit Tests': 'Chrome',
+  'Chrome Extension Build': 'Chrome',
+  'Reply Strategy Integration': 'Chrome',
+  'Bridge Unit Tests': 'Bridge',
+  'Bridge Stability (Playwright)': 'Bridge',
+  'Agents Unit Tests': 'Agents',
+};
+
+// Feature gate: default ON (disable with ATLAS_AUTO_BUG_LOGGING=false)
+const AUTO_BUG_LOGGING = process.env.ATLAS_AUTO_BUG_LOGGING !== 'false';
+
+/**
+ * Report all failed suites to Dev Pipeline.
+ * Respects rate limit (max 10 per run) and deduplication (skips if open bug exists).
+ */
+async function reportFailedSuites(suites: SuiteResult[], mode: string): Promise<number> {
+  if (!AUTO_BUG_LOGGING) {
+    console.log('\n[AUTO-BUG] Disabled (ATLAS_AUTO_BUG_LOGGING=false)');
+    return 0;
+  }
+
+  const failedSuites = suites.filter(s => s.failed > 0);
+  if (failedSuites.length === 0) return 0;
+
+  console.log(`\n[AUTO-BUG] Reporting ${failedSuites.length} failed suite(s) to Dev Pipeline...`);
+
+  let reported = 0;
+  for (const suite of failedSuites) {
+    const subsystem = SUITE_SUBSYSTEM[suite.name] || 'Unknown';
+    const errorSummary = suite.errors.length > 0
+      ? suite.errors[0].substring(0, 1500)
+      : `${suite.failed} test(s) failed`;
+
+    const result = await reportTestFailure(suite.name, subsystem, errorSummary, {
+      reproCommand: `bun run scripts/master-blaster.ts --${mode}`,
+      expectedVsActual: `${suite.passed} passed, ${suite.failed} failed, ${suite.skipped} skipped`,
+    });
+
+    if (result.created) reported++;
+  }
+
+  return reported;
+}
+
+// =============================================================================
 // MAIN
 // =============================================================================
 
@@ -1055,6 +1114,10 @@ async function main() {
   const totalSkipped = suites.reduce((sum, s) => sum + s.skipped, 0);
   const totalDuration = endTime.getTime() - startTime.getTime();
 
+  // Auto-bug logging: report failures to Dev Pipeline
+  const modeForRepro = strict ? 'strict' : quick ? 'quick' : full ? 'full' : 'strict';
+  const bugsReported = await reportFailedSuites(suites, modeForRepro);
+
   // Per-surface summary with grouped headers
   const surfaceMap: Record<string, string[]> = {
     'Telegram': ['Unit Tests', 'Canaries', 'Regression', 'Action Feed Producers', 'Autonomous Repair', 'Smoke Tests', 'E2E Tests', 'Integration Tests'],
@@ -1095,6 +1158,9 @@ async function main() {
   console.log(`   Total: ${totalPassed} passed, ${totalFailed} failed, ${totalSkipped} skipped`);
   console.log(`   Surfaces: ${Object.keys(surfaceMap).length} | Suites: ${suites.length}`);
   console.log(`   Duration: ${(totalDuration / 1000).toFixed(2)}s`);
+  if (bugsReported > 0) {
+    console.log(`   Bugs filed: ${bugsReported} (${getBugsCreatedCount()} total this run)`);
+  }
   console.log('====================================');
 
   // Subprocess health check: flag suites that ran 0 tests (silent PATH/spawn failures)
