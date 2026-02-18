@@ -33,6 +33,23 @@ export interface PovContent {
 
 const POV_LIBRARY_DB_ID = "ea3d86b7-cdb8-403e-ba03-edc410ae6498"
 
+/** Cache TTL in ms — defaults to 1 hour. POV entries change ~weekly. */
+const POV_CACHE_TTL_MS = Number(process.env.POV_CACHE_TTL_MS) || 3_600_000
+
+// ─── In-Memory Cache ────────────────────────────────────
+
+interface CacheEntry {
+  results: unknown[]
+  timestamp: number
+}
+
+const povCache = new Map<string, CacheEntry>()
+
+/** Clear the POV cache. Exported for test use. */
+export function clearPovCache(): void {
+  povCache.clear()
+}
+
 /**
  * Map pillar → POV Library "Domain Coverage" values.
  */
@@ -58,7 +75,8 @@ function getNotionClient(): Client | null {
 
 /**
  * Fetch POV Library entries matching a triage pillar.
- * If multiple entries match, scores by keyword overlap and returns the best.
+ * Uses an in-memory cache keyed on normalized pillar to avoid redundant Notion calls.
+ * Keyword scoring happens post-cache so the same cached results serve any keyword set.
  *
  * @param pillar - Pillar string from TriageResult (e.g. "The Grove")
  * @param keywords - Keywords from triage for relevance scoring
@@ -75,11 +93,56 @@ export async function fetchPovForPillar(
     return null
   }
 
+  // Fetch raw results (cached or fresh)
+  const results = await getCachedPovResults(normalizedPillar, domains)
+  if (!results || results.length === 0) {
+    return null
+  }
+
+  // Score by keyword overlap (post-cache)
+  const entries = results.map((page) => extractPovContent(page))
+  const best = keywords.length > 0
+    ? pickBestMatch(entries, keywords)
+    : entries[0]
+
+  if (best) {
+    console.info(`[POV] Found entry: "${best.title}" for pillar "${pillar}"`)
+  }
+
+  return best
+}
+
+/**
+ * Return cached Notion results for a pillar, or query fresh and populate cache.
+ */
+async function getCachedPovResults(
+  normalizedPillar: string,
+  domains: string[],
+): Promise<unknown[] | null> {
+  const cached = povCache.get(normalizedPillar)
+  if (cached && (Date.now() - cached.timestamp) < POV_CACHE_TTL_MS) {
+    console.info(`[POV] Cache hit for "${normalizedPillar}"`)
+    return cached.results
+  }
+
+  const results = await queryPovFromNotion(domains, normalizedPillar)
+  if (results) {
+    povCache.set(normalizedPillar, { results, timestamp: Date.now() })
+  }
+  return results
+}
+
+/**
+ * Query Notion POV Library for active entries matching the given domains.
+ */
+async function queryPovFromNotion(
+  domains: string[],
+  pillarLabel: string,
+): Promise<unknown[] | null> {
   const notion = getNotionClient()
   if (!notion) return null
 
   try {
-    // Build filter: Domain Coverage contains ANY of the mapped domains AND Status = Active
     const domainFilters = domains.map((domain) => ({
       property: "Domain Coverage",
       multi_select: { contains: domain },
@@ -101,21 +164,11 @@ export async function fetchPovForPillar(
     })
 
     if (response.results.length === 0) {
-      console.info(`[POV] No active entries found for pillar "${pillar}"`)
+      console.info(`[POV] No active entries found for pillar "${pillarLabel}"`)
       return null
     }
 
-    // If multiple matches, score by keyword overlap
-    const entries = response.results.map((page) => extractPovContent(page))
-    const best = keywords.length > 0
-      ? pickBestMatch(entries, keywords)
-      : entries[0]
-
-    if (best) {
-      console.info(`[POV] Found entry: "${best.title}" for pillar "${pillar}"`)
-    }
-
-    return best
+    return response.results
   } catch (err) {
     console.warn("[POV] Notion query failed:", (err as Error).message)
     return null
