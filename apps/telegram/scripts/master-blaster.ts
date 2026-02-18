@@ -144,10 +144,16 @@ async function runCommand(
  * Parse test count from bun test output
  */
 function parseBunTestOutput(output: string): { passed: number; failed: number; skipped: number } {
-  // bun test output format: "X pass, Y fail, Z skip"
-  const passMatch = output.match(/(\d+)\s+pass/i);
-  const failMatch = output.match(/(\d+)\s+fail/i);
-  const skipMatch = output.match(/(\d+)\s+skip/i);
+  // bun test prints per-file summaries THEN a grand total line.
+  // We need the LAST match (grand total), not the first (single file).
+  const lastMatch = (str: string, re: RegExp): RegExpMatchArray | null => {
+    const matches = [...str.matchAll(re)];
+    return matches.length > 0 ? matches[matches.length - 1] : null;
+  };
+
+  const passMatch = lastMatch(output, /(\d+)\s+pass/gi);
+  const failMatch = lastMatch(output, /(\d+)\s+fail/gi);
+  const skipMatch = lastMatch(output, /(\d+)\s+skip/gi);
 
   return {
     passed: passMatch ? parseInt(passMatch[1], 10) : 0,
