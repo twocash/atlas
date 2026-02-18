@@ -976,6 +976,49 @@ async function runAgentsUnitTests(cwd: string): Promise<SuiteResult> {
   };
 }
 
+/**
+ * Run Shared Package Unit Tests
+ *
+ * Context transparency, slot-result types, error-escalation utilities.
+ */
+async function runSharedUnitTests(cwd: string): Promise<SuiteResult> {
+  console.log('\n[SHARED] Running Shared Package Unit Tests...');
+  console.log('─'.repeat(50));
+
+  const sharedCwd = join(cwd, '..', '..', 'packages', 'shared');
+  const result = await runCommand(
+    BUN_PATH,
+    [
+      'test',
+      'test/context-transparency.test.ts',
+    ],
+    sharedCwd,
+    30000
+  );
+  const counts = parseBunTestOutput(result.output);
+
+  if (!result.success) {
+    console.log(result.output);
+  } else {
+    const lines = result.output.split('\n').filter(l => /\.(test\.ts)/.test(l));
+    for (const line of lines) {
+      console.log(`  ${line.trim()}`);
+    }
+  }
+
+  const status = result.success ? '\x1b[32m[PASS]\x1b[0m' : '\x1b[31m[FAIL]\x1b[0m';
+  console.log(`  ${status} ${counts.passed} passed, ${counts.failed} failed (${result.duration}ms)`);
+
+  return {
+    name: 'Shared Package Unit Tests',
+    passed: counts.passed,
+    failed: counts.failed,
+    skipped: counts.skipped,
+    duration: result.duration,
+    errors: result.success ? [] : [result.output],
+  };
+}
+
 // =============================================================================
 // AUTO-BUG LOGGING
 // =============================================================================
@@ -997,6 +1040,7 @@ const SUITE_SUBSYSTEM: Record<string, string> = {
   'Bridge Unit Tests': 'Bridge',
   'Bridge Stability (Playwright)': 'Bridge',
   'Agents Unit Tests': 'Agents',
+  'Shared Package Unit Tests': 'Shared',
 };
 
 // Feature gate: default ON (disable with ATLAS_AUTO_BUG_LOGGING=false)
@@ -1075,6 +1119,7 @@ async function main() {
     suites.push(await runFlowTests(cwd));
     suites.push(await runChromeExtUnitTests(cwd));
     suites.push(await runAgentsUnitTests(cwd));
+    suites.push(await runSharedUnitTests(cwd));
   }
   // Strict mode: Canaries FIRST — failure stops all subsequent suites
   else if (strict) {
@@ -1094,7 +1139,8 @@ async function main() {
       suites.push(await runBridgeToolDispatchTests(cwd));
       suites.push(await runChromeExtUnitTests(cwd));  // Chrome Extension unit tests
       suites.push(await runChromeExtBuild(cwd));  // Chrome Extension build verification
-      suites.push(await runAgentsUnitTests(cwd));  // Agents package unit tests
+      suites.push(await runAgentsUnitTests(cwd));
+    suites.push(await runSharedUnitTests(cwd));  // Agents package unit tests
       suites.push(await runBridgeStabilityTests(cwd));
       suites.push(await runSmokeTests(cwd));
       suites.push(await runE2ETests(cwd));
@@ -1114,7 +1160,8 @@ async function main() {
     suites.push(await runChromeExtUnitTests(cwd));  // Chrome Extension unit tests
     suites.push(await runChromeExtBuild(cwd));  // Chrome Extension build verification
     suites.push(await runReplyStrategyTests(cwd));  // Reply Strategy integration
-    suites.push(await runAgentsUnitTests(cwd));  // Agents package unit tests
+    suites.push(await runAgentsUnitTests(cwd));
+    suites.push(await runSharedUnitTests(cwd));  // Agents package unit tests
     suites.push(await runBridgeStabilityTests(cwd));  // Bridge Playwright tests
     suites.push(await runSmokeTests(cwd));
     suites.push(await runE2ETests(cwd));
@@ -1138,7 +1185,8 @@ async function main() {
       suites.push(await runBridgeToolDispatchTests(cwd));
       suites.push(await runChromeExtUnitTests(cwd));  // Chrome Extension unit tests
       suites.push(await runChromeExtBuild(cwd));  // Chrome Extension build verification
-      suites.push(await runAgentsUnitTests(cwd));  // Agents package unit tests
+      suites.push(await runAgentsUnitTests(cwd));
+    suites.push(await runSharedUnitTests(cwd));  // Agents package unit tests
       suites.push(await runSmokeTests(cwd));
       suites.push(await runIntegrationTests(cwd));
     }

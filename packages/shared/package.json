@@ -37,6 +37,14 @@
     "./trace": {
       "types": "./dist/trace.d.ts",
       "import": "./dist/trace.js"
+    },
+    "./context-transparency": {
+      "types": "./dist/context-transparency.d.ts",
+      "import": "./dist/context-transparency.js"
+    },
+    "./types/slot-result": {
+      "types": "./dist/types/slot-result.d.ts",
+      "import": "./dist/types/slot-result.js"
     }
   },
   "scripts": {

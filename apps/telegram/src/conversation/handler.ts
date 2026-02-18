@@ -414,9 +414,13 @@ export async function handleConversation(ctx: Context): Promise<void> {
     contextEnrichment = await enrichWithContextSlots(messageText, userId);
     completeStep(enrichStep);
     enrichStep.metadata = {
-      slotsUsed: contextEnrichment.slotsUsed,
-      tier: contextEnrichment.tier,
-      totalTokens: contextEnrichment.totalTokens,
+      slotsUsed: contextEnrichment?.slotsUsed,
+      tier: contextEnrichment?.tier,
+      totalTokens: contextEnrichment?.totalTokens,
+      slotStatuses: contextEnrichment?.slotResults
+        ? Object.fromEntries(contextEnrichment.slotResults.map((s) => [s.slotName, s.status]))
+        : undefined,
+      degraded: contextEnrichment?.degradedContextNote != null,
     };
   }
 
@@ -428,9 +432,15 @@ export async function handleConversation(ctx: Context): Promise<void> {
   const baseSystemPrompt = await buildSystemPrompt(conversation);
 
   // Inject cognitive context into system prompt if enrichment succeeded
-  const systemPrompt = contextEnrichment
-    ? `${baseSystemPrompt}\n\n---\n\n## Cognitive Context\n\n${contextEnrichment.enrichedContext}`
-    : baseSystemPrompt;
+  // When slots are degraded/failed, append a transparency note so the model
+  // knows which context areas may be missing and can adjust accordingly.
+  let systemPrompt = baseSystemPrompt;
+  if (contextEnrichment) {
+    systemPrompt += `\n\n---\n\n## Cognitive Context\n\n${contextEnrichment.enrichedContext}`;
+    if (contextEnrichment.degradedContextNote) {
+      systemPrompt += `\n\n${contextEnrichment.degradedContextNote}`;
+    }
+  }
 
   // Build messages array for Claude API
   const messages: Anthropic.MessageParam[] = buildMessages(conversation, userContent);

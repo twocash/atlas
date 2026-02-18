@@ -5,15 +5,20 @@
  * then formats populated slots into prompt sections for injection
  * into the system prompt.
  *
+ * Context Transparency: Each slot is wrapped in a SlotResult with
+ * ok/degraded/failed status. When any slot is non-ok, a degraded
+ * context note is generated for injection into the system prompt.
+ *
  * Feature gate: ATLAS_CONTEXT_ENRICHMENT (default: enabled)
  * On error: logs at error level with stack trace and re-throws.
- * Graceful degradation intentionally disabled — fix root causes first.
  */
 
 import { assembleContext, type AssemblyResult } from "../../../../packages/bridge/src/context"
-import type { OrchestrationRequest, SlotId, ComplexityTier } from "../../../../packages/bridge/src/types/orchestration"
+import type { OrchestrationRequest, SlotId, ComplexityTier, ContextSlot } from "../../../../packages/bridge/src/types/orchestration"
 import type { TriageResult } from "../cognitive/triage-skill"
 import { reportFailure } from "@atlas/shared/error-escalation"
+import { type SlotResult, type SlotName, wrapSlotResult } from "@atlas/shared/types/slot-result"
+import { buildDegradedContextNote } from "@atlas/shared/context-transparency"
 import { logger } from "../logger"
 
 // ─── Types ───────────────────────────────────────────────
@@ -31,6 +36,10 @@ export interface EnrichmentResult {
   triage: TriageResult
   /** Complexity tier */
   tier: ComplexityTier
+  /** Per-slot transparency results */
+  slotResults: SlotResult[]
+  /** Degraded context note (null when all slots ok) */
+  degradedContextNote: string | null
 }
 
 // Slots to exclude from Telegram enrichment:
@@ -48,6 +57,16 @@ const SLOT_LABELS: Record<SlotId, string> = {
   output: "OUTPUT",
 }
 
+// ─── Helpers ─────────────────────────────────────────────
+
+/** Wrap a ContextSlot into a SlotResult with status transparency. */
+function toSlotResult(slot: ContextSlot): SlotResult {
+  if (!slot.populated) {
+    return wrapSlotResult(slot.id as SlotName, null, `${slot.source} did not populate`)
+  }
+  return wrapSlotResult(slot.id as SlotName, slot.content)
+}
+
 // ─── Enrichment ──────────────────────────────────────────
 
 /**
@@ -55,7 +74,7 @@ const SLOT_LABELS: Record<SlotId, string> = {
  *
  * @param messageText - The user's message text
  * @param userId - Telegram user ID (used for synthetic session/connection IDs)
- * @returns EnrichmentResult or null on failure
+ * @returns EnrichmentResult or null when ALL non-excluded slots are failed
  */
 export async function enrichWithContextSlots(
   messageText: string,
@@ -76,7 +95,28 @@ export async function enrichWithContextSlots(
     const result: AssemblyResult = await assembleContext(request)
     const assemblyLatencyMs = Date.now() - start
 
-    // Filter to populated slots, excluding browser and output
+    // Wrap ALL slots into SlotResults for transparency
+    const allSlotResults = result.slots.map(toSlotResult)
+
+    // Slot results for non-excluded slots only (what Telegram cares about)
+    const relevantSlotResults = allSlotResults.filter(
+      (s) => !EXCLUDED_SLOTS.has(s.slotName as SlotId),
+    )
+
+    // Build degraded context note from relevant slots
+    const degradedContextNote = buildDegradedContextNote(relevantSlotResults)
+
+    // Report individual slot failures for escalation tracking
+    for (const sr of relevantSlotResults) {
+      if (sr.status === 'failed') {
+        reportFailure(`slot-${sr.slotName}`, new Error(sr.reason ?? 'Slot failed'), {
+          slotName: sr.slotName,
+          assemblyLatencyMs,
+        })
+      }
+    }
+
+    // Filter to populated slots for content assembly
     const enrichedSlots = result.slots.filter(
       (s) => s.populated && !EXCLUDED_SLOTS.has(s.id),
     )
@@ -84,6 +124,7 @@ export async function enrichWithContextSlots(
     if (enrichedSlots.length === 0) {
       logger.info("[enrichment] No slots populated — skipping enrichment", {
         assemblyLatencyMs,
+        degradedSlots: relevantSlotResults.filter((s) => s.status !== 'ok').map((s) => s.slotName),
       })
       return null
     }
@@ -101,6 +142,8 @@ export async function enrichWithContextSlots(
       assemblyLatencyMs,
       triage: result.triage,
       tier: result.tier,
+      slotResults: relevantSlotResults,
+      degradedContextNote,
     }
 
     logger.info("[enrichment] Context assembly complete", {
@@ -108,6 +151,8 @@ export async function enrichWithContextSlots(
       totalTokens: enrichmentResult.totalTokens,
       assemblyLatencyMs,
       tier: result.tier,
+      degradedNote: degradedContextNote != null,
+      slotStatuses: Object.fromEntries(relevantSlotResults.map((s) => [s.slotName, s.status])),
     })
 
     return enrichmentResult
