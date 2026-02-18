@@ -47,6 +47,7 @@ import { handleSocraticAnswer } from './socratic-adapter';
 import { logAction, isFeatureEnabled } from '../skills';
 import { classifyWithFallback, triageForAudit, triageMessage } from '../cognitive/triage-skill';
 import type { TriageResult } from '../cognitive/triage-skill';
+import { enrichWithContextSlots, type EnrichmentResult } from './context-enrichment';
 import {
   generateDispatchChoiceId,
   storePendingDispatch,
@@ -381,11 +382,25 @@ export async function handleConversation(ctx: Context): Promise<void> {
     logger.warn('Pre-flight triage failed (non-fatal, continuing with raw text)', { error: err });
   }
 
+  // CONTEXT ENRICHMENT: Populate cognitive context slots (domain RAG, POV, voice, intent)
+  // Feature gate: ATLAS_CONTEXT_ENRICHMENT (default: enabled)
+  let contextEnrichment: EnrichmentResult | null = null;
+  if (process.env.ATLAS_CONTEXT_ENRICHMENT !== 'false') {
+    // No try/catch — enrichment errors propagate to the outer handler.
+    // Graceful degradation will be re-enabled once the pipeline is stable.
+    contextEnrichment = await enrichWithContextSlots(messageText, userId);
+  }
+
   // Get conversation history
   const conversation = await getConversation(userId);
 
   // Build system prompt (pass conversation for tool context continuity)
-  const systemPrompt = await buildSystemPrompt(conversation);
+  const baseSystemPrompt = await buildSystemPrompt(conversation);
+
+  // Inject cognitive context into system prompt if enrichment succeeded
+  const systemPrompt = contextEnrichment
+    ? `${baseSystemPrompt}\n\n---\n\n## Cognitive Context\n\n${contextEnrichment.enrichedContext}`
+    : baseSystemPrompt;
 
   // Build messages array for Claude API
   const messages: Anthropic.MessageParam[] = buildMessages(conversation, userContent);
@@ -743,6 +758,11 @@ export async function handleConversation(ctx: Context): Promise<void> {
       auditCreated: !!auditResult,
       actionTaken,
       skillLogging: isFeatureEnabled('skillLogging'),
+      contextEnrichment: !!contextEnrichment,
+      slotsUsed: contextEnrichment?.slotsUsed ?? [],
+      contextTokens: contextEnrichment?.totalTokens ?? 0,
+      enrichmentLatencyMs: contextEnrichment?.assemblyLatencyMs ?? 0,
+      enrichmentTier: contextEnrichment?.tier ?? null,
     });
 
   } catch (error) {
