@@ -174,6 +174,21 @@ bun run build        # Production build
 
 ---
 
+## Voice & Content Skills (`packages/skills/superpowers/`)
+
+**MANDATORY** for any content generation task. Read these before writing anything that represents Jim's voice.
+
+| Skill | Path | When to Use |
+|-------|------|-------------|
+| **jim-voice-writing-style** | `packages/skills/superpowers/jim-voice-writing-style/SKILL.md` | Any professional writing, executive communications, strategy docs, client deliverables |
+| **linkedin-thinkpiece** | `packages/skills/superpowers/linkedin-thinkpiece/SKILL.md` | LinkedIn thought leadership, thinkpieces, strategic tech commentary |
+
+**Voice DNA summary:** Strategic, concise, client-ready. Senior McKinsey associate with journalistic clarity. Active voice, present tense, 8th-grade reading level with graduate-level thinking. Lead with the insight, not the event. Specific about mechanisms — name the company, the product, the number.
+
+**Provenance:** Synced from Claude.ai Atlas PM project skills on 2026-02-17. If these need updates, sync from the canonical Claude.ai versions.
+
+---
+
 ## Skills System (`packages/skills/`)
 
 Agent coordination capabilities:
