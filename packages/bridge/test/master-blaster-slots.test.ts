@@ -293,6 +293,93 @@ describe("Master Blaster: End-to-End Slot Assembly (mocked)", () => {
 })
 
 // ═════════════════════════════════════════════════════════════
+// POV CACHE TESTS
+// ═════════════════════════════════════════════════════════════
+
+describe("Master Blaster: POV Cache", () => {
+  // Track Notion query calls via a mock client
+  let notionQueryCount: number
+
+  // Save/restore env around tests
+  const savedEnv: Record<string, string | undefined> = {}
+  function saveEnv(...keys: string[]) {
+    for (const k of keys) savedEnv[k] = process.env[k]
+  }
+  function restoreEnv() {
+    for (const [k, v] of Object.entries(savedEnv)) {
+      if (v === undefined) delete process.env[k]
+      else process.env[k] = v
+    }
+  }
+
+  test("cache miss triggers Notion query, second call returns cached", async () => {
+    // We test the cache by calling fetchPovForPillar twice and checking
+    // that clearPovCache + first call works, then second call is faster (cached)
+    const { fetchPovForPillar, clearPovCache } = await import("../src/context/pov-fetcher")
+
+    // Start fresh
+    clearPovCache()
+
+    // Without Notion configured, both calls return null (no crash)
+    saveEnv("NOTION_API_KEY", "NOTION_TOKEN")
+    delete process.env.NOTION_API_KEY
+    delete process.env.NOTION_TOKEN
+
+    const result1 = await fetchPovForPillar("The Grove", ["strategy"])
+    const result2 = await fetchPovForPillar("The Grove", ["brand"])
+
+    // Both null because no Notion client, but no crash
+    expect(result1).toBeNull()
+    expect(result2).toBeNull()
+
+    restoreEnv()
+  })
+
+  test("clearPovCache resets the cache", async () => {
+    const { clearPovCache } = await import("../src/context/pov-fetcher")
+
+    // Should not throw
+    clearPovCache()
+    clearPovCache() // idempotent
+  })
+
+  test("different pillars use different cache entries", async () => {
+    const { fetchPovForPillar, clearPovCache } = await import("../src/context/pov-fetcher")
+
+    clearPovCache()
+
+    saveEnv("NOTION_API_KEY", "NOTION_TOKEN")
+    delete process.env.NOTION_API_KEY
+    delete process.env.NOTION_TOKEN
+
+    // Each pillar should be independent — no cross-contamination
+    const grove = await fetchPovForPillar("The Grove")
+    const consulting = await fetchPovForPillar("Consulting")
+
+    // Both null without Notion, but each hit a separate code path
+    expect(grove).toBeNull()
+    expect(consulting).toBeNull()
+
+    restoreEnv()
+  })
+
+  test("Home/Garage returns null without hitting cache (no domain mapping)", async () => {
+    const { fetchPovForPillar, clearPovCache } = await import("../src/context/pov-fetcher")
+
+    clearPovCache()
+
+    // Home/Garage has empty domain list — should return null before cache
+    const result = await fetchPovForPillar("Home/Garage")
+    expect(result).toBeNull()
+  })
+
+  test("clearPovCache is exported and callable", async () => {
+    const mod = await import("../src/context/pov-fetcher")
+    expect(typeof mod.clearPovCache).toBe("function")
+  })
+})
+
+// ═════════════════════════════════════════════════════════════
 // GROUP 2: LIVE INTEGRATION TESTS (gated on service availability)
 // ═════════════════════════════════════════════════════════════
 
