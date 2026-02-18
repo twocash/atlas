@@ -46,6 +46,7 @@ import { hasPendingSocraticSessionForUser } from './socratic-session';
 import { handleSocraticAnswer } from './socratic-adapter';
 import { logAction, isFeatureEnabled } from '../skills';
 import { reportFailure } from '@atlas/shared/error-escalation';
+import { createTrace, addStep, completeStep, completeTrace, failTrace, type TraceContext } from '@atlas/shared/trace';
 import { classifyWithFallback, triageForAudit, triageMessage } from '../cognitive/triage-skill';
 import type { TriageResult } from '../cognitive/triage-skill';
 import { enrichWithContextSlots, type EnrichmentResult } from './context-enrichment';
@@ -256,10 +257,20 @@ export async function handleConversation(ctx: Context): Promise<void> {
   const messageText = ctx.message?.text || ctx.message?.caption || '';
   const username = ctx.from?.username || String(userId);
 
+  // Pipeline trace: tracks every step with timing and metadata
+  const trace = createTrace();
+  const msgStep = addStep(trace, 'message-received', {
+    userId,
+    messageLength: messageText.length,
+    hasMedia: !!(ctx.message?.photo || ctx.message?.document || ctx.message?.video || ctx.message?.voice),
+  });
+  completeStep(msgStep);
+
   logger.info('Conversation message received', {
     userId,
     username,
     textLength: messageText.length,
+    traceId: trace.traceId,
   });
 
   // React to indicate message received
@@ -359,8 +370,16 @@ export async function handleConversation(ctx: Context): Promise<void> {
   // as a task instead of executing the command. The triage result is reused
   // for audit later (no duplicate API call).
   let preflightTriage: TriageResult | null = null;
+  const triageStep = addStep(trace, 'triage');
   try {
     preflightTriage = await triageMessage(messageText);
+    completeStep(triageStep);
+    triageStep.metadata = {
+      intent: preflightTriage.intent,
+      confidence: preflightTriage.confidence,
+      pillar: preflightTriage.pillar,
+      source: preflightTriage.source,
+    };
 
     // Command intent: rewrite userContent so Claude structures the ticket properly
     if (preflightTriage.intent === 'command' && preflightTriage.command) {
@@ -380,6 +399,8 @@ export async function handleConversation(ctx: Context): Promise<void> {
       });
     }
   } catch (err) {
+    completeStep(triageStep);
+    triageStep.metadata = { error: err instanceof Error ? err.message : String(err) };
     logger.warn('Pre-flight triage failed (non-fatal, continuing with raw text)', { error: err });
   }
 
@@ -387,15 +408,23 @@ export async function handleConversation(ctx: Context): Promise<void> {
   // Feature gate: ATLAS_CONTEXT_ENRICHMENT (default: enabled)
   let contextEnrichment: EnrichmentResult | null = null;
   if (process.env.ATLAS_CONTEXT_ENRICHMENT !== 'false') {
+    const enrichStep = addStep(trace, 'context-enrichment');
     // No try/catch — enrichment errors propagate to the outer handler.
     // Graceful degradation will be re-enabled once the pipeline is stable.
     contextEnrichment = await enrichWithContextSlots(messageText, userId);
+    completeStep(enrichStep);
+    enrichStep.metadata = {
+      slotsUsed: contextEnrichment.slotsUsed,
+      tier: contextEnrichment.tier,
+      totalTokens: contextEnrichment.totalTokens,
+    };
   }
 
   // Get conversation history
   const conversation = await getConversation(userId);
 
   // Build system prompt (pass conversation for tool context continuity)
+  const promptStep = addStep(trace, 'prompt-build');
   const baseSystemPrompt = await buildSystemPrompt(conversation);
 
   // Inject cognitive context into system prompt if enrichment succeeded
@@ -405,6 +434,7 @@ export async function handleConversation(ctx: Context): Promise<void> {
 
   // Build messages array for Claude API
   const messages: Anthropic.MessageParam[] = buildMessages(conversation, userContent);
+  completeStep(promptStep);
 
   let totalTokens = 0;
   const toolsUsed: string[] = [];  // Track tools for conversation history
@@ -422,6 +452,7 @@ export async function handleConversation(ctx: Context): Promise<void> {
                            /\b(dev.?pipeline|work.?queue)\b/i.test(messageText);
 
     // Call Claude with tools
+    const claudeStep = addStep(trace, 'claude-api', { model: 'claude-sonnet-4-20250514' });
     let response = await anthropic.messages.create({
       model: 'claude-sonnet-4-20250514',
       max_tokens: 4096,
@@ -434,6 +465,13 @@ export async function handleConversation(ctx: Context): Promise<void> {
     });
 
     totalTokens += response.usage.input_tokens + response.usage.output_tokens;
+    completeStep(claudeStep);
+    claudeStep.metadata = {
+      ...claudeStep.metadata,
+      inputTokens: response.usage.input_tokens,
+      outputTokens: response.usage.output_tokens,
+      stopReason: response.stop_reason,
+    };
 
     // Tool use loop
     let iterations = 0;
@@ -468,10 +506,13 @@ export async function handleConversation(ctx: Context): Promise<void> {
         // Keep typing indicator active
         await ctx.replyWithChatAction('typing');
 
+        const toolStep = addStep(trace, 'tool-execution', { toolName: toolUse.name });
         const result = await executeTool(
           toolUse.name,
           toolUse.input as Record<string, unknown>
         );
+        completeStep(toolStep);
+        toolStep.metadata = { ...toolStep.metadata, success: result.success };
 
         // CHECK FOR LOW-CONFIDENCE ROUTING: Intercept needsChoice response
         if (toolUse.name === 'submit_ticket' && result.needsChoice) {
@@ -686,7 +727,13 @@ export async function handleConversation(ctx: Context): Promise<void> {
       }),
     };
 
-    const auditResult = await createAuditTrail(auditEntry);
+    const auditStep = addStep(trace, 'audit-trail');
+    const auditResult = await createAuditTrail(auditEntry, trace);
+    completeStep(auditStep);
+    auditStep.metadata = {
+      feedId: auditResult?.feedId,
+      workQueueId: auditResult?.workQueueId,
+    };
 
     // Update conversation history (with tool context for continuity)
     await updateConversation(
@@ -706,6 +753,7 @@ export async function handleConversation(ctx: Context): Promise<void> {
     // Send response (handle long messages)
     // Smart formatting: preserves HTML if present, converts markdown otherwise
     const formattedResponse = formatMessage(responseText);
+    const sendStep = addStep(trace, 'response-sent');
 
     if (formattedResponse.length > 4000) {
       // Split into chunks for Telegram's message limit
@@ -716,6 +764,7 @@ export async function handleConversation(ctx: Context): Promise<void> {
     } else {
       await ctx.reply(formattedResponse, { parse_mode: 'HTML' });
     }
+    completeStep(sendStep);
 
     // Record usage for stats
     await recordUsage({
@@ -750,6 +799,9 @@ export async function handleConversation(ctx: Context): Promise<void> {
       });
     }
 
+    // Complete the pipeline trace
+    completeTrace(trace);
+
     logger.info('Conversation response sent', {
       userId,
       pillar: classification.pillar,
@@ -764,11 +816,15 @@ export async function handleConversation(ctx: Context): Promise<void> {
       contextTokens: contextEnrichment?.totalTokens ?? 0,
       enrichmentLatencyMs: contextEnrichment?.assemblyLatencyMs ?? 0,
       enrichmentTier: contextEnrichment?.tier ?? null,
+      traceId: trace.traceId,
+      traceDurationMs: trace.totalDurationMs,
+      traceSteps: trace.steps.length,
     });
 
   } catch (error) {
-    logger.error('Conversation handler error', { error, userId });
-    reportFailure('conversation-handler', error, { userId });
+    failTrace(trace, error instanceof Error ? error : String(error));
+    logger.error('Conversation handler error', { error, userId, traceId: trace.traceId });
+    reportFailure('conversation-handler', error, { userId, traceId: trace.traceId });
     await setReaction(ctx, REACTIONS.ERROR);
     await ctx.reply("Something went wrong. Please try again.");
   }

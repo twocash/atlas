@@ -33,6 +33,10 @@
     "./test-failure-reporter": {
       "types": "./dist/test-failure-reporter.d.ts",
       "import": "./dist/test-failure-reporter.js"
+    },
+    "./trace": {
+      "types": "./dist/trace.d.ts",
+      "import": "./dist/trace.js"
     }
   },
   "scripts": {

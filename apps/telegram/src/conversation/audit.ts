@@ -8,6 +8,7 @@
 import { Client } from '@notionhq/client';
 import { NOTION_DB } from '@atlas/shared/config';
 import { reportFailure } from '@atlas/shared/error-escalation';
+import type { TraceContext } from '@atlas/shared/trace';
 import { logger } from '../logger';
 import { checkUrl, registerUrl, normalizeUrl } from '../utils/url-dedup';
 import type { Pillar, RequestType, FeedStatus, WQStatus, StructuredContext } from './types';
@@ -187,7 +188,7 @@ function determineInitialStatus(requestType: RequestType): { feedStatus: FeedSta
 /**
  * Create Feed entry in Notion
  */
-async function createFeedEntry(entry: AuditEntry): Promise<{ id: string; url: string }> {
+async function createFeedEntry(entry: AuditEntry, traceId?: string): Promise<{ id: string; url: string }> {
   const { feedStatus } = determineInitialStatus(entry.requestType);
 
   // Defensive default for pillar (classification may return null)
@@ -247,6 +248,11 @@ async function createFeedEntry(entry: AuditEntry): Promise<{ id: string; url: st
     // Try to add optional fields (non-fatal if properties don't exist yet)
     // These are added in a separate update to prevent core entry creation from failing
     const optionalProps: Record<string, unknown> = {};
+
+    // Pipeline trace ID for end-to-end diagnostics
+    if (traceId) {
+      optionalProps['Notes'] = { rich_text: [{ text: { content: `trace:${traceId}` } }] };
+    }
 
     // URL & Content Analysis fields (Universal Content Analysis)
     // Store normalized URL for dedup matching
@@ -561,7 +567,8 @@ function splitTextIntoChunks(text: string, maxLength: number): string[] {
  */
 async function createWorkQueueEntry(
   entry: AuditEntry,
-  feedId: string
+  feedId: string,
+  traceId?: string
 ): Promise<{ id: string; url: string }> {
   const { wqStatus } = determineInitialStatus(entry.requestType);
 
@@ -624,6 +631,10 @@ async function createWorkQueueEntry(
         // Source Link for quick access to original URL
         ...(entry.url && {
           'Source Link': { url: entry.url },
+        }),
+        // Pipeline trace ID for end-to-end diagnostics
+        ...(traceId && {
+          'Notes': { rich_text: [{ text: { content: `trace:${traceId}` } }] },
         }),
       },
     });
@@ -791,7 +802,7 @@ async function linkFeedToWorkQueue(feedId: string, workQueueId: string): Promise
 /**
  * Create audit trail with bidirectional Feed ↔ Work Queue linking
  */
-export async function createAuditTrail(entry: AuditEntry): Promise<AuditResult | null> {
+export async function createAuditTrail(entry: AuditEntry, trace?: TraceContext): Promise<AuditResult | null> {
   try {
     // 0. URL dedup check — skip if this URL already has a Feed entry
     if (entry.url) {
@@ -813,10 +824,10 @@ export async function createAuditTrail(entry: AuditEntry): Promise<AuditResult |
     }
 
     // 1. Create Feed entry
-    const feed = await createFeedEntry(entry);
+    const feed = await createFeedEntry(entry, trace?.traceId);
 
     // 2. Create Work Queue entry with Feed link
-    const workQueue = await createWorkQueueEntry(entry, feed.id);
+    const workQueue = await createWorkQueueEntry(entry, feed.id, trace?.traceId);
 
     // 3. Update Feed with Work Queue link (bidirectional)
     await linkFeedToWorkQueue(feed.id, workQueue.id);

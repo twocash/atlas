@@ -44,6 +44,8 @@ export interface TestFailureContext {
   reproCommand?: string;
   /** Git branch (auto-detected if omitted) */
   branch?: string;
+  /** Formatted pipeline trace log from TraceContext */
+  traceLog?: string;
   /** Additional context */
   [key: string]: unknown;
 }
@@ -119,6 +121,9 @@ export async function reportTestFailure(
         : null,
       context?.reproCommand
         ? `**Reproduction Command:** ${context.reproCommand}`
+        : null,
+      context?.traceLog
+        ? `**Pipeline Trace:**\n${context.traceLog.substring(0, 1500)}`
         : null,
       `**Git Branch:** ${branch}`,
       `**Timestamp:** ${timestamp}`,

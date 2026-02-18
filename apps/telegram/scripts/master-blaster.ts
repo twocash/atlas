@@ -570,6 +570,38 @@ async function runRegressionTests(cwd: string): Promise<SuiteResult> {
 }
 
 /**
+ * Run pipeline flow tests (end-to-end trace verification through mocked pipeline)
+ */
+async function runFlowTests(cwd: string): Promise<SuiteResult> {
+  console.log('\n[FLOW] Running Pipeline Flow Tests...');
+  console.log('─'.repeat(50));
+
+  const result = await runCommand(
+    BUN_PATH,
+    ['test', 'test/flows/'],
+    cwd,
+    30000
+  );
+  const counts = parseBunTestOutput(result.output);
+
+  if (!result.success) {
+    console.log(result.output);
+  }
+
+  const status = result.success ? '\x1b[32m[PASS]\x1b[0m' : '\x1b[31m[FAIL]\x1b[0m';
+  console.log(`  ${status} ${counts.passed} passed, ${counts.failed} failed (${result.duration}ms)`);
+
+  return {
+    name: 'Flow Tests',
+    passed: counts.passed,
+    failed: counts.failed,
+    skipped: counts.skipped,
+    duration: result.duration,
+    errors: result.success ? [] : [result.output],
+  };
+}
+
+/**
  * Run integration tests (health checks, Notion connectivity)
  */
 async function runIntegrationTests(cwd: string): Promise<SuiteResult> {
@@ -953,6 +985,7 @@ const SUITE_SUBSYSTEM: Record<string, string> = {
   'Unit Tests': 'Telegram',
   'Canary Tests': 'Telegram',
   'Bug Regression Tests': 'Telegram',
+  'Flow Tests': 'Telegram',
   'Action Feed Producers (P2/P3)': 'Telegram',
   'Autonomous Repair (Pit Stop)': 'Telegram',
   'Smoke Tests': 'Telegram',
@@ -1035,10 +1068,11 @@ async function main() {
 
   const suites: SuiteResult[] = [];
 
-  // Quick mode: Unit + Regression + Chrome Extension + Agents tests
+  // Quick mode: Unit + Regression + Flow + Chrome Extension + Agents tests
   if (quick) {
     suites.push(await runUnitTests(cwd));
     suites.push(await runRegressionTests(cwd));
+    suites.push(await runFlowTests(cwd));
     suites.push(await runChromeExtUnitTests(cwd));
     suites.push(await runAgentsUnitTests(cwd));
   }
@@ -1053,6 +1087,7 @@ async function main() {
     } else {
       suites.push(await runUnitTests(cwd));
       suites.push(await runRegressionTests(cwd));
+      suites.push(await runFlowTests(cwd));
       suites.push(await runActionFeedProducerTests(cwd));
       // Gate 2: removed runIntentFirstTests() — deleted with keyboard flows
       suites.push(await runAutonomousRepairTests(cwd));
@@ -1071,6 +1106,7 @@ async function main() {
     suites.push(await runCanaryTests(cwd));  // Canaries first - detect silent failures
     suites.push(await runUnitTests(cwd));
     suites.push(await runRegressionTests(cwd));  // Bug regression tests
+    suites.push(await runFlowTests(cwd));  // Pipeline flow tests
     suites.push(await runActionFeedProducerTests(cwd));  // P2/P3 sprint
     // Gate 2: removed runIntentFirstTests() — deleted with keyboard flows
     suites.push(await runAutonomousRepairTests(cwd));  // Pit Stop sprint
@@ -1095,6 +1131,7 @@ async function main() {
     } else {
       suites.push(await runUnitTests(cwd));
       suites.push(await runRegressionTests(cwd));
+      suites.push(await runFlowTests(cwd));
       suites.push(await runActionFeedProducerTests(cwd));
       // Gate 2: removed runIntentFirstTests() — deleted with keyboard flows
       suites.push(await runAutonomousRepairTests(cwd));
