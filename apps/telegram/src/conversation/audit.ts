@@ -6,6 +6,8 @@
  */
 
 import { Client } from '@notionhq/client';
+import { NOTION_DB } from '@atlas/shared/config';
+import { reportFailure } from '@atlas/shared/error-escalation';
 import { logger } from '../logger';
 import { checkUrl, registerUrl, normalizeUrl } from '../utils/url-dedup';
 import type { Pillar, RequestType, FeedStatus, WQStatus, StructuredContext } from './types';
@@ -16,11 +18,9 @@ export type { Pillar };
 // Initialize Notion client
 const notion = new Client({ auth: process.env.NOTION_API_KEY });
 
-// Notion DATA SOURCE IDs — from spec, verified correct
-// Database page IDs for Notion SDK (NOT data source IDs which are for MCP only)
-// Per PATCH-database-wiring-fix.md
-const FEED_DATABASE_ID = '90b2b33f-4b44-4b42-870f-8d62fb8cbf18';
-const WORK_QUEUE_DATABASE_ID = '3d679030-b76b-43bd-92d8-1ac51abb4a28';
+// Canonical IDs from @atlas/shared/config
+const FEED_DATABASE_ID = NOTION_DB.FEED;
+const WORK_QUEUE_DATABASE_ID = NOTION_DB.WORK_QUEUE;
 
 // Track Feed database health - if it's inaccessible, skip Feed logging
 let feedDatabaseHealthy = true;
@@ -325,6 +325,7 @@ async function createFeedEntry(entry: AuditEntry): Promise<{ id: string; url: st
     return { id: response.id, url };
   } catch (error) {
     logger.error('Failed to create Feed entry', { error, entry: entry.entry });
+    reportFailure('feed-write', error, { entry: entry.entry });
     throw error;
   }
 }
@@ -641,6 +642,7 @@ async function createWorkQueueEntry(
     return { id: response.id, url };
   } catch (error) {
     logger.error('Failed to create Work Queue entry', { error, entry: entry.entry });
+    reportFailure('work-queue-write', error, { entry: entry.entry });
     throw error;
   }
 }

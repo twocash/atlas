@@ -7,7 +7,8 @@ import { STORAGE_KEYS } from "./storage"
 
 const storage = new Storage({ area: "local" })
 
-// Notion Database IDs
+// Notion Database IDs — canonical source: @atlas/shared/config (NOTION_DB)
+// Chrome extension cannot import from @atlas/shared (Node.js package)
 export const NOTION_DBS = {
   CONTACTS: '08b9f73264b24e4b82d4c842f5a11cc8',
   ENGAGEMENTS: '25e138b54d1645a3a78b266451585de9',

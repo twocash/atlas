@@ -13,15 +13,16 @@ import { logger } from '../logger';
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
 
+import { NOTION_DB } from '@atlas/shared/config';
+
 const notion = new Client({ auth: process.env.NOTION_API_KEY });
 
 const DATA_DIR = join(__dirname, '../../data');
 const STATS_FILE = join(DATA_DIR, 'stats.json');
 
-// Notion DATA SOURCE IDs — from spec, verified correct
-// Database page IDs for Notion SDK
-const FEED_DATABASE_ID = '90b2b33f-4b44-4b42-870f-8d62fb8cbf18';
-const WORK_QUEUE_DATABASE_ID = '3d679030-b76b-43bd-92d8-1ac51abb4a28';
+// Canonical IDs from @atlas/shared/config
+const FEED_DATABASE_ID = NOTION_DB.FEED;
+const WORK_QUEUE_DATABASE_ID = NOTION_DB.WORK_QUEUE;
 
 // Cost per 1M tokens (approximate)
 const TOKEN_COSTS = {

@@ -13,6 +13,7 @@ import type { Api } from 'grammy';
 import { Client } from '@notionhq/client';
 import { logger } from '../logger';
 import { isFeatureEnabled } from '../config/features';
+import { NOTION_DB } from '@atlas/shared/config';
 import { createActionFeedEntry } from '../notion';
 import type { ActionDataReview } from '../types';
 
@@ -20,7 +21,7 @@ import type { ActionDataReview } from '../types';
 // Configuration
 // ==========================================
 
-const WORK_QUEUE_DB_ID = '3d679030-b76b-43bd-92d8-1ac51abb4a28';
+const WORK_QUEUE_DB_ID = NOTION_DB.WORK_QUEUE;
 
 // ==========================================
 // State

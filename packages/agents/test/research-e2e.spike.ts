@@ -16,6 +16,7 @@
  */
 
 import { Client } from '@notionhq/client';
+import { NOTION_DB } from '@atlas/shared/config';
 import { readFileSync } from 'fs';
 import { resolve } from 'path';
 
@@ -49,7 +50,7 @@ try {
 
 const TEST_QUERY = 'What are the key features of Bun 1.2 runtime?';
 const TEST_DEPTH = 'light' as const; // Use light for faster tests
-const WORK_QUEUE_DB_ID = '3d679030-b76b-43bd-92d8-1ac51abb4a28';
+const WORK_QUEUE_DB_ID = NOTION_DB.WORK_QUEUE;
 
 // ==========================================
 // Test Runner

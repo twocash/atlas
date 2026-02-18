@@ -9,11 +9,12 @@
  */
 
 import { Client } from '@notionhq/client';
+import { NOTION_DB } from '@atlas/shared/config';
 import { logger } from '../logger';
 import type { Pillar, RequestType } from './types';
 
-// Feed 2.0 database ID
-const FEED_DB_ID = '90b2b33f-4b44-4b42-870f-8d62fb8cbf18';
+// Feed 2.0 database ID (from @atlas/shared/config)
+const FEED_DB_ID = NOTION_DB.FEED;
 
 // Initialize Notion client
 let notion: Client | null = null;

@@ -17,10 +17,11 @@ import { safeAnswerCallback } from '../utils/telegram-helpers';
 
 // Import dispatcher routing functions directly
 import { Client } from '@notionhq/client';
+import { NOTION_DB } from '@atlas/shared/config';
 import { executeMcpTool, getMcpStatus } from '../mcp';
 
-const DB_WORK_QUEUE = '3d679030-b76b-43bd-92d8-1ac51abb4a28';
-const DEV_PIPELINE_DATABASE_ID = 'ce6fbf1b-ee30-433d-a9e6-b338552de7c9';
+const DB_WORK_QUEUE = NOTION_DB.WORK_QUEUE;
+const DEV_PIPELINE_DATABASE_ID = NOTION_DB.DEV_PIPELINE;
 
 // Notion client (lazy loaded)
 let _notion: Client | null = null;

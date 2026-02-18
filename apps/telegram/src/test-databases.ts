@@ -14,10 +14,11 @@
 import { config } from "dotenv";
 config({ override: true });
 import { Client } from "@notionhq/client";
+import { NOTION_DB } from '@atlas/shared/config';
 
-// CANONICAL DATA SOURCE IDs - DO NOT CHANGE
-const FEED_DATABASE_ID = "90b2b33f-4b44-4b42-870f-8d62fb8cbf18";
-const WORK_QUEUE_DATABASE_ID = "3d679030-b76b-43bd-92d8-1ac51abb4a28";
+// Canonical IDs from @atlas/shared/config
+const FEED_DATABASE_ID = NOTION_DB.FEED;
+const WORK_QUEUE_DATABASE_ID = NOTION_DB.WORK_QUEUE;
 
 // DEPRECATED - DO NOT USE
 const DEPRECATED_INBOX_ID = "f6f638c9-6aee-42a7-8137-df5b6a560f50";

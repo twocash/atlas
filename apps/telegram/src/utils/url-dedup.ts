@@ -10,10 +10,11 @@
  */
 
 import { Client } from '@notionhq/client';
+import { NOTION_DB } from '@atlas/shared/config';
 import { logger } from '../logger';
 
-// Feed 2.0 canonical ID
-const FEED_DATABASE_ID = '90b2b33f-4b44-4b42-870f-8d62fb8cbf18';
+// Feed 2.0 canonical ID (from @atlas/shared/config)
+const FEED_DATABASE_ID = NOTION_DB.FEED;
 
 const notion = new Client({ auth: process.env.NOTION_API_KEY });
 

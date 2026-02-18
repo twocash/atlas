@@ -3,9 +3,10 @@ import { config } from 'dotenv';
 config({ override: true });
 
 import { Client } from '@notionhq/client';
+import { NOTION_DB } from '@atlas/shared/config';
 
 const notion = new Client({ auth: process.env.NOTION_API_KEY });
-const DEV_PIPELINE = 'ce6fbf1b-ee30-433d-a9e6-b338552de7c9';
+const DEV_PIPELINE = NOTION_DB.DEV_PIPELINE;
 
 const response = await notion.databases.query({
   database_id: DEV_PIPELINE,

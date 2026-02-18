@@ -10,11 +10,12 @@
  */
 
 import { Client } from "@notionhq/client";
+import { NOTION_DB } from '@atlas/shared/config';
 import { logger } from "../logger";
 
-// CANONICAL DATA SOURCE IDs - DO NOT CHANGE
-const FEED_DB_ID = "90b2b33f-4b44-4b42-870f-8d62fb8cbf18";
-const WORK_QUEUE_DB_ID = "3d679030-b76b-43bd-92d8-1ac51abb4a28";
+// Canonical IDs from @atlas/shared/config
+const FEED_DB_ID = NOTION_DB.FEED;
+const WORK_QUEUE_DB_ID = NOTION_DB.WORK_QUEUE;
 
 // Lazy-initialized Notion client
 let _notion: Client | null = null;

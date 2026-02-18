@@ -18,7 +18,7 @@ export interface FeatureFlags {
    * Phase 1: Action Logging
    * When enabled, logs all Atlas actions to Feed 2.0 with intent hashes
    * for pattern detection.
-   * @default false
+   * @default true (disable with ATLAS_SKILL_LOGGING=false)
    */
   skillLogging: boolean;
 
@@ -26,7 +26,7 @@ export interface FeatureFlags {
    * Phase 2: Skill Execution
    * When enabled, executes matched skills from the registry.
    * Requires skillLogging to be effective.
-   * @default false
+   * @default true (disable with ATLAS_SKILL_EXECUTION=false)
    */
   skillExecution: boolean;
 
@@ -271,8 +271,8 @@ export interface SafetyLimits {
  */
 function loadFeatureFlags(): FeatureFlags {
   return {
-    skillLogging: process.env.ATLAS_SKILL_LOGGING === 'true',
-    skillExecution: process.env.ATLAS_SKILL_EXECUTION === 'true',
+    skillLogging: process.env.ATLAS_SKILL_LOGGING !== 'false',
+    skillExecution: process.env.ATLAS_SKILL_EXECUTION !== 'false',
     skillHotReload: process.env.ATLAS_SKILL_HOT_RELOAD === 'true',
     patternDetection: process.env.ATLAS_PATTERN_DETECTION === 'true',
     autoDeployTier0: process.env.ATLAS_AUTO_DEPLOY_TIER0 === 'true',

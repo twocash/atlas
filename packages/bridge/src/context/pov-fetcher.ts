@@ -3,11 +3,10 @@
  *
  * Queries the POV Library in Notion by Domain Coverage + Status=Active.
  * Extracts structured fields for epistemic positioning.
- *
- * SDK ID: ea3d86b7-cdb8-403e-ba03-edc410ae6498
  */
 
 import { Client } from "@notionhq/client"
+import { NOTION_DB } from "@atlas/shared/config"
 import { normalizePillar } from "./workspace-router"
 
 // ─── Types ───────────────────────────────────────────────
@@ -31,7 +30,7 @@ export interface PovContent {
 
 // ─── Configuration ───────────────────────────────────────
 
-const POV_LIBRARY_DB_ID = "ea3d86b7-cdb8-403e-ba03-edc410ae6498"
+const POV_LIBRARY_DB_ID = NOTION_DB.POV_LIBRARY
 
 /** Cache TTL in ms — defaults to 1 hour. POV entries change ~weekly. */
 const POV_CACHE_TTL_MS = Number(process.env.POV_CACHE_TTL_MS) || 3_600_000

@@ -10,6 +10,7 @@
  */
 
 import { Client } from '@notionhq/client';
+import { NOTION_DB } from '@atlas/shared/config';
 import type {
   SocraticConfig,
   SocraticConfigEntry,
@@ -22,8 +23,8 @@ import type {
 // Constants
 // ==========================================
 
-/** Socratic Interview Config database ID */
-const DATABASE_ID = '25a3f30643fd49eeb11b6f26761475bd';
+/** Socratic Interview Config database ID (canonical source: @atlas/shared/config) */
+const DATABASE_ID = NOTION_DB.SOCRATIC_CONFIG;
 
 /** Cache TTL: 5 minutes */
 const CACHE_TTL_MS = 5 * 60 * 1000;

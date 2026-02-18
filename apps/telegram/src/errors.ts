@@ -11,10 +11,11 @@
  */
 
 import { Client } from "@notionhq/client";
+import { NOTION_DB } from '@atlas/shared/config';
 import { logger } from "./logger";
 
 // Atlas Dev Pipeline database (for error logging)
-const DEV_PIPELINE_DB = "ce6fbf1b-ee30-433d-a9e6-b338552de7c9";
+const DEV_PIPELINE_DB = NOTION_DB.DEV_PIPELINE;
 
 // Lazy Notion client for error logging (separate from main bot client)
 let _errorNotionClient: Client | null = null;

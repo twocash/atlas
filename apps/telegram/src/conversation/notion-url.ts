@@ -15,12 +15,14 @@ import type { Context } from 'grammy';
 import { logger } from '../logger';
 import type { Pillar, RequestType } from './types';
 
+import { NOTION_DB } from '@atlas/shared/config';
+
 // Initialize Notion client
 const notion = new Client({ auth: process.env.NOTION_API_KEY });
 
-// Canonical database IDs
-const FEED_DATABASE_ID = '90b2b33f-4b44-4b42-870f-8d62fb8cbf18';
-const WORK_QUEUE_DATABASE_ID = '3d679030-b76b-43bd-92d8-1ac51abb4a28';
+// Canonical IDs from @atlas/shared/config
+const FEED_DATABASE_ID = NOTION_DB.FEED;
+const WORK_QUEUE_DATABASE_ID = NOTION_DB.WORK_QUEUE;
 
 /**
  * Types of Notion pages we recognize

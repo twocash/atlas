@@ -3,12 +3,10 @@
  *
  * Syncs agent lifecycle events to Notion Work Queue so Jim
  * sees real-time agent progress in his dashboard.
- *
- * Database: Work Queue 2.0
- * ID: 3d679030-b76b-43bd-92d8-1ac51abb4a28
  */
 
 import { Client } from "@notionhq/client";
+import { NOTION_DB } from "@atlas/shared/config";
 import type {
   WorkQueueStatus,
   WorkQueueUpdater,
@@ -26,7 +24,7 @@ import {
 // Configuration
 // ==========================================
 
-const WORK_QUEUE_DB_ID = "3d679030-b76b-43bd-92d8-1ac51abb4a28";
+const WORK_QUEUE_DB_ID = NOTION_DB.WORK_QUEUE;
 
 // ==========================================
 // Notion Client (Lazy Loaded)

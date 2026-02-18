@@ -12,6 +12,7 @@
  */
 
 import { Client } from '@notionhq/client';
+import { NOTION_DB } from '@atlas/shared/config';
 import { logger } from '../logger';
 import { isFeatureEnabled } from '../config/features';
 import { executeSkillWithApproval } from '../skills/executor';
@@ -22,7 +23,7 @@ import { updateFeedEntryAction } from '../notion';
 // Constants
 // ==========================================
 
-const FEED_DATABASE_ID = '90b2b33f-4b44-4b42-870f-8d62fb8cbf18';
+const FEED_DATABASE_ID = NOTION_DB.FEED;
 
 /** Default poll interval: 60 seconds */
 const DEFAULT_INTERVAL_MS = 60_000;

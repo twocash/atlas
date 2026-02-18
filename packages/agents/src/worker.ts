@@ -25,6 +25,7 @@
  */
 
 import { Client } from "@notionhq/client";
+import { NOTION_DB } from "@atlas/shared/config";
 import { AgentRegistry } from "./registry";
 import { executeResearch } from "./agents/research";
 import {
@@ -37,7 +38,7 @@ import {
 // Configuration
 // ==========================================
 
-const WORK_QUEUE_DB_ID = "3d679030-b76b-43bd-92d8-1ac51abb4a28";
+const WORK_QUEUE_DB_ID = NOTION_DB.WORK_QUEUE;
 const POLL_INTERVAL_MS = 30000; // 30 seconds
 const MAX_CONCURRENT = 1; // Process one task at a time
 

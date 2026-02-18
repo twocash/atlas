@@ -6,15 +6,14 @@
  */
 
 import { Client } from '@notionhq/client';
+import { NOTION_DB } from '@atlas/shared/config';
 import { logger } from '../logger';
 
-// Canonical database IDs - DO NOT CHANGE without updating MEMORY.md
+// Canonical IDs from @atlas/shared/config — single source of truth
 const DATABASES = {
-  WORK_QUEUE: '3d679030-b76b-43bd-92d8-1ac51abb4a28',
-  FEED: '90b2b33f-4b44-4b42-870f-8d62fb8cbf18',
-  DEV_PIPELINE: 'ce6fbf1b-ee30-433d-a9e6-b338552de7c9',
-  // SYSTEM_PROMPTS will be set after running scripts/setup-prompts-db.ts
-  // SYSTEM_PROMPTS: process.env.NOTION_PROMPTS_DB_ID || '',
+  WORK_QUEUE: NOTION_DB.WORK_QUEUE,
+  FEED: NOTION_DB.FEED,
+  DEV_PIPELINE: NOTION_DB.DEV_PIPELINE,
 } as const;
 
 interface HealthCheckResult {

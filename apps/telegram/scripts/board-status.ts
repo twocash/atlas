@@ -7,6 +7,7 @@ import { config } from 'dotenv';
 config({ override: true });
 
 import { Client } from '@notionhq/client';
+import { NOTION_DB } from '@atlas/shared/config';
 
 const notion = new Client({ auth: process.env.NOTION_API_KEY });
 
@@ -15,7 +16,7 @@ async function main() {
   console.log('=== DEV PIPELINE (Open) ===\n');
 
   const devPipeline = await notion.databases.query({
-    database_id: 'ce6fbf1b-ee30-433d-a9e6-b338552de7c9',
+    database_id: NOTION_DB.DEV_PIPELINE,
     filter: {
       property: 'Status',
       select: { does_not_equal: 'Closed' }
@@ -39,7 +40,7 @@ async function main() {
   console.log('\n=== WORK QUEUE (Open) ===\n');
 
   const workQueue = await notion.databases.query({
-    database_id: '3d679030-b76b-43bd-92d8-1ac51abb4a28',
+    database_id: NOTION_DB.WORK_QUEUE,
     // Status is a "status" property type in Work Queue 2.0
     sorts: [{ property: 'Priority', direction: 'ascending' }],
     page_size: 20

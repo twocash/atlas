@@ -27,12 +27,13 @@
 import { config } from 'dotenv';
 import { join } from 'path';
 import { Client } from '@notionhq/client';
+import { NOTION_DB } from '@atlas/shared/config';
 
 // Load environment variables
 config({ path: join(import.meta.dir, '..', '.env'), override: true });
 
-// Work Queue database ID
-const WORK_QUEUE_DATABASE_ID = '3d679030-b76b-43bd-92d8-1ac51abb4a28';
+// Canonical IDs from @atlas/shared/config
+const WORK_QUEUE_DATABASE_ID = NOTION_DB.WORK_QUEUE;
 
 // =============================================================================
 // TYPES

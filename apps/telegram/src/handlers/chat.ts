@@ -14,8 +14,8 @@ import { getModelOverride } from "../session";
 import { logger } from "../logger";
 import { audit } from "../audit";
 
-// Feature flag for cognitive router (enable when ready)
-const USE_COGNITIVE_ROUTER = process.env.USE_COGNITIVE_ROUTER === "true";
+// Cognitive router — default ON (disable with USE_COGNITIVE_ROUTER=false)
+const USE_COGNITIVE_ROUTER = process.env.USE_COGNITIVE_ROUTER !== "false";
 
 // Simple conversation history per user (in-memory)
 const conversationHistory = new Map<number, Array<{ role: "user" | "assistant"; content: string }>>();

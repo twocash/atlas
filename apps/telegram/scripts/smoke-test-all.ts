@@ -11,6 +11,7 @@ import { config } from 'dotenv';
 import { join } from 'path';
 config({ path: join(import.meta.dir, '..', '.env'), override: true });
 
+import { NOTION_DB } from '@atlas/shared/config';
 import { logger } from '../src/logger';
 
 // Disable verbose logging during tests
@@ -97,7 +98,7 @@ async function testNotion() {
   // Feed 2.0
   await runTest('Feed 2.0 accessible', async () => {
     const result = await notion.databases.query({
-      database_id: '90b2b33f-4b44-4b42-870f-8d62fb8cbf18',
+      database_id: NOTION_DB.FEED,
       page_size: 1,
     });
     if (result.results === undefined) throw new Error('Query failed');
@@ -106,7 +107,7 @@ async function testNotion() {
   // Work Queue 2.0
   await runTest('Work Queue 2.0 accessible', async () => {
     const result = await notion.databases.query({
-      database_id: '3d679030-b76b-43bd-92d8-1ac51abb4a28',
+      database_id: NOTION_DB.WORK_QUEUE,
       page_size: 1,
     });
     if (result.results === undefined) throw new Error('Query failed');
@@ -115,7 +116,7 @@ async function testNotion() {
   // Dev Pipeline
   await runTest('Dev Pipeline accessible', async () => {
     const result = await notion.databases.query({
-      database_id: 'ce6fbf1b-ee30-433d-a9e6-b338552de7c9',
+      database_id: NOTION_DB.DEV_PIPELINE,
       page_size: 1,
     });
     if (result.results === undefined) throw new Error('Query failed');
