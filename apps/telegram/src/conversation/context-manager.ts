@@ -132,6 +132,62 @@ export function cleanupExpiredContexts(): number {
   return cleaned;
 }
 
+// ==========================================
+// Last Agent Result Stash (Bug A — Session Continuity)
+// ==========================================
+
+/**
+ * Snapshot of the most recent research result for a user.
+ * Enables follow-on conversions: "turn that into a LinkedIn post"
+ */
+export interface LastAgentResult {
+  workQueueId?: string;
+  topic: string;
+  resultSummary: string;
+  source: string;
+  timestamp: number;
+}
+
+// 30-minute TTL — captures natural follow-on window
+const AGENT_RESULT_TTL = 30 * 60 * 1000;
+
+const lastAgentResults = new Map<number, LastAgentResult>();
+
+/**
+ * Stash the most recent agent result for follow-on conversion detection.
+ * Call this after sendCompletionNotification() returns successfully.
+ */
+export function stashAgentResult(userId: number, result: Omit<LastAgentResult, 'timestamp'>): void {
+  lastAgentResults.set(userId, { ...result, timestamp: Date.now() });
+  logger.debug('Stashed agent result for session continuity', {
+    userId,
+    topic: result.topic.substring(0, 60),
+    source: result.source,
+  });
+}
+
+/**
+ * Retrieve the most recent agent result for a user.
+ * Returns null if expired (>30 min) or not present.
+ */
+export function getLastAgentResult(userId: number): LastAgentResult | null {
+  const result = lastAgentResults.get(userId);
+  if (!result) return null;
+  if (Date.now() - result.timestamp > AGENT_RESULT_TTL) {
+    lastAgentResults.delete(userId);
+    logger.debug('Last agent result expired', { userId });
+    return null;
+  }
+  return result;
+}
+
+/**
+ * Clear the stashed agent result for a user (e.g. after follow-on dispatch)
+ */
+export function clearLastAgentResult(userId: number): void {
+  lastAgentResults.delete(userId);
+}
+
 /**
  * Get context stats (for debugging)
  */
