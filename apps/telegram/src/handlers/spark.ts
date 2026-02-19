@@ -105,7 +105,7 @@ export async function handleSparkIntent(
   const contentType = url ? 'url' : 'text';
   const content = url || text;
 
-  await socraticInterview(ctx, content, contentType as 'url' | 'text', title);
+  await socraticInterview(ctx, content, contentType as 'url' | 'text', title, undefined, urlContent);
 
   audit.logResponse(userId, `Started Socratic interview for: ${title}`);
 }

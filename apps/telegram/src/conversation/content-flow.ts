@@ -24,6 +24,7 @@ import { socraticInterview } from './socratic-adapter';
 import { getFeatureFlags } from '../config/features';
 import { checkUrl } from '../utils/url-dedup';
 import { triageMessage, type TriageResult } from '../cognitive/triage-skill';
+import { fetchUrlContent } from '../url';
 
 // ==========================================
 // Bug #1 Fix: Duplicate Confirmation Guard
@@ -234,9 +235,28 @@ export async function triggerContentConfirmation(
     });
   }
 
+  // FETCH URL CONTENT: Extract actual content before routing
+  let urlContent;
+  try {
+    await ctx.replyWithChatAction('typing');
+    urlContent = await fetchUrlContent(url);
+    logger.info('URL content fetched for content-flow', {
+      url,
+      success: urlContent.success,
+      title: urlContent.title?.substring(0, 80),
+      descriptionLength: urlContent.description?.length || 0,
+      bodySnippetLength: urlContent.bodySnippet?.length || 0,
+    });
+  } catch (fetchError) {
+    logger.warn('URL fetch failed in content-flow, proceeding without content', {
+      url,
+      error: fetchError instanceof Error ? fetchError.message : String(fetchError),
+    });
+  }
+
   // SOCRATIC INTERVIEW: Replace keyboard flow with conversational engine
   try {
-    const handled = await socraticInterview(ctx, url, 'url', title, triageResult);
+    const handled = await socraticInterview(ctx, url, 'url', title, triageResult, urlContent);
     return handled;
   } catch (error) {
     logger.error('Socratic interview failed (critical)', { error, url });

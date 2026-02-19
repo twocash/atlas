@@ -27,6 +27,7 @@ import { runResearchAgentWithNotifications, sendCompletionNotification } from '.
 import { fetchUrlContent } from '../url';
 import type { ResearchDepth } from '../../../../packages/agents/src/agents/research';
 import type { Pillar, RequestType } from './types';
+import type { UrlContent } from '../types';
 
 /**
  * Build ContextSignals from Telegram message data
@@ -84,6 +85,7 @@ export async function socraticInterview(
   contentType: 'url' | 'text' | 'media',
   title: string,
   triageResult?: TriageResult,
+  prefetchedUrlContent?: UrlContent,
 ): Promise<boolean> {
   const userId = ctx.from?.id;
   const chatId = ctx.chat?.id;
@@ -117,7 +119,7 @@ export async function socraticInterview(
         resolvedVia: 'auto_draft',
         extraContext: {},
         contentTopic: title,
-      }, content, contentType, title);
+      }, content, contentType, title, undefined, prefetchedUrlContent);
       return true;
     }
 
@@ -128,7 +130,7 @@ export async function socraticInterview(
         intent: result.context.intent,
         pillar: result.context.pillar,
       });
-      await handleResolved(ctx, result.context, content, contentType, title);
+      await handleResolved(ctx, result.context, content, contentType, title, undefined, prefetchedUrlContent);
       return true;
     }
 
@@ -170,6 +172,7 @@ export async function socraticInterview(
         triageResult,
         signals,
         createdAt: Date.now(),
+        prefetchedUrlContent,
       });
 
       logger.info('Socratic question sent', {
@@ -207,6 +210,7 @@ async function handleResolved(
   contentType: 'url' | 'text' | 'media',
   title: string,
   answerContext?: string,
+  prefetchedUrlContent?: UrlContent,
 ): Promise<void> {
   const userId = ctx.from?.id;
   const chatId = ctx.chat?.id;
@@ -261,13 +265,13 @@ async function handleResolved(
 
       let query: string;
       if (contentType === 'url') {
-        // Fix A+B: Try to fetch actual post content (OG title/description).
+        // Use pre-fetched URL content if available; only re-fetch as fallback.
         // For social media URLs the triage title is useless — never use it
-        // as the primary research subject. Jim's answer + OG content are the
+        // as the primary research subject. Jim's answer + fetched content are the
         // real signals; fall back to triage title only when both are absent.
-        const fetched = await fetchUrlContent(content).catch(() => null);
+        const fetched = prefetchedUrlContent ?? await fetchUrlContent(content).catch(() => null);
         const ogContent = fetched?.success && (fetched.description || fetched.bodySnippet)
-          ? [fetched.title, fetched.description].filter(Boolean).join('\n')
+          ? [fetched.title, fetched.description, fetched.bodySnippet].filter(Boolean).join('\n')
           : null;
 
         logger.info('Socratic research query signals', {
@@ -275,6 +279,8 @@ async function handleResolved(
           hasOgContent: !!ogContent,
           ogTitle: fetched?.title?.substring(0, 80),
           fetchSuccess: fetched?.success,
+          usedPrefetched: !!prefetchedUrlContent,
+          bodySnippetLength: fetched?.bodySnippet?.length || 0,
         });
 
         const parts = [
@@ -347,6 +353,7 @@ export async function handleSocraticAnswer(
         session.contentType,
         session.title,
         answerText,
+        session.prefetchedUrlContent,
       );
       return true;
     }
@@ -381,7 +388,7 @@ export async function handleSocraticAnswer(
         resolvedVia: 'auto_draft',
         extraContext: {},
         contentTopic: session.title,
-      }, session.content, session.contentType, session.title);
+      }, session.content, session.contentType, session.title, undefined, session.prefetchedUrlContent);
       return true;
     }
 

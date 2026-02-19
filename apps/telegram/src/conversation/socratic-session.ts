@@ -11,6 +11,7 @@
 import { logger } from '../logger';
 import type { SocraticQuestion, ContextSignals } from '../../../../packages/agents/src/socratic';
 import type { TriageResult } from '../cognitive/triage-skill';
+import type { UrlContent } from '../types';
 
 /**
  * A pending Socratic interview awaiting Jim's reply
@@ -42,6 +43,8 @@ export interface PendingSocraticSession {
   createdAt: number;
   /** Request ID for pending content (links to pending-content store) */
   requestId?: string;
+  /** Pre-fetched URL content (avoids redundant re-fetch in research path) */
+  prefetchedUrlContent?: UrlContent;
 }
 
 /** Session TTL: 5 minutes */
