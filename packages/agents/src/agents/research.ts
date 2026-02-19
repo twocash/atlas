@@ -14,6 +14,7 @@
 import type { AgentRegistry } from "../registry";
 import type { Agent, AgentResult, AgentMetrics, Pillar } from "../types";
 import { getPromptManager, type PromptPillar } from "../services/prompt-manager";
+import { degradedWarning, logDegradedFallback } from "../services/degraded-context";
 
 // ==========================================
 // Research Agent Types
@@ -572,21 +573,14 @@ async function getVoiceInstructionsAsync(config: ResearchConfig): Promise<string
       return voicePrompt;
     }
   } catch (error) {
-    console.error(`[Research] VOICE LOOKUP FAILURE: PromptManager threw for voice "${voice}"`, {
-      promptId,
-      error,
-      fix: [
-        '1. Check NOTION_PROMPTS_DB_ID env var is set',
-        `2. Verify Notion DB has entry with ID="${promptId}"`,
-        '3. Run seed migration if DB is empty',
-      ],
-    });
+    logDegradedFallback(promptId, 'getVoiceInstructionsAsync', { voice, error: String(error) });
   }
 
-  // Fallback to hardcoded defaults — LOUD about it
-  console.error(`[Research] VOICE FALLBACK: "${voice}" not found in PromptManager (ID: ${promptId}) — using hardcoded default`);
+  // Fallback to hardcoded defaults — LOUD about it (ADR-008)
+  logDegradedFallback(promptId, 'getVoiceInstructionsAsync', { voice });
   const fallbackVoice = voice === "custom" ? "grove-analytical" : voice;
-  return FALLBACK_VOICE_DEFAULTS[fallbackVoice] || FALLBACK_VOICE_DEFAULTS["grove-analytical"];
+  const fallbackText = FALLBACK_VOICE_DEFAULTS[fallbackVoice] || FALLBACK_VOICE_DEFAULTS["grove-analytical"];
+  return fallbackText + '\n' + degradedWarning(promptId);
 }
 
 /**
@@ -707,20 +701,17 @@ async function buildResearchPrompt(config: ResearchConfig): Promise<string> {
     researchInstructions = notionInstructions;
     qualityBlock = ''; // Already included in notionInstructions
   } else {
-    // Hardcoded fallback — LOUD about it
+    // Hardcoded fallback — LOUD about it (ADR-008)
     const attemptedId = config.pillar && config.useCase
       ? `research-agent.${slugify(config.pillar)}.${slugify(config.useCase)} → ${DEPTH_PROMPT_ID[depth]}`
       : DEPTH_PROMPT_ID[depth];
-    console.error(`[Research] RESEARCH INSTRUCTIONS FALLBACK: Using hardcoded prompts (tried IDs: ${attemptedId})`, {
-      fix: [
-        '1. Verify NOTION_PROMPTS_DB_ID is set in .env',
-        '2. Run seed migration: bun run apps/telegram/data/migrations/seed-prompts.ts',
-        `3. Confirm Notion DB has entry with ID="${DEPTH_PROMPT_ID[depth]}"`,
-      ],
-    });
-    researchInstructions = getDepthInstructions(depth);
+    logDegradedFallback(attemptedId, 'buildResearchPrompt', { depth, pillar: config.pillar, useCase: config.useCase });
+    researchInstructions = getDepthInstructions(depth) + '\n' + degradedWarning(DEPTH_PROMPT_ID[depth]);
     qualityBlock = getQualityGuidelines(depth);
   }
+
+  // PM-gated summary guidance (async fetch → hardcoded fallback)
+  const summaryGuidance = await getSummaryGuidanceAsync(depth);
 
   // VOICE FIRST: Put voice/style instructions at the TOP so the model adopts the persona
   // before processing the task. This is critical for voice injection to work.
@@ -746,7 +737,7 @@ Provide your response in this exact JSON format:
 
 \`\`\`json
 {
-  "summary": "${getSummaryGuidance(depth)}",
+  "summary": "${summaryGuidance}",
   "findings": [
     {
       "claim": "Specific fact or insight discovered",
@@ -823,6 +814,28 @@ function getSummaryGuidance(depth: ResearchDepth): string {
     case "deep":
       return "Comprehensive 4-6 paragraph academic summary including: research context, methodology overview, key findings with evidence strength, limitations, areas of consensus/debate, and implications for further research. Use your full token budget.";
   }
+}
+
+/**
+ * PM-gated summary guidance — tries Notion slug `research-agent.summary.{depth}`
+ * before falling back to hardcoded getSummaryGuidance() + degraded warning.
+ */
+async function getSummaryGuidanceAsync(depth: ResearchDepth): Promise<string> {
+  const slug = `research-agent.summary.${depth}`;
+  try {
+    const pm = getPromptManager();
+    const notionGuidance = await pm.getPromptById(slug);
+    if (notionGuidance) {
+      console.log(`[Research] Loaded summary guidance from PromptManager (ID: ${slug})`);
+      return notionGuidance;
+    }
+    // Null result — slug not found in Notion
+    logDegradedFallback(slug, 'getSummaryGuidanceAsync', { depth });
+  } catch (err) {
+    // PM threw — network error, bad config, etc.
+    logDegradedFallback(slug, 'getSummaryGuidanceAsync', { depth, error: String(err) });
+  }
+  return getSummaryGuidance(depth);
 }
 
 function getQualityGuidelines(depth: ResearchDepth): string {
