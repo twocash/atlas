@@ -132,7 +132,6 @@ const FULL_SIGNALS: ContextSignals = {
     topic: 'AI governance',
     sentiment: 'positive',
     contentLength: 1500,
-    hasUrl: true,
     title: 'The Future of AI Governance',
   },
   classification: {

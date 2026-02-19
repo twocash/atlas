@@ -37,11 +37,19 @@ function buildSignals(
   contentType: 'url' | 'text' | 'media',
   title: string,
   triageResult?: TriageResult,
+  prefetchedUrlContent?: UrlContent,
 ): ContextSignals {
+  // For URLs: prefer the fetched page title over the triage title.
+  // Triage title is a classification label ("Social Media Post: Shawn Chauhan Thread").
+  // Fetched title is the actual page title ("Google Research: Prompt Doubling Lifts Accuracy").
+  const effectiveTitle = (prefetchedUrlContent?.success && prefetchedUrlContent.title)
+    ? prefetchedUrlContent.title
+    : title;
+
   const signals: ContextSignals = {
     contentSignals: {
-      topic: title,
-      title,
+      topic: effectiveTitle,
+      title: effectiveTitle,
       hasUrl: contentType === 'url',
       url: contentType === 'url' ? content : undefined,
       contentLength: content.length,
@@ -98,7 +106,7 @@ export async function socraticInterview(
 
   try {
     // Build context signals from available data
-    const signals = buildSignals(content, contentType, title, triageResult);
+    const signals = buildSignals(content, contentType, title, triageResult, prefetchedUrlContent);
 
     // Run the engine
     const engine = getSocraticEngine();
@@ -149,8 +157,9 @@ export async function socraticInterview(
         return false;
       }
 
-      // Format question text
-      const questionText = formatQuestionMessage(title, result.questions);
+      // Format question text — show fetched content title, not triage label
+      const fetchedTitle = prefetchedUrlContent?.success ? prefetchedUrlContent.title : undefined;
+      const questionText = formatQuestionMessage(title, result.questions, fetchedTitle);
 
       // Send the question
       const questionMsg = await ctx.reply(questionText, {
@@ -279,11 +288,27 @@ async function handleResolved(
         });
       }
 
-      // ResearchConfig.query = triage title (clean, searchable, < 200 chars).
-      // Per ADR: raw fetched content, answerContext strings, and URL source
-      // lines must NOT appear in the query field.
+      // Build research query from best available sources:
+      // 1. Fetched URL title (actual content topic, not triage label)
+      // 2. User direction from Socratic answer (intent, framing, angle)
+      // 3. Fallback: triage title
+      let researchQuery = title; // default fallback
+
+      // Prefer fetched content title over triage label
+      if (prefetchedUrlContent?.success && prefetchedUrlContent.title) {
+        researchQuery = prefetchedUrlContent.title;
+      }
+
+      // Enrich with user direction if provided (from Socratic answer)
+      const userDirection = resolved.extraContext?.userDirection;
+      if (userDirection) {
+        // Append user direction, capped to keep query under 200 chars
+        const combined = `${researchQuery}: ${userDirection}`;
+        researchQuery = combined.length <= 200 ? combined : combined.slice(0, 197) + '...';
+      }
+
       const researchConfig: ResearchConfig = {
-        query: title,
+        query: researchQuery,
         depth,
         pillar,
       };
@@ -400,11 +425,13 @@ export async function handleSocraticAnswer(
  * Format a Socratic question as a Telegram message
  * No keyboards — conversational text with option hints.
  */
-function formatQuestionMessage(title: string, questions: SocraticQuestion[]): string {
+function formatQuestionMessage(title: string, questions: SocraticQuestion[], fetchedTitle?: string): string {
   const question = questions[0]; // Primary question
   if (!question) return 'How would you like to handle this?';
 
-  let msg = `\uD83D\uDCDD <b>${escapeHtml(title)}</b>\n\n`;
+  // Use fetched content title when available (the actual page title, not triage label)
+  const displayTitle = fetchedTitle || title;
+  let msg = `\uD83D\uDCCE <b>${escapeHtml(displayTitle)}</b>\n\n`;
   msg += escapeHtml(question.text);
 
   // Show options as hints (not buttons)
