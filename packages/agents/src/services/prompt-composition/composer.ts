@@ -215,7 +215,15 @@ export async function composePrompt(
 
   // If pillar-specific drafter failed, try default drafter
   if (!composedPrompt && promptIds.drafter) {
-    console.log(`[Composer] Pillar-specific drafter not found: ${promptIds.drafter}, trying default`);
+    console.error(`[Composer] DRAFTER NOT FOUND: Pillar-specific drafter "${promptIds.drafter}" not in Notion or local fallback — trying default`, JSON.stringify({
+      attemptedId: promptIds.drafter,
+      fallbackId: `drafter.default.${ctx.action}`,
+      fix: [
+        `1. Verify Notion prompts DB has entry with ID="${promptIds.drafter}"`,
+        '2. Run seed migration: bun run apps/telegram/data/migrations/seed-prompts.ts',
+        '3. Or add a drafter.default.* entry for this action type',
+      ],
+    }));
     const defaultDrafter = resolveDefaultDrafterId(ctx.action);
     const fallbackIds = { ...promptIds, drafter: defaultDrafter };
     composedPrompt = await pm.composePrompts(fallbackIds, variables);
@@ -223,7 +231,18 @@ export async function composePrompt(
 
   // If still no prompt, use hardcoded fallback
   if (!composedPrompt) {
-    console.warn('[Composer] No prompt found, using hardcoded fallback');
+    console.error('[Composer] COMPOSITION FAILED: No drafter prompt found in Notion OR local fallback — using hardcoded fallback', JSON.stringify({
+      attemptedDrafter: promptIds.drafter,
+      attemptedVoice: promptIds.voice,
+      pillar: ctx.pillar,
+      action: ctx.action,
+      fix: [
+        `1. Verify NOTION_PROMPTS_DB_ID is set in .env`,
+        `2. Run seed migration: bun run apps/telegram/data/migrations/seed-prompts.ts`,
+        `3. Ensure prompts DB has entries matching drafter.default.${ctx.action} or drafter.${getPillarSlug(ctx.pillar)}.${ctx.action}`,
+        '4. Check Notion API connectivity',
+      ],
+    }));
     return {
       prompt: buildFallbackPrompt(ctx),
       temperature: 0.7,

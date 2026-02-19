@@ -547,6 +547,8 @@ async function runRegressionTests(cwd: string): Promise<SuiteResult> {
     'test/intent-first-phase2.test.ts',
     'test/structured-composition-scenarios.test.ts',
     'test/v3-pipeline-lifecycle.test.ts',
+    'test/prompt-manager-wiring.test.ts',  // Sprint: PromptManager Wiring — seed data + ID convention alignment
+    'src/conversation/__tests__/composition-integration.test.ts',  // Sprint: PromptManager Wiring — composition pipeline
     'src/conversation/__tests__/architecture.test.ts',  // Gate 2: Socratic architecture constraints
   ];
 

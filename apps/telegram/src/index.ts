@@ -23,6 +23,7 @@ import { initMcp, shutdownMcp } from "./mcp";
 import { startStatusServer, stopStatusServer } from "./health/status-server";
 import { initializeSkillRegistry } from "./skills";
 import { startSelfImprovementListener, stopSelfImprovementListener } from "./listeners/self-improvement";
+import { getPromptManager } from "../../../packages/agents/src/services/prompt-manager";
 import { startHealthAlertProducer, stopHealthAlertProducer } from "./feed/alert-producer";
 import { startApprovalListener, stopApprovalListener } from "./feed/approval-listener";
 import { startReviewListener, stopReviewListener } from "./feed/review-listener";
@@ -123,6 +124,37 @@ async function main() {
   await initializeSkillRegistry().catch(err => {
     logger.warn("Skill registry initialization failed (non-fatal)", { error: err.message });
   });
+
+  // Initialize PromptManager singleton (Sprint: Prompt Manager Wiring)
+  // Warm-up validates Notion connectivity — LOUD fail if DB unreachable
+  try {
+    const pm = getPromptManager();
+    const systemPrompt = await pm.getPrompt({ capability: 'System', useCase: 'General' });
+    if (systemPrompt) {
+      logger.info("PromptManager initialized (System prompt loaded from Notion)");
+    } else {
+      logger.error("PROMPT MANAGER: System prompt not found at startup — hardcoded fallback will be used", {
+        lookup: { capability: 'System', useCase: 'General' },
+        expectedPromptId: 'system.general',
+        dbId: process.env.NOTION_PROMPTS_DB_ID || 'NOT SET',
+        fix: [
+          '1. Verify NOTION_PROMPTS_DB_ID is set in .env',
+          '2. Run seed migration: bun run apps/telegram/data/migrations/seed-prompts.ts',
+          '3. Confirm Notion DB contains a row with capability=System, useCase=General',
+        ],
+      });
+    }
+  } catch (err) {
+    logger.error("PROMPT MANAGER: Warm-up failed — Notion prompt DB unreachable", {
+      error: err,
+      envVar: process.env.NOTION_PROMPTS_DB_ID ? 'SET' : 'MISSING',
+      fix: [
+        '1. Check NOTION_PROMPTS_DB_ID in .env (expected: 2fc780a78eef8196b29bdb4a6adfdc27)',
+        '2. Verify NOTION_API_KEY is valid and has access to the prompts DB',
+        '3. Check network connectivity to Notion API',
+      ],
+    });
+  }
 
   // Start self-improvement listener (Sprint: Pit Stop)
   // Polls Feed 2.0 for self-improvement entries and auto-dispatches to pit crew

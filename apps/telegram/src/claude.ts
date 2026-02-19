@@ -21,6 +21,7 @@ import type {
   IntentEntities,
 } from "./types";
 import { logger } from "./logger";
+import { getPromptManager } from "../../../packages/agents/src/services/prompt-manager";
 
 // Initialize Anthropic client
 const anthropic = new Anthropic({
@@ -41,19 +42,10 @@ try {
 }
 
 /**
- * System prompt for Atlas classification
+ * Hardcoded classification task description — used as fallback when PromptManager is unavailable.
+ * Canonical source: Notion prompts DB, ID = "classifier.spark-classification"
  */
-const CLASSIFICATION_SYSTEM_PROMPT = `${atlasIdentity}
-
----
-
-## Classification Framework
-
-${sparksContext}
-
----
-
-## Your Task
+const HARDCODED_CLASSIFICATION_TASK = `## Your Task
 
 You are classifying a spark (raw input) from Jim. Analyze the content and return a JSON classification with these fields:
 
@@ -64,8 +56,65 @@ You are classifying a spark (raw input) from Jim. Analyze the content and return
 - tags: Array of relevant tags (e.g., ["ai-tools", "research"])
 - suggestedTitle: A concise title for the Feed entry (max 100 chars)
 
-Return ONLY valid JSON, no markdown formatting or explanation outside the JSON.
+Return ONLY valid JSON, no markdown formatting or explanation outside the JSON.`;
+
+/** Cached classification task text from PromptManager */
+let _cachedClassificationTask: string | null = null;
+
+/**
+ * Build the classification system prompt, loading task description from PromptManager (Notion).
+ * Falls back to hardcoded with LOUD error.
+ */
+async function getClassificationSystemPrompt(): Promise<string> {
+  let taskText = _cachedClassificationTask;
+
+  if (!taskText) {
+    try {
+      const pm = getPromptManager();
+      const notionTask = await pm.getPromptById('classifier.spark-classification');
+      if (notionTask) {
+        _cachedClassificationTask = notionTask;
+        taskText = notionTask;
+        logger.info("Loaded classification task from PromptManager (Notion)", { promptId: 'classifier.spark-classification', length: notionTask.length });
+      } else {
+        logger.error("CLASSIFIER: PromptManager returned null for spark classification — using hardcoded fallback", {
+          promptId: 'classifier.spark-classification',
+          dbId: process.env.NOTION_PROMPTS_DB_ID || 'NOT SET',
+          fix: [
+            '1. Verify Notion prompts DB has entry with ID="classifier.spark-classification"',
+            '2. Run seed migration: bun run apps/telegram/data/migrations/seed-prompts.ts',
+            '3. Check NOTION_PROMPTS_DB_ID is set in .env',
+          ],
+        });
+        taskText = HARDCODED_CLASSIFICATION_TASK;
+      }
+    } catch (err) {
+      logger.error("CLASSIFIER: PromptManager threw for classification lookup — using hardcoded fallback", {
+        promptId: 'classifier.spark-classification',
+        error: err,
+        fix: [
+          '1. Check NOTION_PROMPTS_DB_ID env var is set',
+          '2. Verify Notion DB has entry with ID="classifier.spark-classification"',
+          '3. Check network connectivity to Notion API',
+        ],
+      });
+      taskText = HARDCODED_CLASSIFICATION_TASK;
+    }
+  }
+
+  return `${atlasIdentity}
+
+---
+
+## Classification Framework
+
+${sparksContext}
+
+---
+
+${taskText}
 `;
+}
 
 /**
  * Classify a spark using Claude
@@ -92,10 +141,12 @@ export async function classifyWithClaude(
   userMessage += `Jim's message: "${message}"`;
 
   try {
+    const classificationPrompt = await getClassificationSystemPrompt();
+
     const response = await anthropic.messages.create({
       model: "claude-sonnet-4-20250514",
       max_tokens: 500,
-      system: CLASSIFICATION_SYSTEM_PROMPT,
+      system: classificationPrompt,
       messages: [
         { role: "user", content: userMessage }
       ],
@@ -200,13 +251,10 @@ export async function testClaudeConnection(): Promise<boolean> {
 // ==========================================
 
 /**
- * System prompt for intent detection
+ * Hardcoded intent detection task description — used as fallback when PromptManager is unavailable.
+ * Canonical source: Notion prompts DB, ID = "classifier.intent-detection"
  */
-const INTENT_DETECTION_PROMPT = `${atlasIdentity}
-
----
-
-## Your Task
+const HARDCODED_INTENT_DETECTION_TASK = `## Your Task
 
 You are detecting the **intent** behind a message from Jim. Analyze the message and determine what Jim wants to do.
 
@@ -235,8 +283,129 @@ Return ONLY valid JSON with these fields:
 - intent: One of "spark", "query", "status", "lookup", "action", "chat"
 - confidence: Number 0-100
 - reasoning: Brief explanation (1 sentence)
-- entities: Object with extracted entities (optional fields: url, query, pillar, actionType)
+- entities: Object with extracted entities (optional fields: url, query, pillar, actionType)`;
+
+/** Cached intent detection task text from PromptManager */
+let _cachedIntentDetectionTask: string | null = null;
+
+/**
+ * Build the intent detection system prompt, loading task description from PromptManager (Notion).
+ * Falls back to hardcoded with LOUD error.
+ */
+async function getIntentDetectionSystemPrompt(): Promise<string> {
+  let taskText = _cachedIntentDetectionTask;
+
+  if (!taskText) {
+    try {
+      const pm = getPromptManager();
+      const notionTask = await pm.getPromptById('classifier.intent-detection');
+      if (notionTask) {
+        _cachedIntentDetectionTask = notionTask;
+        taskText = notionTask;
+        logger.info("Loaded intent detection task from PromptManager (Notion)", { promptId: 'classifier.intent-detection', length: notionTask.length });
+      } else {
+        logger.error("CLASSIFIER: PromptManager returned null for intent detection — using hardcoded fallback", {
+          promptId: 'classifier.intent-detection',
+          dbId: process.env.NOTION_PROMPTS_DB_ID || 'NOT SET',
+          fix: [
+            '1. Verify Notion prompts DB has entry with ID="classifier.intent-detection"',
+            '2. Run seed migration: bun run apps/telegram/data/migrations/seed-prompts.ts',
+            '3. Check NOTION_PROMPTS_DB_ID is set in .env',
+          ],
+        });
+        taskText = HARDCODED_INTENT_DETECTION_TASK;
+      }
+    } catch (err) {
+      logger.error("CLASSIFIER: PromptManager threw for intent detection lookup — using hardcoded fallback", {
+        promptId: 'classifier.intent-detection',
+        error: err,
+        fix: [
+          '1. Check NOTION_PROMPTS_DB_ID env var is set',
+          '2. Verify Notion DB has entry with ID="classifier.intent-detection"',
+          '3. Check network connectivity to Notion API',
+        ],
+      });
+      taskText = HARDCODED_INTENT_DETECTION_TASK;
+    }
+  }
+
+  return `${atlasIdentity}
+
+---
+
+${taskText}
 `;
+}
+
+// ==========================================
+// Chat With Tools Prompt (PromptManager)
+// ==========================================
+
+/**
+ * Hardcoded chat-with-tools task description — used as fallback when PromptManager is unavailable.
+ * Canonical source: Notion prompts DB, ID = "classifier.chat-with-tools"
+ */
+const HARDCODED_CHAT_WITH_TOOLS_TASK = `You are chatting with Jim via Telegram. You have tools to look up his feed, work queue, and Atlas state.
+
+RULES:
+- If Jim asks about feed, queue, tasks, status, or priorities — USE THE TOOLS
+- Don't guess or make up items — look them up
+- Be concise. This is mobile. No walls of text.
+- Lead with what matters. Skip pleasantries.
+- If something is urgent (P0, blocked), mention it first.
+
+VOICE:
+- Direct, efficient, zero-bullshit
+- Like a sharp exec assistant, not a chatbot
+- No "Great question!" or "I'd be happy to help"
+- Just answer.
+
+EXAMPLES:
+- "3 items in your feed. 2 Grove, 1 Consulting."
+- "Queue's clear. Nothing blocking."
+- "Found 2 P0s that need attention."`;
+
+/** Cached chat-with-tools task text from PromptManager */
+let _cachedChatWithToolsTask: string | null = null;
+
+/**
+ * Get chat-with-tools task text, loading from PromptManager (Notion).
+ * Falls back to hardcoded with LOUD error.
+ */
+async function getChatWithToolsTaskText(): Promise<string> {
+  if (_cachedChatWithToolsTask) return _cachedChatWithToolsTask;
+
+  try {
+    const pm = getPromptManager();
+    const notionTask = await pm.getPromptById('classifier.chat-with-tools');
+    if (notionTask) {
+      _cachedChatWithToolsTask = notionTask;
+      logger.info("Loaded chat-with-tools task from PromptManager (Notion)", { promptId: 'classifier.chat-with-tools', length: notionTask.length });
+      return notionTask;
+    }
+    logger.error("CLASSIFIER: PromptManager returned null for chat-with-tools — using hardcoded fallback", {
+      promptId: 'classifier.chat-with-tools',
+      dbId: process.env.NOTION_PROMPTS_DB_ID || 'NOT SET',
+      fix: [
+        '1. Verify Notion prompts DB has entry with ID="classifier.chat-with-tools"',
+        '2. Run seed migration: bun run apps/telegram/data/migrations/seed-prompts.ts',
+        '3. Check NOTION_PROMPTS_DB_ID is set in .env',
+      ],
+    });
+  } catch (err) {
+    logger.error("CLASSIFIER: PromptManager threw for chat-with-tools lookup — using hardcoded fallback", {
+      promptId: 'classifier.chat-with-tools',
+      error: err,
+      fix: [
+        '1. Check NOTION_PROMPTS_DB_ID env var is set',
+        '2. Verify Notion DB has entry with ID="classifier.chat-with-tools"',
+        '3. Check network connectivity to Notion API',
+      ],
+    });
+  }
+
+  return HARDCODED_CHAT_WITH_TOOLS_TASK;
+}
 
 /**
  * Detect intent using Claude (fallback for ambiguous cases)
@@ -258,10 +427,12 @@ export async function detectIntentWithClaude(
   }
 
   try {
+    const intentPrompt = await getIntentDetectionSystemPrompt();
+
     const response = await anthropic.messages.create({
       model: "claude-sonnet-4-20250514",
       max_tokens: 300,
-      system: INTENT_DETECTION_PROMPT,
+      system: intentPrompt,
       messages: [{ role: "user", content: userMessage }],
     });
 
@@ -380,27 +551,10 @@ export async function generateResponseWithTools(
     }
   ];
 
+  const chatToolsTask = await getChatWithToolsTaskText();
   const systemPrompt = `${atlasIdentity}
 
-You are chatting with Jim via Telegram. You have tools to look up his feed, work queue, and Atlas state.
-
-RULES:
-- If Jim asks about feed, queue, tasks, status, or priorities — USE THE TOOLS
-- Don't guess or make up items — look them up
-- Be concise. This is mobile. No walls of text.
-- Lead with what matters. Skip pleasantries.
-- If something is urgent (P0, blocked), mention it first.
-
-VOICE:
-- Direct, efficient, zero-bullshit
-- Like a sharp exec assistant, not a chatbot
-- No "Great question!" or "I'd be happy to help"
-- Just answer.
-
-EXAMPLES:
-- "3 items in your feed. 2 Grove, 1 Consulting."
-- "Queue's clear. Nothing blocking."
-- "Found 2 P0s that need attention."
+${chatToolsTask}
 `;
 
   try {

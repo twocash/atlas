@@ -533,34 +533,35 @@ Provide research in working-notes format. Key characteristics:
 async function getVoiceInstructionsAsync(config: ResearchConfig): Promise<string> {
   const voice = config.voice || "grove-analytical";
 
-  // Handle custom voice
+  // Handle custom voice (pre-loaded content from Telegram voice selection)
   if (voice === "custom" && config.voiceInstructions) {
     return `\n## Writing Voice: Custom\n\n${config.voiceInstructions}\n`;
   }
 
-  // Try to fetch from PromptManager (Notion)
+  // Try to fetch from PromptManager (Notion) by direct ID: "voice.grove-analytical", "voice.consulting", etc.
+  const promptId = `voice.${voice}`;
   try {
     const promptManager = getPromptManager();
-    const pillar = (config.pillar as PromptPillar) || "All";
-
-    // Build voice prompt ID: "voice.grove-analytical" or "voice.linkedin-punchy"
-    const voicePrompt = await promptManager.getPrompt({
-      capability: "Voice",
-      pillar,
-      useCase: "General",
-    });
+    const voicePrompt = await promptManager.getPromptById(promptId);
 
     if (voicePrompt) {
-      console.log(`[Research] Loaded voice "${voice}" from PromptManager`);
+      console.log(`[Research] Loaded voice "${voice}" from PromptManager (ID: ${promptId})`);
       return voicePrompt;
     }
   } catch (error) {
-    console.warn("[Research] PromptManager fetch failed, using fallback:", error);
+    console.error(`[Research] VOICE LOOKUP FAILURE: PromptManager threw for voice "${voice}"`, {
+      promptId,
+      error,
+      fix: [
+        '1. Check NOTION_PROMPTS_DB_ID env var is set',
+        `2. Verify Notion DB has entry with ID="${promptId}"`,
+        '3. Run seed migration if DB is empty',
+      ],
+    });
   }
 
-  // Fallback to hardcoded defaults
-  console.log(`[Research] Using fallback voice "${voice}"`);
-  // Type assertion needed because voice can be "custom" which isn't in FALLBACK_VOICE_DEFAULTS
+  // Fallback to hardcoded defaults — LOUD about it
+  console.error(`[Research] VOICE FALLBACK: "${voice}" not found in PromptManager (ID: ${promptId}) — using hardcoded default`);
   const fallbackVoice = voice === "custom" ? "grove-analytical" : voice;
   return FALLBACK_VOICE_DEFAULTS[fallbackVoice] || FALLBACK_VOICE_DEFAULTS["grove-analytical"];
 }
@@ -587,6 +588,68 @@ function getVoiceInstructions(config: ResearchConfig): string {
 // System Prompts by Depth
 // ==========================================
 
+/** Slugify for building prompt IDs: "The Grove" → "the-grove", "Market Analysis" → "market-analysis" */
+function slugify(s: string): string {
+  return s.toLowerCase().replace(/\s+/g, '-').replace(/[^a-z0-9-]/g, '');
+}
+
+/** Depth → PromptManager ID mapping */
+const DEPTH_PROMPT_ID: Record<ResearchDepth, string> = {
+  light: 'research-agent.light',
+  standard: 'research-agent.standard',
+  deep: 'research-agent.deep',
+};
+
+/**
+ * Fetch research instructions from PromptManager (Notion).
+ *
+ * Resolution order:
+ * 1. Pillar+UseCase specific (e.g., research-agent.the-grove.sprout-generation)
+ * 2. Depth-generic (e.g., research-agent.standard)
+ * 3. null (caller uses hardcoded fallback)
+ */
+async function getResearchInstructionsFromNotion(config: ResearchConfig): Promise<string | null> {
+  const depth = config.depth || 'standard';
+
+  try {
+    const pm = getPromptManager();
+
+    // 1. Try pillar+useCase specific prompt
+    if (config.pillar && config.useCase) {
+      const specificId = `research-agent.${slugify(config.pillar)}.${slugify(config.useCase)}`;
+      const specific = await pm.getPromptById(specificId);
+      if (specific) {
+        console.log(`[Research] Loaded research instructions from PromptManager (ID: ${specificId})`);
+        return specific;
+      }
+    }
+
+    // 2. Try depth-generic prompt
+    const depthId = DEPTH_PROMPT_ID[depth];
+    const depthPrompt = await pm.getPromptById(depthId);
+    if (depthPrompt) {
+      console.log(`[Research] Loaded research instructions from PromptManager (ID: ${depthId})`);
+      return depthPrompt;
+    }
+
+    // 3. Not found — caller will use hardcoded fallback
+    return null;
+  } catch (err) {
+    console.error('[Research] RESEARCH INSTRUCTIONS FAILURE: PromptManager threw', {
+      depth,
+      pillar: config.pillar,
+      useCase: config.useCase,
+      error: err,
+      fix: [
+        '1. Check NOTION_PROMPTS_DB_ID env var is set',
+        '2. Run seed migration: bun run apps/telegram/data/migrations/seed-prompts.ts',
+        '3. Check network connectivity to Notion API',
+      ],
+    });
+    return null;
+  }
+}
+
 async function buildResearchPrompt(config: ResearchConfig): Promise<string> {
   const depth = config.depth || "standard";
   const depthCfg = DEPTH_CONFIG[depth];
@@ -610,6 +673,32 @@ async function buildResearchPrompt(config: ResearchConfig): Promise<string> {
     voicePreview: voiceInstructions.substring(0, 200),
   });
 
+  // Fetch research instructions from PromptManager (Notion-tunable)
+  // Notion prompt text combines depth instructions + quality guidelines in one block
+  const notionInstructions = await getResearchInstructionsFromNotion(config);
+  let researchInstructions: string;
+  let qualityBlock: string;
+
+  if (notionInstructions) {
+    // Notion text includes both depth instructions AND quality guidelines
+    researchInstructions = notionInstructions;
+    qualityBlock = ''; // Already included in notionInstructions
+  } else {
+    // Hardcoded fallback — LOUD about it
+    const attemptedId = config.pillar && config.useCase
+      ? `research-agent.${slugify(config.pillar)}.${slugify(config.useCase)} → ${DEPTH_PROMPT_ID[depth]}`
+      : DEPTH_PROMPT_ID[depth];
+    console.error(`[Research] RESEARCH INSTRUCTIONS FALLBACK: Using hardcoded prompts (tried IDs: ${attemptedId})`, {
+      fix: [
+        '1. Verify NOTION_PROMPTS_DB_ID is set in .env',
+        '2. Run seed migration: bun run apps/telegram/data/migrations/seed-prompts.ts',
+        `3. Confirm Notion DB has entry with ID="${DEPTH_PROMPT_ID[depth]}"`,
+      ],
+    });
+    researchInstructions = getDepthInstructions(depth);
+    qualityBlock = getQualityGuidelines(depth);
+  }
+
   // VOICE FIRST: Put voice/style instructions at the TOP so the model adopts the persona
   // before processing the task. This is critical for voice injection to work.
   const basePrompt = `You are Atlas Research Agent, an autonomous research assistant with access to Google Search.
@@ -626,7 +715,7 @@ Target Sources: ${config.maxSources || depthCfg.targetSources}+
 ## Instructions
 
 Use Google Search to find current, authoritative information about this topic.
-${getDepthInstructions(depth)}
+${researchInstructions}
 
 ## Output Format
 
@@ -661,7 +750,7 @@ Provide your response in this exact JSON format:
 }
 \`\`\`
 
-${getQualityGuidelines(depth)}
+${qualityBlock}
 
 Begin your research now.`;
 

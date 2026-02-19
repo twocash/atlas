@@ -37,6 +37,7 @@ export const NOTION_DB = {
   TOKEN_LEDGER: 'e32b5588-daee-4a31-ad45-7bbd2c7f4398',
   WORKER_RESULTS: '671f6a0a-7574-4fb2-81f9-8424d7c4dd59',
   POV_LIBRARY: 'ea3d86b7-cdb8-403e-ba03-edc410ae6498',
+  SYSTEM_PROMPTS: '2fc780a7-8eef-8196-b29b-db4a6adfdc27',
 } as const;
 
 /**
@@ -50,6 +51,7 @@ export const NOTION_MCP = {
   FEED: 'a7493abb-804a-4759-b6ac-aeca62ae23b8',
   WORK_QUEUE: '6a8d9c43-b084-47b5-bc83-bc363640f2cd',
   DEV_PIPELINE: '1460539c-7002-447a-a8b7-17bba06c6559',
+  SYSTEM_PROMPTS: '2fc780a7-8eef-816a-ab6a-000be58429f2',
 } as const;
 
 /** @deprecated Use NOTION_DB instead. Alias retained for backward compatibility during migration. */

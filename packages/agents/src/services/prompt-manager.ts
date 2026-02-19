@@ -23,9 +23,11 @@ import * as path from 'path';
  * Capability types that can have prompts
  */
 export type PromptCapability =
+  | 'System'
   | 'Research Agent'
   | 'Voice'
   | 'Classifier'
+  | 'Drafter'
   | 'Refinery';
 
 /**
@@ -54,7 +56,7 @@ export interface PromptRecord {
   /** Immutable key: "research.grove.sprout" */
   id: string;
 
-  /** Research Agent, Classifier, Voice, Refinery */
+  /** System, Research Agent, Classifier, Voice, Drafter, Refinery */
   capability: PromptCapability;
 
   /** The Grove, Consulting, Personal, Home/Garage, All */

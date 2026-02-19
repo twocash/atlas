@@ -10,6 +10,7 @@ import { fileURLToPath } from 'url';
 import { NOTION_DB } from '@atlas/shared/config';
 import { logger } from '../logger';
 import type { ConversationState } from './context';
+import { getPromptManager } from '../../../packages/agents/src/services/prompt-manager';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
@@ -186,8 +187,41 @@ ${skills.map(s => `- **${s.name}**: ${s.description}`).join('\n')}
 `;
   }
 
-  // Add tools context
-  prompt += `
+  // Core instructions: PromptManager (Notion-tunable) — LOUD fail if misconfigured
+  let notionCoreInstructions: string | null = null;
+  try {
+    const pm = getPromptManager();
+    notionCoreInstructions = await pm.getPrompt({ capability: 'System', useCase: 'General' });
+  } catch (err) {
+    logger.error('PROMPT MANAGER FAILURE: System prompt fetch threw an exception', {
+      error: err,
+      lookup: { capability: 'System', useCase: 'General' },
+      expectedPromptId: 'system.general',
+      envVar: process.env.NOTION_PROMPTS_DB_ID ? 'SET' : 'MISSING',
+      fix: [
+        '1. Verify NOTION_PROMPTS_DB_ID is set in .env',
+        '2. Run seed migration: bun run apps/telegram/data/migrations/seed-prompts.ts',
+        '3. Check Notion DB has entry with capability=System, useCase=General',
+      ],
+    });
+  }
+
+  if (notionCoreInstructions) {
+    prompt += '\n---\n\n' + notionCoreInstructions;
+  } else {
+    // LOUD: Log error with fix pointers — hardcoded fallback kept only until Notion prompt confirmed working
+    logger.error('PROMPT MANAGER: System prompt returned null — using HARDCODED fallback', {
+      lookup: { capability: 'System', useCase: 'General' },
+      expectedPromptId: 'system.general',
+      dbId: process.env.NOTION_PROMPTS_DB_ID || 'NOT SET',
+      fix: [
+        '1. Verify NOTION_PROMPTS_DB_ID is set in .env (expected: 2fc780a78eef8196b29bdb4a6adfdc27)',
+        '2. Run seed migration: bun run apps/telegram/data/migrations/seed-prompts.ts',
+        '3. Confirm Notion DB contains a row with capability=System, useCase=General',
+        '4. Once confirmed, the hardcoded block below (400+ lines) should be deleted',
+      ],
+    });
+    prompt += `
 ---
 
 ## TICKET CREATION PROTOCOL (Task Architect Model)
@@ -589,6 +623,7 @@ Platform: Telegram Mobile
 
 **Creating a Dev Pipeline or Work Queue item requires calling the tool. There is no other way.**
 `;
+  }
 
   // Add recent tool context for continuity
   const toolContextSection = formatRecentToolContext(conversation);
