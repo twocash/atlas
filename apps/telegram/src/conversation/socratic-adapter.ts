@@ -24,6 +24,7 @@ import type { TriageResult } from '../cognitive/triage-skill';
 import { storeSocraticSession, removeSocraticSession, getSocraticSession } from './socratic-session';
 import { createAuditTrail } from './audit';
 import { runResearchAgentWithNotifications, sendCompletionNotification } from '../services/research-executor';
+import { fetchUrlContent } from '../url';
 import type { ResearchDepth } from '../../../../packages/agents/src/agents/research';
 import type { Pillar, RequestType } from './types';
 
@@ -257,9 +258,35 @@ async function handleResolved(
     // Dispatch research agent if that's what was resolved
     if (requestType === 'Research' && result.workQueueId && chatId) {
       const depth = mapToResearchDepth(resolved.depth);
-      const query = contentType === 'url'
-        ? `${answerContext ? answerContext + '\n' : ''}${title}\nSource: ${content}`
-        : `${answerContext ? answerContext + '\n' : ''}${title}\n${content}`;
+
+      let query: string;
+      if (contentType === 'url') {
+        // Fix A+B: Try to fetch actual post content (OG title/description).
+        // For social media URLs the triage title is useless — never use it
+        // as the primary research subject. Jim's answer + OG content are the
+        // real signals; fall back to triage title only when both are absent.
+        const fetched = await fetchUrlContent(content).catch(() => null);
+        const ogContent = fetched?.success && (fetched.description || fetched.bodySnippet)
+          ? [fetched.title, fetched.description].filter(Boolean).join('\n')
+          : null;
+
+        logger.info('Socratic research query signals', {
+          hasAnswerContext: !!answerContext,
+          hasOgContent: !!ogContent,
+          ogTitle: fetched?.title?.substring(0, 80),
+          fetchSuccess: fetched?.success,
+        });
+
+        const parts = [
+          answerContext,
+          ogContent,
+          !ogContent && !answerContext ? title : null, // triage title: last resort only
+          `Source: ${content}`,
+        ].filter(Boolean);
+        query = parts.join('\n');
+      } else {
+        query = `${answerContext ? answerContext + '\n' : ''}${title}\n${content}`;
+      }
 
       await ctx.reply(`\uD83D\uDD2C Starting research agent...\nDepth: ${depth}`);
 
