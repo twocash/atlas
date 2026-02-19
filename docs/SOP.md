@@ -850,6 +850,92 @@ When a feature is shipped via Pit Crew (`update_status → shipped/deployed`):
 /verify        — Run MASTER BLASTER verification
 ```
 
+---
+
+## SOP-013: Atlas Stack Startup
+
+**Effective:** 2026-02-18
+**Scope:** Starting the Atlas production stack for a dev or monitoring session
+
+### Overview
+
+The Atlas production stack has 3 components. Each runs in its own terminal.
+The supervisor (Claude Code) monitors the other two — it does not start them.
+
+### Components
+
+| # | Component | Purpose | Start Script |
+|---|-----------|---------|-------------|
+| 1 | Telegram Bot | Handles messages from Jim's phone | `start-telegram.bat` |
+| 2 | Bridge Server | Claude Code ↔ Chrome Extension WebSocket | `start-bridge.bat` |
+| 3 | Supervisor | Monitors bot + bridge, dispatches errors to Pit Crew | `/atlas-supervisor` in Claude Code |
+
+### Startup Sequence
+
+**Step 1 — Start the Telegram Bot (Terminal 1)**
+
+```
+C:\github\atlas\start-telegram.bat
+```
+
+Wait for: `Bot started as @MyBoyAtlas_bot`
+
+**Step 2 — Start the Bridge Server (Terminal 2)**
+
+```
+C:\github\atlas\start-bridge.bat
+```
+
+Wait for: server listening on port 3848
+
+**Step 3 — Start the Supervisor (Claude Code)**
+
+In a Claude Code session, invoke `/atlas-supervisor`.
+
+The supervisor will detect running processes and attach to their logs.
+
+### Log Files
+
+Both start scripts write logs to:
+
+```
+C:\github\atlas\apps\telegram\data\logs\
+  atlas-bot.log       ← Telegram bot stdout
+  atlas-bridge.log    ← Bridge server stdout
+```
+
+To follow logs in a terminal:
+
+```powershell
+Get-Content -Wait 'C:\github\atlas\apps\telegram\data\logs\atlas-bot.log'
+```
+
+### Stopping the Stack
+
+- **Bot:** Ctrl+C in Terminal 1 (or close the window)
+- **Bridge:** Ctrl+C in Terminal 2 (or close the window)
+- **Supervisor:** Say "stop" in the Claude Code session
+
+### When to Skip the Bridge
+
+The bridge is only needed when using the Atlas Chrome Extension's Claude panel.
+If you're only using Telegram, you can skip starting the bridge.
+
+### Switching Between Production and Dev
+
+Production bot runs from `C:\github\atlas\` (master branch).
+Dev work happens in a worktree. To supervise a dev worktree bot:
+
+1. Start the bot from the worktree (e.g., `C:\github\atlas-repairs\start-telegram.bat`)
+2. Invoke `/atlas-supervisor` — it detects the running PID via the lock file
+
+### Acceptance Criteria
+
+- [ ] Bot responds to Telegram messages
+- [ ] Bridge responds on `ws://localhost:3848` (if started)
+- [ ] Log files are being written under `data/logs/`
+- [ ] Supervisor dashboard shows all green
+
 Or say: "run tests", "quality check", "master blaster"
 
 ---
