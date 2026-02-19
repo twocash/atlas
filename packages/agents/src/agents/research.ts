@@ -161,32 +161,43 @@ const DEPTH_CONFIG: Record<ResearchDepth, DepthConfig> = {
 const GROUNDING_REDIRECT_PATTERN = /^https?:\/\/vertexaisearch\.cloud\.google\.com\/grounding-api-redirect\//;
 
 /**
- * Resolve a single Gemini grounding redirect URL to its actual destination
+ * Try to resolve a URL using the given HTTP method. Returns the final URL or null on failure.
  */
-async function resolveRedirectUrl(url: string): Promise<string> {
+async function tryResolveWith(url: string, method: 'HEAD' | 'GET'): Promise<string | null> {
+  try {
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 5000);
+    const headers: Record<string, string> = method === 'GET' ? { Range: 'bytes=0-0' } : {};
+    const response = await fetch(url, { method, redirect: 'follow', signal: controller.signal, headers });
+    clearTimeout(timeout);
+    const finalUrl = response.url;
+    if (!finalUrl || GROUNDING_REDIRECT_PATTERN.test(finalUrl)) return null;
+    return finalUrl;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Resolve a single Gemini grounding redirect URL to its actual destination.
+ * Returns null if unresolvable — callers must drop null results, never keep raw vertex URLs.
+ */
+async function resolveRedirectUrl(url: string): Promise<string | null> {
   if (!GROUNDING_REDIRECT_PATTERN.test(url)) {
     return url; // Not a redirect URL, return as-is
   }
 
-  try {
-    // Use HEAD request to follow redirects without downloading content
-    const controller = new AbortController();
-    const timeout = setTimeout(() => controller.abort(), 5000); // 5s timeout
+  // Try HEAD first (lightweight — avoids downloading content)
+  const headResult = await tryResolveWith(url, 'HEAD');
+  if (headResult) return headResult;
 
-    const response = await fetch(url, {
-      method: 'HEAD',
-      redirect: 'follow',
-      signal: controller.signal,
-    });
+  // Some servers block HEAD — fall back to GET with minimal range header
+  const getResult = await tryResolveWith(url, 'GET');
+  if (getResult) return getResult;
 
-    clearTimeout(timeout);
-
-    // The final URL after following redirects
-    return response.url || url;
-  } catch (error) {
-    console.log(`[Research] Failed to resolve redirect URL: ${url.substring(0, 80)}...`, error);
-    return url; // Return original on error
-  }
+  // Both failed — drop rather than keep a raw vertex redirect URL in output
+  console.log(`[Research] Could not resolve redirect URL, dropping: ${url.substring(0, 80)}`);
+  return null;
 }
 
 /**
@@ -223,7 +234,7 @@ async function resolveAllRedirectUrls(
 
   // Resolve all URLs in parallel (with concurrency limit)
   const urlArray = Array.from(urlsToResolve);
-  const resolvedMap = new Map<string, string>();
+  const resolvedMap = new Map<string, string | null>();
 
   // Process in batches of 5 to avoid overwhelming the server
   const batchSize = 5;
@@ -237,22 +248,34 @@ async function resolveAllRedirectUrls(
 
   // Log resolution results
   let resolved = 0;
+  let dropped = 0;
   for (const [original, actual] of resolvedMap) {
-    if (original !== actual) {
+    if (actual === null) {
+      dropped++;
+      console.log(`[Research] Dropped unresolvable redirect: ${original.substring(0, 60)}...`);
+    } else if (original !== actual) {
       resolved++;
       console.log(`[Research] Resolved: ${actual.substring(0, 60)}...`);
     }
   }
-  console.log(`[Research] Successfully resolved ${resolved}/${urlsToResolve.size} URLs`);
+  console.log(`[Research] Resolved ${resolved}/${urlsToResolve.size} redirect URLs, dropped ${dropped}`);
 
-  // Apply resolutions to sources
-  const resolvedSources = sources.map(s => resolvedMap.get(s) || s);
+  // Apply resolutions to sources — drop unresolvable vertex redirect URLs entirely
+  const resolvedSources = sources
+    .map(s => {
+      const mapped = resolvedMap.get(s);
+      return mapped === undefined ? s : mapped; // undefined = not vertex URL; string = resolved; null = drop
+    })
+    .filter((s): s is string => s !== null);
 
-  // Apply resolutions to findings
-  const resolvedFindings = findings.map(f => ({
-    ...f,
-    url: f.url ? (resolvedMap.get(f.url) || f.url) : f.url,
-  }));
+  // Apply resolutions to findings — clear URL if unresolvable (keep claim text)
+  const resolvedFindings = findings.map(f => {
+    if (!f.url) return f;
+    const mapped = resolvedMap.get(f.url);
+    if (mapped === undefined) return f;         // Not a vertex URL, keep as-is
+    if (mapped === null) return { ...f, url: '' }; // Unresolvable — clear URL but keep claim
+    return { ...f, url: mapped };               // Resolved successfully
+  });
 
   return { resolvedSources, resolvedFindings };
 }
