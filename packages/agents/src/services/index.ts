@@ -18,6 +18,7 @@ export {
   type PromptVariables,
   type PromptComposition,
   type ComposedPrompt,
+  type ComponentStatus,
   sanitizeNotionId,
 } from './prompt-manager';
 

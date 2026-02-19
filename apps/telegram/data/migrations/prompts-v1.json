@@ -207,5 +207,49 @@
     "modelConfig": { "temperature": 0.3, "maxTokens": 500 },
     "active": true,
     "version": 1
+  },
+  {
+    "id": "drafter.the-grove.summarize",
+    "capability": "Drafter",
+    "pillars": ["The Grove"],
+    "useCase": "Summarize",
+    "stage": "1-Capture",
+    "promptText": "## Drafter: Grove Summary\n\nSummarize this content through The Grove's strategic lens.\n\n### Summary Structure\n\n**TL;DR**\n2-3 sentences: What is this about and why does it matter for the AI sovereignty thesis?\n\n**Key Points**\n3-5 bullets — lead with the insight, not the event:\n- Each point should connect to architectural, market, or strategic implications\n- Name the specific technology, company, or mechanism\n- Distinguish signal from noise\n\n**Grove Relevance**\nHow does this connect to:\n- Distributed vs. centralized AI infrastructure\n- The capability propagation timeline (frontier → local)\n- Exploration architecture vs. optimization\n\n**Takeaway**\nOne sentence: What should a builder in this space do with this information?\n\n### Guidelines\n- Active voice, present tense\n- 8th-grade readability, graduate-level thinking\n- No buzzwords: revolutionary, paradigm shift, democratize\n- Lead with insight, not setup",
+    "modelConfig": { "temperature": 0.3, "maxTokens": 4096 },
+    "active": true,
+    "version": 1
+  },
+  {
+    "id": "drafter.personal.analysis",
+    "capability": "Drafter",
+    "pillars": ["Personal"],
+    "useCase": "Analysis",
+    "stage": "2-Research",
+    "promptText": "## Drafter: Personal Analysis\n\nProvide strategic personal analysis of this content.\n\n### Analysis Structure\n\n**Current State**\nWhat is the situation? Ground it in specifics — numbers, dates, concrete details.\n\n**Key Factors**\n3-5 factors that matter most, organized by:\n- What's within direct control\n- What requires coordination with others\n- What's environmental/external\n\n**Options**\nPresent 2-3 realistic options with honest trade-offs for each:\n- Time/effort required\n- Expected outcome\n- Risk level\n\n**Recommendation**\nClear recommendation with rationale. Don't hedge — make a call and explain why.\n\n**Next Step**\nOne concrete action to take this week.\n\n### Guidelines\n- Be practical, not aspirational\n- Acknowledge constraints (time, energy, money)\n- Focus on decisions that need to be made now\n- Skip motivational filler",
+    "modelConfig": { "temperature": 0.4, "maxTokens": 4096 },
+    "active": true,
+    "version": 1
+  },
+  {
+    "id": "drafter.home-garage.draft",
+    "capability": "Drafter",
+    "pillars": ["Home/Garage"],
+    "useCase": "Content Draft",
+    "stage": "3-Refine",
+    "promptText": "## Drafter: Home/Garage Draft\n\nCreate a practical document for a home or garage project.\n\n### Draft Structure\n\n**Project**\nWhat are we building, fixing, or planning? One sentence.\n\n**Scope**\n- What's included\n- What's explicitly NOT included\n- Dependencies (permits, materials, contractors)\n\n**Steps**\nNumbered action items in execution order:\n1. Each step should be completeable in one work session\n2. Include specific materials, tools, or measurements\n3. Note any wait times (drying, curing, delivery)\n\n**Materials & Budget**\nItemized list with estimated costs. Note what's already on hand.\n\n**Timeline**\nRealistic schedule accounting for weekends-only availability.\n\n**Risks**\n- What could go wrong\n- How to mitigate\n- When to call a professional instead\n\n### Guidelines\n- Be specific about measurements and quantities\n- Include safety considerations\n- Assume weekend warrior schedule\n- Note permit requirements if applicable",
+    "modelConfig": { "temperature": 0.3, "maxTokens": 4096 },
+    "active": true,
+    "version": 1
+  },
+  {
+    "id": "drafter.home-garage.analysis",
+    "capability": "Drafter",
+    "pillars": ["Home/Garage"],
+    "useCase": "Analysis",
+    "stage": "2-Research",
+    "promptText": "## Drafter: Home/Garage Analysis\n\nAnalyze this home or garage topic with practical focus.\n\n### Analysis Structure\n\n**Assessment**\nWhat's the current state? What problem are we solving?\n\n**Research Findings**\nKey facts organized by theme:\n- Code requirements and permits\n- Material options with cost comparisons\n- Common pitfalls and how to avoid them\n\n**Options Comparison**\n| Option | Cost | Difficulty | Durability | Timeline |\n|--------|------|------------|------------|----------|\n| A      |      |            |            |          |\n| B      |      |            |            |          |\n| C (DIY)|      |            |            |          |\n\n**Recommendation**\nBest path forward with rationale. Factor in:\n- Budget constraints\n- Skill level required (DIY vs. contractor)\n- Long-term maintenance implications\n\n**Action Items**\n3-5 next steps with who does what.\n\n### Guidelines\n- Always check local code requirements\n- Include both DIY and contractor options\n- Be honest about difficulty level\n- Note seasonal considerations",
+    "modelConfig": { "temperature": 0.3, "maxTokens": 4096 },
+    "active": true,
+    "version": 1
   }
 ]

@@ -18,6 +18,7 @@ import type {
 
 import { getPillarSlug, pillarSupportsAction, pillarHasVoice } from './registry';
 import { getPromptManager, type PromptVariables } from '../prompt-manager';
+import { degradedWarning, logDegradedFallback } from '../degraded-context';
 import { mapIntentToAction, inferFormat } from './intent-mapper';
 import { resolveAudienceVoice } from './audience-voice';
 import { getDepthConfig } from './depth-config';
@@ -206,45 +207,29 @@ export async function composePrompt(
   // Get prompt manager
   const pm = getPromptManager();
 
-  // Try to compose prompts
-  // The composePrompts method handles fallback chain:
-  // 1. drafter.{pillar-slug}.{action}
-  // 2. drafter.default.{action}
-  // 3. Hardcoded fallback
+  // Try pillar-specific composition (graceful degradation: voice/lens optional)
   let composedPrompt = await pm.composePrompts(promptIds, variables);
 
-  // If pillar-specific drafter failed, try default drafter
+  // If pillar-specific drafter was not found, try default drafter
   if (!composedPrompt && promptIds.drafter) {
-    console.error(`[Composer] DRAFTER NOT FOUND: Pillar-specific drafter "${promptIds.drafter}" not in Notion or local fallback — trying default`, JSON.stringify({
+    console.warn(`[Composer] Pillar drafter "${promptIds.drafter}" not found — trying default drafter`, {
       attemptedId: promptIds.drafter,
       fallbackId: `drafter.default.${ctx.action}`,
-      fix: [
-        `1. Verify Notion prompts DB has entry with ID="${promptIds.drafter}"`,
-        '2. Run seed migration: bun run apps/telegram/data/migrations/seed-prompts.ts',
-        '3. Or add a drafter.default.* entry for this action type',
-      ],
-    }));
+    });
     const defaultDrafter = resolveDefaultDrafterId(ctx.action);
     const fallbackIds = { ...promptIds, drafter: defaultDrafter };
     composedPrompt = await pm.composePrompts(fallbackIds, variables);
   }
 
-  // If still no prompt, use hardcoded fallback
+  // If still no prompt (drafter truly missing), use hardcoded fallback
   if (!composedPrompt) {
-    console.error('[Composer] COMPOSITION FAILED: No drafter prompt found in Notion OR local fallback — using hardcoded fallback', JSON.stringify({
-      attemptedDrafter: promptIds.drafter,
-      attemptedVoice: promptIds.voice,
-      pillar: ctx.pillar,
-      action: ctx.action,
-      fix: [
-        `1. Verify NOTION_PROMPTS_DB_ID is set in .env`,
-        `2. Run seed migration: bun run apps/telegram/data/migrations/seed-prompts.ts`,
-        `3. Ensure prompts DB has entries matching drafter.default.${ctx.action} or drafter.${getPillarSlug(ctx.pillar)}.${ctx.action}`,
-        '4. Check Notion API connectivity',
-      ],
-    }));
+    logDegradedFallback(
+      promptIds.drafter || `drafter.default.${ctx.action}`,
+      'composePrompt',
+      { pillar: ctx.pillar, action: ctx.action, voice: promptIds.voice }
+    );
     return {
-      prompt: buildFallbackPrompt(ctx),
+      prompt: buildFallbackPrompt(ctx) + '\n' + degradedWarning(promptIds.drafter || 'drafter.unknown'),
       temperature: 0.7,
       maxTokens: 4096,
       metadata: {
@@ -254,13 +239,29 @@ export async function composePrompt(
     };
   }
 
+  // Log component-specific diagnostics from the composition result
+  if (composedPrompt.warnings.length > 0) {
+    for (const warning of composedPrompt.warnings) {
+      console.warn(`[Composer] ${warning}`);
+    }
+  }
+
+  // Inject degraded-context warning into prompt if optional components were missing
+  let prompt = composedPrompt.prompt;
+  if (composedPrompt.components.voice === 'missing' && promptIds.voice) {
+    prompt += '\n' + degradedWarning(promptIds.voice);
+  }
+  if (composedPrompt.components.lens === 'missing' && promptIds.lens) {
+    prompt += '\n' + degradedWarning(promptIds.lens);
+  }
+
   return {
-    prompt: composedPrompt.prompt,
+    prompt,
     temperature: composedPrompt.temperature,
     maxTokens: composedPrompt.maxTokens,
     metadata: {
       drafter: promptIds.drafter || 'unknown',
-      voice: promptIds.voice,
+      voice: composedPrompt.components.voice === 'found' ? promptIds.voice : undefined,
     },
   };
 }

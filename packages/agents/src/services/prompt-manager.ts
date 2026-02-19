@@ -116,13 +116,25 @@ export interface PromptComposition {
   lens?: string;     // e.g. "lens.strategic", "lens.tactical" (future)
 }
 
+/** Status of a single component in composition */
+export type ComponentStatus = 'found' | 'missing' | 'fallback';
+
 /**
- * Result from prompt composition
+ * Result from prompt composition.
+ * Includes component-level status so callers know exactly what resolved.
  */
 export interface ComposedPrompt {
   prompt: string;
   temperature: number;
   maxTokens: number;
+  /** Which components were found/missing */
+  components: {
+    drafter: ComponentStatus;
+    voice: ComponentStatus;
+    lens: ComponentStatus;
+  };
+  /** Warnings from composition (e.g., optional component not found) */
+  warnings: string[];
 }
 
 // ==========================================
@@ -185,6 +197,9 @@ export class PromptManager {
 
   /** Strict mode - throw errors instead of falling back (for development/testing) */
   private strictMode: boolean = process.env.PROMPT_STRICT_MODE === 'true';
+
+  /** Rate-limit circuit breaker warnings to once per retry window */
+  private circuitBreakerWarningLogged: boolean = false;
 
   private constructor() {
     if (this.strictMode) {
@@ -447,7 +462,16 @@ export class PromptManager {
     if (now - this.lastNotionCheck > this.notionRetryInterval) {
       this.lastNotionCheck = now;
       this.notionAvailable = true; // Optimistically try again
+      this.circuitBreakerWarningLogged = false; // Reset so next failure window logs again
+      console.log('[PromptManager] Circuit breaker reset — retrying Notion');
       return true;
+    }
+
+    // Rate-limited degraded warning: log once per retry window
+    if (!this.circuitBreakerWarningLogged) {
+      const remainingSec = Math.ceil((this.notionRetryInterval - (now - this.lastNotionCheck)) / 1000);
+      console.error(`[DEGRADED] PromptManager: Notion unavailable — circuit breaker active, using fallbacks (retry in ~${remainingSec}s)`);
+      this.circuitBreakerWarningLogged = true;
     }
 
     return false;
@@ -466,6 +490,10 @@ export class PromptManager {
       return null;
     }
 
+    // Sanitize the query ID — strip any Notion auto-link markup
+    // (defensive: callers should pass clean IDs, but this catches edge cases)
+    const cleanId = sanitizeNotionId(promptId);
+
     try {
       const response = await notion.databases.query({
         database_id: this.databaseId,
@@ -473,7 +501,7 @@ export class PromptManager {
           and: [
             {
               property: 'ID',
-              rich_text: { equals: promptId },
+              rich_text: { equals: cleanId },
             },
             {
               property: 'Active',
@@ -805,12 +833,16 @@ export class PromptManager {
     const parts: string[] = [];
     let temperature = 0.7;
     let maxTokens = 4096;
+    const warnings: string[] = [];
+    const components: ComposedPrompt['components'] = {
+      drafter: 'missing',
+      voice: 'missing',
+      lens: 'missing',
+    };
 
-    // Ordered composition: drafter, voice, lens
-    const promptIds = [composition.drafter, composition.voice, composition.lens].filter(Boolean) as string[];
-
-    if (promptIds.length === 0) {
-      const msg = '[PromptManager] composePrompts called with no prompt IDs';
+    // Drafter is REQUIRED — if no drafter ID provided, abort
+    if (!composition.drafter) {
+      const msg = '[PromptManager] composePrompts called with no drafter ID';
       console.warn(msg);
       if (this.strictMode) {
         throw new Error(msg);
@@ -818,37 +850,68 @@ export class PromptManager {
       return null;
     }
 
-    console.log(`[PromptManager] Composing prompts: ${promptIds.join(' + ')}`);
+    console.log(`[PromptManager] Composing: drafter=${composition.drafter}, voice=${composition.voice || 'none'}, lens=${composition.lens || 'none'}`);
 
-    for (const promptId of promptIds) {
-      // getPromptRecordById will throw in strict mode if not found
-      const record = await this.getPromptRecordById(promptId);
-      if (!record) {
-        const msg = `[PromptManager] Composition failed: prompt not found: "${promptId}"`;
-        console.error(msg);
-        if (this.strictMode) {
-          throw new Error(msg);
-        }
-        return null;
+    // ── Required: Drafter ──────────────────────────────────
+    const drafterRecord = await this.getPromptRecordById(composition.drafter);
+    if (!drafterRecord) {
+      const msg = `[PromptManager] Composition failed: DRAFTER not found: "${composition.drafter}"`;
+      console.error(msg);
+      if (this.strictMode) {
+        throw new Error(msg);
       }
+      return null;
+    }
 
-      console.log(`[PromptManager] ✓ Loaded: ${promptId} (${record.promptText.length} chars)`);
-      const hydrated = this.hydrateTemplate(record.promptText, variables || {});
-      parts.push(hydrated);
+    console.log(`[PromptManager] ✓ Drafter loaded: ${composition.drafter} (${drafterRecord.promptText.length} chars)`);
+    const hydratedDrafter = this.hydrateTemplate(drafterRecord.promptText, variables || {});
+    parts.push(hydratedDrafter);
+    components.drafter = 'found';
 
-      // Use first prompt's model config as base
-      if (parts.length === 1 && record.modelConfig) {
-        temperature = (record.modelConfig.temperature as number) ?? temperature;
-        maxTokens = (record.modelConfig.maxTokens as number) ?? maxTokens;
+    // Use drafter's model config as base
+    if (drafterRecord.modelConfig) {
+      temperature = (drafterRecord.modelConfig.temperature as number) ?? temperature;
+      maxTokens = (drafterRecord.modelConfig.maxTokens as number) ?? maxTokens;
+    }
+
+    // ── Optional: Voice ──────────────────────────────────
+    if (composition.voice) {
+      const voiceRecord = await this.getPromptRecordById(composition.voice);
+      if (voiceRecord) {
+        console.log(`[PromptManager] ✓ Voice loaded: ${composition.voice} (${voiceRecord.promptText.length} chars)`);
+        const hydratedVoice = this.hydrateTemplate(voiceRecord.promptText, variables || {});
+        parts.push(hydratedVoice);
+        components.voice = 'found';
+      } else {
+        const warning = `[PromptManager] Optional voice "${composition.voice}" not found — composing without voice`;
+        console.warn(warning);
+        warnings.push(warning);
       }
     }
 
-    console.log(`[PromptManager] ✓ Composition complete: ${parts.length} prompts, ${parts.join('').length} total chars`);
+    // ── Optional: Lens ──────────────────────────────────
+    if (composition.lens) {
+      const lensRecord = await this.getPromptRecordById(composition.lens);
+      if (lensRecord) {
+        console.log(`[PromptManager] ✓ Lens loaded: ${composition.lens} (${lensRecord.promptText.length} chars)`);
+        const hydratedLens = this.hydrateTemplate(lensRecord.promptText, variables || {});
+        parts.push(hydratedLens);
+        components.lens = 'found';
+      } else {
+        const warning = `[PromptManager] Optional lens "${composition.lens}" not found — composing without lens`;
+        console.warn(warning);
+        warnings.push(warning);
+      }
+    }
+
+    console.log(`[PromptManager] ✓ Composition complete: ${parts.length} component(s), ${parts.join('').length} total chars${warnings.length ? ` (${warnings.length} warning(s))` : ''}`);
 
     return {
       prompt: parts.join('\n\n---\n\n'),
       temperature,
       maxTokens,
+      components,
+      warnings,
     };
   }
 
