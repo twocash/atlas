@@ -1263,4 +1263,83 @@ This includes:
 
 ---
 
+## SOP-014: AnythingLLM RAG Infrastructure
+
+**Effective:** 2026-02-18
+**Scope:** AnythingLLM Docker container on grove-node-1
+
+### Overview
+
+AnythingLLM is a RAG (Retrieval-Augmented Generation) server running as a Docker container on grove-node-1. It provides document ingestion and semantic search for Atlas agents.
+
+### Instance Details
+
+| Property | Value |
+|----------|-------|
+| **Container** | `anythingllm` |
+| **Local URL** | `http://localhost:3001` |
+| **Tailscale URL** | `http://<grove-node-1-tailscale-ip>:3001` |
+| **Health endpoint** | `GET /api/ping` → `{"online":true}` |
+| **Storage** | `C:/anythingllm-storage` ← **PRODUCTION DATA — NEVER WIPE** |
+
+### Environment Variables
+
+```
+ANYTHINGLLM_BASE_URL=http://localhost:3001   # or Tailscale URL for cross-machine
+ANYTHINGLLM_API_KEY=<from AnythingLLM Settings > Tools > API Keys>
+```
+
+### Health Check
+
+Atlas `/health` command includes an AnythingLLM check via `checkAnythingLlm()` in `health.ts`.
+
+Manual check:
+```powershell
+Invoke-RestMethod -Uri "http://localhost:3001/api/ping"
+# Expected: @{online=True}
+```
+
+### Recovery SOPs
+
+**Case 1: Container stopped (no errors, just stopped)**
+```powershell
+docker start anythingllm
+```
+Wait ~10s, then re-run `/health` to confirm `AnythingLLM: online`.
+
+**Case 2: Container missing (needs fresh start)**
+```powershell
+docker run -d \
+  --name anythingllm \
+  -p 3001:3001 \
+  -v C:/anythingllm-storage:/app/server/storage \
+  mintplexlabs/anythingllm
+```
+
+**Case 3: Docker daemon not running**
+Start Docker Desktop from the system tray, then use Case 1 or Case 2.
+
+### Storage Warning
+
+`C:/anythingllm-storage` contains all ingested documents and vector indexes.
+
+**NEVER:**
+- `docker rm -v anythingllm` (deletes volume — destroys data)
+- Wipe or format the storage directory
+- Run a fresh container with a new storage path (creates orphaned data)
+
+**ALWAYS:**
+- Mount the same `C:/anythingllm-storage` path in any new container run
+- Back up the storage directory before major Docker operations
+
+### Supervisor Integration
+
+The `/atlas-supervisor` checks AnythingLLM status via HTTP ping on each `status` or `logs` command.
+
+- If offline: report as ⚠️ WARN (not ❌ ERROR — it's a RAG slot, not core infrastructure)
+- If offline 3 checks in a row: dispatch Pit Crew ticket
+- Restart guidance: `docker start anythingllm` (never restart bot/bridge for this)
+
+---
+
 *SOPs are living documents. Update as patterns emerge.*

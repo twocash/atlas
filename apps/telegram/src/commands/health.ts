@@ -167,6 +167,33 @@ async function checkPendingResearch(): Promise<HealthResult> {
 }
 
 /**
+ * Check AnythingLLM RAG server connectivity
+ */
+async function checkAnythingLlm(): Promise<HealthResult> {
+  const baseUrl = process.env.ANYTHINGLLM_BASE_URL;
+  if (!baseUrl) {
+    return { status: 'warn', message: 'AnythingLLM: NOT CONFIGURED' };
+  }
+
+  try {
+    const response = await fetch(`${baseUrl}/api/ping`, {
+      signal: AbortSignal.timeout(3000),
+    });
+    if (response.ok) {
+      const data = await response.json() as { online?: boolean };
+      if (data.online) {
+        return { status: 'ok', message: 'AnythingLLM: online' };
+      }
+      return { status: 'warn', message: 'AnythingLLM: unexpected response' };
+    }
+    return { status: 'warn', message: `AnythingLLM: HTTP ${response.status}` };
+  } catch (error: any) {
+    const msg = error?.cause?.code || error?.message || 'connection failed';
+    return { status: 'warn', message: `AnythingLLM: OFFLINE (${msg.substring(0, 30)})` };
+  }
+}
+
+/**
  * Check MCP/Pit Crew connectivity (if available)
  */
 async function checkMcp(): Promise<HealthResult> {
@@ -230,13 +257,14 @@ export async function handleHealthCommand(ctx: Context): Promise<void> {
   const results: Record<string, HealthResult> = {};
 
   // Run checks in parallel where possible
-  const [dbResult, schemaResult, claudeResult, geminiResult, mcpResult, researchResult] = await Promise.all([
+  const [dbResult, schemaResult, claudeResult, geminiResult, mcpResult, researchResult, anythingLlmResult] = await Promise.all([
     checkDatabases(),
     checkStatusSchema(),
     checkClaude(),
     checkGemini(),
     checkMcp(),
     checkPendingResearch(),
+    checkAnythingLlm(),
   ]);
 
   results['Databases'] = dbResult;
@@ -245,6 +273,7 @@ export async function handleHealthCommand(ctx: Context): Promise<void> {
   results['Gemini'] = geminiResult;
   results['MCP'] = mcpResult;
   results['Research'] = researchResult;
+  results['AnythingLLM'] = anythingLlmResult;
 
   // Log results
   logger.info('Health check completed', {
@@ -254,6 +283,7 @@ export async function handleHealthCommand(ctx: Context): Promise<void> {
     gemini: geminiResult.status,
     mcp: mcpResult.status,
     research: researchResult.status,
+    anythingLlm: anythingLlmResult.status,
   });
 
   const message = formatResults(results);
