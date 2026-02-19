@@ -57,6 +57,7 @@ import {
   buildRoutingChoiceKeyboard,
   type PendingDispatch,
 } from './dispatch-choice';
+import { getLastAgentResult, clearLastAgentResult } from './context-manager';
 
 // Feature flag for content confirmation keyboard (Universal Content Analysis)
 // Enabled by default - set ATLAS_CONTENT_CONFIRM=false to disable
@@ -250,6 +251,32 @@ async function setReaction(ctx: Context, emoji: string): Promise<void> {
 }
 
 /**
+ * Detect if user is asking to convert/draft from a recent research result.
+ * Matches phrases like "turn that into a LinkedIn post", "write a blog from that",
+ * "draft an article about this", etc.
+ *
+ * Returns true if the message looks like a follow-on conversion request.
+ */
+function detectFollowOnConversionIntent(text: string): boolean {
+  // Verb-first: "turn that into...", "write a blog...", "draft a post..."
+  // Pronoun signals: "that", "this", "it" → implies referencing prior context
+  const FOLLOW_ON_PATTERN = /^(can you |please )?(turn|draft|write|make|convert|transform)\b.*(into|as|up|a)\b/i;
+  const PRONOUN_SIGNAL = /\b(that|this|it)\b/i;
+
+  if (FOLLOW_ON_PATTERN.test(text)) return true;
+
+  // Secondary: "make a post about that" / "summarize this for LinkedIn"
+  const SECONDARY_PATTERN = /\b(summarize|post|article|blog|linkedin|thread|email|report)\b.*\b(that|this|it)\b/i;
+  if (SECONDARY_PATTERN.test(text)) return true;
+
+  // Tertiary: bare conversion phrases with pronoun — "LinkedIn post from that"
+  const TERTIARY_PATTERN = /\b(linkedin|blog|article|thread|report|post|email)\b/i;
+  if (TERTIARY_PATTERN.test(text) && PRONOUN_SIGNAL.test(text)) return true;
+
+  return false;
+}
+
+/**
  * Handle incoming message - Claude as front door (with tools)
  */
 export async function handleConversation(ctx: Context): Promise<void> {
@@ -365,6 +392,31 @@ export async function handleConversation(ctx: Context): Promise<void> {
     }
   }
 
+  // FOLLOW-ON CONVERSION: Detect "turn that into a post" patterns and enrich
+  // userContent with the stashed research result so Claude knows exactly what
+  // "that" refers to. Consumes the stash so it doesn't bleed into future turns.
+  const followOnIntent = detectFollowOnConversionIntent(messageText);
+  if (followOnIntent) {
+    const recentResult = getLastAgentResult(userId);
+    if (recentResult) {
+      userContent = [
+        `[FOLLOW-ON CONVERSION REQUEST]`,
+        `User says: "${messageText}"`,
+        ``,
+        `Recent research topic: "${recentResult.topic}"`,
+        `Research summary: ${recentResult.resultSummary.substring(0, 300)}`,
+        ``,
+        `Please draft the requested content based on the research above.`,
+      ].join('\n');
+      clearLastAgentResult(userId);
+      logger.info('Follow-on conversion intent detected, enriching context', {
+        userId,
+        topic: recentResult.topic.substring(0, 60),
+        intent: messageText.substring(0, 60),
+      });
+    }
+  }
+
   // PRE-FLIGHT TRIAGE: Detect command intent before sending to Claude
   // This fixes the meta-request bug where "log a bug about X" gets captured
   // as a task instead of executing the command. The triage result is reused
@@ -440,6 +492,22 @@ export async function handleConversation(ctx: Context): Promise<void> {
     if (contextEnrichment.degradedContextNote) {
       systemPrompt += `\n\n${contextEnrichment.degradedContextNote}`;
     }
+  }
+
+  // Inject last agent result for follow-on conversion awareness
+  // If the user says "turn that into a post", Claude knows what "that" is
+  const lastAgentResult = getLastAgentResult(userId);
+  if (lastAgentResult) {
+    systemPrompt += [
+      `\n\n---\n\n## Recent Research Result (available for follow-on)`,
+      ``,
+      `The user recently completed a research task. If they ask you to draft, convert,`,
+      `or transform content, this is what they are most likely referring to.`,
+      ``,
+      `Topic: ${lastAgentResult.topic}`,
+      `Summary: ${lastAgentResult.resultSummary}`,
+      `Source: ${lastAgentResult.source}`,
+    ].join('\n');
   }
 
   // Build messages array for Claude API

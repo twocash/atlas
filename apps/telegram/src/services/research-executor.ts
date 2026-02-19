@@ -13,6 +13,7 @@ import { HallucinationError } from "../errors";
 import { isFeatureEnabled } from "../config/features";
 import { createActionFeedEntry } from "../notion";
 import type { ActionDataReview } from "../types";
+import { stashAgentResult } from "../conversation/context-manager";
 
 // Import from @atlas/agents package
 import {
@@ -301,6 +302,17 @@ export async function sendCompletionNotification(
     }
 
     await api.sendMessage(chatId, message);
+
+    // Stash result for follow-on conversion detection (Bug A — Session Continuity)
+    if (researchResult?.summary) {
+      const topicMatch = agent.name?.match(/^Research \[[^\]]+\]:\s*(.+)$/);
+      const topic = topicMatch?.[1] ?? agent.name ?? 'research';
+      stashAgentResult(chatId, {
+        topic: topic.substring(0, 200),
+        resultSummary: researchResult.summary.substring(0, 500),
+        source,
+      });
+    }
   } else {
     let errorMessage = `❌ Research failed\n\n` +
       `Error: ${result.summary || agent.error || "Unknown error"}`;
