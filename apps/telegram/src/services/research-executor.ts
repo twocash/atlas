@@ -18,6 +18,7 @@ import type { ActionDataReview } from "../types";
 import {
   AgentRegistry,
   wireAgentToWorkQueue,
+  appendDispatchNotes,
   type Agent,
   type AgentEvent,
   type ResearchConfig,
@@ -41,12 +42,17 @@ const notificationContexts: Map<string, { chatId: number; bot: Api }> =
 
 /**
  * Run research agent with Telegram notifications
+ *
+ * @param source - Originating entry point for provenance tracing (e.g. 'content-confirm').
+ *   Defaults to 'unknown' so existing callers don't break, but every call site MUST pass
+ *   an explicit source identifier. 'unknown' is a loud signal that fingerprinting was missed.
  */
 export async function runResearchAgentWithNotifications(
   config: ResearchConfig,
   chatId: number,
   api: Api,
-  workItemId?: string
+  workItemId?: string,
+  source = 'unknown'
 ): Promise<{ agent: Agent; result: any }> {
   // DEBUG: Log voice config being passed
   logger.info("Research config received", {
@@ -55,12 +61,13 @@ export async function runResearchAgentWithNotifications(
     voice: config.voice,
     hasVoiceInstructions: !!config.voiceInstructions,
     voiceInstructionsLength: config.voiceInstructions?.length || 0,
+    source,
   });
 
-  // Spawn the agent
+  // Spawn the agent — source embedded in name for WQ spawn comment provenance
   const agent = await registry.spawn({
     type: "research",
-    name: `Research: ${config.query.substring(0, 50)}`,
+    name: `Research [${source}]: ${config.query.substring(0, 50)}`,
     instructions: JSON.stringify(config),
     priority: "P1",
     workItemId,
@@ -132,9 +139,14 @@ export async function runResearchAgentWithNotifications(
 
     // Complete or fail
     if (result.success) {
-      logger.info("Marking agent as complete", { agentId: agent.id, hasSummary: !!result.summary });
+      logger.info("Marking agent as complete", { agentId: agent.id, hasSummary: !!result.summary, source });
       await registry.complete(agent.id, result);
-      logger.info("Agent marked complete, event should fire", { agentId: agent.id });
+      logger.info("Agent marked complete, event should fire", { agentId: agent.id, source });
+
+      // Append dispatch source to WQ Notes for provenance tracing (non-fatal)
+      if (workItemId) {
+        appendDispatchNotes(workItemId, source, 'success').catch(() => {/* non-fatal, already warned inside */});
+      }
 
       // P3 Review Card — FAIL-OPEN: card failure does NOT block delivery
       if (isFeatureEnabled('reviewProducer') && workItemId) {
@@ -156,8 +168,13 @@ export async function runResearchAgentWithNotifications(
         }
       }
     } else {
-      logger.warn("Research failed, marking agent as failed", { agentId: agent.id, summary: result.summary });
+      logger.warn("Research failed, marking agent as failed", { agentId: agent.id, summary: result.summary, source });
       await registry.fail(agent.id, result.summary || "Research failed", true);
+
+      // Append dispatch source to WQ Notes even on failure (non-fatal)
+      if (workItemId) {
+        appendDispatchNotes(workItemId, source, 'failure').catch(() => {/* non-fatal, already warned inside */});
+      }
     }
 
     // Cleanup
@@ -182,6 +199,8 @@ export async function runResearchAgentWithNotifications(
       logger.error("Hallucination detected in research", {
         agentId: agent.id,
         error: hallError.message,
+        source,
+        workItemId,
       });
 
       try {
@@ -201,7 +220,9 @@ export async function runResearchAgentWithNotifications(
     logger.error("Research execution threw exception", {
       agentId: agent.id,
       error: errorMessage,
-      stack: errorStack
+      stack: errorStack,
+      source,
+      workItemId,
     });
     await registry.fail(agent.id, errorMessage, true);
     subscription.unsubscribe();
@@ -221,14 +242,18 @@ export async function runResearchAgentWithNotifications(
 
 /**
  * Send completion notification to Telegram
+ *
+ * @param source - Originating entry point, passed through for analytics logging.
  */
 export async function sendCompletionNotification(
   api: Api,
   chatId: number,
   agent: Agent,
   result: any,
-  notionUrl?: string
+  notionUrl?: string,
+  source = 'unknown'
 ): Promise<void> {
+  logger.info("Sending completion notification", { agentId: agent.id, success: result.success, source });
   if (result.success) {
     const researchResult = result.output as ResearchResult | undefined;
 

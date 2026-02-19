@@ -20,6 +20,10 @@ import {
 import { createAuditTrail, type AuditEntry } from '../conversation/audit';
 import { addToConversationContext } from '../conversation/context-manager';
 import { safeAnswerCallback, safeAcknowledgeCallback } from '../utils/telegram-helpers';
+import {
+  runResearchAgentWithNotifications,
+  sendCompletionNotification,
+} from '../services/research-executor';
 
 /**
  * Handle Notion callback queries
@@ -141,17 +145,34 @@ async function handleProcess(
     { parse_mode: 'HTML' }
   );
 
-  // If it's a Research task, we could auto-dispatch an agent
-  // For now, we inject context and let the user guide next steps
+  // Research tasks: dispatch agent immediately (conversational — no button menu)
   if (pageInfo.requestType === 'Research') {
-    await ctx.reply(
-      `📚 This is a <b>Research</b> task. I can:\n` +
-      `• Research the topic and summarize findings\n` +
-      `• Create a document with analysis\n` +
-      `• Find relevant sources\n\n` +
-      `What would you like me to focus on?`,
-      { parse_mode: 'HTML' }
-    );
+    const chatId = ctx.chat?.id;
+    if (chatId) {
+      ctx.reply(
+        `🔬 Starting research on <b>${pageInfo.title}</b>...`,
+        { parse_mode: 'HTML' }
+      ).catch(err => logger.warn('Research start message failed', { error: err, pageId: pageInfo.pageId }));
+
+      runResearchAgentWithNotifications(
+        {
+          query: pageInfo.title,
+          depth: 'standard',
+          focus: pageInfo.content?.substring(0, 500) || undefined,
+        },
+        chatId,
+        ctx.api,
+        pageInfo.pageId,
+        'notion-process',
+      )
+        .then(({ agent, result }) =>
+          sendCompletionNotification(ctx.api, chatId, agent, result, pageInfo.url, 'notion-process')
+        )
+        .catch(err => {
+          logger.warn('Research dispatch failed from notion process', { error: err, pageId: pageInfo.pageId, source: 'notion-process' });
+          ctx.api.sendMessage(chatId, '❌ Research failed. Task is Active in Work Queue — retry from Notion.').catch(() => {});
+        });
+    }
   } else if (pageInfo.requestType === 'Build') {
     await ctx.reply(
       `🔧 This is a <b>Build</b> task. I can:\n` +
@@ -283,7 +304,7 @@ async function handleTrackInWQ(
   const entry: AuditEntry = {
     entry: pageInfo.title,
     pillar: 'The Grove', // Default, user can change
-    requestType: 'Research', // Default
+    requestType: 'Process', // Tracking is triage, not research — PM decision #6
     source: 'Telegram',
     author: 'Atlas [Telegram]',
     confidence: 0.8,

@@ -74,6 +74,7 @@ export {
   syncAgentFailure,
   syncAgentCancelled,
   wireAgentToWorkQueue,
+  appendDispatchNotes,
   getNotionPageUrl,
   createResearchWorkItem,
   type ResearchTaskConfig,
