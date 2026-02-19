@@ -10,7 +10,7 @@ import { fileURLToPath } from 'url';
 import { NOTION_DB } from '@atlas/shared/config';
 import { logger } from '../logger';
 import type { ConversationState } from './context';
-import { getPromptManager } from '../../../packages/agents/src/services/prompt-manager';
+import { getPromptManager } from '../../../../packages/agents/src/services/prompt-manager';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
