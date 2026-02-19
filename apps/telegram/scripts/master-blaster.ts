@@ -550,6 +550,7 @@ async function runRegressionTests(cwd: string): Promise<SuiteResult> {
     'test/prompt-manager-wiring.test.ts',  // Sprint: PromptManager Wiring — seed data + ID convention alignment
     'src/conversation/__tests__/composition-integration.test.ts',  // Sprint: PromptManager Wiring — composition pipeline
     'src/conversation/__tests__/architecture.test.ts',  // Gate 2: Socratic architecture constraints
+    'test/research-query-conformance.test.ts',  // fix/research-query-conformance: ADR canonical ResearchConfig flow
   ];
 
   const result = await runCommand(
