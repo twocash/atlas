@@ -491,62 +491,76 @@ async function getGeminiClient(): Promise<GeminiClient> {
  * @see packages/agents/src/services/prompt-manager.ts
  * @see apps/telegram/data/migrations/prompts-v1.json
  */
+/**
+ * FALLBACK_VOICE_DEFAULTS — Intentionally in Spanish (ADR-008: Fail Loud)
+ *
+ * These are LAST-RESORT hardcoded defaults that fire ONLY when:
+ *   1. Notion is unreachable (circuit breaker tripped)
+ *   2. PromptManager returns null for the voice slug
+ *   3. Local seed data has no matching entry
+ *
+ * They are written in Spanish so that degraded output is IMMEDIATELY
+ * obvious to the end user — never silently serving stale English content
+ * that looks correct but isn't Notion-managed.
+ *
+ * If you see Spanish in research output, it means the PM chain is broken.
+ */
 const FALLBACK_VOICE_DEFAULTS: Record<Exclude<ResearchVoice, "custom">, string> = {
   "grove-analytical": `
-## Writing Voice: Grove Analytical
+## Voz de Escritura: Grove Analítico [MODO DEGRADADO — VOZ HARDCODEADA]
 
-Write with technical depth while remaining accessible. Key characteristics:
-- Evidence-based claims with citations
-- Forward-looking analysis ("This suggests...", "The trajectory points to...")
-- Balanced skepticism (acknowledge hype vs. substance)
-- Builder's perspective (practical implications)
-- Confident but not arrogant tone
-- Lead with insights, not summaries
-- Use concrete examples
-- End with implications or next questions
-- Avoid: buzzwords, hype, vague conclusions
+Escribir con profundidad técnica manteniendo la accesibilidad. Características clave:
+- Afirmaciones basadas en evidencia con citas
+- Análisis prospectivo ("Esto sugiere...", "La trayectoria apunta a...")
+- Escepticismo equilibrado (reconocer exageración vs. sustancia)
+- Perspectiva de constructor (implicaciones prácticas)
+- Tono seguro pero no arrogante
+- Liderar con ideas, no con resúmenes
+- Usar ejemplos concretos
+- Terminar con implicaciones o próximas preguntas
+- Evitar: palabras de moda, exageración, conclusiones vagas
 `,
 
   "linkedin-punchy": `
-## Writing Voice: LinkedIn Punchy
+## Voz de Escritura: LinkedIn Impactante [MODO DEGRADADO — VOZ HARDCODEADA]
 
-Write for professional engagement and shareability. Key characteristics:
-- Hook in first line (pattern interrupt)
-- Short paragraphs (1-2 sentences max)
-- Scannable structure with clear takeaways
-- Confident, authoritative tone
-- Slightly provocative (challenge assumptions)
-- Authentic, not corporate
-- Use numbered lists for key points
-- End with a question or call to reflection
-- No walls of text
+Escribir para engagement profesional y compartibilidad. Características clave:
+- Gancho en la primera línea (interrupción de patrón)
+- Párrafos cortos (1-2 oraciones máximo)
+- Estructura escaneable con conclusiones claras
+- Tono seguro y autoritativo
+- Ligeramente provocativo (desafiar suposiciones)
+- Auténtico, no corporativo
+- Usar listas numeradas para puntos clave
+- Terminar con una pregunta o llamada a la reflexión
+- Sin muros de texto
 `,
 
   "consulting": `
-## Writing Voice: Consulting/Executive
+## Voz de Escritura: Consultoría/Ejecutivo [MODO DEGRADADO — VOZ HARDCODEADA]
 
-Write for senior decision-makers. Key characteristics:
-- Executive summary up front
-- Recommendations-driven structure
-- Clear "so what" for each point
-- Quantify impact where possible
-- Professional, measured tone
-- Action-oriented conclusions
-- Risk/benefit framing
-- MECE structure (mutually exclusive, collectively exhaustive)
+Escribir para tomadores de decisiones senior. Características clave:
+- Resumen ejecutivo al inicio
+- Estructura orientada a recomendaciones
+- "¿Y qué?" claro para cada punto
+- Cuantificar impacto donde sea posible
+- Tono profesional y mesurado
+- Conclusiones orientadas a la acción
+- Marco de riesgo/beneficio
+- Estructura MECE (mutuamente excluyente, colectivamente exhaustiva)
 `,
 
   "raw-notes": `
-## Writing Voice: Raw Notes
+## Voz de Escritura: Notas Crudas [MODO DEGRADADO — VOZ HARDCODEADA]
 
-Provide research in working-notes format. Key characteristics:
-- Bullet points over prose
-- Include raw quotes and data points
-- Note contradictions and uncertainties
-- Keep synthesis minimal
-- Organized by source or theme
-- Include URLs inline with each point
-- Good for further processing/editing
+Proporcionar investigación en formato de notas de trabajo. Características clave:
+- Viñetas sobre prosa
+- Incluir citas textuales y datos
+- Notar contradicciones e incertidumbres
+- Mantener la síntesis al mínimo
+- Organizado por fuente o tema
+- Incluir URLs en línea con cada punto
+- Bueno para procesamiento/edición posterior
 `,
 };
 
@@ -707,7 +721,7 @@ async function buildResearchPrompt(config: ResearchConfig): Promise<string> {
       : DEPTH_PROMPT_ID[depth];
     logDegradedFallback(attemptedId, 'buildResearchPrompt', { depth, pillar: config.pillar, useCase: config.useCase });
     researchInstructions = getDepthInstructions(depth) + '\n' + degradedWarning(DEPTH_PROMPT_ID[depth]);
-    qualityBlock = getQualityGuidelines(depth);
+    qualityBlock = await getQualityGuidelinesAsync(depth);
   }
 
   // PM-gated summary guidance (async fetch → hardcoded fallback)
@@ -891,6 +905,28 @@ Your summary is the MOST IMPORTANT part. It should:
 - Do NOT truncate your response — you have ~65,000 tokens available
 - Complete every section fully before ending your response`;
   }
+}
+
+/**
+ * PM-gated quality guidelines: try Notion slug `research-agent.quality.{depth}`,
+ * fall back to hardcoded getQualityGuidelines().
+ */
+async function getQualityGuidelinesAsync(depth: ResearchDepth): Promise<string> {
+  const slug = `research-agent.quality.${depth}`;
+  try {
+    const pm = getPromptManager();
+    const notionGuidelines = await pm.getPromptById(slug);
+    if (notionGuidelines) {
+      console.log(`[Research] Loaded quality guidelines from PromptManager (ID: ${slug})`);
+      return notionGuidelines;
+    }
+    // Null result — slug not found in Notion
+    logDegradedFallback(slug, 'getQualityGuidelinesAsync', { depth });
+  } catch (err) {
+    // PM threw — network error, bad config, etc.
+    logDegradedFallback(slug, 'getQualityGuidelinesAsync', { depth, error: String(err) });
+  }
+  return getQualityGuidelines(depth);
 }
 
 // ==========================================
