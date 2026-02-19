@@ -107,6 +107,13 @@ function assessBridgeContext(signals: ContextSignals): SlotAssessment {
   const gaps: string[] = [];
 
   const data = signals.bridgeContext;
+
+  // URL content shares don't need bridge context (no prior interaction to reference).
+  // Same pattern as assessContactData — treat slot as fully satisfied for URLs.
+  if (!data && signals.contentSignals?.hasUrl) {
+    return { slot, weight, completeness: 1, contribution: weight, gaps: [] };
+  }
+
   if (!data) {
     return { slot, weight, completeness: 0, contribution: 0, gaps: ['No bridge context available'] };
   }
@@ -179,7 +186,7 @@ function determineRegime(confidence: number): ConfidenceRegime {
  * This is a pure computation — no API calls, no side effects.
  * Returns the assessment with per-slot breakdown and top gaps.
  */
-export function assessContext(signals: ContextSignals): ConfidenceAssessment {
+export function assessContext(signals: ContextSignals, skipUrlCeiling = false): ConfidenceAssessment {
   const slots: SlotAssessment[] = [];
 
   for (const slot of Object.keys(CONTEXT_WEIGHTS) as ContextSlot[]) {
@@ -188,7 +195,15 @@ export function assessContext(signals: ContextSignals): ConfidenceAssessment {
   }
 
   // Sum weighted contributions
-  const overallConfidence = slots.reduce((sum, s) => sum + s.contribution, 0);
+  let overallConfidence = slots.reduce((sum, s) => sum + s.contribution, 0);
+
+  // URL shares: cap confidence at 0.84 so they always enter ask_one regime.
+  // This forces the Socratic engine to ask "what's the play?" for every URL,
+  // which is the designed UX — Jim always provides intent for shared links.
+  const isUrlShare = signals.contentSignals?.hasUrl === true;
+  if (!skipUrlCeiling && isUrlShare && overallConfidence >= 0.85) {
+    overallConfidence = 0.84;
+  }
 
   // Build top gaps sorted by weight (highest-weight gap first)
   const topGaps: Array<{ slot: ContextSlot; gap: string; weight: number }> = [];
@@ -198,6 +213,18 @@ export function assessContext(signals: ContextSignals): ConfidenceAssessment {
     }
   }
   topGaps.sort((a, b) => b.weight - a.weight);
+
+  // URL shares: inject synthetic gap for user action intent if none exists.
+  // Triage produces a classification intent (e.g. "capture"), but Jim's explicit
+  // action (research / draft / capture) is never known until he's asked.
+  // This ensures "What's the play?" is always generated for URL shares.
+  if (!skipUrlCeiling && isUrlShare && !topGaps.some(g => g.slot === 'content_signals')) {
+    topGaps.unshift({
+      slot: 'content_signals',
+      gap: 'URL intent not specified by user',
+      weight: CONTEXT_WEIGHTS['content_signals'],
+    });
+  }
 
   return {
     overallConfidence: Math.min(overallConfidence, 1),

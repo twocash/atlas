@@ -59,9 +59,7 @@ describe('Context Assessor', () => {
         topic: 'AI governance',
         sentiment: 'positive',
         contentLength: 1500,
-        hasUrl: true,
         title: 'The Future of AI Governance',
-        url: 'https://example.com/ai-governance',
       },
       classification: {
         intent: 'engage',
@@ -144,7 +142,7 @@ describe('Context Assessor', () => {
     it('auto_draft for confidence >= 0.85', () => {
       const result = assessContext({
         contactData: { name: 'A', relationship: 'B', recentActivity: 'C', relationshipHistory: 'D', isKnown: true },
-        contentSignals: { topic: 'A', sentiment: 'B', contentLength: 100, hasUrl: true, title: 'T' },
+        contentSignals: { topic: 'A', sentiment: 'B', contentLength: 100, title: 'T' },
         classification: { intent: 'engage', pillar: 'The Grove', confidence: 0.9, depth: 'deep', audience: 'public' },
         bridgeContext: { recentInteraction: 'A', lastTouchDate: 'B', pendingFollowUp: true, notes: 'C' },
       });

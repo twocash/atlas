@@ -54,6 +54,18 @@ const INTENT_ALIASES: Record<string, IntentType> = {
   'quick': 'capture',
   'acknowledge': 'capture',
   'thoughtful': 'draft',
+  // URL intent answers — "what's the play?" responses
+  'research': 'research',
+  'research-this': 'research',
+  'summarize': 'research',
+  'draft-about-it': 'draft',
+  'thinkpiece': 'draft',
+  'blog': 'draft',
+  'write-about': 'draft',
+  'just-capture': 'capture',
+  'save': 'capture',
+  'capture': 'capture',
+  'bookmark': 'capture',
 };
 
 // ==========================================
@@ -181,6 +193,55 @@ export function mapAnswer(
     }
   }
 
+  // Natural language extraction: parse freeform answers for embedded signals.
+  // Jim's answer to "What's the play?" is often: "Research for the Grove, thinkpiece material"
+  // This contains: intent (research), pillar (Grove), output format (thinkpiece → draft).
+  if (!resolved.intent || !resolved.pillar || !resolved.depth) {
+    const lower = answer.toLowerCase();
+
+    // Extract pillar from natural language
+    if (!resolved.pillar) {
+      if (lower.includes('grove') || lower.includes('ai') || lower.includes('tech')) {
+        resolved.pillar = 'The Grove';
+      } else if (lower.includes('consulting') || lower.includes('client') || lower.includes('drumwave')) {
+        resolved.pillar = 'Consulting';
+      } else if (lower.includes('personal') || lower.includes('health') || lower.includes('family')) {
+        resolved.pillar = 'Personal';
+      } else if (lower.includes('home') || lower.includes('garage') || lower.includes('car') || lower.includes('vehicle')) {
+        resolved.pillar = 'Home/Garage';
+      }
+    }
+
+    // Extract intent from natural language
+    if (!resolved.intent) {
+      if (lower.includes('research') || lower.includes('look into') || lower.includes('find out') || lower.includes('summarize')) {
+        resolved.intent = 'research';
+      } else if (lower.includes('draft') || lower.includes('write') || lower.includes('thinkpiece') || lower.includes('blog') || lower.includes('post')) {
+        resolved.intent = 'draft';
+      } else if (lower.includes('save') || lower.includes('capture') || lower.includes('bookmark') || lower.includes('just')) {
+        resolved.intent = 'capture';
+      }
+    }
+
+    // Extract depth from natural language
+    if (!resolved.depth) {
+      if (lower.includes('deep') || lower.includes('thorough') || lower.includes('comprehensive')) {
+        resolved.depth = 'deep';
+      } else if (lower.includes('quick') || lower.includes('brief') || lower.includes('light') || lower.includes('skim')) {
+        resolved.depth = 'quick';
+      }
+      // "medium" / "standard" are default — no need to detect
+    }
+
+    // Preserve the FULL answer as user direction for downstream use
+    // This is critical: "thinkpiece on prompt engineering for the Grove" carries
+    // intent that the research query needs.
+    resolved.extraContext = {
+      ...resolved.extraContext,
+      userDirection: answer,
+    };
+  }
+
   // Fall back to built-in aliases for anything not resolved
   if (!resolved.intent && INTENT_ALIASES[normalizedAnswer]) {
     resolved.intent = INTENT_ALIASES[normalizedAnswer];
@@ -198,7 +259,7 @@ export function mapAnswer(
       resolved.extraContext = { relationship: answer };
       break;
     case 'content_signals':
-      resolved.extraContext = { contentType: answer };
+      resolved.extraContext = { ...resolved.extraContext, contentType: answer };
       break;
     case 'classification':
       if (!resolved.pillar) {
@@ -221,7 +282,7 @@ export function mapAnswer(
     ...signals,
     ...slotUpdate,
   };
-  const newAssessment = assessContext(updatedSignals);
+  const newAssessment = assessContext(updatedSignals, /* skipUrlCeiling= */ true);
 
   return {
     rawAnswer: answer,
@@ -250,6 +311,7 @@ function buildSignalUpdate(
     case 'content_signals':
       return {
         contentSignals: {
+          ..._existing.contentSignals,
           topic: answer,
         },
       };
