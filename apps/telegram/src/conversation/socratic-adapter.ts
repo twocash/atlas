@@ -24,8 +24,8 @@ import type { TriageResult } from '../cognitive/triage-skill';
 import { storeSocraticSession, removeSocraticSession, getSocraticSession } from './socratic-session';
 import { createAuditTrail } from './audit';
 import { runResearchAgentWithNotifications, sendCompletionNotification } from '../services/research-executor';
-import { fetchUrlContent } from '../url';
-import type { ResearchDepth } from '../../../../packages/agents/src/agents/research';
+import { routeForAnalysis } from './content-router';
+import type { ResearchDepth, ResearchConfig } from '../../../../packages/agents/src/agents/research';
 import type { Pillar, RequestType } from './types';
 import type { UrlContent } from '../types';
 
@@ -263,41 +263,35 @@ async function handleResolved(
     if (requestType === 'Research' && result.workQueueId && chatId) {
       const depth = mapToResearchDepth(resolved.depth);
 
-      let query: string;
+      // ADR: Research Query Architecture Conformance
+      // Content Router consulted before any server-side extraction.
+      // Social media (Threads, Twitter, LinkedIn) require browser hydration —
+      // server-side fetch returns navigation chrome, not post content.
+      let needsBrowser = false;
       if (contentType === 'url') {
-        // Use pre-fetched URL content if available; only re-fetch as fallback.
-        // For social media URLs the triage title is useless — never use it
-        // as the primary research subject. Jim's answer + fetched content are the
-        // real signals; fall back to triage title only when both are absent.
-        const fetched = prefetchedUrlContent ?? await fetchUrlContent(content).catch(() => null);
-        const ogContent = fetched?.success && (fetched.description || fetched.bodySnippet)
-          ? [fetched.title, fetched.description, fetched.bodySnippet].filter(Boolean).join('\n')
-          : null;
-
-        logger.info('Socratic research query signals', {
-          hasAnswerContext: !!answerContext,
-          hasOgContent: !!ogContent,
-          ogTitle: fetched?.title?.substring(0, 80),
-          fetchSuccess: fetched?.success,
-          usedPrefetched: !!prefetchedUrlContent,
-          bodySnippetLength: fetched?.bodySnippet?.length || 0,
+        const route = await routeForAnalysis(content);
+        needsBrowser = route.needsBrowser;
+        logger.info('Socratic research content route', {
+          source: route.source,
+          method: route.method,
+          needsBrowser,
+          domain: route.domain,
         });
-
-        const parts = [
-          answerContext,
-          ogContent,
-          !ogContent && !answerContext ? title : null, // triage title: last resort only
-          `Source: ${content}`,
-        ].filter(Boolean);
-        query = parts.join('\n');
-      } else {
-        query = `${answerContext ? answerContext + '\n' : ''}${title}\n${content}`;
       }
+
+      // ResearchConfig.query = triage title (clean, searchable, < 200 chars).
+      // Per ADR: raw fetched content, answerContext strings, and URL source
+      // lines must NOT appear in the query field.
+      const researchConfig: ResearchConfig = {
+        query: title,
+        depth,
+        pillar,
+      };
 
       await ctx.reply(`\uD83D\uDD2C Starting research agent...\nDepth: ${depth}`);
 
       void runResearchAgentWithNotifications(
-        { query, depth, pillar },
+        researchConfig,
         chatId,
         ctx.api,
         result.workQueueId,
