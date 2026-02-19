@@ -151,7 +151,7 @@ const FALLBACK_PROMPTS_PATH = path.join(
  *
  * Affected TLDs include: .consulting, .dev, .studio, .agency, .app, .design, .systems
  */
-function sanitizeNotionId(raw: string): string {
+export function sanitizeNotionId(raw: string): string {
   return raw.replace(/\[([^\]]+)\]\([^)]+\)/g, '$1');
 }
 

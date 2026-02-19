@@ -18,7 +18,14 @@ export {
   type PromptVariables,
   type PromptComposition,
   type ComposedPrompt,
+  sanitizeNotionId,
 } from './prompt-manager';
+
+// Degraded Context Warnings (ADR-008: Fail Loud)
+export {
+  degradedWarning,
+  logDegradedFallback,
+} from './degraded-context';
 
 // Prompt Composition Service (V3 Active Capture)
 export {
