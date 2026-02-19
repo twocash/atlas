@@ -954,6 +954,7 @@ async function runAgentsUnitTests(cwd: string): Promise<SuiteResult> {
       'test/socratic-engine.test.ts',
       'test/socratic-context-assessor.test.ts',
       'test/socratic-notion-config.test.ts',
+      'src/socratic/__tests__/url-intent-chain.test.ts', // URL intent chain (SOCRATIC-URL-INTENT)
       'test/notion-markdown.test.ts',
       'test/worker-logic.test.ts',
       'test/research-json-truncation.test.ts',
