@@ -28,6 +28,14 @@ import { getPatternSuggestion, recordClassificationFeedback } from '../conversat
 import type { Pillar, RequestType } from '../conversation/types';
 import { logAction, isFeatureEnabled, triggerContextualExtraction } from '../skills';
 import { safeAnswerCallback } from '../utils/telegram-helpers';
+import {
+  runResearchAgentWithNotifications,
+  sendCompletionNotification,
+} from '../services/research-executor';
+import type { ResearchConfig } from '../../../../packages/agents/src';
+
+/** Idempotency guard: prevents double-dispatch for the same WQ item */
+const _activeResearchItems = new Set<string>();
 
 /**
  * Handle content confirmation callback queries
@@ -775,6 +783,38 @@ async function handleConfirm(
       }).catch(err => {
         logger.warn('Contextual extraction error (non-fatal)', { error: err });
       });
+    }
+
+    // ========================================
+    // RESEARCH DISPATCH (Research requestType)
+    // ========================================
+    // When user confirms a Research-type link, auto-dispatch the research agent.
+    // Fire-and-forget: confirmation message already sent, research runs in background.
+    // triggerContextualExtraction() runs alongside — they are complementary.
+    if (result && pending.requestType === 'Research') {
+      const chatId = ctx.chat?.id;
+      const workQueueId = result.workQueueId;
+      if (chatId && workQueueId && !_activeResearchItems.has(workQueueId)) {
+        _activeResearchItems.add(workQueueId);
+        const query = pending.analysis.title || pending.url || pending.originalText.substring(0, 200);
+        const researchConfig: ResearchConfig = {
+          query,
+          depth: 'standard',
+          focus: pending.url,
+        };
+        const notionUrl = result.workQueueUrl;
+        ctx.api.sendMessage(
+          chatId,
+          `🔬 Researching <b>${pending.pillar}</b> link...`,
+          { parse_mode: 'HTML' }
+        ).catch(err => logger.warn('Research start notification failed', { error: err, workQueueId }));
+        runResearchAgentWithNotifications(researchConfig, chatId, ctx.api, workQueueId, 'content-confirm')
+          .then(({ agent, result: researchResult }) =>
+            sendCompletionNotification(ctx.api, chatId, agent, researchResult, notionUrl, 'content-confirm')
+          )
+          .catch(err => logger.warn('Research dispatch failed (non-fatal)', { error: err, workQueueId, source: 'content-confirm' }))
+          .finally(() => _activeResearchItems.delete(workQueueId));
+      }
     }
 
     logger.info('Content confirmed and logged', {

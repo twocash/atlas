@@ -115,11 +115,12 @@ export async function handleVoiceCallback(ctx: Context): Promise<void> {
       config,
       chatId,
       ctx.api,
-      workItemId
+      workItemId,
+      'voice-research'
     );
 
     // Send completion notification
-    await sendCompletionNotification(ctx.api, chatId, agent, result, notionUrl);
+    await sendCompletionNotification(ctx.api, chatId, agent, result, notionUrl, 'voice-research');
   } catch (error) {
     const msg = error instanceof Error ? error.message : "Unknown error";
     logger.error("Voice callback research failed", {

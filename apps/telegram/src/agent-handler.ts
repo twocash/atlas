@@ -222,11 +222,12 @@ async function handleResearchCommand(
       config,
       chatId,
       ctx.api,
-      workItemId
+      workItemId,
+      'agent-command'
     );
 
     // Send completion notification with Notion link
-    await sendCompletionNotification(ctx.api, chatId, agent, result, notionUrl);
+    await sendCompletionNotification(ctx.api, chatId, agent, result, notionUrl, 'agent-command');
   } catch (error) {
     const errorMessage =
       error instanceof Error ? error.message : "Unknown error";
@@ -351,10 +352,11 @@ async function handleTestCommand(ctx: Context): Promise<void> {
       config,
       chatId,
       ctx.api,
-      workItemId
+      workItemId,
+      'agent-command'
     );
 
-    await sendCompletionNotification(ctx.api, chatId, agent, result, notionUrl);
+    await sendCompletionNotification(ctx.api, chatId, agent, result, notionUrl, 'agent-command');
   } catch (error) {
     const errorMessage =
       error instanceof Error ? error.message : "Unknown error";

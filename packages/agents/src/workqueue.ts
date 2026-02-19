@@ -942,6 +942,43 @@ Task returned to queue for manual handling.`,
 }
 
 // ==========================================
+// Dispatch Source Provenance
+// ==========================================
+
+/**
+ * Append dispatch source provenance to Work Queue item Notes.
+ *
+ * Called after research completes or fails. Appends
+ * "dispatched-from:<source> (<outcome>)" to whatever syncAgentComplete wrote.
+ * Non-fatal — never blocks result delivery.
+ *
+ * @param workItemId - Notion page ID of the WQ item
+ * @param source - Originating entry point identifier (e.g. 'content-confirm')
+ * @param outcome - 'success' | 'failure'
+ */
+export async function appendDispatchNotes(
+  workItemId: string,
+  source: string,
+  outcome: 'success' | 'failure'
+): Promise<void> {
+  const notion = getNotionClient();
+  try {
+    const page = await notion.pages.retrieve({ page_id: workItemId });
+    const existing = extractRichText(page as any, 'Notes') || '';
+    const appendLine = `dispatched-from:${source} (${outcome})`;
+    const updated = existing ? `${existing}\n${appendLine}` : appendLine;
+    await notion.pages.update({
+      page_id: workItemId,
+      properties: {
+        Notes: { rich_text: [{ text: { content: truncateText(updated, 2000) } }] },
+      },
+    });
+  } catch (error) {
+    console.warn('[WorkQueue] Failed to append dispatch notes (non-fatal)', { workItemId, source, error });
+  }
+}
+
+// ==========================================
 // Event Handler Factory
 // ==========================================
 
