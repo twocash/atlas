@@ -205,6 +205,7 @@ async function handleResolved(
   content: string,
   contentType: 'url' | 'text' | 'media',
   title: string,
+  answerContext?: string,
 ): Promise<void> {
   const userId = ctx.from?.id;
   const chatId = ctx.chat?.id;
@@ -257,8 +258,8 @@ async function handleResolved(
     if (requestType === 'Research' && result.workQueueId && chatId) {
       const depth = mapToResearchDepth(resolved.depth);
       const query = contentType === 'url'
-        ? `${title}\nSource: ${content}`
-        : `${title}\n${content}`;
+        ? `${answerContext ? answerContext + '\n' : ''}${title}\nSource: ${content}`
+        : `${answerContext ? answerContext + '\n' : ''}${title}\n${content}`;
 
       await ctx.reply(`\uD83D\uDD2C Starting research agent...\nDepth: ${depth}`);
 
@@ -318,6 +319,7 @@ export async function handleSocraticAnswer(
         session.content,
         session.contentType,
         session.title,
+        answerText,
       );
       return true;
     }
