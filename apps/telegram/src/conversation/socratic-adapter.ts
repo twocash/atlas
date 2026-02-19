@@ -23,6 +23,8 @@ import type { IntentType } from '../../../../packages/agents/src/services/prompt
 import type { TriageResult } from '../cognitive/triage-skill';
 import { storeSocraticSession, removeSocraticSession, getSocraticSession } from './socratic-session';
 import { createAuditTrail } from './audit';
+import { runResearchAgentWithNotifications, sendCompletionNotification } from '../services/research-executor';
+import type { ResearchDepth } from '../../../../packages/agents/src/agents/research';
 import type { Pillar, RequestType } from './types';
 
 /**
@@ -191,6 +193,12 @@ export async function socraticInterview(
 /**
  * Handle a resolved Socratic result — create Feed + Work Queue entries
  */
+function mapToResearchDepth(socraticDepth: string | undefined): ResearchDepth {
+  if (socraticDepth === 'deep' || socraticDepth === 'thorough') return 'deep';
+  if (socraticDepth === 'light' || socraticDepth === 'quick') return 'light';
+  return 'standard';
+}
+
 async function handleResolved(
   ctx: Context,
   resolved: ResolvedContext,
@@ -244,6 +252,28 @@ async function handleResolved(
       parse_mode: 'HTML',
       link_preview_options: { is_disabled: true },
     });
+
+    // Dispatch research agent if that's what was resolved
+    if (requestType === 'Research' && result.workQueueId && chatId) {
+      const depth = mapToResearchDepth(resolved.depth);
+      const query = contentType === 'url'
+        ? `${title}\nSource: ${content}`
+        : `${title}\n${content}`;
+
+      await ctx.reply(`\uD83D\uDD2C Starting research agent...\nDepth: ${depth}`);
+
+      void runResearchAgentWithNotifications(
+        { query, depth, pillar },
+        chatId,
+        ctx.api,
+        result.workQueueId,
+      ).then(({ agent, result: researchResult }) =>
+        sendCompletionNotification(ctx.api, chatId, agent, researchResult, result.workQueueUrl),
+      ).catch((err: Error) => {
+        logger.error('Research agent failed (Socratic path)', { error: err.message, title });
+        void ctx.api.sendMessage(chatId, `\u274C Research failed: ${err.message}`);
+      });
+    }
   } catch (error) {
     logger.error('Failed to create entries from Socratic result', {
       error: error instanceof Error ? error.message : String(error),
