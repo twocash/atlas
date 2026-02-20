@@ -124,8 +124,8 @@ describe("extractContent routing", () => {
   it("passes correct Jina headers for Threads", async () => {
     mockFetch.mockImplementationOnce((url: string, opts: any) => {
       // Verify Jina-specific headers from SOURCE_DEFAULTS
-      expect(opts.headers["x-wait-for-selector"]).toBe("article")
-      expect(opts.headers["x-target-selector"]).toBe("article")
+      expect(opts.headers["x-wait-for-selector"]).toBe("time[datetime]")
+      expect(opts.headers["x-target-selector"]).toBe('[data-pressable-container="true"]')
       expect(opts.headers["x-no-cache"]).toBe("true")
       expect(opts.headers["x-timeout"]).toBe("15")
       expect(opts.headers["Accept"]).toBe("application/json")

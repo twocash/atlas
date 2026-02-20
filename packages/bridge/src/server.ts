@@ -26,6 +26,7 @@
 
 import { resolve, dirname } from "path"
 import { fileURLToPath } from "url"
+import { mkdirSync, writeFileSync } from "fs"
 
 // Load shared .env BEFORE any modules that read process.env (PromptManager needs NOTION_PROMPTS_DB_ID)
 import { config } from "dotenv"
@@ -632,6 +633,128 @@ function handleToolResponse(msg: ToolResponse): void {
   pending.resolve(response)
 }
 
+// ─── Cookie Refresh ─────────────────────────────────────────
+// Telegram bot calls POST /cookie-refresh to trigger the extension
+// to read browser cookies and save them to disk for content extraction.
+
+interface CookieEntry {
+  name: string
+  value: string
+  domain: string
+  path: string
+  expirationDate?: number
+}
+
+interface CookieRefreshResult {
+  domains: string[]
+  counts: Record<string, number>
+  cookies: Record<string, CookieEntry[]>
+}
+
+const COOKIE_DIR = resolve(__bridgeDir, "../../../apps/telegram/data/cookies")
+
+function writeCookieFiles(result: CookieRefreshResult): Record<string, number> {
+  mkdirSync(COOKIE_DIR, { recursive: true })
+
+  const written: Record<string, number> = {}
+
+  for (const [domain, cookies] of Object.entries(result.cookies)) {
+    const filename = domain.replace(/^\./, "") + ".json"
+    const filepath = resolve(COOKIE_DIR, filename)
+
+    const data = {
+      domain,
+      refreshedAt: new Date().toISOString(),
+      count: cookies.length,
+      cookies,
+    }
+
+    writeFileSync(filepath, JSON.stringify(data, null, 2))
+    written[domain] = cookies.length
+  }
+
+  return written
+}
+
+async function handleCookieRefresh(req: Request): Promise<Response> {
+  const headers = {
+    "Content-Type": "application/json",
+    "Access-Control-Allow-Origin": "*",
+  }
+
+  // Parse optional body with domains
+  let domains: string[] | undefined
+  try {
+    const body = await req.json().catch(() => ({})) as Record<string, unknown>
+    if (body.domains && Array.isArray(body.domains)) {
+      domains = body.domains as string[]
+    }
+  } catch {
+    // Empty body is fine — use defaults
+  }
+
+  // Check that at least one client is connected
+  const clients = getClientConnections()
+  if (clients.length === 0) {
+    return new Response(
+      JSON.stringify({ ok: false, error: "No browser extension connected" }),
+      { status: 503, headers },
+    )
+  }
+
+  // Reuse the pending request pattern: send tool_request, wait for response
+  const id = `cookie-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`
+
+  const response = await new Promise<ToolDispatchResponse>((resolve) => {
+    const timer = setTimeout(() => {
+      pendingRequests.delete(id)
+      resolve({ id, error: `Cookie refresh timed out after ${TOOL_TIMEOUT_MS}ms` })
+    }, TOOL_TIMEOUT_MS)
+
+    pendingRequests.set(id, { resolve, timer })
+
+    const toolRequest: ToolRequest = {
+      type: "tool_request",
+      id,
+      name: "atlas_refresh_cookies",
+      input: domains ? { domains } : {},
+      timestamp: Date.now(),
+    }
+
+    const raw = JSON.stringify(toolRequest)
+    for (const ws of clients) {
+      ws.send(raw)
+    }
+  })
+
+  if (response.error) {
+    return new Response(
+      JSON.stringify({ ok: false, error: response.error }),
+      { status: 502, headers },
+    )
+  }
+
+  // Write cookie files to disk
+  try {
+    const written = writeCookieFiles(response.result as CookieRefreshResult)
+    const summary = Object.entries(written)
+      .map(([d, n]) => `${d}: ${n} cookies`)
+      .join(", ")
+
+    console.log(`[bridge] Cookie refresh complete: ${summary}`)
+
+    return new Response(
+      JSON.stringify({ ok: true, written, summary }),
+      { headers },
+    )
+  } catch (err: any) {
+    return new Response(
+      JSON.stringify({ ok: false, error: `Cookies received but write failed: ${err.message}` }),
+      { status: 500, headers },
+    )
+  }
+}
+
 // ─── HTTP Handler ────────────────────────────────────────────
 
 async function handleHttpRequest(req: Request, server: any): Promise<Response | undefined> {
@@ -715,6 +838,11 @@ async function handleHttpRequest(req: Request, server: any): Promise<Response | 
   // POST /tool-dispatch — MCP server dispatches tool calls here
   if (url.pathname === "/tool-dispatch" && req.method === "POST") {
     return await handleToolDispatch(req)
+  }
+
+  // POST /cookie-refresh — Telegram bot triggers cookie refresh from extension
+  if (url.pathname === "/cookie-refresh" && req.method === "POST") {
+    return await handleCookieRefresh(req)
   }
 
   // CORS preflight

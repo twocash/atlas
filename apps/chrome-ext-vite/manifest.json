@@ -27,7 +27,8 @@
     "alarms",
     "contextMenus",
     "scripting",
-    "activeTab"
+    "activeTab",
+    "cookies"
   ],
   "content_scripts": [
     {
