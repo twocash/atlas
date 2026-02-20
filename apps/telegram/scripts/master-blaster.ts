@@ -960,6 +960,7 @@ async function runAgentsUnitTests(cwd: string): Promise<SuiteResult> {
       'test/research-json-truncation.test.ts',
       'test/research-pm-chain.test.ts',
       'test/drafter-injection.test.ts',
+      'test/query-construction.test.ts',
     ],
     agentsCwd,
     60000

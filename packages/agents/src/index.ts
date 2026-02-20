@@ -84,6 +84,8 @@ export {
 export {
   runResearchAgent,
   executeResearch,
+  buildResearchQuery,
+  type QueryInput,
   type ResearchConfig,
   type ResearchFinding,
   type ResearchResult,
