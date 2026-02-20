@@ -15,6 +15,7 @@ import type { UrlContent } from "../types"
 import type { ContentSource, ExtractionMethod } from "./content-router"
 import { detectContentSource, determineExtractionMethod } from "./content-router"
 import { logger } from "../logger"
+import { loadCookiesForUrl, requestCookieRefresh } from "../utils/chrome-cookies"
 
 // ─── Types ────────────────────────────────────────────────
 
@@ -86,8 +87,8 @@ interface SourceDefaults {
 
 const SOURCE_DEFAULTS: Partial<Record<ContentSource, SourceDefaults>> = {
   threads: {
-    waitForSelector: "article",
-    targetSelector: "article",
+    waitForSelector: "time[datetime]", // hydration signal — only present after post data loads
+    targetSelector: '[data-pressable-container="true"]', // stable Meta data-* attr, isolates post card
     timeout: 15,
     noCache: true, // SPA content changes frequently
   },
@@ -390,15 +391,48 @@ function extractBodyFromHtml(html: string): string {
   return text.substring(0, 500)
 }
 
+// ─── URL Normalization ────────────────────────────────────
+
+/** Strip tracking params from Threads URLs (xmt, slof are session/tracking tokens) */
+function normalizeUrl(url: string, source: ContentSource): string {
+  if (source === "threads") {
+    try {
+      const u = new URL(url)
+      u.searchParams.delete("xmt")
+      u.searchParams.delete("slof")
+      return u.toString()
+    } catch {
+      return url
+    }
+  }
+  return url
+}
+
+// ─── Login Wall Detection ────────────────────────────────
+
+/** Heuristics for detecting login walls in extracted content */
+function isLikelyLoginWall(result: ExtractionResult): boolean {
+  // Empty content from Jina = login wall or Cloudflare
+  if (result.status === "degraded" && !result.content && !result.title) return true
+
+  // Check for login-related strings in title/content
+  const text = `${result.title} ${result.content}`.toLowerCase()
+  const loginSignals = ["log in", "login", "sign in", "signin", "create an account", "join now"]
+  const matchCount = loginSignals.filter((s) => text.includes(s)).length
+  // Need at least 2 signals to avoid false positives on pages that mention "sign in" editorially
+  return matchCount >= 2 && result.content.length < 500
+}
+
 // ─── Main Entry Point ─────────────────────────────────────
 
 /**
  * Extract content from a URL using the best available method.
  *
  * Routing logic:
- * - SPA sites (threads, twitter, linkedin) → Jina Reader (Tier 2)
+ * - SPA sites (threads, twitter, linkedin) → Jina Reader (Tier 2) with auto-cookies
  * - Everything else → HTTP fetch + regex (Tier 1)
  * - Jina failure → fallback to HTTP with status='degraded'
+ * - Login wall detected → auto-refresh cookies via Bridge → retry once
  * - Circuit breaker: 3 consecutive Jina failures → HTTP only for 5 min
  *
  * @param url - URL to extract content from
@@ -411,45 +445,115 @@ export async function extractContent(
   const source = detectContentSource(url)
   const method = options.forceMethod || determineExtractionMethod(source)
 
+  // Normalize URL (strip tracking params)
+  const cleanUrl = normalizeUrl(url, source)
+
   // Tier 1: HTTP fetch for non-browser sources
   if (method === "Fetch") {
-    return extractWithHttp(url, source)
+    return extractWithHttp(cleanUrl, source)
   }
 
   // Tier 2: Jina Reader for browser-required sources
   if (isCircuitBreakerOpen()) {
     logger.warn("[ContentExtractor] Circuit breaker open — falling back to HTTP", {
-      url,
+      url: cleanUrl,
       source,
     })
-    const httpResult = await extractWithHttp(url, source)
+    const httpResult = await extractWithHttp(cleanUrl, source)
     httpResult.fallbackUsed = true
     httpResult.error = `Jina circuit breaker open; ${httpResult.error || "HTTP fallback used"}`
     if (httpResult.status === "success") httpResult.status = "degraded"
     return httpResult
   }
 
-  const jinaResult = await extractWithJina(url, source, options)
+  // Auto-load cookies for SPA sources (if available and not already provided)
+  const effectiveOptions = { ...options }
+  if (!effectiveOptions.cookies && SPA_SOURCES.includes(source)) {
+    const cookieResult = loadCookiesForUrl(cleanUrl)
+    if (cookieResult) {
+      effectiveOptions.cookies = cookieResult.cookieString
+      logger.info("[ContentExtractor] Auto-loaded cookies", {
+        source,
+        count: cookieResult.count,
+        stale: cookieResult.stale,
+      })
+    }
+  }
+
+  const jinaResult = await extractWithJina(cleanUrl, source, effectiveOptions)
+
+  // Login wall detection + auto-retry with fresh cookies
+  if (
+    SPA_SOURCES.includes(source) &&
+    (jinaResult.status === "degraded" || jinaResult.status === "failed") &&
+    isLikelyLoginWall(jinaResult)
+  ) {
+    logger.warn("[ContentExtractor] Login wall detected — requesting cookie refresh", {
+      url: cleanUrl,
+      source,
+    })
+
+    const refreshed = await requestCookieRefresh()
+
+    if (refreshed) {
+      // Reload cookies from disk
+      const freshCookies = loadCookiesForUrl(cleanUrl)
+      if (freshCookies) {
+        logger.info("[ContentExtractor] Retrying with fresh cookies", {
+          source,
+          count: freshCookies.count,
+        })
+
+        const retryOptions = { ...effectiveOptions, cookies: freshCookies.cookieString }
+        const retryResult = await extractWithJina(cleanUrl, source, retryOptions)
+
+        if (retryResult.status === "success") {
+          logger.info("[ContentExtractor] Cookie refresh retry SUCCEEDED", {
+            url: cleanUrl,
+            source,
+          })
+          return retryResult
+        }
+
+        // Still failing after refresh — report login issue
+        logger.error("[ContentExtractor] Cookie refresh retry FAILED — login issue persists", {
+          url: cleanUrl,
+          source,
+          error: retryResult.error,
+        })
+        retryResult.error =
+          `Login wall detected. Cookies were refreshed but extraction still failed. ` +
+          `Try logging into ${source} in Chrome. Original error: ${retryResult.error || "empty content"}`
+        return retryResult
+      }
+    }
+
+    // Couldn't refresh cookies — add login guidance to error
+    jinaResult.error =
+      `Login wall detected for ${source}. ` +
+      `Cookie refresh ${refreshed ? "succeeded but no cookies found" : "failed (Bridge unreachable or no extension connected)"}. ` +
+      `Try logging into ${source} in Chrome. Original error: ${jinaResult.error || "empty content"}`
+  }
 
   // If Jina failed completely, try HTTP as degraded fallback
   if (jinaResult.status === "failed") {
     logger.warn("[ContentExtractor] Jina FAILED — degrading to HTTP fallback", {
-      url,
+      url: cleanUrl,
       source,
       jinaError: jinaResult.error,
     })
-    const httpResult = await extractWithHttp(url, source)
+    const httpResult = await extractWithHttp(cleanUrl, source)
     httpResult.fallbackUsed = true
     if (httpResult.status === "success") {
       httpResult.status = "degraded"
       logger.warn("[ContentExtractor] HTTP fallback returned content but quality is DEGRADED (no JS rendering)", {
-        url,
+        url: cleanUrl,
         source,
         title: httpResult.title?.substring(0, 80),
       })
     } else {
       logger.error("[ContentExtractor] BOTH Jina AND HTTP failed — no content extracted", {
-        url,
+        url: cleanUrl,
         source,
         jinaError: jinaResult.error,
         httpError: httpResult.error,

@@ -29,6 +29,9 @@ import {
   ListToolsRequestSchema,
 } from "@modelcontextprotocol/sdk/types.js"
 
+import { resolve, dirname } from "path"
+import { fileURLToPath } from "url"
+import { mkdirSync, writeFileSync } from "fs"
 import { TOOL_SCHEMAS, TOOL_NAMES, LOCAL_TOOL_NAMES } from "./schemas"
 import { handleBridgeMemoryTool } from "./bridge-memory"
 import { handleBridgeGoalsTool } from "./bridge-goals"
@@ -140,6 +143,24 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
     }
   }
 
+  // Cookie refresh: write cookie files to disk after receiving from extension
+  if (name === "atlas_refresh_cookies" && response.result) {
+    try {
+      const written = writeCookieFiles(response.result as CookieRefreshResult)
+      const summary = Object.entries(written)
+        .map(([d, n]) => `${d}: ${n} cookies`)
+        .join(", ")
+      return {
+        content: [{ type: "text" as const, text: `Cookies refreshed and saved: ${summary}` }],
+      }
+    } catch (err: any) {
+      return {
+        content: [{ type: "text" as const, text: `Cookies received but failed to write: ${err.message}` }],
+        isError: true,
+      }
+    }
+  }
+
   // Return result as JSON text
   const resultText =
     typeof response.result === "string"
@@ -150,6 +171,55 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
     content: [{ type: "text" as const, text: resultText }],
   }
 })
+
+// ─── Cookie File Writing ─────────────────────────────────────
+
+interface CookieEntry {
+  name: string
+  value: string
+  domain: string
+  path: string
+  expirationDate?: number
+}
+
+interface CookieRefreshResult {
+  domains: string[]
+  counts: Record<string, number>
+  cookies: Record<string, CookieEntry[]>
+}
+
+const COOKIE_DIR = resolve(
+  dirname(fileURLToPath(import.meta.url)),
+  "../../../../apps/telegram/data/cookies",
+)
+
+/**
+ * Write cookie data to disk as JSON files per domain.
+ * Returns a map of domain → cookie count written.
+ */
+function writeCookieFiles(result: CookieRefreshResult): Record<string, number> {
+  mkdirSync(COOKIE_DIR, { recursive: true })
+
+  const written: Record<string, number> = {}
+
+  for (const [domain, cookies] of Object.entries(result.cookies)) {
+    // Normalize domain to filename: ".threads.net" → "threads.net.json"
+    const filename = domain.replace(/^\./, "") + ".json"
+    const filepath = resolve(COOKIE_DIR, filename)
+
+    const data = {
+      domain,
+      refreshedAt: new Date().toISOString(),
+      count: cookies.length,
+      cookies,
+    }
+
+    writeFileSync(filepath, JSON.stringify(data, null, 2))
+    written[domain] = cookies.length
+  }
+
+  return written
+}
 
 // ─── Start ───────────────────────────────────────────────────
 

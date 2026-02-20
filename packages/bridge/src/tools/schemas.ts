@@ -122,6 +122,26 @@ export const TOOL_SCHEMAS: ToolSchema[] = [
     },
   },
 
+  {
+    name: "atlas_refresh_cookies",
+    description:
+      "Refresh browser cookies for SPA sites (Threads, LinkedIn, Instagram). " +
+      "Reads cookies from Chrome via the extension's chrome.cookies API and " +
+      "saves them to data/cookies/ for use by the content extractor. " +
+      "Call this when content extraction hits a login wall.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        domains: {
+          type: "array",
+          description:
+            'Domains to refresh cookies for. Defaults to [".threads.net", ".instagram.com", ".linkedin.com"].',
+          items: { type: "string" },
+        },
+      },
+    },
+  },
+
   // ─── Bridge-Local Tools (handled by MCP server, not dispatched to browser) ───
 
   BRIDGE_MEMORY_TOOL_SCHEMA as ToolSchema,

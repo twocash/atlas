@@ -62,6 +62,8 @@ async function dispatch(
       return querySelectors(input)
     case "atlas_get_linkedin_context":
       return getLinkedInContext(input)
+    case "atlas_refresh_cookies":
+      return refreshCookies(input)
     default:
       throw new Error(`Unknown tool: ${name}`)
   }
@@ -208,6 +210,44 @@ async function querySelectors(input: Record<string, unknown>) {
     }
   }, [selectors])
 }
+
+// ─── Cookie Refresh ─────────────────────────────────────
+
+const DEFAULT_COOKIE_DOMAINS = [
+  ".threads.net",
+  ".instagram.com",
+  ".linkedin.com",
+]
+
+async function refreshCookies(input: Record<string, unknown>) {
+  const domains = (input.domains as string[]) || DEFAULT_COOKIE_DOMAINS
+
+  const results: Record<
+    string,
+    Array<{ name: string; value: string; domain: string; path: string; expirationDate?: number }>
+  > = {}
+
+  for (const domain of domains) {
+    const cookies = await chrome.cookies.getAll({ domain })
+    results[domain] = cookies.map((c) => ({
+      name: c.name,
+      value: c.value,
+      domain: c.domain,
+      path: c.path,
+      expirationDate: c.expirationDate,
+    }))
+  }
+
+  return {
+    domains: Object.keys(results),
+    counts: Object.fromEntries(
+      Object.entries(results).map(([d, c]) => [d, c.length]),
+    ),
+    cookies: results,
+  }
+}
+
+// ─── LinkedIn Context ───────────────────────────────────
 
 async function getLinkedInContext(input: Record<string, unknown>) {
   const tab = await getActiveTab()
