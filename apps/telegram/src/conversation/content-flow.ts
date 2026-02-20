@@ -24,7 +24,7 @@ import { socraticInterview } from './socratic-adapter';
 import { getFeatureFlags } from '../config/features';
 import { checkUrl } from '../utils/url-dedup';
 import { triageMessage, type TriageResult } from '../cognitive/triage-skill';
-import { fetchUrlContent } from '../url';
+import { extractContent, toUrlContent } from './content-extractor';
 
 // ==========================================
 // Bug #1 Fix: Duplicate Confirmation Guard
@@ -235,20 +235,43 @@ export async function triggerContentConfirmation(
     });
   }
 
-  // FETCH URL CONTENT: Extract actual content before routing
+  // FETCH URL CONTENT: Tiered extraction (HTTP or Jina Reader) before routing
   let urlContent;
   try {
     await ctx.replyWithChatAction('typing');
-    urlContent = await fetchUrlContent(url);
-    logger.info('URL content fetched for content-flow', {
-      url,
-      success: urlContent.success,
-      title: urlContent.title?.substring(0, 80),
-      descriptionLength: urlContent.description?.length || 0,
-      bodySnippetLength: urlContent.bodySnippet?.length || 0,
-    });
+    const extraction = await extractContent(url);
+    urlContent = toUrlContent(extraction);
+
+    // CONSTRAINT 4: Log level matches severity
+    if (extraction.status === 'failed' || !urlContent.success) {
+      logger.error('URL extraction FAILED in content-flow', {
+        url,
+        method: extraction.method,
+        source: extraction.source,
+        status: extraction.status,
+        error: urlContent.error || extraction.error,
+        fallbackUsed: extraction.fallbackUsed,
+      });
+    } else if (extraction.fallbackUsed || extraction.status === 'degraded') {
+      logger.warn('URL extraction DEGRADED in content-flow (fallback used)', {
+        url,
+        method: extraction.method,
+        source: extraction.source,
+        status: extraction.status,
+        fallbackUsed: extraction.fallbackUsed,
+      });
+    } else {
+      logger.info('URL content extracted for content-flow', {
+        url,
+        method: extraction.method,
+        source: extraction.source,
+        status: extraction.status,
+        title: urlContent.title?.substring(0, 80),
+        tokenEstimate: extraction.tokenEstimate,
+      });
+    }
   } catch (fetchError) {
-    logger.warn('URL fetch failed in content-flow, proceeding without content', {
+    logger.error('URL extraction THREW in content-flow — no content available', {
       url,
       error: fetchError instanceof Error ? fetchError.message : String(fetchError),
     });
