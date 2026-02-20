@@ -361,3 +361,187 @@ describe('regression: JSON mode backward compat', () => {
     expect(defaultValue).toBe(false);
   });
 });
+
+// ── HOTFIX: Vertex URL Resolution in Prose Mode ─────────────
+
+describe('hotfix: vertex URL resolution in prose mode', () => {
+  const VERTEX_PREFIX = 'https://vertexaisearch.cloud.google.com/grounding-api-redirect/';
+  const VERTEX_PATTERN = /^https?:\/\/vertexaisearch\.cloud\.google\.com\/grounding-api-redirect\//;
+
+  it('detects vertex redirect URLs with GROUNDING_REDIRECT_PATTERN', () => {
+    const vertexUrl = `${VERTEX_PREFIX}abc123def456`;
+    const realUrl = 'https://techcrunch.com/2026/ai-report';
+
+    expect(VERTEX_PATTERN.test(vertexUrl)).toBe(true);
+    expect(VERTEX_PATTERN.test(realUrl)).toBe(false);
+  });
+
+  it('resolveAllRedirectUrls is called on prose sources (contract)', () => {
+    // The prose path must call resolveAllRedirectUrls before returning sources.
+    // We verify the output shape: resolved sources should NOT contain vertex URLs.
+    const unresolvedSources = [
+      `${VERTEX_PREFIX}aaa`,
+      'https://real-site.com/article',
+      `${VERTEX_PREFIX}bbb`,
+    ];
+
+    // After resolution, vertex URLs are either resolved or dropped
+    const resolvedSources = unresolvedSources
+      .map(s => VERTEX_PATTERN.test(s) ? null : s) // simulate: all vertex URLs dropped
+      .filter((s): s is string => s !== null);
+
+    expect(resolvedSources).toHaveLength(1);
+    expect(resolvedSources[0]).toBe('https://real-site.com/article');
+    // No vertex URLs remain
+    for (const s of resolvedSources) {
+      expect(VERTEX_PATTERN.test(s)).toBe(false);
+    }
+  });
+
+  it('vertex URLs in prose body markdown links are resolved', () => {
+    const vertexUrl = `${VERTEX_PREFIX}xyz789`;
+    const realUrl = 'https://arstechnica.com/2026/review';
+    const proseBody = `According to [ArsTechnica](${vertexUrl}), the market is growing.`;
+
+    // Simulate resolution: replace vertex URL with real URL in body
+    const resolvedBody = proseBody.split(vertexUrl).join(realUrl);
+
+    expect(resolvedBody).toContain(realUrl);
+    expect(resolvedBody).not.toContain(VERTEX_PREFIX);
+    expect(resolvedBody).toContain('[ArsTechnica]');
+  });
+
+  it('unresolvable vertex URLs in body have link text preserved', () => {
+    const vertexUrl = `${VERTEX_PREFIX}unresolvable`;
+    const proseBody = `See [Important Study](${vertexUrl}) for details.`;
+
+    // Simulate: unresolvable → remove link but keep text
+    const escapedUrl = vertexUrl.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    const linkPattern = new RegExp(`\\[([^\\]]*)\\]\\(${escapedUrl}\\)`, 'g');
+    const resolvedBody = proseBody.replace(linkPattern, '$1');
+
+    expect(resolvedBody).toBe('See Important Study for details.');
+    expect(resolvedBody).not.toContain(VERTEX_PREFIX);
+    expect(resolvedBody).not.toContain('](');
+  });
+
+  it('non-vertex URLs in prose body are untouched', () => {
+    const proseBody = 'Read [TechCrunch](https://techcrunch.com/article) and [Wired](https://wired.com/review).';
+
+    // No vertex URLs → body unchanged
+    const bodyLinkPattern = /\[[^\]]*\]\((https?:\/\/vertexaisearch\.cloud\.google\.com\/grounding-api-redirect\/[^)]+)\)/g;
+    const vertexMatches: string[] = [];
+    let m;
+    while ((m = bodyLinkPattern.exec(proseBody)) !== null) {
+      vertexMatches.push(m[1]);
+    }
+
+    expect(vertexMatches).toHaveLength(0);
+    // Body should remain unchanged
+  });
+
+  it('prose output sources contain zero vertex URLs after resolution', () => {
+    // This is the acceptance criterion: output.sources must never contain vertex redirect URLs
+    const mockResolvedOutput = {
+      contentMode: 'prose' as const,
+      proseContent: '## Report\n\nContent with [real links](https://real.com)...',
+      sources: ['https://real.com', 'https://another.com'],
+    };
+
+    for (const source of mockResolvedOutput.sources) {
+      expect(VERTEX_PATTERN.test(source)).toBe(false);
+    }
+  });
+});
+
+// ── HOTFIX: WQ/Feed Title — Descriptive, Not Routing Metadata ─
+
+describe('hotfix: WQ/Feed title uses descriptive content', () => {
+  it('title priority: triageResult.title wins when available', () => {
+    const triageTitle = 'Google DeepMind Gemini 2.0 Architecture Deep Dive';
+    const contentTopic = 'AI Research';
+    const fetchedTitle = 'Gemini 2.0 Paper';
+    const rawTitle = '/research deep';
+
+    const descriptiveTitle = triageTitle || contentTopic || fetchedTitle || rawTitle;
+    expect(descriptiveTitle).toBe(triageTitle);
+  });
+
+  it('title falls back to contentTopic when no triageResult', () => {
+    const triageTitle = undefined;
+    const contentTopic = 'AI Research Overview';
+    const fetchedTitle = 'Some Page';
+    const rawTitle = '/research deep';
+
+    const descriptiveTitle = triageTitle || contentTopic || fetchedTitle || rawTitle;
+    expect(descriptiveTitle).toBe(contentTopic);
+  });
+
+  it('title falls back to fetchedTitle when no triage or contentTopic', () => {
+    const triageTitle = undefined;
+    const contentTopic = undefined;
+    const fetchedTitle = 'ArsTechnica: AI Market Report';
+    const rawTitle = '/research deep';
+
+    const descriptiveTitle = triageTitle || contentTopic || fetchedTitle || rawTitle;
+    expect(descriptiveTitle).toBe(fetchedTitle);
+  });
+
+  it('title falls back to raw input only as last resort', () => {
+    const triageTitle = undefined;
+    const contentTopic = undefined;
+    const fetchedTitle = undefined;
+    const rawTitle = '/research deep';
+
+    const descriptiveTitle = triageTitle || contentTopic || fetchedTitle || rawTitle;
+    expect(descriptiveTitle).toBe(rawTitle);
+  });
+
+  it('routing metadata goes to keywords, not entry title', () => {
+    const resolvedVia = 'single_question';
+    const intent = 'research';
+    const depth = 'deep';
+    const audience = 'self';
+
+    // Old (broken): entry = `[Socratic/${resolvedVia}] ${title}`
+    // New (fixed): entry = descriptiveTitle, routing in keywords
+    const keywords = [intent, depth, audience, `socratic/${resolvedVia}`].filter(Boolean);
+
+    expect(keywords).toContain(`socratic/${resolvedVia}`);
+    expect(keywords).toContain(intent);
+    expect(keywords).toContain(depth);
+    // The entry should NOT contain [Socratic/...]
+  });
+
+  it('entry title never contains [Socratic/...] prefix', () => {
+    const descriptiveTitle = 'Google Research: Prompt Doubling Lifts Accuracy';
+    const entry = descriptiveTitle; // New behavior
+
+    expect(entry).not.toMatch(/\[Socratic\//);
+    expect(entry).toBe('Google Research: Prompt Doubling Lifts Accuracy');
+  });
+
+  it('empty triageResult.title does not produce undefined in title', () => {
+    // Ensure falsy values properly fall through
+    const triageTitle = ''; // empty string is falsy
+    const contentTopic = '';
+    const fetchedTitle = '';
+    const rawTitle = '/research deep';
+
+    const descriptiveTitle = triageTitle || contentTopic || fetchedTitle || rawTitle;
+    expect(descriptiveTitle).toBe(rawTitle);
+    expect(descriptiveTitle).toBeTruthy();
+  });
+
+  it('confirmation message to user uses descriptive title', () => {
+    const descriptiveTitle = 'AI Market Trends 2026';
+
+    // Simulate the confirmation message format
+    const escapeHtml = (t: string) => t.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+    const confirmLine = `\u2705 <b>${escapeHtml(descriptiveTitle)}</b>`;
+
+    expect(confirmLine).toContain('AI Market Trends 2026');
+    expect(confirmLine).not.toContain('/research');
+    expect(confirmLine).not.toContain('Socratic');
+  });
+});

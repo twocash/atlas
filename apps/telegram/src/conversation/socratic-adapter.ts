@@ -127,7 +127,7 @@ export async function socraticInterview(
         resolvedVia: 'auto_draft',
         extraContext: {},
         contentTopic: title,
-      }, content, contentType, title, undefined, prefetchedUrlContent);
+      }, content, contentType, title, undefined, prefetchedUrlContent, triageResult);
       return true;
     }
 
@@ -138,7 +138,7 @@ export async function socraticInterview(
         intent: result.context.intent,
         pillar: result.context.pillar,
       });
-      await handleResolved(ctx, result.context, content, contentType, title, undefined, prefetchedUrlContent);
+      await handleResolved(ctx, result.context, content, contentType, title, undefined, prefetchedUrlContent, triageResult);
       return true;
     }
 
@@ -220,6 +220,7 @@ async function handleResolved(
   title: string,
   answerContext?: string,
   prefetchedUrlContent?: UrlContent,
+  triageResult?: TriageResult,
 ): Promise<void> {
   const userId = ctx.from?.id;
   const chatId = ctx.chat?.id;
@@ -231,20 +232,26 @@ async function handleResolved(
     const pillar = resolved.pillar as Pillar;
     const requestType = mapIntentToRequestType(resolved.intent);
 
+    // Descriptive title priority: Haiku triage → Socratic contentTopic → fetched page → raw input
+    const descriptiveTitle = triageResult?.title
+      || resolved.contentTopic
+      || (prefetchedUrlContent?.success ? prefetchedUrlContent.title : undefined)
+      || title;
+
     // Build a proper AuditEntry for createAuditTrail
     const result = await createAuditTrail({
-      entry: `[Socratic/${resolved.resolvedVia}] ${title}`,
+      entry: descriptiveTitle,
       pillar,
       requestType,
       source: 'Telegram',
       author: ctx.from?.username || 'Jim',
       confidence: resolved.confidence,
-      keywords: [resolved.intent, resolved.depth, resolved.audience].filter(Boolean) as string[],
+      keywords: [resolved.intent, resolved.depth, resolved.audience, `socratic/${resolved.resolvedVia}`].filter(Boolean) as string[],
       userId,
       messageText: content,
       hasAttachment: false,
       url: contentType === 'url' ? content : undefined,
-      urlTitle: title,
+      urlTitle: descriptiveTitle,
       contentType: contentType === 'url' ? 'url' : undefined,
     });
 
@@ -257,7 +264,7 @@ async function handleResolved(
     // Confirm to user
     const resolvedEmoji = resolved.resolvedVia === 'auto_draft' ? '\u26A1' : '\u2705';
     const confirmMsg = [
-      `${resolvedEmoji} <b>${escapeHtml(title)}</b>`,
+      `${resolvedEmoji} <b>${escapeHtml(descriptiveTitle)}</b>`,
       `\uD83D\uDCC1 ${pillar} \u00B7 ${requestType}`,
       result.feedUrl ? `\uD83D\uDCCB <a href="${result.feedUrl}">Feed</a>` : '',
       result.workQueueUrl ? `\uD83D\uDCDD <a href="${result.workQueueUrl}">Work Queue</a>` : '',
@@ -373,6 +380,7 @@ export async function handleSocraticAnswer(
         session.title,
         answerText,
         session.prefetchedUrlContent,
+        session.triageResult,
       );
       return true;
     }
@@ -407,7 +415,7 @@ export async function handleSocraticAnswer(
         resolvedVia: 'auto_draft',
         extraContext: {},
         contentTopic: session.title,
-      }, session.content, session.contentType, session.title, undefined, session.prefetchedUrlContent);
+      }, session.content, session.contentType, session.title, undefined, session.prefetchedUrlContent, session.triageResult);
       return true;
     }
 

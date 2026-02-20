@@ -1339,8 +1339,49 @@ async function parseResearchResponse(
       };
     }
 
+    // Resolve Vertex AI grounding redirect URLs to real destinations
+    // (Same resolution the JSON path uses — prose path must not skip it)
+    const { resolvedSources } = await resolveAllRedirectUrls(sources, []);
+
+    // Also resolve vertex redirect URLs embedded in prose body markdown links
+    let resolvedText = text;
+    const vertexUrlsInBody = new Set<string>();
+    const bodyLinkPattern = /\[[^\]]*\]\((https?:\/\/vertexaisearch\.cloud\.google\.com\/grounding-api-redirect\/[^)]+)\)/g;
+    let bodyMatch;
+    while ((bodyMatch = bodyLinkPattern.exec(text)) !== null) {
+      vertexUrlsInBody.add(bodyMatch[1]);
+    }
+
+    if (vertexUrlsInBody.size > 0) {
+      console.log(`[Research] Resolving ${vertexUrlsInBody.size} vertex URLs in prose body...`);
+      const bodyUrlArray = Array.from(vertexUrlsInBody);
+      const bodyBatchSize = 5;
+      const bodyResolvedMap = new Map<string, string | null>();
+      for (let i = 0; i < bodyUrlArray.length; i += bodyBatchSize) {
+        const batch = bodyUrlArray.slice(i, i + bodyBatchSize);
+        const results = await Promise.all(batch.map(resolveRedirectUrl));
+        batch.forEach((url, idx) => {
+          bodyResolvedMap.set(url, results[idx]);
+        });
+      }
+
+      // Replace vertex URLs in prose body with resolved destinations
+      for (const [vertexUrl, resolvedUrl] of bodyResolvedMap) {
+        if (resolvedUrl && resolvedUrl !== vertexUrl) {
+          resolvedText = resolvedText.split(vertexUrl).join(resolvedUrl);
+        } else if (resolvedUrl === null) {
+          // Unresolvable — remove the markdown link but keep the link text
+          const linkWithVertex = new RegExp(
+            `\\[([^\\]]*)\\]\\(${vertexUrl.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\)`,
+            'g'
+          );
+          resolvedText = resolvedText.replace(linkWithVertex, '$1');
+        }
+      }
+    }
+
     // Build summary preview from first 500 chars (for Notes field)
-    const summaryPreview = text
+    const summaryPreview = resolvedText
       .replace(/^#+\s+.*$/gm, '') // Strip headings
       .replace(/\n{2,}/g, '\n')   // Collapse whitespace
       .trim()
@@ -1349,12 +1390,12 @@ async function parseResearchResponse(
     return {
       summary: summaryPreview,
       findings: [],
-      sources,
+      sources: resolvedSources,
       query: config.query,
       focus: config.focus,
       depth,
       contentMode: 'prose',
-      proseContent: text,
+      proseContent: resolvedText,
     };
   }
 
