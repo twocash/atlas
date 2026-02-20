@@ -501,7 +501,7 @@ function mapIntentToRequestType(intent: string): RequestType {
     case 'draft': return 'Draft';
     case 'build': return 'Build';
     case 'capture':
-    case 'save':
+    case 'save': return 'Process';
     default: return 'Research';
   }
 }

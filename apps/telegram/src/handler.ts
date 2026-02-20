@@ -23,7 +23,8 @@ import type {
   Intent,
   ActionDataTriage,
 } from "./types";
-import { extractFirstUrl, fetchUrlContent, getUrlDomain } from "./url";
+import { extractFirstUrl, getUrlDomain } from "./url";
+import { extractContent, toUrlContent } from "./conversation/content-extractor";
 import { classifySpark } from "./classifier";
 import { classifyWithClaude } from "./claude";
 import {
@@ -77,9 +78,9 @@ export async function handleMessage(ctx: Context): Promise<void> {
   if (url) {
     spark.url = url;
     
-    // Fetch URL content
+    // Extract URL content (tiered: HTTP or Jina Reader)
     await ctx.replyWithChatAction("typing");
-    urlContent = await fetchUrlContent(url);
+    urlContent = toUrlContent(await extractContent(url));
     spark.urlContent = urlContent;
 
     if (!urlContent.success) {
