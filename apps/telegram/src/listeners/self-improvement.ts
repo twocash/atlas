@@ -89,6 +89,24 @@ async function querySelfImprovementEntries(): Promise<FeedEntry[]> {
               does_not_equal: 'Resolved',
             },
           },
+          {
+            property: 'Action Status',
+            select: {
+              does_not_equal: 'Dismissed',
+            },
+          },
+          {
+            property: 'Action Status',
+            select: {
+              does_not_equal: 'Actioned',
+            },
+          },
+          {
+            property: 'Action Status',
+            select: {
+              does_not_equal: 'Expired',
+            },
+          },
         ],
       },
       page_size: 10, // Limit batch size
