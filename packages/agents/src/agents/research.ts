@@ -15,6 +15,7 @@ import type { AgentRegistry } from "../registry";
 import type { Agent, AgentResult, AgentMetrics, Pillar } from "../types";
 import { getPromptManager, type PromptPillar } from "../services/prompt-manager";
 import { degradedWarning, logDegradedFallback } from "../services/degraded-context";
+import { resolveDrafterId, resolveDefaultDrafterId } from "../services/prompt-composition/composer";
 
 // ==========================================
 // Research Agent Types
@@ -111,6 +112,12 @@ export interface ResearchResult {
 
   /** Chicago-style bibliography (deep research only) */
   bibliography?: string[];
+
+  /** Output mode: 'prose' when drafter template was used, 'json' for structured output */
+  contentMode?: 'prose' | 'json';
+
+  /** Full prose markdown content (only set when contentMode === 'prose') */
+  proseContent?: string;
 }
 
 // ==========================================
@@ -681,7 +688,7 @@ async function getResearchInstructionsFromNotion(config: ResearchConfig): Promis
   }
 }
 
-async function buildResearchPrompt(config: ResearchConfig): Promise<string> {
+async function buildResearchPrompt(config: ResearchConfig): Promise<{ prompt: string; isDrafterMode: boolean }> {
   const depth = config.depth || "standard";
   const depthCfg = DEPTH_CONFIG[depth];
 
@@ -727,25 +734,32 @@ async function buildResearchPrompt(config: ResearchConfig): Promise<string> {
   // PM-gated summary guidance (async fetch → hardcoded fallback)
   const summaryGuidance = await getSummaryGuidanceAsync(depth);
 
+  // Check for drafter template (prose output mode)
+  const drafterTemplate = await getDrafterTemplateAsync(config);
+  const isDrafterMode = drafterTemplate !== null;
+
   // VOICE FIRST: Put voice/style instructions at the TOP so the model adopts the persona
   // before processing the task. This is critical for voice injection to work.
-  const basePrompt = `You are Atlas Research Agent, an autonomous research assistant with access to Google Search.
+  let outputSection: string;
 
-## STYLE GUIDELINES (CRITICAL - ADOPT THIS VOICE THROUGHOUT)
-${voiceInstructions}
+  if (isDrafterMode) {
+    // PROSE MODE: Drafter template replaces JSON schema + Source Integrity sections
+    console.log("[Research] Using drafter template for prose output mode");
+    outputSection = `## Output Format
 
-## Research Task
-Query: "${config.query}"
-${config.focus ? `Focus Area: ${config.focus}` : ""}
-Depth: ${depth} — ${depthCfg.description}
-Target Sources: ${config.maxSources || depthCfg.targetSources}+
+${drafterTemplate}
 
-## Instructions
+## Source Requirements
 
-Use Google Search to find current, authoritative information about this topic.
-${researchInstructions}
-
-## Output Format
+- Cite sources inline using markdown links: [Source Name](URL)
+- Include a ## Sources section at the end listing all referenced URLs
+- EVERY URL must be a real URL from your Google Search results
+- Do NOT use placeholder URLs like "url1.com", "example.com", or "source-url.com"
+- Do NOT fabricate URLs — only include URLs that Google Search actually returned
+- If Google Search returns NO relevant results, state this clearly at the top of your response`;
+  } else {
+    // JSON MODE: Existing structured output (backward compat)
+    outputSection = `## Output Format
 
 Provide your response in this exact JSON format:
 
@@ -776,13 +790,32 @@ Provide your response in this exact JSON format:
   "findings": [],
   "sources": []
 }
-\`\`\`
+\`\`\``;
+  }
+
+  const basePrompt = `You are Atlas Research Agent, an autonomous research assistant with access to Google Search.
+
+## STYLE GUIDELINES (CRITICAL - ADOPT THIS VOICE THROUGHOUT)
+${voiceInstructions}
+
+## Research Task
+Query: "${config.query}"
+${config.focus ? `Focus Area: ${config.focus}` : ""}
+Depth: ${depth} — ${depthCfg.description}
+Target Sources: ${config.maxSources || depthCfg.targetSources}+
+
+## Instructions
+
+Use Google Search to find current, authoritative information about this topic.
+${researchInstructions}
+
+${outputSection}
 
 ${qualityBlock}
 
 Begin your research now.`;
 
-  return basePrompt;
+  return { prompt: basePrompt, isDrafterMode };
 }
 
 function getDepthInstructions(depth: ResearchDepth): string {
@@ -929,6 +962,50 @@ async function getQualityGuidelinesAsync(depth: ResearchDepth): Promise<string> 
   return getQualityGuidelines(depth);
 }
 
+/**
+ * PM-gated drafter template resolution for prose output mode.
+ *
+ * Resolution chain:
+ *   1. Pillar-specific drafter (e.g. `drafter.the-grove.research`)
+ *   2. Default drafter (`drafter.default.research`)
+ *   3. null → JSON mode (backward compat)
+ *
+ * Returns the drafter template body text or null if no drafter exists.
+ */
+async function getDrafterTemplateAsync(config: ResearchConfig): Promise<string | null> {
+  const pm = getPromptManager();
+
+  // 1. Try pillar-specific drafter
+  if (config.pillar) {
+    const pillarDrafterId = resolveDrafterId(config.pillar, 'research');
+    try {
+      const template = await pm.getPromptById(pillarDrafterId);
+      if (template) {
+        console.log(`[Research] Loaded drafter template from PromptManager (ID: ${pillarDrafterId})`);
+        return template;
+      }
+    } catch (err) {
+      console.warn(`[Research] Drafter fetch failed for ${pillarDrafterId}:`, String(err));
+    }
+  }
+
+  // 2. Try default drafter
+  const defaultDrafterId = resolveDefaultDrafterId('research');
+  try {
+    const template = await pm.getPromptById(defaultDrafterId);
+    if (template) {
+      console.log(`[Research] Loaded default drafter template from PromptManager (ID: ${defaultDrafterId})`);
+      return template;
+    }
+  } catch (err) {
+    console.warn(`[Research] Default drafter fetch failed for ${defaultDrafterId}:`, String(err));
+  }
+
+  // 3. No drafter found → JSON mode (backward compat)
+  console.log('[Research] No drafter template found — using JSON output mode');
+  return null;
+}
+
 // ==========================================
 // Research Agent Executor
 // ==========================================
@@ -956,7 +1033,7 @@ export async function executeResearch(
     await registry.updateProgress(agent.id, 15, "Searching with Google");
 
     // Build prompt and execute
-    const prompt = await buildResearchPrompt(config);
+    const { prompt, isDrafterMode } = await buildResearchPrompt(config);
 
     await registry.updateProgress(agent.id, 30, `Analyzing sources (${depth})`);
     const response = await gemini.generateContent(prompt, depthCfg.maxTokens);
@@ -995,7 +1072,8 @@ export async function executeResearch(
       response.text,
       response.citations,
       config,
-      depth
+      depth,
+      isDrafterMode
     );
 
     // CHECK: Did parsing detect hallucination?
@@ -1215,11 +1293,72 @@ async function parseResearchResponse(
   text: string,
   citations: Array<{ url: string; title: string }>,
   config: ResearchConfig,
-  depth: ResearchDepth
+  depth: ResearchDepth,
+  isDrafterMode: boolean = false
 ): Promise<ResearchResult> {
   console.log("[Research] === PARSING RESPONSE ===");
   console.log("[Research] Raw text length:", text.length);
   console.log("[Research] Grounding citations:", citations.length);
+  console.log("[Research] isDrafterMode:", isDrafterMode);
+
+  // PROSE MODE: Early return — drafter produced prose markdown, not JSON
+  if (isDrafterMode) {
+    console.log("[Research] Prose mode — skipping JSON extraction");
+
+    // Extract source URLs from grounding citations (deduped)
+    const sources: string[] = [];
+    const seenUrls = new Set<string>();
+    for (const citation of citations) {
+      if (citation.url && !seenUrls.has(citation.url)) {
+        sources.push(citation.url);
+        seenUrls.add(citation.url);
+      }
+    }
+
+    // Also extract markdown link URLs from prose body
+    const markdownLinkPattern = /\[[^\]]*\]\((https?:\/\/[^)]+)\)/g;
+    let linkMatch;
+    while ((linkMatch = markdownLinkPattern.exec(text)) !== null) {
+      if (!seenUrls.has(linkMatch[1])) {
+        sources.push(linkMatch[1]);
+        seenUrls.add(linkMatch[1]);
+      }
+    }
+
+    // Hallucination check with empty findings (citation-only checks still work)
+    const hallucinationCheck = detectHallucination(sources, citations, []);
+    if (hallucinationCheck.isHallucinated) {
+      console.error("[Research] HALLUCINATION DETECTED in prose mode:", hallucinationCheck.reason);
+      return {
+        summary: `Research FAILED: ${hallucinationCheck.reason}. Google Search grounding did not return real results for this query.`,
+        findings: [],
+        sources: [],
+        query: config.query,
+        focus: config.focus,
+        depth,
+      };
+    }
+
+    // Build summary preview from first 500 chars (for Notes field)
+    const summaryPreview = text
+      .replace(/^#+\s+.*$/gm, '') // Strip headings
+      .replace(/\n{2,}/g, '\n')   // Collapse whitespace
+      .trim()
+      .substring(0, 500);
+
+    return {
+      summary: summaryPreview,
+      findings: [],
+      sources,
+      query: config.query,
+      focus: config.focus,
+      depth,
+      contentMode: 'prose',
+      proseContent: text,
+    };
+  }
+
+  // JSON MODE: Existing structured parsing (unchanged below)
 
   // STRATEGY 1: Try to parse JSON first (most reliable if it works)
   let parsedJson: any = null;

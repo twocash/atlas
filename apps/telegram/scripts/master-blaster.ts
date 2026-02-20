@@ -958,6 +958,8 @@ async function runAgentsUnitTests(cwd: string): Promise<SuiteResult> {
       'test/notion-markdown.test.ts',
       'test/worker-logic.test.ts',
       'test/research-json-truncation.test.ts',
+      'test/research-pm-chain.test.ts',
+      'test/drafter-injection.test.ts',
     ],
     agentsCwd,
     60000
