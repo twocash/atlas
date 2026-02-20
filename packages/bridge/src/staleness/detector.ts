@@ -121,12 +121,12 @@ async function getLastPillarActivity(
             select: { equals: pillar },
           },
           {
-            property: 'Created',
+            property: 'Date',
             date: { on_or_after: sinceIso },
           },
         ],
       },
-      sorts: [{ property: 'Created', direction: 'descending' }],
+      sorts: [{ property: 'Date', direction: 'descending' }],
       page_size: 1,
     });
 
@@ -135,7 +135,7 @@ async function getLastPillarActivity(
     }
 
     const page = response.results[0] as any;
-    const created = page.properties?.Created?.date?.start
+    const created = page.properties?.Date?.date?.start
       || page.created_time;
 
     // Try to get the entry type
