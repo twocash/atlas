@@ -54,6 +54,7 @@ import {
 } from "./types/tool-protocol"
 import { composeBridgePrompt } from "../../agents/src/services/prompt-composition"
 import { hydrateSystemPreamble } from "./context/prompt-constructor"
+import { detectStaleness } from "./staleness"
 
 // ─── Config ──────────────────────────────────────────────────
 
@@ -781,7 +782,7 @@ const server = Bun.serve({
 startHealthChecks()
 
 // ─── Identity Hydration ──────────────────────────────────────
-// Resolve bridge.soul from Notion and hydrate the system preamble
+// Resolve bridge.soul + bridge.goals from Notion and hydrate the system preamble
 // BEFORE spawning Claude. ADR-001: Notion governs all prompts.
 // ADR-008: Identity resolution failure is a hard error.
 
@@ -796,9 +797,35 @@ async function hydrateBridgeIdentity(): Promise<void> {
       `[bridge] Bridge identity hydrated — ` +
       `soul: ${result.components.soul ? "OK" : "MISSING"}, ` +
       `user: ${result.components.user ? "OK" : "skipped"}, ` +
-      `memory: ${result.components.memory ? "OK" : "skipped"} ` +
+      `memory: ${result.components.memory ? "OK" : "skipped"}, ` +
+      `goals: ${result.components.goals ? "OK" : "skipped"} ` +
       `(${result.tokenCount} tokens)`,
     )
+
+    // Run staleness detection if goals loaded successfully
+    if (result.components.goals) {
+      try {
+        // Extract goals content from the prompt (between "## Active Goals" and next "---")
+        const goalsMatch = result.prompt.match(/## Active Goals & Projects\n([\s\S]*?)(?=\n---\n|$)/)
+        if (goalsMatch) {
+          const report = await detectStaleness(goalsMatch[1])
+          if (report.hasStaleProjects) {
+            console.log(
+              `[bridge] Staleness check: ${report.staleProjects.length} stale project(s) detected ` +
+              `out of ${report.totalChecked} checked`,
+            )
+            for (const sp of report.staleProjects) {
+              console.log(`[bridge]   ${sp.severity === "consider_archive" ? "⚠️" : "ℹ️"} ${sp.nudgeText}`)
+            }
+          } else {
+            console.log(`[bridge] Staleness check: all ${report.totalChecked} projects active`)
+          }
+        }
+      } catch (stalenessErr) {
+        // Staleness is advisory — don't block startup on failure
+        console.warn("[bridge] Staleness check failed (non-blocking):", stalenessErr)
+      }
+    }
   } catch (err) {
     console.error("[bridge] FATAL: Bridge identity hydration failed:", err)
     console.error("[bridge] Cannot start without identity. Check Notion System Prompts DB.")

@@ -47,7 +47,8 @@ import {
 // =============================================================================
 
 describe("Tool Schema Validation", () => {
-  const EXPECTED_TOOLS = [
+  /** Browser tools dispatched to extension via WebSocket */
+  const EXPECTED_BROWSER_TOOLS = [
     "atlas_read_current_page",
     "atlas_get_dom_element",
     "atlas_get_console_errors",
@@ -56,19 +57,27 @@ describe("Tool Schema Validation", () => {
     "atlas_get_linkedin_context",
   ] as const
 
-  it("defines exactly 6 tools", () => {
-    expect(TOOL_SCHEMAS.length).toBe(6)
+  /** Bridge-local tools handled by MCP server directly */
+  const EXPECTED_LOCAL_TOOLS = [
+    "bridge_update_memory",
+    "bridge_update_goals",
+  ] as const
+
+  const ALL_EXPECTED = [...EXPECTED_BROWSER_TOOLS, ...EXPECTED_LOCAL_TOOLS]
+
+  it("defines exactly 8 tools (6 browser + 2 local)", () => {
+    expect(TOOL_SCHEMAS.length).toBe(8)
   })
 
   it("exports all expected tool names", () => {
-    for (const name of EXPECTED_TOOLS) {
+    for (const name of ALL_EXPECTED) {
       expect(TOOL_NAMES.has(name)).toBe(true)
     }
   })
 
   it("has no extra tools beyond the expected set", () => {
     const extra = TOOL_SCHEMAS.filter(
-      (s) => !EXPECTED_TOOLS.includes(s.name as any)
+      (s) => !ALL_EXPECTED.includes(s.name as any)
     )
     expect(extra).toEqual([])
   })
@@ -85,7 +94,7 @@ describe("Tool Schema Validation", () => {
   })
 
   it("getToolSchema returns correct schema for each tool", () => {
-    for (const name of EXPECTED_TOOLS) {
+    for (const name of ALL_EXPECTED) {
       const schema = getToolSchema(name)
       expect(schema).toBeDefined()
       expect(schema!.name).toBe(name)
@@ -133,9 +142,10 @@ describe("Tool Schema Validation", () => {
     }
   })
 
-  it("all tool names follow atlas_ prefix convention", () => {
+  it("browser tool names follow atlas_ prefix, local tools follow bridge_ prefix", () => {
     for (const schema of TOOL_SCHEMAS) {
-      expect(schema.name.startsWith("atlas_")).toBe(true)
+      const hasValidPrefix = schema.name.startsWith("atlas_") || schema.name.startsWith("bridge_")
+      expect(hasValidPrefix).toBe(true)
     }
   })
 })

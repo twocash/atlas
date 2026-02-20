@@ -31,6 +31,7 @@ import {
 
 import { TOOL_SCHEMAS, TOOL_NAMES, LOCAL_TOOL_NAMES } from "./schemas"
 import { handleBridgeMemoryTool } from "./bridge-memory"
+import { handleBridgeGoalsTool } from "./bridge-goals"
 import {
   MCP_SERVER_NAME,
   TOOL_TIMEOUT_MS,
@@ -113,6 +114,9 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
     try {
       if (name === "bridge_update_memory") {
         return await handleBridgeMemoryTool((args ?? {}) as Record<string, unknown>)
+      }
+      if (name === "bridge_update_goals") {
+        return await handleBridgeGoalsTool((args ?? {}) as Record<string, unknown>)
       }
       return {
         content: [{ type: "text" as const, text: `Local tool '${name}' has no handler` }],

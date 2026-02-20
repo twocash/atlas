@@ -64,17 +64,18 @@ describe('composeBridgePrompt()', () => {
     expect(src).not.toContain("from '@notionhq/client'");
   });
 
-  it('resolves all three documents in parallel', async () => {
+  it('resolves all four documents in parallel', async () => {
     const src = await readAgents('src/services/prompt-composition/bridge.ts');
     expect(src).toContain('Promise.all([');
     expect(src).toContain('pm.getPromptById(BRIDGE_SOUL_ID)');
     expect(src).toContain('pm.getPromptById(USER_ID)');
     expect(src).toContain('pm.getPromptById(BRIDGE_MEMORY_ID)');
+    expect(src).toContain('pm.getPromptById(BRIDGE_GOALS_ID)');
   });
 
-  it('enforces Slot 0 token ceiling of 4000', async () => {
+  it('enforces Slot 0 token ceiling of 6000 (SOUL+USER+MEMORY+GOALS)', async () => {
     const src = await readAgents('src/services/prompt-composition/bridge.ts');
-    expect(src).toContain('SLOT_0_TOKEN_CEILING = 4000');
+    expect(src).toContain('SLOT_0_TOKEN_CEILING = 6000');
     expect(src).toContain('tokenCount > SLOT_0_TOKEN_CEILING');
   });
 
@@ -172,6 +173,7 @@ describe('server.ts identity wiring', () => {
     expect(src).toContain('result.components.soul');
     expect(src).toContain('result.components.user');
     expect(src).toContain('result.components.memory');
+    expect(src).toContain('result.components.goals');
   });
 });
 
