@@ -30,8 +30,8 @@ export interface AnythingLLMResponse {
 const TIMEOUT_MS = 3000
 
 function getConfig(): { url: string; apiKey: string } | null {
-  const url = process.env.ANYTHINGLLM_URL
-  const apiKey = process.env.ANYTHINGLLM_API_KEY
+  const url = process.env.ANYTHINGLLM_URL?.trim()
+  const apiKey = process.env.ANYTHINGLLM_API_KEY?.trim()
   if (!url || !apiKey) return null
   return { url: url.replace(/\/$/, ""), apiKey }
 }
@@ -47,6 +47,8 @@ export async function healthCheck(): Promise<boolean> {
     console.warn("[AnythingLLM] Not configured — missing ANYTHINGLLM_URL or ANYTHINGLLM_API_KEY")
     return false
   }
+
+  console.info(`[AnythingLLM] Config: url=${config.url}, key=${config.apiKey.slice(0, 4)}...(${config.apiKey.length} chars)`)
 
   try {
     const controller = new AbortController()

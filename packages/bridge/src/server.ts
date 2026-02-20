@@ -386,7 +386,11 @@ function handleControlRequest(msg: any): void {
 }
 
 function handleControlResponse(msg: any): void {
-  if (msg.request_id === mcpRequestId) {
+  const responseId = msg.request_id ?? msg.id ?? msg.response?.request_id
+  console.log(`[bridge] control_response received — request_id: ${responseId}, expecting: ${mcpRequestId}`)
+
+  // If we're waiting for an MCP config ack, check for match OR accept if it's the only pending request
+  if (mcpRequestId && (responseId === mcpRequestId || (!responseId && mcpConfigured === false))) {
     mcpConfigured = true
     mcpRequestId = null
     console.log("[bridge] MCP servers configured — bridge fully ready")
@@ -394,7 +398,7 @@ function handleControlResponse(msg: any): void {
     return
   }
 
-  console.log(`[bridge] control_response for request: ${msg.request_id}`)
+  console.log(`[bridge] Unmatched control_response:`, JSON.stringify(msg).slice(0, 200))
 }
 
 /** Flush pending user messages to Claude once fully ready (WS + init + MCP). */
