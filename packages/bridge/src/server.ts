@@ -55,6 +55,7 @@ import {
 import { composeBridgePrompt } from "../../agents/src/services/prompt-composition"
 import { hydrateSystemPreamble } from "./context/prompt-constructor"
 import { detectStaleness } from "./staleness"
+import { runBridgeHealthCheck } from "./health"
 
 // ─── Config ──────────────────────────────────────────────────
 
@@ -833,10 +834,23 @@ async function hydrateBridgeIdentity(): Promise<void> {
   }
 }
 
-// Hydrate identity, then spawn Claude
-hydrateBridgeIdentity().then(() => {
+// Startup sequence: validate databases → hydrate identity → spawn Claude
+async function startBridge(): Promise<void> {
+  // 1. Validate database access (ADR-008: fail fast)
+  const dbReport = await runBridgeHealthCheck()
+  if (!dbReport.allCriticalPassed) {
+    console.error("[bridge] FATAL: Critical databases unreachable. Cannot start.")
+    process.exit(1)
+  }
+
+  // 2. Hydrate identity from Notion
+  await hydrateBridgeIdentity()
+
+  // 3. Spawn Claude Code
   spawnClaude()
-})
+}
+
+startBridge()
 
 console.log(`
   ╔══════════════════════════════════════════════════╗
