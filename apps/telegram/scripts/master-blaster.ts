@@ -548,6 +548,9 @@ async function runRegressionTests(cwd: string): Promise<SuiteResult> {
     'test/structured-composition-scenarios.test.ts',
     'test/v3-pipeline-lifecycle.test.ts',
     'test/prompt-manager-wiring.test.ts',  // Sprint: PromptManager Wiring — seed data + ID convention alignment
+    'test/exec-gap-feb18.test.ts',             // capture-without-execution regression
+    'test/session-continuity.test.ts',         // session continuity regression
+    'test/execution-path-coverage.test.ts',    // dispatch source fingerprinting (this sprint)
     'src/conversation/__tests__/composition-integration.test.ts',  // Sprint: PromptManager Wiring — composition pipeline
     'src/conversation/__tests__/architecture.test.ts',  // Gate 2: Socratic architecture constraints
     'test/research-query-conformance.test.ts',  // fix/research-query-conformance: ADR canonical ResearchConfig flow
