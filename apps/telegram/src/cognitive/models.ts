@@ -7,7 +7,7 @@
 export type ModelId =
   | "claude-opus-4-20250514"
   | "claude-sonnet-4-20250514"
-  | "claude-3-5-haiku-20241022"
+  | "claude-haiku-4-5-20251001"
   | "gpt-4o"
   | "gpt-4o-mini"
   | "gemini-2.0-flash"
@@ -73,15 +73,15 @@ export const MODEL_CATALOG: Record<ModelId, ModelConfig> = {
     openrouterModel: "anthropic/claude-sonnet-4-20250514",
     maxOutputTokens: 8192,
   },
-  "claude-3-5-haiku-20241022": {
+  "claude-haiku-4-5-20251001": {
     provider: "anthropic",
     tier: "efficient",
     contextWindow: 200000,
-    inputCostPer1M: 0.8,
-    outputCostPer1M: 4.0,
+    inputCostPer1M: 1.0,
+    outputCostPer1M: 5.0,
     strengths: ["speed", "simple_tasks", "cost_efficient", "summarization"],
-    openrouterModel: "anthropic/claude-3-5-haiku-20241022",
-    maxOutputTokens: 8192,
+    openrouterModel: "anthropic/claude-haiku-4-5-20251001",
+    maxOutputTokens: 8192,  // Haiku 4.5: $1/$5 per MTok
   },
 
   // === OpenAI ===
@@ -213,7 +213,7 @@ export function getCheapestModelWithStrengths(
  * Default model selections by task type
  */
 export const DEFAULT_MODEL_BY_TASK = {
-  quickLookup: "claude-3-5-haiku-20241022",
+  quickLookup: "claude-haiku-4-5-20251001",
   deepAnalysis: "claude-sonnet-4-20250514",
   codeGeneration: "claude-sonnet-4-20250514",
   structuredOutput: "gpt-4o-mini",
@@ -236,7 +236,7 @@ export const TASK_MODEL_MAP: Record<AgentTaskType, ModelId> = {
   research: "gemini-2.0-flash",       // Deep research with Google Search grounding
   coding: "claude-opus-4-20250514",   // Complex code generation
   chat: "claude-sonnet-4-20250514",   // General conversation
-  classification: "claude-3-5-haiku-20241022", // Quick triage (SPARKS)
+  classification: "claude-haiku-4-5-20251001", // Quick triage (SPARKS)
 };
 
 /**

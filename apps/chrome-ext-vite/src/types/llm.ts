@@ -31,7 +31,7 @@ export interface ModelOption {
 }
 
 export const MODEL_OPTIONS: ModelOption[] = [
-  { id: "claude-haiku", name: "Claude Haiku", provider: "anthropic", model: "claude-3-5-haiku-20241022" },
+  { id: "claude-haiku", name: "Claude Haiku", provider: "anthropic", model: "claude-haiku-4-5-20251001" },
   { id: "claude-sonnet", name: "Claude Sonnet", provider: "anthropic", model: "claude-sonnet-4-20250514" },
   { id: "gpt-4o-mini", name: "GPT-4o Mini", provider: "openrouter", model: "openai/gpt-4o-mini" },
   { id: "llama-3.1-8b", name: "Llama 3.1 8B", provider: "openrouter", model: "meta-llama/llama-3.1-8b-instruct" },

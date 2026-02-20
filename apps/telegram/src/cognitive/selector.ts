@@ -37,7 +37,7 @@ export function selectModel(profile: TaskProfile): ModelSelection {
   if (profile.requiresStructuredOutput) {
     modelId = DEFAULT_MODEL_BY_TASK.structuredOutput;
     reasoning = "Structured output required - GPT-4o-mini has reliable JSON mode";
-    fallbackModelId = "claude-3-5-haiku-20241022";
+    fallbackModelId = "claude-haiku-4-5-20251001";
   }
   // Code generation: use Sonnet
   else if (profile.requiresCode) {
@@ -71,7 +71,7 @@ export function selectModel(profile: TaskProfile): ModelSelection {
   }
   // Moderate tasks: default to Haiku, upgrade if needed
   else {
-    modelId = "claude-3-5-haiku-20241022";
+    modelId = "claude-haiku-4-5-20251001";
     reasoning = "Moderate task - starting with Haiku, can upgrade if needed";
     fallbackModelId = "claude-sonnet-4-20250514";
   }
@@ -149,14 +149,14 @@ export function upgradeModelSelection(
  */
 function getNextFallback(currentModel: ModelId): ModelId | undefined {
   const fallbackChain: Record<ModelId, ModelId | undefined> = {
-    "claude-3-5-haiku-20241022": "claude-sonnet-4-20250514",
+    "claude-haiku-4-5-20251001": "claude-sonnet-4-20250514",
     "gpt-4o-mini": "gpt-4o",
     "gpt-4o": "claude-sonnet-4-20250514",
     "claude-sonnet-4-20250514": "claude-opus-4-20250514",
     "claude-opus-4-20250514": undefined, // Top of chain
     "gemini-2.0-flash": "gemini-2.0-pro",
     "gemini-2.0-pro": "claude-sonnet-4-20250514",
-    local: "claude-3-5-haiku-20241022",
+    local: "claude-haiku-4-5-20251001",
   };
 
   return fallbackChain[currentModel];

@@ -27,7 +27,7 @@ const WORK_QUEUE_DATABASE_ID = NOTION_DB.WORK_QUEUE;
 // Cost per 1M tokens (approximate)
 const TOKEN_COSTS = {
   'claude-sonnet-4': { input: 3.00, output: 15.00 },
-  'claude-haiku-4': { input: 0.25, output: 1.25 },
+  'claude-haiku-4-5': { input: 1.00, output: 5.00 },
   'claude-opus-4': { input: 15.00, output: 75.00 },
 };
 

@@ -58,7 +58,7 @@ export function clearSession(userId: number): void {
 export const MODEL_SHORTCUTS: Record<string, ModelId | "auto"> = {
   "auto": "auto",
   "opus": "claude-opus-4-20250514",
-  "haiku": "claude-3-5-haiku-20241022",
+  "haiku": "claude-haiku-4-5-20251001",
   "sonnet": "claude-sonnet-4-20250514",
   "gpt4o": "gpt-4o",
   "gpt4o-mini": "gpt-4o-mini",
@@ -75,7 +75,7 @@ export function getModelDisplayName(model: ModelId | "auto"): string {
   const names: Record<ModelId | "auto", string> = {
     "auto": "Auto (router decides)",
     "claude-opus-4-20250514": "Opus (most powerful)",
-    "claude-3-5-haiku-20241022": "Haiku (fast, cheap)",
+    "claude-haiku-4-5-20251001": "Haiku (fast, cheap)",
     "claude-sonnet-4-20250514": "Sonnet (powerful)",
     "gpt-4o": "GPT-4o (structured)",
     "gpt-4o-mini": "GPT-4o-mini (JSON)",

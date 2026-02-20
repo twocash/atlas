@@ -153,7 +153,7 @@ async function testClaudeAPI() {
 
   await runTest('Claude Haiku 3.5 responds', async () => {
     const response = await anthropic.messages.create({
-      model: 'claude-3-5-haiku-20241022',
+      model: 'claude-haiku-4-5-20251001',
       max_tokens: 20,
       messages: [{ role: 'user', content: 'Reply with just: OK' }],
     });

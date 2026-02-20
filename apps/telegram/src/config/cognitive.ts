@@ -106,7 +106,7 @@ export function loadCognitiveConfig(): CognitiveConfig {
     maxRetries: parseInt(process.env.COGNITIVE_MAX_RETRIES || "3", 10),
     defaultTimeoutMs: 30000,
     defaults: {
-      classificationModel: "claude-3-5-haiku-20241022",
+      classificationModel: "claude-haiku-4-5-20251001",
       chatModel: "claude-sonnet-4-20250514",
       structuredOutputModel: "gpt-4o-mini",
     },

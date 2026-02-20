@@ -176,7 +176,7 @@ async function checkClaude(): Promise<HealthCheckResult[]> {
   // Test Haiku (classification model) - use correct model ID
   try {
     const response = await anthropic.messages.create({
-      model: 'claude-3-5-haiku-20241022',
+      model: 'claude-haiku-4-5-20251001',
       max_tokens: 10,
       messages: [{ role: 'user', content: 'Say "ok"' }],
     });
@@ -184,7 +184,7 @@ async function checkClaude(): Promise<HealthCheckResult[]> {
       name: 'claude:haiku',
       status: 'pass',
       message: 'Claude Haiku connected',
-      details: { model: 'claude-3-5-haiku-20241022' },
+      details: { model: 'claude-haiku-4-5-20251001' },
     });
   } catch (error: any) {
     results.push({

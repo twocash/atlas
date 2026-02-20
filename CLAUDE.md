@@ -275,6 +275,121 @@ See `apps/telegram/CLAUDE.md` for complete field documentation
 
 ---
 
+## ⚠️ Architectural Constraints & UX Invariants
+
+**These are categorical. They are not suggestions. Violating them creates technical debt that costs sprints to unwind. Every constraint exists because we learned the hard way. See `docs/ARCHITECTURE.md` for reasoning and `docs/adr/002-architectural-constraints.md` for the governing ADR.**
+
+### CONSTRAINT 1: Notion Governs All Prompts and Routing
+
+**Rule:** Zero hardcoded prompts, question templates, routing rules, or classification logic in TypeScript. All cognitive behavior is read from Notion databases at runtime.
+
+**What this means in practice:**
+- Prompts live in the System Prompts DB. Code calls `promptManager.getPrompt(slug)`.
+- Socratic interview questions live in the Socratic Interview Config DB. Code reads `gap.promptEntry`.
+- If a Notion config entry doesn't exist for your use case, CREATE ONE. Do not add a fallback constant.
+- `DEFAULT_QUESTIONS` in question-generator.ts is a safety net for missing config, not a feature surface.
+
+**Violation pattern:** Adding `const URL_QUESTIONS = { ... }` or `const PROMPT_TEXT = "..."` anywhere in TypeScript. This is the exact anti-pattern Production Hardening (N+3) was built to eliminate.
+
+**Established by:** Production Hardening N+3 (PromptManager Wiring), shipped 2026-02-18.
+
+### CONSTRAINT 2: Conversational, Not Command-Based
+
+**Rule:** Atlas gathers intent through natural conversation, not button menus, dropdown selection, or command syntax. The interaction model is: Atlas asks a question in plain language, Jim answers in plain language.
+
+**What this means in practice:**
+- No Telegram InlineKeyboard for classification, pillar selection, or action routing.
+- Tap-friendly option buttons are HINTS, not the primary input path. Freeform text is always accepted.
+- The Socratic engine resolves intent. Keyboards are convenience shortcuts to common answers.
+- Chrome extension uses the same conversational model — no surface-specific UX.
+
+**Violation pattern:** Building `InlineKeyboard` flows for "Select pillar: [Grove] [Personal] [Consulting] [Home]" or similar structured selection UI. This was the V2 model. V3+ is conversational.
+
+**Established by:** Intent-First Phase 0+1+2 (Feb 2026), Socratic Capture architecture.
+
+### CONSTRAINT 3: URL Shares Always Get Asked
+
+**Rule:** When Jim shares a URL, Atlas MUST ask a Socratic question before acting. URLs never auto-draft, never auto-research, never auto-capture without explicit intent.
+
+**What this means in practice:**
+- URL confidence is capped at 0.84 in the context assessor — below the 0.85 auto_draft threshold.
+- The question is "What's the play?" — configured in Notion Socratic Interview Config, not hardcoded.
+- `bridge_context` and `contact_data` slots are bypassed for URLs (these are person-context, not content-context).
+- Jim's answer drives everything downstream: research query, pillar, depth, output intent.
+
+**Violation pattern:** Adding an auto-dispatch path for URLs or skipping Socratic assessment for "obvious" URL types. No URL is obvious. Jim always decides the play.
+
+**Established by:** Socratic URL Intent sprint (SOCRATIC-URL-INTENT, 2026-02-19).
+
+### CONSTRAINT 4: Fail Fast, Fail Loud
+
+**Rule:** Errors escalate visibly. No silent fallbacks, no graceful degradation that hides failures, no swallowed exceptions. If something breaks, Jim finds out immediately — not by noticing silence.
+
+**What this means in practice:**
+- `reportFailure()` for system-level errors. Feed Alerts for operational issues.
+- Notion unreachable → loud log + error to user. NOT a silent fallback to hardcoded defaults.
+- Research agent fails → notification to Jim with error context. NOT silent capture-only.
+- Every dispatch path has source fingerprinting (`source: 'content-confirm' | 'socratic-resolved' | ...`).
+
+**Violation pattern:** `try { ... } catch { /* silently continue */ }` or fallback paths that produce output without logging the degradation.
+
+**Established by:** Production Hardening N (2026-02-18), Context Enrichment Transparency (N+2).
+
+### CONSTRAINT 5: Feed + Work Queue Are Bidirectionally Linked
+
+**Rule:** Every Work Queue item has a Feed entry. Every Feed entry that generates work has a Work Queue link. The relation is bidirectional and mandatory.
+
+**What this means in practice:**
+- Creating a WQ item without a Feed entry is a bug.
+- Feed entry creation happens FIRST, then WQ item, then link them.
+- Data source IDs for MCP tools, Database Page IDs for Notion SDK. Never mix them.
+- No new databases without explicit approval. Feed 2.0 + Work Queue 2.0 are the canonical pair.
+
+**Violation pattern:** Calling `createWorkQueueItem()` without first calling `createFeedEntry()` and linking them.
+
+**Established by:** Schema Remediation (2026-01-30), Feed 2.0 architecture.
+
+### CONSTRAINT 6: Chain Tests, Not Just Unit Tests
+
+**Rule:** Multi-file changes require chain tests that verify the complete user-visible flow, not just individual function behavior. The test must prove water flows through the pipe, not just that each pipe section exists.
+
+**What this means in practice:**
+- Sprint contracts include test scenarios that trace: input → classification → question → answer → dispatch → output.
+- Master Blaster must pass before merge. `bun run verify --strict` is authoritative.
+- Tests use real-world scenarios (actual URLs Jim shared, actual natural language answers) not abstract fixtures.
+
+**Violation pattern:** Shipping a multi-file wiring change with only unit tests for individual functions. The capture-without-execution gap survived because no test verified the full chain.
+
+**Established by:** State of the Project reflection (2026-02-18), Master Blaster test harness P0.
+
+### CONSTRAINT 7: Worktree Isolation
+
+**Rule:** Production bot runs on master in `C:\github\atlas\`. All development happens in separate git worktrees. Never edit source in the primary worktree while the bot is running.
+
+**What this means in practice:**
+- `git worktree add C:\github\atlas-sprint-<name> master` → `git checkout -b sprint/<name>`
+- Develop, test, commit in the worktree. Merge to master when ready. Restart bot.
+- Sprint contracts specify worktree setup in their preamble.
+
+**Violation pattern:** Running `code .` in `C:\github\atlas\` and editing files while the bot is running.
+
+**Established by:** Operational Model (2026-01-30), documented in CLAUDE.md since v1.
+
+### CONSTRAINT 8: Measure First, Systematize Later
+
+**Rule:** New classification fields start as free text. Structured dropdowns come from observed patterns, not assumptions. Data drives taxonomy, not the other way around.
+
+**What this means in practice:**
+- Work Type is `rich_text`, not `select`. Atlas fills it with 2-5 word descriptions.
+- After 30+ days of data, analyze patterns. Only then consider structured options.
+- This applies to any new categorization field. Start unstructured. Prove the categories exist.
+
+**Violation pattern:** Adding a `select` property with 6 assumed categories before any data has been collected.
+
+**Established by:** Work Type Progressive Classification (2026-01-30).
+
+---
+
 ## Critical Requirements
 
 ### Security (Non-negotiable)

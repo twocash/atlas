@@ -46,7 +46,7 @@ export function determineDepth(
 export function selectModel(depth: TaskDepth): string {
   switch (depth) {
     case 'quick':
-      return 'claude-haiku-4-20250514';
+      return 'claude-haiku-4-5-20251001';
     case 'medium':
       return 'claude-sonnet-4-20250514';
     case 'deep':

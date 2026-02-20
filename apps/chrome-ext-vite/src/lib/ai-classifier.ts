@@ -28,7 +28,7 @@ import { classifyContactByRules } from "./classification-rules"
 // ─── Anthropic Provider ─────────────────────────────────
 
 const ANTHROPIC_API_URL = "https://api.anthropic.com/v1/messages"
-const CLASSIFICATION_MODEL = "claude-3-5-haiku-20241022" // Cheap: $0.25/$1.25 per MTok
+const CLASSIFICATION_MODEL = "claude-haiku-4-5-20251001" // $1.00/$5.00 per MTok
 
 export class AnthropicClassificationProvider implements ClassificationProvider {
   name = "Anthropic"

@@ -227,7 +227,7 @@ function formatModelName(modelId: string): string {
   // Map full model IDs to Notion select option names
   const modelMap: Record<string, string> = {
     "claude-sonnet-4-20250514": "claude-sonnet-4",
-    "claude-3-5-haiku-20241022": "claude-3-5-haiku",
+    "claude-haiku-4-5-20251001": "claude-haiku-4-5",
     "gpt-4o": "gpt-4o",
     "gpt-4o-mini": "gpt-4o-mini",
     local: "local",

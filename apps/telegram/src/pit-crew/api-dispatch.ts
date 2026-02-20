@@ -31,7 +31,7 @@ function getModel(): string {
     return 'claude-sonnet-4-20250514';
   }
   // Default to Haiku
-  return 'claude-3-5-haiku-20241022';
+  return 'claude-haiku-4-5-20251001';
 }
 
 const MAX_TOKENS = 4096;

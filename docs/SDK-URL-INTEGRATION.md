@@ -392,7 +392,7 @@ The bridge returns a structured response:
 {
   content: "...",               // the response text
   tier_used: 1,                 // which tier handled this (for transparency)
-  model_used: "claude-3-5-haiku-20241022",
+  model_used: "claude-haiku-4-5-20251001",
   cost: 0.0003,                // actual cost
   latency_ms: 287,             // actual latency
   cached: false,               // whether pattern cache was used

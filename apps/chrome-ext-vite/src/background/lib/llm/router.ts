@@ -22,7 +22,7 @@ export enum TaskTier {
 function selectModelByTier(provider: string, tier: TaskTier): string {
   if (provider === "anthropic") {
     return tier === TaskTier.FAST
-      ? "claude-3-5-haiku-20241022"  // Cheap: $0.25/$1.25 per MTok
+      ? "claude-haiku-4-5-20251001"  // $1.00/$5.00 per MTok
       : "claude-sonnet-4-20250514"    // Smart: $3/$15 per MTok
   }
 
@@ -32,7 +32,7 @@ function selectModelByTier(provider: string, tier: TaskTier): string {
       : "anthropic/claude-3.5-sonnet"
   }
 
-  return "claude-3-5-haiku-20241022" // Fallback to cheap
+  return "claude-haiku-4-5-20251001" // Fallback to cheap
 }
 
 /**
