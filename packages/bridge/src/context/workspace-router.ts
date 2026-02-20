@@ -23,8 +23,8 @@ export interface WorkspaceMapping {
  * Workspace slugs: grove-research, take-flight, etc.
  */
 const PILLAR_WORKSPACE_MAP: Record<string, WorkspaceMapping> = {
-  "the-grove": { primary: "grove-research", secondary: "grove-marketing" },
-  consulting: { primary: "take-flight", secondary: "monarch-money" },
+  "the-grove": { primary: "grove-technical", secondary: "grove-vision" },
+  consulting: { primary: "monarch", secondary: "take-flight" },
   // personal and home-garage have no workspace mapping
 }
 
