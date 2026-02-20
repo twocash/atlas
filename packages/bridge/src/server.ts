@@ -46,11 +46,14 @@ import {
   type ToolRequest,
   type ToolResponse,
 } from "./types/tool-protocol"
+import { composeBridgePrompt } from "../../agents/src/services/prompt-composition"
+import { hydrateSystemPreamble } from "./context/prompt-constructor"
 
 // ─── Config ──────────────────────────────────────────────────
 
 const PORT = parseInt(process.env.BRIDGE_PORT || "3848", 10)
 const CLAUDE_CMD = process.env.CLAUDE_PATH || "claude"
+const BRIDGE_CWD = process.env.BRIDGE_CWD || "" // Empty = use repoRoot (default)
 const startedAt = new Date().toISOString()
 
 // ─── Pending Tool Requests ───────────────────────────────────
@@ -112,7 +115,7 @@ async function spawnClaude(): Promise<{ ok: boolean; error?: string }> {
         "--verbose",
         "-p", "",
       ],
-      cwd: repoRoot,
+      cwd: BRIDGE_CWD || repoRoot,
       stdin: "ignore",
       stdout: "pipe",
       stderr: "pipe",
@@ -771,8 +774,36 @@ const server = Bun.serve({
 
 startHealthChecks()
 
-// Auto-spawn Claude on startup
-spawnClaude()
+// ─── Identity Hydration ──────────────────────────────────────
+// Resolve bridge.soul from Notion and hydrate the system preamble
+// BEFORE spawning Claude. ADR-001: Notion governs all prompts.
+// ADR-008: Identity resolution failure is a hard error.
+
+async function hydrateBridgeIdentity(): Promise<void> {
+  try {
+    const result = await composeBridgePrompt()
+    hydrateSystemPreamble(result.prompt)
+    if (result.warnings.length > 0) {
+      console.warn("[bridge] Identity hydration warnings:", result.warnings)
+    }
+    console.log(
+      `[bridge] Bridge identity hydrated — ` +
+      `soul: ${result.components.soul ? "OK" : "MISSING"}, ` +
+      `user: ${result.components.user ? "OK" : "skipped"}, ` +
+      `memory: ${result.components.memory ? "OK" : "skipped"} ` +
+      `(${result.tokenCount} tokens)`,
+    )
+  } catch (err) {
+    console.error("[bridge] FATAL: Bridge identity hydration failed:", err)
+    console.error("[bridge] Cannot start without identity. Check Notion System Prompts DB.")
+    process.exit(1)
+  }
+}
+
+// Hydrate identity, then spawn Claude
+hydrateBridgeIdentity().then(() => {
+  spawnClaude()
+})
 
 console.log(`
   ╔══════════════════════════════════════════════════╗

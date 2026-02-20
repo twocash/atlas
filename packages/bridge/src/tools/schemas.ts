@@ -6,6 +6,7 @@
  */
 
 import type { ToolSchema } from "../types/tool-protocol"
+import { BRIDGE_MEMORY_TOOL_SCHEMA } from "./bridge-memory"
 
 // ─── Tool Definitions ────────────────────────────────────────
 
@@ -119,7 +120,14 @@ export const TOOL_SCHEMAS: ToolSchema[] = [
       },
     },
   },
+
+  // ─── Bridge-Local Tools (handled by MCP server, not dispatched to browser) ───
+
+  BRIDGE_MEMORY_TOOL_SCHEMA as ToolSchema,
 ]
+
+/** Tools that are handled locally by the MCP server (not dispatched to the browser). */
+export const LOCAL_TOOL_NAMES = new Set([BRIDGE_MEMORY_TOOL_SCHEMA.name])
 
 // ─── Lookup Helper ───────────────────────────────────────────
 

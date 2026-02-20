@@ -29,7 +29,8 @@ import {
   ListToolsRequestSchema,
 } from "@modelcontextprotocol/sdk/types.js"
 
-import { TOOL_SCHEMAS, TOOL_NAMES } from "./schemas"
+import { TOOL_SCHEMAS, TOOL_NAMES, LOCAL_TOOL_NAMES } from "./schemas"
+import { handleBridgeMemoryTool } from "./bridge-memory"
 import {
   MCP_SERVER_NAME,
   TOOL_TIMEOUT_MS,
@@ -96,7 +97,7 @@ server.setRequestHandler(ListToolsRequestSchema, async () => ({
   })),
 }))
 
-// tools/call — dispatch to bridge, return result
+// tools/call — route to local handler or dispatch to browser extension
 server.setRequestHandler(CallToolRequestSchema, async (request) => {
   const { name, arguments: args } = request.params
 
@@ -107,6 +108,25 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
     }
   }
 
+  // Bridge-local tools are handled directly (not dispatched to browser)
+  if (LOCAL_TOOL_NAMES.has(name)) {
+    try {
+      if (name === "bridge_update_memory") {
+        return await handleBridgeMemoryTool((args ?? {}) as Record<string, unknown>)
+      }
+      return {
+        content: [{ type: "text" as const, text: `Local tool '${name}' has no handler` }],
+        isError: true,
+      }
+    } catch (err: any) {
+      return {
+        content: [{ type: "text" as const, text: `Tool '${name}' failed: ${err.message}` }],
+        isError: true,
+      }
+    }
+  }
+
+  // Browser tools — dispatch via HTTP to bridge → WebSocket to extension
   const response = await dispatchTool(name, (args ?? {}) as Record<string, unknown>)
 
   if (response.error) {

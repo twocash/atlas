@@ -15,9 +15,28 @@
 import type { ContextSlot } from "../types/orchestration"
 import type { AssemblyResult } from "./assembler"
 
-// ─── Prompt Template ──────────────────────────────────────
+// ─── System Preamble (Hydrated from Notion) ─────────────
 
-const SYSTEM_PREAMBLE = `You are Atlas, Jim's AI Chief of Staff. Process the following request using the context provided.`
+/**
+ * System preamble — hydrated from Notion via composeBridgePrompt() at startup.
+ * Null until hydrated. constructPrompt() will throw if called before hydration
+ * per ADR-008 (fail fast, fail loud).
+ */
+let systemPreamble: string | null = null
+
+/**
+ * Hydrate the system preamble from Notion.
+ * Must be called at server startup before any prompt construction.
+ */
+export function hydrateSystemPreamble(preamble: string): void {
+  systemPreamble = preamble
+  console.log(`[prompt-constructor] System preamble hydrated (${preamble.length} chars)`)
+}
+
+/** Check if preamble has been hydrated from Notion. */
+export function isPreambleHydrated(): boolean {
+  return systemPreamble !== null
+}
 
 /**
  * Build the instruction string from assembled context slots.
@@ -26,7 +45,15 @@ const SYSTEM_PREAMBLE = `You are Atlas, Jim's AI Chief of Staff. Process the fol
  * semantic role, not priority (priority is for trimming only).
  */
 export function constructPrompt(assembly: AssemblyResult): string {
-  const sections: string[] = [SYSTEM_PREAMBLE]
+  if (!systemPreamble) {
+    throw new Error(
+      "[prompt-constructor] System preamble not hydrated. " +
+      "composeBridgePrompt() must be called at startup before prompt construction. " +
+      "See ADR-008 (fail fast, fail loud).",
+    )
+  }
+
+  const sections: string[] = [systemPreamble]
 
   // Ordered by semantic importance in the prompt
   const slotOrder: string[] = ["intent", "voice", "browser", "domain_rag", "pov", "output"]

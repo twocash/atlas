@@ -120,3 +120,9 @@ export {
   PILLAR_VOICES,
   ACTION_VOICE_PREFERENCES,
 } from './registry';
+
+// ==========================================
+// Bridge Identity Composition
+// ==========================================
+
+export { composeBridgePrompt, type BridgePromptResult } from './bridge';
