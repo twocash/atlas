@@ -32,7 +32,7 @@ import {
   runResearchAgentWithNotifications,
   sendCompletionNotification,
 } from '../services/research-executor';
-import type { ResearchConfig } from '../../../../packages/agents/src';
+import { buildResearchQuery, type ResearchConfig } from '../../../../packages/agents/src';
 
 /** Idempotency guard: prevents double-dispatch for the same WQ item */
 const _activeResearchItems = new Set<string>();
@@ -796,11 +796,17 @@ async function handleConfirm(
       const workQueueId = result.workQueueId;
       if (chatId && workQueueId && !_activeResearchItems.has(workQueueId)) {
         _activeResearchItems.add(workQueueId);
-        const query = pending.analysis.title || pending.url || pending.originalText.substring(0, 200);
+        // ADR-003: Build canonical query from triage title — no raw URLs or content
+        const query = buildResearchQuery({
+          triageTitle: pending.analysis.title || '',
+          fallbackTitle: pending.originalText.substring(0, 200),
+          url: pending.url,
+        });
         const researchConfig: ResearchConfig = {
           query,
           depth: 'standard',
           focus: pending.url,
+          queryMode: 'canonical',
         };
         const notionUrl = result.workQueueUrl;
         ctx.api.sendMessage(

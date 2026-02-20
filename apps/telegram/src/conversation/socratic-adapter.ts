@@ -25,7 +25,7 @@ import { storeSocraticSession, removeSocraticSession, getSocraticSession } from 
 import { createAuditTrail } from './audit';
 import { runResearchAgentWithNotifications, sendCompletionNotification } from '../services/research-executor';
 import { routeForAnalysis } from './content-router';
-import type { ResearchDepth, ResearchConfig } from '../../../../packages/agents/src/agents/research';
+import { buildResearchQuery, type ResearchDepth, type ResearchConfig } from '../../../../packages/agents/src/agents/research';
 import type { Pillar, RequestType } from './types';
 import type { UrlContent } from '../types';
 
@@ -228,9 +228,8 @@ async function handleResolved(
   if (!userId || !chatId) return;
 
   try {
-    // Map resolved context to audit trail format
-    const pillar = resolved.pillar as Pillar;
-    const requestType = mapIntentToRequestType(resolved.intent);
+    // ADR-003: Map resolved context to routing signals
+    const { pillar, requestType } = mapAnswerToRouting(resolved);
 
     // Descriptive title priority: Haiku triage → Socratic contentTopic → fetched page → raw input
     const descriptiveTitle = triageResult?.title
@@ -277,17 +276,18 @@ async function handleResolved(
 
     // Dispatch research agent if that's what was resolved
     if (requestType === 'Research' && result.workQueueId && chatId) {
-      const depth = mapToResearchDepth(resolved.depth);
+      // ADR-003: Extract routing signals from Socratic answer
+      // Answer informs routing (pillar, depth, voice) — NOT query text
+      const routing = mapAnswerToRouting(resolved);
 
-      // ADR: Research Query Architecture Conformance
-      // Content Router consulted before any server-side extraction.
+      // ADR-003: Content Router consulted before any server-side extraction.
       // Social media (Threads, Twitter, LinkedIn) require browser hydration —
       // server-side fetch returns navigation chrome, not post content.
       let needsBrowser = false;
       if (contentType === 'url') {
         const route = await routeForAnalysis(content);
         needsBrowser = route.needsBrowser;
-        logger.info('Socratic research content route', {
+        logger.info('ADR-003 content route', {
           source: route.source,
           method: route.method,
           needsBrowser,
@@ -295,32 +295,35 @@ async function handleResolved(
         });
       }
 
-      // Build research query from best available sources:
-      // 1. Fetched URL title (actual content topic, not triage label)
-      // 2. User direction from Socratic answer (intent, framing, angle)
-      // 3. Fallback: triage title
-      let researchQuery = title; // default fallback
-
-      // Prefer fetched content title over triage label
-      if (prefetchedUrlContent?.success && prefetchedUrlContent.title) {
-        researchQuery = prefetchedUrlContent.title;
+      if (needsBrowser) {
+        // Browser-required URLs (Threads, Twitter, LinkedIn) cannot be fetched server-side.
+        // Research agent uses the triage title as query — actual content extraction
+        // would need a browser runtime (not available in this pipeline).
+        logger.warn('ADR-003: URL requires browser hydration — research uses triage title only', {
+          url: content,
+          title: descriptiveTitle,
+        });
       }
 
-      // Enrich with user direction if provided (from Socratic answer)
-      const userDirection = resolved.extraContext?.userDirection;
-      if (userDirection) {
-        // Append user direction, capped to keep query under 200 chars
-        const combined = `${researchQuery}: ${userDirection}`;
-        researchQuery = combined.length <= 200 ? combined : combined.slice(0, 197) + '...';
-      }
+      // ADR-003: Build canonical research query from triage output
+      // Query is a clean topic description — no raw URLs, no user direction text
+      const researchQuery = buildResearchQuery({
+        triageTitle: triageResult?.title || '',
+        fallbackTitle: prefetchedUrlContent?.success ? prefetchedUrlContent.title : title,
+        url: contentType === 'url' ? content : undefined,
+        keywords: triageResult?.keywords,
+      });
 
+      // ADR-003: User direction → focus field, never query text
       const researchConfig: ResearchConfig = {
         query: researchQuery,
-        depth,
-        pillar,
+        depth: routing.depth,
+        pillar: routing.pillar,
+        focus: routing.focusDirection,
+        queryMode: 'canonical',
       };
 
-      await ctx.reply(`\uD83D\uDD2C Starting research agent...\nDepth: ${depth}`);
+      await ctx.reply(`\uD83D\uDD2C Starting research agent...\nDepth: ${routing.depth}`);
 
       void runResearchAgentWithNotifications(
         researchConfig,
@@ -451,6 +454,42 @@ function formatQuestionMessage(title: string, questions: SocraticQuestion[], fet
   }
 
   return msg;
+}
+
+// ==========================================
+// ADR-003: Answer → Routing Mapping
+// ==========================================
+
+/**
+ * Routing signals extracted from Socratic resolution.
+ * These inform ResearchConfig routing fields — NOT the query string.
+ */
+export interface RoutingSignals {
+  pillar: Pillar;
+  requestType: RequestType;
+  depth: ResearchDepth;
+  /** User's stated direction — goes into ResearchConfig.focus, never into query */
+  focusDirection?: string;
+}
+
+/**
+ * Map Socratic resolved context to routing signals.
+ *
+ * ADR-003 rule: Socratic answers inform routing (pillar, depth, voice),
+ * NOT query text. The query comes from triage title exclusively.
+ */
+export function mapAnswerToRouting(resolved: ResolvedContext): RoutingSignals {
+  const pillar = resolved.pillar as Pillar;
+  const requestType = mapIntentToRequestType(resolved.intent);
+  const depth = mapToResearchDepth(resolved.depth);
+
+  // userDirection goes to focus, NOT to query
+  const userDirection = resolved.extraContext?.userDirection;
+  const focusDirection = userDirection && userDirection.trim().length > 0
+    ? userDirection.trim().slice(0, 500)
+    : undefined;
+
+  return { pillar, requestType, depth, focusDirection };
 }
 
 /**

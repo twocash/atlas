@@ -63,6 +63,10 @@ export interface ResearchConfig {
 
   /** Specific use case for prompt selection (e.g., "Sprout Generation") */
   useCase?: string;
+
+  /** Query construction mode — 'canonical' uses ADR-003 flow, 'legacy' preserves old behavior.
+   * @default 'legacy' — callers opt in to canonical mode as they're migrated */
+  queryMode?: 'canonical' | 'legacy';
 }
 
 /**
@@ -118,6 +122,65 @@ export interface ResearchResult {
 
   /** Full prose markdown content (only set when contentMode === 'prose') */
   proseContent?: string;
+}
+
+// ==========================================
+// ADR-003: Canonical Query Construction
+// ==========================================
+
+/**
+ * Input for building a canonical research query.
+ *
+ * Priority chain: triageTitle → fallbackTitle → throws.
+ * Query is a clean topic description — no raw URLs, no HTML,
+ * no navigation chrome, no Socratic answer text.
+ */
+export interface QueryInput {
+  /** Primary query source — the triage-generated descriptive title */
+  triageTitle: string;
+  /** Focus-narrowing keywords from triage (appended if present) */
+  keywords?: string[];
+  /** Source URL for context metadata, NOT query content */
+  url?: string;
+  /** OG / fetched page title if triage unavailable */
+  fallbackTitle?: string;
+}
+
+/**
+ * Build a canonical research query from triage output.
+ *
+ * ADR-003 rules:
+ * - Query is a clean topic description (< 200 chars)
+ * - No raw URLs, HTML tags, or navigation chrome
+ * - Socratic answers inform routing (pillar, depth, voice), NOT query text
+ * - Keywords append as focus narrowing, capped to budget
+ *
+ * @throws if both triageTitle and fallbackTitle are empty
+ */
+export function buildResearchQuery(input: QueryInput): string {
+  const title = (input.triageTitle || '').trim() || (input.fallbackTitle || '').trim();
+
+  if (!title) {
+    throw new Error('buildResearchQuery: no title available (triageTitle and fallbackTitle both empty)');
+  }
+
+  // Strip HTML tags (triage sometimes includes them)
+  let query = title.replace(/<[^>]*>/g, '').trim();
+
+  // Append keyword focus if present and under budget
+  if (input.keywords && input.keywords.length > 0) {
+    const keywordSuffix = ` — ${input.keywords.join(', ')}`;
+    if (query.length + keywordSuffix.length <= 200) {
+      query += keywordSuffix;
+    }
+  }
+
+  // Hard cap at 200 chars
+  if (query.length > 200) {
+    query = query.slice(0, 197) + '...';
+  }
+
+  return query;
 }
 
 // ==========================================
