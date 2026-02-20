@@ -339,6 +339,8 @@ async function appendResearchResultsToPage(
     query?: string;
     depth?: string;
     rawResponse?: string; // Full Gemini output - use this for page body
+    contentMode?: 'prose' | 'json'; // Drafter mode output
+    proseContent?: string; // Full prose markdown (drafter mode)
   } | undefined;
 
   // Build metadata header blocks manually (these aren't from markdown)
@@ -378,9 +380,27 @@ async function appendResearchResultsToPage(
     rawResponseLength: researchOutput?.rawResponse?.length || 0,
   });
 
+  // PROSE MODE: Drafter template produced prose markdown — skip all JSON re-parsing
+  if (researchOutput?.contentMode === 'prose' && researchOutput?.proseContent) {
+    console.log("[WorkQueue] Prose mode — using drafter output directly", {
+      pageId,
+      proseLength: researchOutput.proseContent.length,
+      sourcesCount: researchOutput.sources?.length || 0,
+    });
+
+    markdown = researchOutput.proseContent;
+
+    // Append ## Sources section if not already present in the prose body
+    if (!/^##\s+Sources/m.test(markdown) && researchOutput.sources && researchOutput.sources.length > 0) {
+      markdown += '\n\n## Sources\n\n';
+      researchOutput.sources.forEach((s: string, i: number) => {
+        markdown += `${i + 1}. ${s}\n`;
+      });
+    }
+  }
   // LOSSLESS DELIVERY: Use the FULL rawResponse - this is the complete research report
   // The user wants 100% of what Gemini generated, not a truncated summary
-  if (researchOutput?.rawResponse && researchOutput.rawResponse.length > 500) {
+  else if (researchOutput?.rawResponse && researchOutput.rawResponse.length > 500) {
     console.log("[WorkQueue] Using FULL rawResponse for lossless delivery", {
       pageId,
       rawResponseLength: researchOutput.rawResponse.length,
