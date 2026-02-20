@@ -24,10 +24,16 @@
  *   bun run packages/bridge/src/server.ts
  */
 
-import type { ServerWebSocket } from "bun"
-import { spawn, type Subprocess } from "bun"
 import { resolve, dirname } from "path"
 import { fileURLToPath } from "url"
+
+// Load shared .env BEFORE any modules that read process.env (PromptManager needs NOTION_PROMPTS_DB_ID)
+import { config } from "dotenv"
+const __bridgeDir = dirname(fileURLToPath(import.meta.url))
+config({ path: resolve(__bridgeDir, "../../../apps/telegram/.env") })
+
+import type { ServerWebSocket } from "bun"
+import { spawn, type Subprocess } from "bun"
 import { randomUUID } from "crypto"
 import type { WsData, BridgeEnvelope, HandlerContext } from "./types/bridge"
 import { processEnvelope } from "./handlers"
