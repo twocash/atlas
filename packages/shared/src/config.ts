@@ -40,6 +40,44 @@ export const NOTION_DB = {
   SYSTEM_PROMPTS: '2fc780a7-8eef-8196-b29b-db4a6adfdc27',
 } as const;
 
+/** Which Atlas surface uses a database */
+export type DbSurface = 'telegram' | 'bridge' | 'shared';
+
+/** How critical a database is to its surface's operation */
+export type DbCriticality = 'critical' | 'enrichment';
+
+export interface DbMeta {
+  /** Human-readable label */
+  label: string;
+  /** Which surface(s) depend on this database */
+  surfaces: DbSurface[];
+  /** Critical = startup-blocking, Enrichment = degrade gracefully */
+  criticality: DbCriticality;
+}
+
+/**
+ * Metadata for each NOTION_DB entry — surface ownership + criticality.
+ *
+ * Used by the database access validator to determine startup behavior:
+ *   - critical databases block startup on failure
+ *   - enrichment databases log warnings + create Feed alerts
+ */
+export const NOTION_DB_META: Record<keyof typeof NOTION_DB, DbMeta> = {
+  FEED:            { label: 'Feed 2.0',           surfaces: ['shared'],   criticality: 'critical' },
+  WORK_QUEUE:      { label: 'Work Queue 2.0',     surfaces: ['shared'],   criticality: 'critical' },
+  DEV_PIPELINE:    { label: 'Dev Pipeline',        surfaces: ['shared'],   criticality: 'enrichment' },
+  CONTACTS:        { label: 'Contacts',            surfaces: ['bridge'],   criticality: 'enrichment' },
+  ENGAGEMENTS:     { label: 'Engagements',         surfaces: ['bridge'],   criticality: 'enrichment' },
+  POSTS:           { label: 'Posts',               surfaces: ['bridge'],   criticality: 'enrichment' },
+  REPLY_STRATEGY:  { label: 'Reply Strategy',      surfaces: ['bridge'],   criticality: 'enrichment' },
+  SOCRATIC_CONFIG: { label: 'Socratic Config',     surfaces: ['shared'],   criticality: 'enrichment' },
+  SKILLS_REGISTRY: { label: 'Skills Registry',     surfaces: ['telegram'], criticality: 'enrichment' },
+  TOKEN_LEDGER:    { label: 'Token Ledger',        surfaces: ['telegram'], criticality: 'enrichment' },
+  WORKER_RESULTS:  { label: 'Worker Results',      surfaces: ['telegram'], criticality: 'enrichment' },
+  POV_LIBRARY:     { label: 'POV Library',         surfaces: ['bridge'],   criticality: 'enrichment' },
+  SYSTEM_PROMPTS:  { label: 'System Prompts',      surfaces: ['shared'],   criticality: 'critical' },
+};
+
 /**
  * Notion MCP Data Source IDs — for collection:// URLs ONLY.
  *

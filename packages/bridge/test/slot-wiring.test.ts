@@ -260,7 +260,7 @@ describe("pov-fetcher", () => {
     expect(normalized).toBe("home-garage")
   })
 
-  test("returns null when Notion client is not configured", async () => {
+  test("returns unreachable status when Notion client is not configured", async () => {
     const originalKey = process.env.NOTION_API_KEY
     const originalToken = process.env.NOTION_TOKEN
     delete process.env.NOTION_API_KEY
@@ -268,17 +268,19 @@ describe("pov-fetcher", () => {
 
     const { fetchPovForPillar } = await import("../src/context/pov-fetcher")
     const result = await fetchPovForPillar("The Grove", ["strategy"])
-    expect(result).toBeNull()
+    expect(result.status).toBe("unreachable")
+    expect(result.content).toBeNull()
 
     // Restore
     if (originalKey) process.env.NOTION_API_KEY = originalKey
     if (originalToken) process.env.NOTION_TOKEN = originalToken
   })
 
-  test("returns null for pillar with no POV domain mapping", async () => {
+  test("returns no_domains status for pillar with no POV domain mapping", async () => {
     const { fetchPovForPillar } = await import("../src/context/pov-fetcher")
     const result = await fetchPovForPillar("Home/Garage", [])
-    expect(result).toBeNull()
+    expect(result.status).toBe("no_domains")
+    expect(result.content).toBeNull()
   })
 })
 

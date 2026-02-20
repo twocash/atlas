@@ -11,6 +11,15 @@ import { normalizePillar } from "./workspace-router"
 
 // ─── Types ───────────────────────────────────────────────
 
+/** Distinguishes "no matching entries" from "database unreachable" */
+export type PovFetchStatus = 'found' | 'no_match' | 'unreachable' | 'no_domains';
+
+export interface PovFetchResult {
+  status: PovFetchStatus;
+  content: PovContent | null;
+  error?: string;
+}
+
 export interface PovContent {
   /** POV entry title */
   title: string
@@ -79,27 +88,31 @@ function getNotionClient(): Client | null {
  *
  * @param pillar - Pillar string from TriageResult (e.g. "The Grove")
  * @param keywords - Keywords from triage for relevance scoring
+ * @returns Structured result distinguishing "found" / "no_match" / "unreachable"
  */
 export async function fetchPovForPillar(
   pillar: string,
   keywords: string[] = [],
-): Promise<PovContent | null> {
+): Promise<PovFetchResult> {
   const normalizedPillar = normalizePillar(pillar)
   const domains = PILLAR_POV_DOMAINS[normalizedPillar]
 
   if (!domains || domains.length === 0) {
     console.info(`[POV] No domain mapping for pillar "${pillar}" — skipping`)
-    return null
+    return { status: 'no_domains', content: null }
   }
 
   // Fetch raw results (cached or fresh)
-  const results = await getCachedPovResults(normalizedPillar, domains)
-  if (!results || results.length === 0) {
-    return null
+  const fetchResult = await getCachedPovResults(normalizedPillar, domains)
+  if (fetchResult.error) {
+    return { status: 'unreachable', content: null, error: fetchResult.error }
+  }
+  if (!fetchResult.results || fetchResult.results.length === 0) {
+    return { status: 'no_match', content: null }
   }
 
   // Score by keyword overlap (post-cache)
-  const entries = results.map((page) => extractPovContent(page))
+  const entries = fetchResult.results.map((page) => extractPovContent(page))
   const best = keywords.length > 0
     ? pickBestMatch(entries, keywords)
     : entries[0]
@@ -108,7 +121,12 @@ export async function fetchPovForPillar(
     console.info(`[POV] Found entry: "${best.title}" for pillar "${pillar}"`)
   }
 
-  return best
+  return { status: 'found', content: best }
+}
+
+interface FetchInternalResult {
+  results: unknown[] | null;
+  error?: string;
 }
 
 /**
@@ -117,18 +135,18 @@ export async function fetchPovForPillar(
 async function getCachedPovResults(
   normalizedPillar: string,
   domains: string[],
-): Promise<unknown[] | null> {
+): Promise<FetchInternalResult> {
   const cached = povCache.get(normalizedPillar)
   if (cached && (Date.now() - cached.timestamp) < POV_CACHE_TTL_MS) {
     console.info(`[POV] Cache hit for "${normalizedPillar}"`)
-    return cached.results
+    return { results: cached.results }
   }
 
-  const results = await queryPovFromNotion(domains, normalizedPillar)
-  if (results) {
-    povCache.set(normalizedPillar, { results, timestamp: Date.now() })
+  const result = await queryPovFromNotion(domains, normalizedPillar)
+  if (result.results) {
+    povCache.set(normalizedPillar, { results: result.results, timestamp: Date.now() })
   }
-  return results
+  return result
 }
 
 /**
@@ -137,9 +155,9 @@ async function getCachedPovResults(
 async function queryPovFromNotion(
   domains: string[],
   pillarLabel: string,
-): Promise<unknown[] | null> {
+): Promise<FetchInternalResult> {
   const notion = getNotionClient()
-  if (!notion) return null
+  if (!notion) return { results: null, error: 'Notion API key not configured' }
 
   try {
     const domainFilters = domains.map((domain) => ({
@@ -164,13 +182,14 @@ async function queryPovFromNotion(
 
     if (response.results.length === 0) {
       console.info(`[POV] No active entries found for pillar "${pillarLabel}"`)
-      return null
+      return { results: null }
     }
 
-    return response.results
+    return { results: response.results }
   } catch (err) {
-    console.warn("[POV] Notion query failed:", (err as Error).message)
-    return null
+    const message = (err as Error).message
+    console.warn("[POV] Notion query failed:", message)
+    return { results: null, error: message }
   }
 }
 
