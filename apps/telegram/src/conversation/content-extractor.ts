@@ -63,7 +63,7 @@ export interface ExtractOptions {
 
 // ─── Configuration ────────────────────────────────────────
 
-const JINA_API_KEY = process.env.JINA_API_KEY || ""
+const JINA_API_KEY = (process.env.JINA_API_KEY || "").trim()
 const JINA_BASE_URL = "https://r.jina.ai/"
 const JINA_TIMEOUT_MS = 30_000
 const HTTP_TIMEOUT_MS = 10_000
@@ -85,12 +85,19 @@ interface SourceDefaults {
   noCache?: boolean
 }
 
+/** Sources that require browser rendering — HTTP fallback returns garbage (login page, not content) */
+const SPA_SOURCES: ContentSource[] = ["threads", "twitter", "linkedin"]
+
+/** Minimum content length for SPA sources to be considered real content (not boilerplate) */
+const SPA_MIN_CONTENT_LENGTH = 100
+
 const SOURCE_DEFAULTS: Partial<Record<ContentSource, SourceDefaults>> = {
   threads: {
-    waitForSelector: "time[datetime]", // hydration signal — only present after post data loads
-    targetSelector: '[data-pressable-container="true"]', // stable Meta data-* attr, isolates post card
+    // No DOM selectors — Threads DOM changes frequently and stale selectors cause
+    // Jina to return profile boilerplate instead of post content (ATLAS-CEX-001 P0).
+    // Jina's default readability extraction handles Threads post content correctly.
     timeout: 15,
-    noCache: true, // SPA content changes frequently
+    noCache: true,
   },
   twitter: {
     waitForSelector: "article",
@@ -246,6 +253,34 @@ async function extractWithJina(
         tokenEstimate: data.data?.usage?.tokens,
         extractedAt: new Date(),
         error: "Jina returned empty content (possible login wall or Cloudflare block)",
+      }
+    }
+
+    // SPA content quality gate: Jina returned a title (from <title> tag) but
+    // minimal/no real content. For SPA sources this means the page shell rendered
+    // but post content didn't hydrate — the "content" is profile boilerplate.
+    // Treating this as success causes downstream research to target the author
+    // instead of the post topic (ATLAS-CEX-001 P0 bug).
+    if (SPA_SOURCES.includes(source) && content.length < SPA_MIN_CONTENT_LENGTH) {
+      logger.warn("[ContentExtractor] SPA content quality gate FAILED — content too short (likely boilerplate)", {
+        url,
+        source,
+        titleLen: title.length,
+        contentLen: content.length,
+        contentPreview: content.substring(0, 80),
+      })
+      return {
+        url,
+        status: "degraded",
+        method: "Browser",
+        source,
+        title,
+        description,
+        content,
+        publishedTime: data.data?.publishedTime,
+        tokenEstimate: data.data?.usage?.tokens,
+        extractedAt: new Date(),
+        error: `Jina returned only ${content.length} chars for ${source} (likely profile boilerplate, not post content)`,
       }
     }
 
@@ -564,9 +599,6 @@ export async function extractContent(
 
   return jinaResult
 }
-
-/** Sources that require browser rendering — HTTP fallback returns garbage (login page, not content) */
-const SPA_SOURCES: ContentSource[] = ["threads", "twitter", "linkedin"]
 
 /**
  * Convert ExtractionResult → UrlContent for backward compatibility.

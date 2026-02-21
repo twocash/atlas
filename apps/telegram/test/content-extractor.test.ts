@@ -51,7 +51,8 @@ describe("extractContent routing", () => {
   })
 
   it("uses Jina (Tier 2) for Threads URLs", async () => {
-    // Jina returns JSON
+    // Jina returns JSON — content must be >100 chars to pass SPA quality gate (ATLAS-CEX-001)
+    const threadContent = "Full thread content extracted by Jina. This is a thoughtful post about the future of AI and how large language models will transform software development practices."
     mockFetch.mockImplementationOnce(() =>
       Promise.resolve(
         new Response(
@@ -60,7 +61,7 @@ describe("extractContent routing", () => {
             data: {
               url: "https://www.threads.net/@user/post/abc123",
               title: "Thread Post Title",
-              content: "Full thread content extracted by Jina",
+              content: threadContent,
               description: "A thread post",
               usage: { tokens: 150 },
             },
@@ -75,7 +76,7 @@ describe("extractContent routing", () => {
     expect(result.source).toBe("threads")
     expect(result.status).toBe("success")
     expect(result.title).toBe("Thread Post Title")
-    expect(result.content).toBe("Full thread content extracted by Jina")
+    expect(result.content).toBe(threadContent)
     expect(result.tokenEstimate).toBe(150)
   })
 
@@ -121,11 +122,12 @@ describe("extractContent routing", () => {
     expect(result.source).toBe("linkedin")
   })
 
-  it("passes correct Jina headers for Threads", async () => {
+  it("passes correct Jina headers for Threads (no DOM selectors — ATLAS-CEX-001)", async () => {
     mockFetch.mockImplementationOnce((url: string, opts: any) => {
-      // Verify Jina-specific headers from SOURCE_DEFAULTS
-      expect(opts.headers["x-wait-for-selector"]).toBe("time[datetime]")
-      expect(opts.headers["x-target-selector"]).toBe('[data-pressable-container="true"]')
+      // After ATLAS-CEX-001 fix: Threads defaults have NO DOM selectors
+      // (stale selectors caused Jina to return profile boilerplate instead of post content)
+      expect(opts.headers["x-wait-for-selector"]).toBeUndefined()
+      expect(opts.headers["x-target-selector"]).toBeUndefined()
       expect(opts.headers["x-no-cache"]).toBe("true")
       expect(opts.headers["x-timeout"]).toBe("15")
       expect(opts.headers["Accept"]).toBe("application/json")
@@ -133,7 +135,7 @@ describe("extractContent routing", () => {
       return Promise.resolve(
         new Response(
           JSON.stringify({
-            data: { title: "Thread", content: "Content", description: "" },
+            data: { title: "Thread", content: "Real post content from Jina readability extraction that is definitely long enough to pass the SPA quality gate threshold of 100 characters.", description: "" },
           }),
           { status: 200 },
         ),
@@ -295,7 +297,7 @@ describe("circuit breaker", () => {
         return Promise.resolve(
           new Response(
             JSON.stringify({
-              data: { title: "Back Online", content: "Content", description: "" },
+              data: { title: "Back Online", content: "Real post content that is long enough to pass the SPA quality gate which requires at least 100 characters of actual content.", description: "" },
             }),
             { status: 200 },
           ),
@@ -453,6 +455,128 @@ describe("mapIntentToRequestType fix", () => {
       /case\s+'capture':\s*\n\s*case\s+'save':\s*\n\s*default:\s*return\s+'Research'/,
     )
     expect(captureResearchBug).toBeNull() // Bug pattern should NOT exist
+  })
+})
+
+// ─── SPA Content Quality Gate (ATLAS-CEX-001 P0) ────────
+
+describe("SPA content quality gate", () => {
+  it("REGRESSION: Threads boilerplate triggers degraded, NOT success (Boris Cherny bug)", async () => {
+    // Jina returns a title (from <title> tag) but only author profile boilerplate
+    // This is the EXACT bug: Jina 200 + title + short garbage → "success" → author biography research
+    mockFetch.mockImplementationOnce(() =>
+      Promise.resolve(
+        new Response(
+          JSON.stringify({
+            code: 200,
+            data: {
+              url: "https://www.threads.net/@borischerny/post/abc123",
+              title: "Boris Cherny on Threads",
+              content: "Boris Cherny. 2 posts.", // Short boilerplate — NOT real post content
+              description: "",
+              usage: { tokens: 10 },
+            },
+          }),
+          { status: 200, headers: { "Content-Type": "application/json" } },
+        ),
+      ),
+    )
+
+    const result = await extractContent("https://www.threads.net/@borischerny/post/abc123")
+    expect(result.status).toBe("degraded") // NOT "success"!
+    expect(result.error).toContain("boilerplate")
+    expect(result.source).toBe("threads")
+  })
+
+  it("REGRESSION: Threads boilerplate → toUrlContent maps to success=false", async () => {
+    // The full chain: extractContent returns degraded → toUrlContent sees SPA + degraded → success=false
+    mockFetch.mockImplementationOnce(() =>
+      Promise.resolve(
+        new Response(
+          JSON.stringify({
+            code: 200,
+            data: {
+              url: "https://www.threads.net/@user/post/xyz",
+              title: "User Name on Threads",
+              content: "User Name. 5 posts.",
+              description: "",
+            },
+          }),
+          { status: 200 },
+        ),
+      ),
+    )
+
+    const extraction = await extractContent("https://www.threads.net/@user/post/xyz")
+    const urlContent = toUrlContent(extraction)
+    expect(urlContent.success).toBe(false) // Research will NOT use garbage bodySnippet
+    expect(urlContent.error).toBeTruthy()
+  })
+
+  it("Threads with real post content (>100 chars) passes quality gate", async () => {
+    const realPostContent = "I've been thinking about the future of TypeScript and how it will evolve with AI code generation. The key insight is that types become even more important when AI writes code — they're the specification language."
+    mockFetch.mockImplementationOnce(() =>
+      Promise.resolve(
+        new Response(
+          JSON.stringify({
+            code: 200,
+            data: {
+              url: "https://www.threads.net/@user/post/real",
+              title: "User Name on Threads",
+              content: realPostContent,
+              description: "",
+              usage: { tokens: 50 },
+            },
+          }),
+          { status: 200 },
+        ),
+      ),
+    )
+
+    const result = await extractContent("https://www.threads.net/@user/post/real")
+    expect(result.status).toBe("success") // Real content passes the gate
+    expect(result.content).toBe(realPostContent)
+
+    const urlContent = toUrlContent(result)
+    expect(urlContent.success).toBe(true)
+    expect(urlContent.bodySnippet).toBeTruthy()
+  })
+
+  it("Twitter boilerplate also triggers quality gate", async () => {
+    mockFetch.mockImplementationOnce(() =>
+      Promise.resolve(
+        new Response(
+          JSON.stringify({
+            data: {
+              title: "@elonmusk on X",
+              content: "Elon Musk. CEO.",
+              description: "",
+            },
+          }),
+          { status: 200 },
+        ),
+      ),
+    )
+
+    const result = await extractContent("https://x.com/elonmusk/status/12345")
+    expect(result.status).toBe("degraded")
+    expect(result.source).toBe("twitter")
+  })
+
+  it("Non-SPA sources with short content still return success", async () => {
+    // Articles/generic URLs don't need the SPA quality gate
+    mockFetch.mockImplementationOnce(() =>
+      Promise.resolve(
+        new Response(
+          '<html><head><title>Short Page</title></head><body>Brief.</body></html>',
+          { status: 200 },
+        ),
+      ),
+    )
+
+    const result = await extractContent("https://example.com/short")
+    expect(result.status).toBe("success") // Non-SPA, quality gate doesn't apply
+    expect(result.source).toBe("article") // example.com routes to "article"
   })
 })
 
