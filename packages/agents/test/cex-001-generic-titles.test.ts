@@ -12,7 +12,7 @@
  */
 
 import { describe, it, expect } from 'bun:test';
-import { buildResearchQuery, isGenericTitle } from '../src/agents/research';
+import { buildResearchQuery, isGenericTitle, isDirectiveIntent } from '../src/agents/research';
 
 describe('ATLAS-CEX-001: isGenericTitle catches SPA shell titles', () => {
   // Real production failures
@@ -209,4 +209,95 @@ describe('ATLAS-CEX-001: buildResearchQuery with userIntent (Socratic reply)', (
     });
     expect(query.toLowerCase()).toContain('decentralized ai governance');
   });
+
+  it('directive intent "research it" defers to sourceContent', () => {
+    const query = buildResearchQuery({
+      triageTitle: 'elvis (@omarsar0) on Threads',
+      fallbackTitle: '',
+      sourceContent: 'Recursive language models represent a fundamentally different approach to AI architecture.',
+      userIntent: 'research it',
+    });
+    // "research it" is a directive — should NOT become the query
+    expect(query.toLowerCase()).not.toContain('research it');
+    // sourceContent should be used instead
+    expect(query.toLowerCase()).toContain('recursive language model');
+  });
+
+  it('directive intent "go deep" defers to sourceContent', () => {
+    const query = buildResearchQuery({
+      triageTitle: 'Someone on Twitter',
+      fallbackTitle: '',
+      sourceContent: 'Agent-to-agent protocols for enterprise orchestration are emerging as a standard.',
+      userIntent: 'go deep',
+    });
+    expect(query.toLowerCase()).not.toContain('go deep');
+    expect(query.toLowerCase()).toContain('agent');
+  });
+
+  it('directive intent with no sourceContent falls through to title', () => {
+    const query = buildResearchQuery({
+      triageTitle: 'claude 4 computer use benchmarks',
+      fallbackTitle: '',
+      userIntent: 'research it',
+    });
+    // No sourceContent, directive skipped, title used
+    expect(query.toLowerCase()).toContain('claude 4');
+    expect(query.toLowerCase()).not.toContain('research it');
+  });
+});
+
+// ── ATLAS-CEX-001: isDirectiveIntent unit tests ─────────────────────────
+
+describe('ATLAS-CEX-001: isDirectiveIntent detects low-information directives', () => {
+  // Positive cases — these ARE directives (no topic value)
+  const directives = [
+    'research it',
+    'Research it',
+    'go deep',
+    'look into it',
+    'dig into it',
+    'check it out',
+    'explore this',
+    'investigate that',
+    'analyze it',
+    'summarize it',
+    'read it',
+    'deep dive',
+    'go for it',
+    'do it',
+    'yes please',
+    'full send',
+    "let's go",
+    'lets go',
+    'what do you think',
+    'what do you think?',
+    'tell me more',
+    "what's there",
+    "what's there?",
+    'research it.',
+    'Go deep.',
+  ];
+
+  for (const d of directives) {
+    it(`detects "${d}" as directive`, () => {
+      expect(isDirectiveIntent(d)).toBe(true);
+    });
+  }
+
+  // Negative cases — these carry actual topic information
+  const topics = [
+    'recursive language models and innovation at the edge',
+    'how does this compare to Rust pattern matching',
+    'focus on the safety implications',
+    'this is about multi-agent orchestration protocols',
+    'decentralized AI governance frameworks',
+    'research the impact on healthcare',  // "research" + topic ≠ bare directive
+    'go deep on the alignment implications',  // "go deep on X" has topic
+  ];
+
+  for (const t of topics) {
+    it(`does NOT flag "${t}" as directive`, () => {
+      expect(isDirectiveIntent(t)).toBe(false);
+    });
+  }
 });

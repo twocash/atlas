@@ -260,6 +260,7 @@ async function extractWithJina(
         title?: string
         description?: string
         content?: string
+        text?: string
         publishedTime?: string
         usage?: { tokens?: number }
       }

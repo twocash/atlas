@@ -185,6 +185,22 @@ export function isGenericTitle(title: string): boolean {
 }
 
 /**
+ * Detects low-information directives that pass the length threshold but carry
+ * no semantic topic value. These should NOT override extracted source content.
+ *
+ * Examples: "research it", "go deep", "look into it", "dig in", "check it out"
+ */
+const DIRECTIVE_PATTERNS = [
+  /^(research|look\s*into|dig\s*into|check\s*(it\s+)?out|go\s*deep|explore|investigate|analyze|summarize|read)\s*(it|this|that|the\s*post|the\s*article)?\.?\s*$/i,
+  /^(deep\s*dive|go\s*for\s*it|do\s*it|yes\s*please|full\s*send|let'?s?\s*go)\s*\.?\s*$/i,
+  /^(what\s*do\s*you\s*think|tell\s*me\s*more|what'?s?\s*there)\s*\??\s*$/i,
+];
+
+export function isDirectiveIntent(text: string): boolean {
+  return DIRECTIVE_PATTERNS.some(p => p.test(text.trim()));
+}
+
+/**
  * Extract a meaningful topic from source content (first ~200 chars of substance).
  * Strips markdown headings, links, images, bare URLs, and leading whitespace.
  *
@@ -230,10 +246,15 @@ function extractTopicFromContent(content: string): string {
 export function buildResearchQuery(input: QueryInput): string {
   let title = (input.triageTitle || '').trim() || (input.fallbackTitle || '').trim();
 
-  // User's explicit intent is the highest-quality signal (Socratic answer).
-  // ATLAS-CEX-001 Contract B: Jim's answer to "What's the play?" overrides generic titles.
-  if (input.userIntent && input.userIntent.trim().length > 10) {
-    const intent = input.userIntent.trim().slice(0, 150);
+  // User's explicit intent is the highest-quality signal (Socratic answer) —
+  // BUT only when it carries actual topic information, not just a directive.
+  // "research it" or "go deep" are directives (no topic); "recursive LLMs at the edge" is a topic.
+  const hasTopicIntent = input.userIntent
+    && input.userIntent.trim().length > 10
+    && !isDirectiveIntent(input.userIntent);
+
+  if (hasTopicIntent) {
+    const intent = input.userIntent!.trim().slice(0, 150);
     if (title && !isGenericTitle(title)) {
       // Good title + user intent: combine for rich query
       title = `${title} — ${intent}`;
@@ -249,9 +270,14 @@ export function buildResearchQuery(input: QueryInput): string {
         intentPreview: intent.slice(0, 60),
       });
     }
+  } else if (input.userIntent && isDirectiveIntent(input.userIntent)) {
+    console.log('[Research] User intent is a directive, not a topic — deferring to sourceContent', {
+      userIntent: input.userIntent.trim(),
+    });
   }
 
-  // When triage produces a generic title, prefer extracted content for the query
+  // When triage produces a generic title (or directive intent didn't override),
+  // prefer extracted content for the query
   if (input.sourceContent && (!title || isGenericTitle(title))) {
     const contentTopic = extractTopicFromContent(input.sourceContent);
     if (contentTopic.length > 30) {

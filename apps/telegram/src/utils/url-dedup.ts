@@ -27,6 +27,10 @@ const TRACKING_PARAMS = new Set([
   'utm_source', 'utm_medium', 'utm_campaign', 'utm_term', 'utm_content',
   'fbclid', 'gclid', 'mc_cid', 'mc_eid',
   'ref', 'source', 'si', 's',
+  // Meta / Threads / Instagram tracking
+  'xmt', 'igshid', 'ig_rid', 'ig_mid',
+  // X / Twitter tracking
+  't', 'ref_src', 'ref_url',
 ]);
 
 /**

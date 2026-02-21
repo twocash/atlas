@@ -628,9 +628,9 @@ async function createWorkQueueEntry(
             rich_text: [{ text: { content: entry.workType } }],
           },
         }),
-        // Source Link for quick access to original URL
+        // Source Link for quick access to original URL (normalized, no tracking params)
         ...(entry.url && {
-          'Source Link': { url: entry.url },
+          'Source Link': { url: normalizeUrl(entry.url) },
         }),
         // Pipeline trace ID for end-to-end diagnostics
         ...(traceId && {
