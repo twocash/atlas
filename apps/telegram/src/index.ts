@@ -129,18 +129,17 @@ async function main() {
   // Warm-up validates Notion connectivity — LOUD fail if DB unreachable
   try {
     const pm = getPromptManager();
-    const systemPrompt = await pm.getPrompt({ capability: 'System', useCase: 'General' });
+    const systemPrompt = await pm.getPromptById('system.general');
     if (systemPrompt) {
       logger.info("PromptManager initialized (System prompt loaded from Notion)");
     } else {
       logger.error("PROMPT MANAGER: System prompt not found at startup — hardcoded fallback will be used", {
-        lookup: { capability: 'System', useCase: 'General' },
-        expectedPromptId: 'system.general',
+        promptId: 'system.general',
         dbId: process.env.NOTION_PROMPTS_DB_ID || 'NOT SET',
         fix: [
           '1. Verify NOTION_PROMPTS_DB_ID is set in .env',
           '2. Run seed migration: bun run apps/telegram/data/migrations/seed-prompts.ts',
-          '3. Confirm Notion DB contains a row with capability=System, useCase=General',
+          '3. Confirm Notion DB contains a row with ID=system.general',
         ],
       });
     }

@@ -188,20 +188,21 @@ ${skills.map(s => `- **${s.name}**: ${s.description}`).join('\n')}
   }
 
   // Core instructions: PromptManager (Notion-tunable) — LOUD fail if misconfigured
+  // Uses getPromptById for exact match — the broad getPrompt({ capability: 'System', useCase: 'General' })
+  // returns the wrong prompt because 5+ entries share Type=System, Action=General in the Notion DB.
   let notionCoreInstructions: string | null = null;
   try {
     const pm = getPromptManager();
-    notionCoreInstructions = await pm.getPrompt({ capability: 'System', useCase: 'General' });
+    notionCoreInstructions = await pm.getPromptById('system.general');
   } catch (err) {
     logger.error('PROMPT MANAGER FAILURE: System prompt fetch threw an exception', {
       error: err,
-      lookup: { capability: 'System', useCase: 'General' },
-      expectedPromptId: 'system.general',
+      promptId: 'system.general',
       envVar: process.env.NOTION_PROMPTS_DB_ID ? 'SET' : 'MISSING',
       fix: [
         '1. Verify NOTION_PROMPTS_DB_ID is set in .env',
         '2. Run seed migration: bun run apps/telegram/data/migrations/seed-prompts.ts',
-        '3. Check Notion DB has entry with capability=System, useCase=General',
+        '3. Check Notion DB has entry with ID=system.general',
       ],
     });
   }
@@ -210,15 +211,13 @@ ${skills.map(s => `- **${s.name}**: ${s.description}`).join('\n')}
     prompt += '\n---\n\n' + notionCoreInstructions;
   } else {
     // LOUD: Log error with fix pointers — hardcoded fallback kept only until Notion prompt confirmed working
-    logger.error('PROMPT MANAGER: System prompt returned null — using HARDCODED fallback', {
-      lookup: { capability: 'System', useCase: 'General' },
-      expectedPromptId: 'system.general',
+    logger.error('PROMPT MANAGER: System prompt returned null/empty — using HARDCODED fallback', {
+      promptId: 'system.general',
       dbId: process.env.NOTION_PROMPTS_DB_ID || 'NOT SET',
       fix: [
         '1. Verify NOTION_PROMPTS_DB_ID is set in .env (expected: 2fc780a78eef8196b29bdb4a6adfdc27)',
-        '2. Run seed migration: bun run apps/telegram/data/migrations/seed-prompts.ts',
-        '3. Confirm Notion DB contains a row with capability=System, useCase=General',
-        '4. Once confirmed, the hardcoded block below (400+ lines) should be deleted',
+        '2. Confirm Notion DB has a row with ID=system.general and non-empty page body',
+        '3. Once confirmed, the hardcoded block below (400+ lines) should be deleted',
       ],
     });
     prompt += `
