@@ -71,6 +71,10 @@ export interface ResearchConfig {
   /** Extracted content from the source URL — gives Gemini the actual topic context.
    * Critical for social media posts where the query alone is too generic. */
   sourceContent?: string;
+
+  /** Jim's Socratic answer — injected into the research prompt so the agent
+   * knows what Jim actually cares about. ATLAS-CEX-001 Contract B. */
+  userContext?: string;
 }
 
 /**
@@ -150,6 +154,8 @@ export interface QueryInput {
   fallbackTitle?: string;
   /** Extracted content from the source URL (used when triage title is generic) */
   sourceContent?: string;
+  /** Jim's Socratic answer — what he wants researched. Highest-quality signal when present. */
+  userIntent?: string;
 }
 
 /** Signals a generic/useless triage title that won't produce good search results.
@@ -180,17 +186,28 @@ export function isGenericTitle(title: string): boolean {
 
 /**
  * Extract a meaningful topic from source content (first ~200 chars of substance).
- * Strips markdown headings, links, images, and leading whitespace.
+ * Strips markdown headings, links, images, bare URLs, and leading whitespace.
+ *
+ * ATLAS-CEX-001: Returns empty string if nothing substantive remains after stripping,
+ * which prevents image-only or URL-only content from producing garbage research queries.
  */
 function extractTopicFromContent(content: string): string {
-  return content
-    .replace(/^#+\s*/gm, '')        // strip heading markers
-    .replace(/!\[.*?\]\(.*?\)/g, '') // strip images
-    .replace(/\[([^\]]*)\]\(.*?\)/g, '$1') // keep link text, strip URL
-    .replace(/<[^>]*>/g, '')         // strip HTML
+  const stripped = content
+    .replace(/^#+\s*/gm, '')                  // strip heading markers
+    .replace(/!\[[^\]]*\]\([^)]*\)/g, '')     // strip markdown images
+    .replace(/https?:\/\/\S+/g, '')           // strip bare URLs
+    .replace(/\[([^\]]*)\]\([^)]*\)/g, '$1')  // keep link text, strip URL
+    .replace(/<[^>]*>/g, '')                   // strip HTML
+
+  const lines = stripped
     .split('\n')
     .map(l => l.trim())
     .filter(l => l.length > 20)      // skip short/empty lines
+
+  // If nothing substantive remains after stripping, bail
+  if (lines.length === 0) return '';
+
+  return lines
     .slice(0, 3)                     // first 3 substantial lines
     .join(' ')
     .slice(0, 200)
@@ -213,6 +230,27 @@ function extractTopicFromContent(content: string): string {
 export function buildResearchQuery(input: QueryInput): string {
   let title = (input.triageTitle || '').trim() || (input.fallbackTitle || '').trim();
 
+  // User's explicit intent is the highest-quality signal (Socratic answer).
+  // ATLAS-CEX-001 Contract B: Jim's answer to "What's the play?" overrides generic titles.
+  if (input.userIntent && input.userIntent.trim().length > 10) {
+    const intent = input.userIntent.trim().slice(0, 150);
+    if (title && !isGenericTitle(title)) {
+      // Good title + user intent: combine for rich query
+      title = `${title} — ${intent}`;
+      console.log('[Research] User intent injected alongside good title', {
+        triageTitle: input.triageTitle,
+        intentPreview: intent.slice(0, 60),
+      });
+    } else {
+      // Generic/empty title: user intent IS the query
+      title = intent;
+      console.log('[Research] User intent REPLACES generic title', {
+        triageTitle: input.triageTitle,
+        intentPreview: intent.slice(0, 60),
+      });
+    }
+  }
+
   // When triage produces a generic title, prefer extracted content for the query
   if (input.sourceContent && (!title || isGenericTitle(title))) {
     const contentTopic = extractTopicFromContent(input.sourceContent);
@@ -226,7 +264,7 @@ export function buildResearchQuery(input: QueryInput): string {
   }
 
   if (!title) {
-    throw new Error('buildResearchQuery: no title available (triageTitle, fallbackTitle, and sourceContent all empty)');
+    throw new Error('buildResearchQuery: no title available (triageTitle, fallbackTitle, sourceContent, and userIntent all empty)');
   }
 
   // Strip HTML tags (triage sometimes includes them)
@@ -930,7 +968,7 @@ ${voiceInstructions}
 Query: "${config.query}"
 ${config.focus ? `Focus Area: ${config.focus}` : ""}
 Depth: ${depth} — ${depthCfg.description}
-${config.sourceContent ? `\n## Source Content (extracted from shared URL)\nUse this content to understand what the original post/article is actually about. Your search query should find MORE information about these specific topics — not generic results about the platform or post type.\n\n${config.sourceContent.slice(0, 1500)}\n` : ""}
+${config.sourceContent ? `\n## Source Content (extracted from shared URL)\nUse this content to understand what the original post/article is actually about. Your search query should find MORE information about these specific topics — not generic results about the platform or post type.\n\n${config.sourceContent.slice(0, 1500)}\n` : ""}${config.userContext ? `\n## User's Intent\nThe person requesting this research said: "${config.userContext.slice(0, 300)}"\nFactor this into your research angle and framing — this is what they specifically care about.\n` : ""}
 Target Sources: ${config.maxSources || depthCfg.targetSources}+
 
 ## Instructions

@@ -315,4 +315,108 @@ describe('Chain Layer 4: End-to-end SPA URL → research gate decision', () => {
     });
     expect(result.blocked).toBe(false);
   });
+
+  // ATLAS-CEX-001 P0 REFINEMENT — image-only content must be blocked
+  it('Threads image-only content + degraded → BLOCKED (profile pic markdown)', () => {
+    const result = shouldBlockResearch({
+      url: 'https://www.threads.com/@sung.kim.mw/post/DU-BRCvlT5P',
+      extractionStatus: 'degraded',
+      source: 'threads',
+      title: 'Sung Kim (@sung.kim.mw) on Threads',
+      content: '![Sung Kim](https://scontent.cdninstagram.com/v/t51.2885-19/12345_n.jpg?stp=dst-jpg_s150x150)',
+    });
+    expect(result.blocked).toBe(true);
+  });
+
+  it('Threads image + bare URLs only → BLOCKED', () => {
+    const result = shouldBlockResearch({
+      url: 'https://www.threads.com/@simplpear/post/DU-tZ30DE4Z',
+      extractionStatus: 'degraded',
+      source: 'threads',
+      title: 'Pear (@simplpear) on Threads',
+      content: '![avatar](https://cdn.threads.net/avatar.jpg)\nhttps://cdn.threads.net/profile-pic.webp\nhttps://threads.net/static/nav-logo.png',
+    });
+    expect(result.blocked).toBe(true);
+  });
+});
+
+// ── Layer 5: Content Quality — stripNonTextContent ────────────────────
+
+import { stripNonTextContent } from '../src/conversation/content-extractor';
+
+describe('Chain Layer 5: stripNonTextContent quality gate', () => {
+  it('strips markdown images', () => {
+    const result = stripNonTextContent('![alt text](https://cdn.example.com/pic.jpg)');
+    expect(result).toBe('');
+  });
+
+  it('strips bare URLs', () => {
+    const result = stripNonTextContent('https://cdn.threads.net/profile-pic.webp');
+    expect(result).toBe('');
+  });
+
+  it('preserves link text, strips URL', () => {
+    const result = stripNonTextContent('[Click here](https://example.com)');
+    expect(result).toBe('Click here');
+  });
+
+  it('strips HTML tags', () => {
+    const result = stripNonTextContent('<div class="nav">Navigation</div>');
+    expect(result).toBe('Navigation');
+  });
+
+  it('image + URLs + text → only text survives', () => {
+    const input = '![avatar](https://cdn.threads.net/avatar.jpg)\nhttps://cdn.threads.net/profile-pic.webp\nRecursive language models are changing AI architecture.';
+    const result = stripNonTextContent(input);
+    expect(result).toContain('Recursive language models');
+    expect(result).not.toContain('cdn.threads.net');
+    expect(result).not.toContain('![');
+  });
+
+  it('purely image content → empty after stripping', () => {
+    const input = '![Sung Kim](https://scontent.cdninstagram.com/v/t51.2885-19/12345_n.jpg?stp=dst-jpg_s150x150)';
+    const result = stripNonTextContent(input);
+    expect(result).toBe('');
+  });
+});
+
+// ── Layer 6: userIntent injection into research query ─────────────────
+
+describe('Chain Layer 6: Socratic reply (userIntent) flows through to research query', () => {
+  it('PRODUCTION SCENARIO: SPA garbage title + Socratic reply → clean query from intent', () => {
+    // Jim shares a Threads URL, Atlas asks "What's the play?",
+    // Jim says "this is about recursive language models, innovation at the edge"
+    const query = buildResearchQuery({
+      triageTitle: 'Sung Kim (@sung.kim.mw) on Threads',
+      fallbackTitle: 'https://www.threads.com/@sung.kim.mw/post/DU-BRCvlT5P',
+      url: 'https://www.threads.com/@sung.kim.mw/post/DU-BRCvlT5P',
+      sourceContent: '![Sung Kim](https://scontent.cdninstagram.com/v/t51.2885-19/12345_n.jpg)',
+      userIntent: 'recursive language models and innovation at the edge of AI',
+    });
+    // Intent overrides the garbage title — no platform name in query
+    expect(query).not.toContain('on Threads');
+    expect(query).not.toContain('sung.kim');
+    expect(query.toLowerCase()).toContain('recursive language model');
+  });
+
+  it('PRODUCTION SCENARIO: Good article + Socratic reply → combined query', () => {
+    const query = buildResearchQuery({
+      triageTitle: 'Claude 4 achieves autonomous computer use',
+      fallbackTitle: '',
+      url: 'https://www.anthropic.com/blog/claude-4',
+      sourceContent: 'Anthropic announced Claude 4 with autonomous computer use capabilities...',
+      userIntent: 'what are the safety implications for enterprise deployment',
+    });
+    expect(query).toContain('Claude 4');
+    expect(query).toContain('safety implications');
+  });
+
+  it('PRODUCTION SCENARIO: No extraction at all + Socratic reply → intent is the query', () => {
+    const query = buildResearchQuery({
+      triageTitle: '',
+      fallbackTitle: '',
+      userIntent: 'decentralized AI governance frameworks for enterprise',
+    });
+    expect(query.toLowerCase()).toContain('decentralized ai governance');
+  });
 });

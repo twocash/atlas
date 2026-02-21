@@ -25,6 +25,7 @@ import { storeSocraticSession, removeSocraticSession, getSocraticSession } from 
 import { createAuditTrail } from './audit';
 import { runResearchAgentWithNotifications, sendCompletionNotification } from '../services/research-executor';
 import { routeForAnalysis } from './content-router';
+import { stripNonTextContent } from './content-extractor';
 import { buildResearchQuery, type ResearchDepth, type ResearchConfig } from '../../../../packages/agents/src/agents/research';
 import type { Pillar, RequestType } from './types';
 import type { UrlContent } from '../types';
@@ -300,11 +301,15 @@ async function handleResolved(
       // Pass extracted content so research agent gets the actual topic, not just a generic triage title
       const extractedContent = prefetchedUrlContent?.success ? prefetchedUrlContent.bodySnippet : undefined;
 
-      // ATLAS-CEX-001 P0: SPA URLs (Threads, Twitter, LinkedIn) MUST have extracted content
-      // to produce meaningful research. Without it, the triage title is the platform's generic
-      // <title> tag (e.g., "Pear (@simplpear) on Threads") — researching this produces a paper
-      // about the Threads PLATFORM instead of the actual post content.
-      if (needsBrowser && !extractedContent) {
+      // ATLAS-CEX-001 P0: SPA URLs (Threads, Twitter, LinkedIn) MUST have substantive extracted
+      // content to produce meaningful research. Without it, the triage title is the platform's
+      // generic <title> tag (e.g., "Pear (@simplpear) on Threads") — researching this produces
+      // a paper about the Threads PLATFORM instead of the actual post content.
+      //
+      // ATLAS-CEX-001 refinement: Also reject image-only content — Jina can return profile
+      // picture markdown that passes the raw length check but contains zero textual content.
+      const hasSubstantiveContent = extractedContent && stripNonTextContent(extractedContent).length >= 50
+      if (needsBrowser && !hasSubstantiveContent) {
         logger.error('ATLAS-CEX-001: SPA extraction FAILED — blocking research dispatch (would produce platform-about research)', {
           url: content,
           title: descriptiveTitle,
@@ -325,6 +330,7 @@ async function handleResolved(
         url: contentType === 'url' ? content : undefined,
         keywords: triageResult?.keywords,
         sourceContent: extractedContent,
+        userIntent: answerContext,   // ATLAS-CEX-001 B2: Jim's Socratic reply → query construction
       });
 
       // ADR-003: User direction → focus field, never query text
@@ -335,6 +341,7 @@ async function handleResolved(
         focus: routing.focusDirection,
         queryMode: 'canonical',
         sourceContent: extractedContent,
+        userContext: answerContext,   // ATLAS-CEX-001 B3: Jim's Socratic reply → research prompt
       };
 
       await ctx.reply(`\uD83D\uDD2C Starting research agent...\nDepth: ${routing.depth}`);

@@ -121,3 +121,92 @@ describe('ATLAS-CEX-001: buildResearchQuery with generic SPA titles', () => {
     expect(query).toContain('TypeScript performance');
   });
 });
+
+// ── ATLAS-CEX-001 P0 refinement: image-tag-only content ─────────────────
+
+describe('ATLAS-CEX-001: extractTopicFromContent rejects image-only input', () => {
+  it('image-only sourceContent → falls through to title (content topic is empty)', () => {
+    // Simulates Jina returning only profile picture markdown
+    const query = buildResearchQuery({
+      triageTitle: 'Sung Kim on Threads',
+      fallbackTitle: 'https://www.threads.com/@sung.kim.mw/post/DU-BRCvlT5P',
+      sourceContent: '![Sung Kim profile](https://scontent.cdninstagram.com/v/t51.2885-19/12345_n.jpg)',
+    });
+    // Image stripping leaves nothing → content topic empty → title used as fallback
+    expect(query).toBeTruthy();
+  });
+
+  it('image + bare URL content → stripped to nothing → title fallback', () => {
+    const query = buildResearchQuery({
+      triageTitle: 'Pear (@simplpear) on Threads',
+      fallbackTitle: '',
+      sourceContent: '![avatar](https://cdn.threads.net/avatar.jpg)\nhttps://cdn.threads.net/profile-pic.webp',
+    });
+    // All content is images/URLs → stripped to nothing → generic title used
+    expect(query).toBeTruthy();
+  });
+
+  it('real text + images → uses text (ignores images)', () => {
+    const query = buildResearchQuery({
+      triageTitle: 'Someone on Threads',
+      fallbackTitle: '',
+      sourceContent: '![avatar](https://cdn.threads.net/avatar.jpg)\nRecursive language models represent a fundamentally different approach to AI architecture.',
+    });
+    expect(query).not.toContain('on Threads');
+    expect(query.toLowerCase()).toContain('recursive language model');
+  });
+});
+
+// ── ATLAS-CEX-001 Contract B: userIntent injection ──────────────────────
+
+describe('ATLAS-CEX-001: buildResearchQuery with userIntent (Socratic reply)', () => {
+  it('userIntent overrides generic SPA title', () => {
+    const query = buildResearchQuery({
+      triageTitle: 'Pear (@simplpear) on Threads',
+      fallbackTitle: '',
+      userIntent: 'recursive language models and innovation at the edge of AI architecture',
+    });
+    expect(query).not.toContain('on Threads');
+    expect(query.toLowerCase()).toContain('recursive language model');
+  });
+
+  it('userIntent combines with good title', () => {
+    const query = buildResearchQuery({
+      triageTitle: 'Claude 4 autonomous computer use',
+      fallbackTitle: '',
+      userIntent: 'focus on the safety implications and alignment work',
+    });
+    expect(query).toContain('Claude 4');
+    expect(query).toContain('safety implications');
+  });
+
+  it('short userIntent (<= 10 chars) is ignored', () => {
+    const query = buildResearchQuery({
+      triageTitle: 'TypeScript performance optimization',
+      fallbackTitle: '',
+      userIntent: 'cool stuff',  // too short to override
+    });
+    expect(query).toContain('TypeScript');
+    expect(query).not.toContain('cool stuff');
+  });
+
+  it('userIntent + sourceContent + generic title → intent wins', () => {
+    const query = buildResearchQuery({
+      triageTitle: 'Someone on Twitter',
+      fallbackTitle: '',
+      sourceContent: 'TypeScript 6.0 introduces structural pattern matching.',
+      userIntent: 'how does this compare to Rust pattern matching',
+    });
+    // userIntent takes priority over sourceContent extraction
+    expect(query.toLowerCase()).toContain('rust pattern matching');
+  });
+
+  it('userIntent alone (no title, no content) produces valid query', () => {
+    const query = buildResearchQuery({
+      triageTitle: '',
+      fallbackTitle: '',
+      userIntent: 'decentralized AI governance frameworks for enterprise adoption',
+    });
+    expect(query.toLowerCase()).toContain('decentralized ai governance');
+  });
+});

@@ -83,6 +83,10 @@ interface SourceDefaults {
   removeSelector?: string
   timeout?: number
   noCache?: boolean
+  /** Strip images from Jina output — 'none' removes all images */
+  retainImages?: string
+  /** Response format — 'text' for plain text (no markdown image syntax) */
+  returnFormat?: string
 }
 
 /** Sources that require browser rendering — HTTP fallback returns garbage (login page, not content) */
@@ -96,14 +100,19 @@ const SOURCE_DEFAULTS: Partial<Record<ContentSource, SourceDefaults>> = {
     // No DOM selectors — Threads DOM changes frequently and stale selectors cause
     // Jina to return profile boilerplate instead of post content (ATLAS-CEX-001 P0).
     // Jina's default readability extraction handles Threads post content correctly.
-    timeout: 15,
+    timeout: 20,             // More time for SPA hydration (was 15)
     noCache: true,
+    retainImages: 'none',    // Strip all images — profile pics slip through quality gate
+    returnFormat: 'text',    // Plain text — no markdown image syntax to slip through
+    removeSelector: 'header, nav, [role="banner"]',  // Strip nav/header boilerplate
   },
   twitter: {
     waitForSelector: "article",
     targetSelector: "article",
-    timeout: 15,
+    timeout: 20,             // More time for SPA hydration (was 15)
     noCache: true,
+    retainImages: 'none',    // Strip all images from output
+    removeSelector: 'nav, [role="banner"], aside',
   },
   linkedin: {
     waitForSelector: "article",
@@ -119,6 +128,24 @@ const SOURCE_DEFAULTS: Partial<Record<ContentSource, SourceDefaults>> = {
   generic: {
     removeSelector: "nav, footer, header",
   },
+}
+
+// ─── Content Quality Utilities ────────────────────────────
+
+/**
+ * Strip non-textual content from markdown so only real human-readable text remains.
+ *
+ * ATLAS-CEX-001: Jina Reader returns profile picture markdown (`![alt](https://cdn-url...)`)
+ * that exceeds the SPA_MIN_CONTENT_LENGTH threshold but contains zero textual content.
+ * The quality gate must measure TEXTUAL length, not raw byte length.
+ */
+export function stripNonTextContent(md: string): string {
+  return md
+    .replace(/!\[[^\]]*\]\([^)]*\)/g, '')       // ![alt](url) — markdown images
+    .replace(/\[([^\]]*)\]\([^)]*\)/g, '$1')    // [text](url) → keep text only (BEFORE bare URL strip)
+    .replace(/https?:\/\/\S+/g, '')             // bare URLs
+    .replace(/<[^>]*>/g, '')                     // HTML tags
+    .trim()
 }
 
 // ─── Circuit Breaker ──────────────────────────────────────
@@ -195,6 +222,10 @@ async function extractWithJina(
   // Cache control
   if (effectiveOpts.noCache) headers["x-no-cache"] = "true"
 
+  // Content filtering (ATLAS-CEX-001: strip images, control output format)
+  if (effectiveOpts.retainImages) headers["x-retain-images"] = effectiveOpts.retainImages
+  if (effectiveOpts.returnFormat) headers["x-return-format"] = effectiveOpts.returnFormat
+
   // Render timeout
   if (effectiveOpts.timeout) headers["x-timeout"] = String(effectiveOpts.timeout)
 
@@ -261,12 +292,18 @@ async function extractWithJina(
     // but post content didn't hydrate — the "content" is profile boilerplate.
     // Treating this as success causes downstream research to target the author
     // instead of the post topic (ATLAS-CEX-001 P0 bug).
-    if (SPA_SOURCES.includes(source) && content.length < SPA_MIN_CONTENT_LENGTH) {
-      logger.warn("[ContentExtractor] SPA content quality gate FAILED — content too short (likely boilerplate)", {
+    //
+    // ATLAS-CEX-001 P0 refinement: Measure TEXTUAL content after stripping images,
+    // bare URLs, and HTML tags. Jina can return profile picture markdown that exceeds
+    // the raw length threshold but contains zero actual text.
+    const textualContent = stripNonTextContent(content)
+    if (SPA_SOURCES.includes(source) && textualContent.length < SPA_MIN_CONTENT_LENGTH) {
+      logger.warn("[ContentExtractor] SPA content quality gate FAILED — textual content too short (likely boilerplate)", {
         url,
         source,
         titleLen: title.length,
-        contentLen: content.length,
+        rawContentLen: content.length,
+        textualContentLen: textualContent.length,
         contentPreview: content.substring(0, 80),
       })
       return {
