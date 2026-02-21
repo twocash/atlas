@@ -25,6 +25,7 @@ import { getFeatureFlags } from '../config/features';
 import { checkUrl } from '../utils/url-dedup';
 import { triageMessage, type TriageResult } from '../cognitive/triage-skill';
 import { extractContent, toUrlContent } from './content-extractor';
+import { preReadContent } from './content-pre-reader';
 
 // ==========================================
 // Bug #1 Fix: Duplicate Confirmation Guard
@@ -275,6 +276,26 @@ export async function triggerContentConfirmation(
       url,
       error: fetchError instanceof Error ? fetchError.message : String(fetchError),
     });
+  }
+
+  // HAIKU PRE-READ: Summarize extracted content before asking Jim
+  if (urlContent?.success && urlContent.fullContent) {
+    try {
+      const preRead = await preReadContent(
+        urlContent.fullContent,
+        url,
+        urlContent.title,
+      );
+      if (preRead.success) {
+        urlContent.preReadSummary = preRead.summary;
+        urlContent.preReadContentType = preRead.contentType;
+      }
+      // If pre-read fails, we continue without it — not a blocking error
+    } catch (err) {
+      logger.warn('Haiku pre-read failed, continuing without summary', {
+        error: err instanceof Error ? err.message : String(err),
+      });
+    }
   }
 
   // SOCRATIC INTERVIEW: Replace keyboard flow with conversational engine

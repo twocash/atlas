@@ -96,6 +96,10 @@ export interface ContextSignals {
     hasUrl?: boolean;
     title?: string;
     url?: string;
+    /** Haiku pre-read summary of extracted content */
+    bodySummary?: string;
+    /** Content type from pre-read (article, social_post, discussion, profile, unknown) */
+    contentType?: string;
   };
 
   /** Classification from earlier pipeline stages */

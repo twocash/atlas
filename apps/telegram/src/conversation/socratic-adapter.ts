@@ -54,6 +54,8 @@ function buildSignals(
       hasUrl: contentType === 'url',
       url: contentType === 'url' ? content : undefined,
       contentLength: content.length,
+      bodySummary: prefetchedUrlContent?.preReadSummary,
+      contentType: prefetchedUrlContent?.preReadContentType,
     },
   };
 
@@ -160,7 +162,8 @@ export async function socraticInterview(
 
       // Format question text — show fetched content title, not triage label
       const fetchedTitle = prefetchedUrlContent?.success ? prefetchedUrlContent.title : undefined;
-      const questionText = formatQuestionMessage(title, result.questions, fetchedTitle);
+      const preReadSummary = prefetchedUrlContent?.preReadSummary;
+      const questionText = formatQuestionMessage(title, result.questions, fetchedTitle, preReadSummary);
 
       // Send the question
       const questionMsg = await ctx.reply(questionText, {
@@ -299,7 +302,10 @@ async function handleResolved(
       // ADR-003: Build canonical research query from triage output
       // Query is a clean topic description — no raw URLs, no user direction text
       // Pass extracted content so research agent gets the actual topic, not just a generic triage title
-      const extractedContent = prefetchedUrlContent?.success ? prefetchedUrlContent.bodySnippet : undefined;
+      // Use fullContent (not truncated bodySnippet) so research gets the complete extraction
+      const extractedContent = prefetchedUrlContent?.success
+        ? (prefetchedUrlContent.fullContent || prefetchedUrlContent.bodySnippet)
+        : undefined;
 
       // ATLAS-CEX-001 P0: SPA URLs (Threads, Twitter, LinkedIn) MUST have substantive extracted
       // content to produce meaningful research. Without it, the triage title is the platform's
@@ -342,6 +348,7 @@ async function handleResolved(
         queryMode: 'canonical',
         sourceContent: extractedContent,
         userContext: answerContext,   // ATLAS-CEX-001 B3: Jim's Socratic reply → research prompt
+        sourceUrl: contentType === 'url' ? content : undefined,  // Original URL for Gemini grounding
       };
 
       await ctx.reply(`\uD83D\uDD2C Starting research agent...\nDepth: ${routing.depth}`);
@@ -457,13 +464,24 @@ export async function handleSocraticAnswer(
  * Format a Socratic question as a Telegram message
  * No keyboards — conversational text with option hints.
  */
-function formatQuestionMessage(title: string, questions: SocraticQuestion[], fetchedTitle?: string): string {
+function formatQuestionMessage(
+  title: string,
+  questions: SocraticQuestion[],
+  fetchedTitle?: string,
+  preReadSummary?: string,
+): string {
   const question = questions[0]; // Primary question
   if (!question) return 'How would you like to handle this?';
 
   // Use fetched content title when available (the actual page title, not triage label)
   const displayTitle = fetchedTitle || title;
   let msg = `\uD83D\uDCCE <b>${escapeHtml(displayTitle)}</b>\n\n`;
+
+  // Show Haiku's pre-read summary so Jim knows what Atlas extracted
+  if (preReadSummary) {
+    msg += `<i>${escapeHtml(preReadSummary)}</i>\n\n`;
+  }
+
   msg += escapeHtml(question.text);
 
   // Show options as hints (not buttons)

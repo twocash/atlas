@@ -666,6 +666,7 @@ export function toUrlContent(result: ExtractionResult): UrlContent {
     title: result.title,
     description: result.description,
     bodySnippet: result.content.substring(0, 500),
+    fullContent: result.content || undefined,
     fetchedAt: result.extractedAt,
     success: result.status !== "failed" && !isSpaGarbage,
     error: isSpaGarbage

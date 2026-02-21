@@ -97,6 +97,12 @@ export interface UrlContent {
   title: string;
   description: string;
   bodySnippet: string;
+  /** Full extracted content for research pipeline (not truncated) */
+  fullContent?: string;
+  /** Haiku's 2-3 sentence summary of what the content is about */
+  preReadSummary?: string;
+  /** Content type from Haiku pre-read (article, social_post, discussion, profile, unknown) */
+  preReadContentType?: string;
   fetchedAt: Date;
   success: boolean;
   error?: string;

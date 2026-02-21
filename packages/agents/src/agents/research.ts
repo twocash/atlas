@@ -75,6 +75,10 @@ export interface ResearchConfig {
   /** Jim's Socratic answer — injected into the research prompt so the agent
    * knows what Jim actually cares about. ATLAS-CEX-001 Contract B. */
   userContext?: string;
+
+  /** Original URL of the shared content — included in research prompt so
+   * Google Search grounding can use it for context. */
+  sourceUrl?: string;
 }
 
 /**
@@ -992,6 +996,7 @@ ${voiceInstructions}
 
 ## Research Task
 Query: "${config.query}"
+${config.sourceUrl ? `Source URL: ${config.sourceUrl}` : ""}
 ${config.focus ? `Focus Area: ${config.focus}` : ""}
 Depth: ${depth} — ${depthCfg.description}
 ${config.sourceContent ? `\n## Source Content (extracted from shared URL)\nUse this content to understand what the original post/article is actually about. Your search query should find MORE information about these specific topics — not generic results about the platform or post type.\n\n${config.sourceContent.slice(0, 1500)}\n` : ""}${config.userContext ? `\n## User's Intent\nThe person requesting this research said: "${config.userContext.slice(0, 300)}"\nFactor this into your research angle and framing — this is what they specifically care about.\n` : ""}
