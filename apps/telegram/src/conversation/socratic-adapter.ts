@@ -307,11 +307,14 @@ async function handleResolved(
 
       // ADR-003: Build canonical research query from triage output
       // Query is a clean topic description — no raw URLs, no user direction text
+      // Pass extracted content so research agent gets the actual topic, not just a generic triage title
+      const extractedContent = prefetchedUrlContent?.success ? prefetchedUrlContent.bodySnippet : undefined;
       const researchQuery = buildResearchQuery({
         triageTitle: triageResult?.title || '',
         fallbackTitle: prefetchedUrlContent?.success ? prefetchedUrlContent.title : title,
         url: contentType === 'url' ? content : undefined,
         keywords: triageResult?.keywords,
+        sourceContent: extractedContent,
       });
 
       // ADR-003: User direction → focus field, never query text
@@ -321,6 +324,7 @@ async function handleResolved(
         pillar: routing.pillar,
         focus: routing.focusDirection,
         queryMode: 'canonical',
+        sourceContent: extractedContent,
       };
 
       await ctx.reply(`\uD83D\uDD2C Starting research agent...\nDepth: ${routing.depth}`);

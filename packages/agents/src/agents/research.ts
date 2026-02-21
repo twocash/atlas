@@ -67,6 +67,10 @@ export interface ResearchConfig {
   /** Query construction mode — 'canonical' uses ADR-003 flow, 'legacy' preserves old behavior.
    * @default 'legacy' — callers opt in to canonical mode as they're migrated */
   queryMode?: 'canonical' | 'legacy';
+
+  /** Extracted content from the source URL — gives Gemini the actual topic context.
+   * Critical for social media posts where the query alone is too generic. */
+  sourceContent?: string;
 }
 
 /**
@@ -144,6 +148,41 @@ export interface QueryInput {
   url?: string;
   /** OG / fetched page title if triage unavailable */
   fallbackTitle?: string;
+  /** Extracted content from the source URL (used when triage title is generic) */
+  sourceContent?: string;
+}
+
+/** Signals a generic/useless triage title that won't produce good search results */
+const GENERIC_TITLE_PATTERNS = [
+  /social\s*media\s*post/i,
+  /threads?\s*post/i,
+  /twitter\s*post/i,
+  /linkedin\s*post/i,
+  /instagram\s*(post|reel)/i,
+  /^https?:\/\//i,
+];
+
+function isGenericTitle(title: string): boolean {
+  return GENERIC_TITLE_PATTERNS.some(p => p.test(title));
+}
+
+/**
+ * Extract a meaningful topic from source content (first ~200 chars of substance).
+ * Strips markdown headings, links, images, and leading whitespace.
+ */
+function extractTopicFromContent(content: string): string {
+  return content
+    .replace(/^#+\s*/gm, '')        // strip heading markers
+    .replace(/!\[.*?\]\(.*?\)/g, '') // strip images
+    .replace(/\[([^\]]*)\]\(.*?\)/g, '$1') // keep link text, strip URL
+    .replace(/<[^>]*>/g, '')         // strip HTML
+    .split('\n')
+    .map(l => l.trim())
+    .filter(l => l.length > 20)      // skip short/empty lines
+    .slice(0, 3)                     // first 3 substantial lines
+    .join(' ')
+    .slice(0, 200)
+    .trim();
 }
 
 /**
@@ -154,14 +193,28 @@ export interface QueryInput {
  * - No raw URLs, HTML tags, or navigation chrome
  * - Socratic answers inform routing (pillar, depth, voice), NOT query text
  * - Keywords append as focus narrowing, capped to budget
+ * - When triage title is generic (e.g., "Social Media Post"), extracted
+ *   source content is used to derive the actual topic
  *
- * @throws if both triageTitle and fallbackTitle are empty
+ * @throws if both triageTitle and fallbackTitle are empty and no sourceContent
  */
 export function buildResearchQuery(input: QueryInput): string {
-  const title = (input.triageTitle || '').trim() || (input.fallbackTitle || '').trim();
+  let title = (input.triageTitle || '').trim() || (input.fallbackTitle || '').trim();
+
+  // When triage produces a generic title, prefer extracted content for the query
+  if (input.sourceContent && (!title || isGenericTitle(title))) {
+    const contentTopic = extractTopicFromContent(input.sourceContent);
+    if (contentTopic.length > 30) {
+      console.log('[Research] Triage title is generic — using extracted content for query', {
+        triageTitle: title,
+        contentTopicPreview: contentTopic.slice(0, 80),
+      });
+      title = contentTopic;
+    }
+  }
 
   if (!title) {
-    throw new Error('buildResearchQuery: no title available (triageTitle and fallbackTitle both empty)');
+    throw new Error('buildResearchQuery: no title available (triageTitle, fallbackTitle, and sourceContent all empty)');
   }
 
   // Strip HTML tags (triage sometimes includes them)
@@ -865,6 +918,7 @@ ${voiceInstructions}
 Query: "${config.query}"
 ${config.focus ? `Focus Area: ${config.focus}` : ""}
 Depth: ${depth} — ${depthCfg.description}
+${config.sourceContent ? `\n## Source Content (extracted from shared URL)\nUse this content to understand what the original post/article is actually about. Your search query should find MORE information about these specific topics — not generic results about the platform or post type.\n\n${config.sourceContent.slice(0, 1500)}\n` : ""}
 Target Sources: ${config.maxSources || depthCfg.targetSources}+
 
 ## Instructions
