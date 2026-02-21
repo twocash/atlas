@@ -62,12 +62,16 @@ All content flows into one of four life domains. **These are equal citizens**—
 |----------|------------------|---------|
 | **Feed 2.0** | `90b2b33f-4b44-4b42-870f-8d62fb8cbf18` | Activity log |
 | **Work Queue 2.0** | `3d679030-b76b-43bd-92d8-1ac51abb4a28` | Task ledger |
+| **Atlas Worldview** | `39f6ddf7-8866-4523-8daf-2a7688ab0eca` | Belief system for research |
+| **POV Library** | `ea3d86b7-cdb8-403e-ba03-edc410ae6498` | High-level positions |
 
 **For Notion MCP plugin only (collection:// URLs):**
 | Database | Data Source ID |
 |----------|----------------|
 | Feed 2.0 | `a7493abb-804a-4759-b6ac-aeca62ae23b8` |
 | Work Queue 2.0 | `6a8d9c43-b084-47b5-bc83-bc363640f2cd` |
+| Atlas Worldview | `a23e83aa-c6a4-422d-a9b8-edbb3d5d8e02` |
+| POV Library | `19c88251-6a7a-4f0a-ad9f-c2c468409c66` |
 
 ### Legacy (Reference Only - DO NOT USE)
 | Database | ID | Purpose |
