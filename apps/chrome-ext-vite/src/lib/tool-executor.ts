@@ -214,7 +214,7 @@ async function querySelectors(input: Record<string, unknown>) {
 // ─── Cookie Refresh ─────────────────────────────────────
 
 const DEFAULT_COOKIE_DOMAINS = [
-  ".threads.net",
+  ".threads.com",
   ".instagram.com",
   ".linkedin.com",
 ]

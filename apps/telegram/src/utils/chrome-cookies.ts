@@ -28,8 +28,10 @@ const COOKIE_MAX_AGE_MS = 24 * 60 * 60 * 1000 // 24 hours
 
 /** Maps URL hostnames to cookie file domains */
 const DOMAIN_MAP: Record<string, string> = {
-  "threads.net": "threads.net",
-  "www.threads.net": "threads.net",
+  "threads.com": "threads.com",
+  "www.threads.com": "threads.com",
+  "threads.net": "threads.com",
+  "www.threads.net": "threads.com",
   "instagram.com": "instagram.com",
   "www.instagram.com": "instagram.com",
   "linkedin.com": "linkedin.com",

@@ -135,7 +135,7 @@ export const TOOL_SCHEMAS: ToolSchema[] = [
         domains: {
           type: "array",
           description:
-            'Domains to refresh cookies for. Defaults to [".threads.net", ".instagram.com", ".linkedin.com"].',
+            'Domains to refresh cookies for. Defaults to [".threads.com", ".instagram.com", ".linkedin.com"].',
           items: { type: "string" },
         },
       },

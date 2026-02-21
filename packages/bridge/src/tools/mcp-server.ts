@@ -203,7 +203,7 @@ function writeCookieFiles(result: CookieRefreshResult): Record<string, number> {
   const written: Record<string, number> = {}
 
   for (const [domain, cookies] of Object.entries(result.cookies)) {
-    // Normalize domain to filename: ".threads.net" → "threads.net.json"
+    // Normalize domain to filename: ".threads.com" → "threads.com.json"
     const filename = domain.replace(/^\./, "") + ".json"
     const filepath = resolve(COOKIE_DIR, filename)
 
