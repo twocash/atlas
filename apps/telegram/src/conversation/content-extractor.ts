@@ -265,7 +265,8 @@ async function extractWithJina(
       }
     }
 
-    const content = data.data?.content || ""
+    // Jina returns content in .content (markdown) or .text (when x-return-format: text)
+    const content = data.data?.content || data.data?.text || ""
     const title = data.data?.title || ""
     const description = data.data?.description || ""
 
