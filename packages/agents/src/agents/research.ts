@@ -152,7 +152,12 @@ export interface QueryInput {
   sourceContent?: string;
 }
 
-/** Signals a generic/useless triage title that won't produce good search results */
+/** Signals a generic/useless triage title that won't produce good search results.
+ *
+ * ATLAS-CEX-001: Social media SPAs return their platform marketing `<title>` tag
+ * when content extraction fails (e.g., "Pear (@simplpear) on Threads"). These
+ * titles cause the research agent to research the PLATFORM instead of the POST.
+ * Patterns must catch all common social media title templates. */
 const GENERIC_TITLE_PATTERNS = [
   /social\s*media\s*post/i,
   /threads?\s*post/i,
@@ -160,9 +165,16 @@ const GENERIC_TITLE_PATTERNS = [
   /linkedin\s*post/i,
   /instagram\s*(post|reel)/i,
   /^https?:\/\//i,
+  // SPA shell titles: "Username (@handle) on Threads", "@handle on X", "Name on LinkedIn"
+  /on\s+(threads|x|twitter|linkedin|instagram)\s*$/i,
+  // Bare platform names as full title
+  /^(threads|x\.com|twitter|linkedin|instagram)\s*$/i,
+  // Handle-only titles: "@simplpear" or "(@simplpear)"
+  /^@\w+\s*$/,
+  /^\(?\s*@\w+\s*\)?\s*$/,
 ];
 
-function isGenericTitle(title: string): boolean {
+export function isGenericTitle(title: string): boolean {
   return GENERIC_TITLE_PATTERNS.some(p => p.test(title));
 }
 

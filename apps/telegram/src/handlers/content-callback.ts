@@ -32,7 +32,7 @@ import {
   runResearchAgentWithNotifications,
   sendCompletionNotification,
 } from '../services/research-executor';
-import { buildResearchQuery, type ResearchConfig } from '../../../../packages/agents/src';
+import { buildResearchQuery, isGenericTitle, type ResearchConfig } from '../../../../packages/agents/src';
 
 /** Idempotency guard: prevents double-dispatch for the same WQ item */
 const _activeResearchItems = new Set<string>();
@@ -795,31 +795,43 @@ async function handleConfirm(
       const chatId = ctx.chat?.id;
       const workQueueId = result.workQueueId;
       if (chatId && workQueueId && !_activeResearchItems.has(workQueueId)) {
-        _activeResearchItems.add(workQueueId);
-        // ADR-003: Build canonical query from triage title — no raw URLs or content
-        const query = buildResearchQuery({
-          triageTitle: pending.analysis.title || '',
-          fallbackTitle: pending.originalText.substring(0, 200),
-          url: pending.url,
-        });
-        const researchConfig: ResearchConfig = {
-          query,
-          depth: 'standard',
-          focus: pending.url,
-          queryMode: 'canonical',
-        };
-        const notionUrl = result.workQueueUrl;
-        ctx.api.sendMessage(
-          chatId,
-          `🔬 Researching <b>${pending.pillar}</b> link...`,
-          { parse_mode: 'HTML' }
-        ).catch(err => logger.warn('Research start notification failed', { error: err, workQueueId }));
-        runResearchAgentWithNotifications(researchConfig, chatId, ctx.api, workQueueId, 'content-confirm')
-          .then(({ agent, result: researchResult }) =>
-            sendCompletionNotification(ctx.api, chatId, agent, researchResult, notionUrl, 'content-confirm')
-          )
-          .catch(err => logger.warn('Research dispatch failed (non-fatal)', { error: err, workQueueId, source: 'content-confirm' }))
-          .finally(() => _activeResearchItems.delete(workQueueId));
+        // ATLAS-CEX-001: Block research when title is a generic SPA shell title
+        // (e.g., "Pear (@simplpear) on Threads"). Without sourceContent, research
+        // would query the platform name instead of the actual post.
+        const candidateTitle = pending.analysis.title || pending.originalText.substring(0, 200);
+        if (isGenericTitle(candidateTitle)) {
+          logger.warn('ATLAS-CEX-001: Skipping research dispatch — generic SPA title detected in content-confirm path', {
+            title: candidateTitle,
+            url: pending.url,
+            workQueueId,
+          });
+        } else {
+          _activeResearchItems.add(workQueueId);
+          // ADR-003: Build canonical query from triage title — no raw URLs or content
+          const query = buildResearchQuery({
+            triageTitle: pending.analysis.title || '',
+            fallbackTitle: pending.originalText.substring(0, 200),
+            url: pending.url,
+          });
+          const researchConfig: ResearchConfig = {
+            query,
+            depth: 'standard',
+            focus: pending.url,
+            queryMode: 'canonical',
+          };
+          const notionUrl = result.workQueueUrl;
+          ctx.api.sendMessage(
+            chatId,
+            `🔬 Researching <b>${pending.pillar}</b> link...`,
+            { parse_mode: 'HTML' }
+          ).catch(err => logger.warn('Research start notification failed', { error: err, workQueueId }));
+          runResearchAgentWithNotifications(researchConfig, chatId, ctx.api, workQueueId, 'content-confirm')
+            .then(({ agent, result: researchResult }) =>
+              sendCompletionNotification(ctx.api, chatId, agent, researchResult, notionUrl, 'content-confirm')
+            )
+            .catch(err => logger.warn('Research dispatch failed (non-fatal)', { error: err, workQueueId, source: 'content-confirm' }))
+            .finally(() => _activeResearchItems.delete(workQueueId));
+        } // end else (non-generic title)
       }
     }
 

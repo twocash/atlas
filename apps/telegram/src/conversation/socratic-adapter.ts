@@ -295,20 +295,30 @@ async function handleResolved(
         });
       }
 
-      if (needsBrowser) {
-        // Browser-required URLs (Threads, Twitter, LinkedIn) cannot be fetched server-side.
-        // Research agent uses the triage title as query — actual content extraction
-        // would need a browser runtime (not available in this pipeline).
-        logger.warn('ADR-003: URL requires browser hydration — research uses triage title only', {
-          url: content,
-          title: descriptiveTitle,
-        });
-      }
-
       // ADR-003: Build canonical research query from triage output
       // Query is a clean topic description — no raw URLs, no user direction text
       // Pass extracted content so research agent gets the actual topic, not just a generic triage title
       const extractedContent = prefetchedUrlContent?.success ? prefetchedUrlContent.bodySnippet : undefined;
+
+      // ATLAS-CEX-001 P0: SPA URLs (Threads, Twitter, LinkedIn) MUST have extracted content
+      // to produce meaningful research. Without it, the triage title is the platform's generic
+      // <title> tag (e.g., "Pear (@simplpear) on Threads") — researching this produces a paper
+      // about the Threads PLATFORM instead of the actual post content.
+      if (needsBrowser && !extractedContent) {
+        logger.error('ATLAS-CEX-001: SPA extraction FAILED — blocking research dispatch (would produce platform-about research)', {
+          url: content,
+          title: descriptiveTitle,
+          triageTitle: triageResult?.title,
+          extractionSuccess: prefetchedUrlContent?.success,
+          extractionError: prefetchedUrlContent?.error,
+        });
+        await ctx.reply(
+          `⚠️ Couldn't read this post (requires browser rendering).\n` +
+          `📌 Link captured — tell me what it's about if you want research.`
+        );
+        return;
+      }
+
       const researchQuery = buildResearchQuery({
         triageTitle: triageResult?.title || '',
         fallbackTitle: prefetchedUrlContent?.success ? prefetchedUrlContent.title : title,
