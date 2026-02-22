@@ -87,6 +87,8 @@ interface SourceDefaults {
   retainImages?: string
   /** Response format — 'text' for plain text (no markdown image syntax) */
   returnFormat?: string
+  /** Flatten Shadow DOM components — required for Meta SPAs (Threads, Instagram) */
+  withShadowDom?: boolean
 }
 
 /** Sources that require browser rendering — HTTP fallback returns garbage (login page, not content) */
@@ -97,13 +99,16 @@ const SPA_MIN_CONTENT_LENGTH = 100
 
 const SOURCE_DEFAULTS: Partial<Record<ContentSource, SourceDefaults>> = {
   threads: {
-    // No DOM selectors — Threads DOM changes frequently and stale selectors cause
-    // Jina to return profile boilerplate instead of post content (ATLAS-CEX-001 P0).
-    // Jina's default readability extraction handles Threads post content correctly.
-    timeout: 20,             // More time for SPA hydration (was 15)
+    // CEX-002: Semantic HTML selectors + Shadow DOM for Meta SPA extraction.
+    // ATLAS-CEX-001 stripped CSS class selectors (which rotated frequently).
+    // Semantic tags (main, article) are stable across Meta DOM changes.
+    targetSelector: 'main',    // Semantic container — stable across Meta DOM rotations
+    waitForSelector: 'article', // Wait for SPA hydration (matches working Twitter config)
+    withShadowDom: true,       // Flatten Meta's Shadow DOM to expose text content
+    timeout: 25,               // More time for SPA hydration + Shadow DOM flattening
     noCache: true,
-    retainImages: 'none',    // Strip all images — profile pics slip through quality gate
-    returnFormat: 'text',    // Plain text — no markdown image syntax to slip through
+    retainImages: 'none',      // Strip all images — profile pics slip through quality gate
+    returnFormat: 'text',      // Plain text — no markdown image syntax to slip through
     removeSelector: 'header, nav, [role="banner"]',  // Strip nav/header boilerplate
   },
   twitter: {
@@ -212,6 +217,7 @@ async function extractWithJina(
   if (effectiveOpts.targetSelector) headers["x-target-selector"] = effectiveOpts.targetSelector
   if (effectiveOpts.removeSelector) headers["x-remove-selector"] = effectiveOpts.removeSelector
   if (effectiveOpts.waitForSelector) headers["x-wait-for-selector"] = effectiveOpts.waitForSelector
+  if (effectiveOpts.withShadowDom) headers["x-with-shadow-dom"] = "true"
 
   // Cookies (for auth-walled platforms — Threads, X, LinkedIn)
   if (effectiveOpts.cookies) {

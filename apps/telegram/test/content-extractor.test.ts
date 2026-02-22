@@ -122,20 +122,23 @@ describe("extractContent routing", () => {
     expect(result.source).toBe("linkedin")
   })
 
-  it("passes correct Jina headers for Threads (no DOM selectors — ATLAS-CEX-001)", async () => {
+  it("passes correct Jina headers for Threads (semantic selectors + Shadow DOM — CEX-002)", async () => {
     mockFetch.mockImplementationOnce((url: string, opts: any) => {
-      // After ATLAS-CEX-001 fix: Threads defaults have NO DOM selectors
-      // (stale selectors caused Jina to return profile boilerplate instead of post content)
-      expect(opts.headers["x-wait-for-selector"]).toBeUndefined()
-      expect(opts.headers["x-target-selector"]).toBeUndefined()
+      // CEX-002: Threads uses semantic HTML selectors + Shadow DOM flattening
+      // (ATLAS-CEX-001 stripped CSS class selectors; CEX-002 adds stable semantic tags)
+      expect(opts.headers["x-target-selector"]).toBe("main")
+      expect(opts.headers["x-wait-for-selector"]).toBe("article")
+      expect(opts.headers["x-with-shadow-dom"]).toBe("true")
       expect(opts.headers["x-no-cache"]).toBe("true")
-      expect(opts.headers["x-timeout"]).toBe("20")
+      expect(opts.headers["x-timeout"]).toBe("25")
+      expect(opts.headers["x-retain-images"]).toBe("none")
+      expect(opts.headers["x-return-format"]).toBe("text")
       expect(opts.headers["Accept"]).toBe("application/json")
 
       return Promise.resolve(
         new Response(
           JSON.stringify({
-            data: { title: "Thread", content: "Real post content from Jina readability extraction that is definitely long enough to pass the SPA quality gate threshold of 100 characters.", description: "" },
+            data: { title: "Thread", content: "Real post content from Jina with Shadow DOM flattening that is definitely long enough to pass the SPA quality gate threshold of 100 characters.", description: "" },
           }),
           { status: 200 },
         ),
