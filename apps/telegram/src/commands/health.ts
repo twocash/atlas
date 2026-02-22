@@ -170,7 +170,7 @@ async function checkPendingResearch(): Promise<HealthResult> {
  * Check AnythingLLM RAG server connectivity
  */
 async function checkAnythingLlm(): Promise<HealthResult> {
-  const baseUrl = process.env.ANYTHINGLLM_BASE_URL;
+  const baseUrl = process.env.ANYTHINGLLM_URL;
   if (!baseUrl) {
     return { status: 'warn', message: 'AnythingLLM: NOT CONFIGURED' };
   }
