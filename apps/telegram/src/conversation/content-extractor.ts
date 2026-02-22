@@ -583,6 +583,11 @@ export async function extractContent(
           source,
           error: bridgeResult.error,
         })
+      } else {
+        logger.warn('[ContentExtractor] Bridge unavailable — browser extraction skipped, falling through to Jina', {
+          url: cleanUrl,
+          source,
+        })
       }
     } catch (err: any) {
       logger.warn("[ContentExtractor] Bridge check failed — falling through to Jina", {

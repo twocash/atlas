@@ -268,11 +268,19 @@ export function buildResearchQuery(input: QueryInput): string {
         triageTitle: input.triageTitle,
         intentPreview: intent.slice(0, 60),
       });
-    } else {
-      // Generic/empty title: user intent IS the query
+    } else if (input.sourceContent) {
+      // Generic title BUT we have extracted content — safe to use intent
+      // because extractTopicFromContent() will override at lines 287-296 if better
       title = intent;
-      console.log('[Research] User intent REPLACES generic title', {
+      console.log('[Research] User intent REPLACES generic title (sourceContent available as fallback)', {
         triageTitle: input.triageTitle,
+        intentPreview: intent.slice(0, 60),
+      });
+    } else {
+      // Generic title AND no sourceContent — answer is direction, not topic
+      // Keep generic title; answer goes to userContext only (line 406 in socratic-adapter)
+      console.log('[Research] User intent is direction (no sourceContent) — keeping triage title', {
+        triageTitle: title,
         intentPreview: intent.slice(0, 60),
       });
     }

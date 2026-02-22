@@ -160,14 +160,27 @@ describe('ATLAS-CEX-001: extractTopicFromContent rejects image-only input', () =
 // ── ATLAS-CEX-001 Contract B: userIntent injection ──────────────────────
 
 describe('ATLAS-CEX-001: buildResearchQuery with userIntent (Socratic reply)', () => {
-  it('userIntent overrides generic SPA title', () => {
+  it('userIntent overrides generic SPA title when sourceContent exists', () => {
+    const query = buildResearchQuery({
+      triageTitle: 'Pear (@simplpear) on Threads',
+      fallbackTitle: '',
+      sourceContent: 'Some extracted content about recursive language models and edge computing.',
+      userIntent: 'recursive language models and innovation at the edge of AI architecture',
+    });
+    expect(query).not.toContain('on Threads');
+    expect(query.toLowerCase()).toContain('recursive language model');
+  });
+
+  it('userIntent does NOT override generic title without sourceContent', () => {
+    // Bug 2 fix: without sourceContent, the answer is direction, not topic.
+    // The generic triage title survives — imperfect but not contaminated.
     const query = buildResearchQuery({
       triageTitle: 'Pear (@simplpear) on Threads',
       fallbackTitle: '',
       userIntent: 'recursive language models and innovation at the edge of AI architecture',
     });
-    expect(query).not.toContain('on Threads');
-    expect(query.toLowerCase()).toContain('recursive language model');
+    // Generic title is kept — userIntent goes to userContext only
+    expect(query).toContain('on Threads');
   });
 
   it('userIntent combines with good title', () => {
@@ -201,13 +214,14 @@ describe('ATLAS-CEX-001: buildResearchQuery with userIntent (Socratic reply)', (
     expect(query.toLowerCase()).toContain('rust pattern matching');
   });
 
-  it('userIntent alone (no title, no content) produces valid query', () => {
-    const query = buildResearchQuery({
+  it('userIntent alone (no title, no content) throws — no topic available', () => {
+    // Bug 2 fix: without sourceContent, userIntent is direction not topic.
+    // With no title either, there's nothing to query.
+    expect(() => buildResearchQuery({
       triageTitle: '',
       fallbackTitle: '',
       userIntent: 'decentralized AI governance frameworks for enterprise adoption',
-    });
-    expect(query.toLowerCase()).toContain('decentralized ai governance');
+    })).toThrow('no title available');
   });
 
   it('directive intent "research it" defers to sourceContent', () => {

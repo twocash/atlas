@@ -48,7 +48,11 @@ export async function isBridgeAvailable(): Promise<boolean> {
 
     const data = (await res.json()) as BridgeStatus
     return data.clients > 0
-  } catch {
+  } catch (err: unknown) {
+    logger.warn('[BridgeExtractor] isBridgeAvailable() failed', {
+      error: err instanceof Error ? err.message : String(err),
+      bridgeUrl: BRIDGE_URL,
+    })
     return false
   }
 }
