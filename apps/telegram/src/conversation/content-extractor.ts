@@ -239,8 +239,13 @@ async function extractWithJina(
   // Render timeout
   if (effectiveOpts.timeout) headers["x-timeout"] = String(effectiveOpts.timeout)
 
+  // Client-side timeout must exceed Jina's server-side x-timeout to avoid
+  // aborting before Jina responds. Add 15s headroom for network + networkidle0.
+  const clientTimeoutMs = effectiveOpts.timeout
+    ? (effectiveOpts.timeout * 1000) + 15_000
+    : JINA_TIMEOUT_MS
   const controller = new AbortController()
-  const timeoutId = setTimeout(() => controller.abort(), JINA_TIMEOUT_MS)
+  const timeoutId = setTimeout(() => controller.abort(), clientTimeoutMs)
 
   try {
     logger.debug("[ContentExtractor] Jina request", {
