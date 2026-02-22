@@ -487,7 +487,7 @@ function normalizeUrl(url: string, source: ContentSource): string {
 /** Heuristics for detecting login walls in extracted content */
 function isLikelyLoginWall(result: ExtractionResult): boolean {
   // Empty content from Jina = login wall or Cloudflare
-  if (result.status === "degraded" && !result.content && !result.title) return true
+  if ((result.status === "degraded" || result.status === "failed") && !result.content && !result.title) return true
 
   // Check for login-related strings in title/content
   const text = `${result.title} ${result.content}`.toLowerCase()
@@ -611,6 +611,19 @@ export async function extractContent(
 
   // If Jina failed completely, try HTTP as degraded fallback
   if (jinaResult.status === "failed") {
+    // SPA sources: HTTP fallback ALWAYS returns login page garbage — skip it
+    if (SPA_SOURCES.includes(source)) {
+      logger.error("[ContentExtractor] Jina FAILED for SPA source — no fallback available", {
+        url: cleanUrl,
+        source,
+        method: "jina",
+        error: jinaResult.error,
+      })
+      jinaResult.fallbackUsed = false
+      return jinaResult // Return the failed result directly
+    }
+
+    // Non-SPA: HTTP fallback may work
     logger.warn("[ContentExtractor] Jina FAILED — degrading to HTTP fallback", {
       url: cleanUrl,
       source,

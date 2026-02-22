@@ -555,6 +555,7 @@ async function runRegressionTests(cwd: string): Promise<SuiteResult> {
     'src/conversation/__tests__/composition-integration.test.ts',  // Sprint: PromptManager Wiring — composition pipeline
     'src/conversation/__tests__/architecture.test.ts',  // Gate 2: Socratic architecture constraints
     'test/research-query-conformance.test.ts',  // fix/research-query-conformance: ADR canonical ResearchConfig flow
+    'test/spa-silent-fallback-chain.test.ts',   // fix/spa-silent-fallback-chain: Jina 422 → ADR-008 chain tests
   ];
 
   const result = await runCommand(

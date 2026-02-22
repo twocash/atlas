@@ -163,7 +163,8 @@ export async function socraticInterview(
       // Format question text — show fetched content title, not triage label
       const fetchedTitle = prefetchedUrlContent?.success ? prefetchedUrlContent.title : undefined;
       const preReadSummary = prefetchedUrlContent?.preReadSummary;
-      const questionText = formatQuestionMessage(title, result.questions, fetchedTitle, preReadSummary);
+      const extractionFailed = prefetchedUrlContent !== undefined && !prefetchedUrlContent.success;
+      const questionText = formatQuestionMessage(title, result.questions, fetchedTitle, preReadSummary, extractionFailed);
 
       // Send the question
       const questionMsg = await ctx.reply(questionText, {
@@ -303,7 +304,7 @@ async function handleResolved(
       // Query is a clean topic description — no raw URLs, no user direction text
       // Pass extracted content so research agent gets the actual topic, not just a generic triage title
       // Use fullContent (not truncated bodySnippet) so research gets the complete extraction
-      const extractedContent = prefetchedUrlContent?.success
+      let extractedContent = prefetchedUrlContent?.success
         ? (prefetchedUrlContent.fullContent || prefetchedUrlContent.bodySnippet)
         : undefined;
 
@@ -314,8 +315,15 @@ async function handleResolved(
       //
       // ATLAS-CEX-001 refinement: Also reject image-only content — Jina can return profile
       // picture markdown that passes the raw length check but contains zero textual content.
-      const hasSubstantiveContent = extractedContent && stripNonTextContent(extractedContent).length >= 50
-      if (needsBrowser && !hasSubstantiveContent) {
+      //
+      // ATLAS-CEX-001 relaxation: If Jim provided a topic via Socratic answer, use it as
+      // the research basis. Jim's answer IS the content — he told Atlas what the post is about.
+      // This also unblocks worldview enrichment (ResearchConfig.worldviewContext at line 357+).
+      const hasSubstantiveContent = extractedContent && stripNonTextContent(extractedContent).length >= 50;
+      const jimProvidedTopic = answerContext?.trim() && answerContext.trim().length >= 10;
+
+      if (needsBrowser && !hasSubstantiveContent && !jimProvidedTopic) {
+        // Still block — no extracted content AND Jim didn't provide context
         logger.error('ATLAS-CEX-001: SPA extraction FAILED — blocking research dispatch (would produce platform-about research)', {
           url: content,
           title: descriptiveTitle,
@@ -324,10 +332,20 @@ async function handleResolved(
           extractionError: prefetchedUrlContent?.error,
         });
         await ctx.reply(
-          `⚠️ Couldn't read this post (requires browser rendering).\n` +
-          `📌 Link captured — tell me what it's about if you want research.`
+          `\u26A0\uFE0F Couldn't read this post (requires browser rendering).\n` +
+          `\uD83D\uDCCC Link captured — tell me what it's about if you want research.`
         );
         return;
+      }
+
+      // If Jim provided a topic, use it as the research basis when extraction failed
+      if (needsBrowser && !hasSubstantiveContent && jimProvidedTopic) {
+        logger.info('ATLAS-CEX-001: Using Jim\'s Socratic answer as research basis (SPA extraction failed)', {
+          url: content,
+          answerLength: answerContext!.trim().length,
+        });
+        // Use Jim's answer as extractedContent for research
+        extractedContent = answerContext!.trim();
       }
 
       const researchQuery = buildResearchQuery({
@@ -469,6 +487,7 @@ function formatQuestionMessage(
   questions: SocraticQuestion[],
   fetchedTitle?: string,
   preReadSummary?: string,
+  extractionFailed?: boolean,
 ): string {
   const question = questions[0]; // Primary question
   if (!question) return 'How would you like to handle this?';
@@ -476,6 +495,11 @@ function formatQuestionMessage(
   // Use fetched content title when available (the actual page title, not triage label)
   const displayTitle = fetchedTitle || title;
   let msg = `\uD83D\uDCCE <b>${escapeHtml(displayTitle)}</b>\n\n`;
+
+  // CONSTRAINT 4: Upfront warning when extraction failed (SPA login wall, Jina 422, etc.)
+  if (extractionFailed) {
+    msg += `\u26A0\uFE0F <i>Couldn't read this post (requires browser login)</i>\n\n`;
+  }
 
   // Show Haiku's pre-read summary so Jim knows what Atlas extracted
   if (preReadSummary) {

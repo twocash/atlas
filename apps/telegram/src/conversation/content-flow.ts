@@ -26,6 +26,7 @@ import { checkUrl } from '../utils/url-dedup';
 import { triageMessage, type TriageResult } from '../cognitive/triage-skill';
 import { extractContent, toUrlContent } from './content-extractor';
 import { preReadContent } from './content-pre-reader';
+import { reportExtractionFailure, type ExtractionChainTrace } from '../../../../packages/shared/src/extraction-failure-reporter';
 
 // ==========================================
 // Bug #1 Fix: Duplicate Confirmation Guard
@@ -275,6 +276,25 @@ export async function triggerContentConfirmation(
     logger.error('URL extraction THREW in content-flow — no content available', {
       url,
       error: fetchError instanceof Error ? fetchError.message : String(fetchError),
+    });
+  }
+
+  // CONSTRAINT 4: Auto-dispatch P1 to Dev Pipeline when SPA extraction chain fails
+  const SPA_SOURCES: ContentSource[] = ['threads', 'twitter', 'linkedin'];
+  if (urlContent && !urlContent.success && SPA_SOURCES.includes(route.source)) {
+    void reportExtractionFailure({
+      url,
+      source: route.source,
+      jinaStatus: undefined,
+      jinaError: urlContent.error,
+      cookieRetryAttempted: false,
+      cookieRetryResult: undefined,
+      httpFallbackRan: false,
+      httpFallbackResult: 'skipped',
+      toUrlContentSuccess: false,
+      triageTitle: triageResult?.title,
+      cex001Blocked: true,
+      timestamp: new Date().toISOString(),
     });
   }
 

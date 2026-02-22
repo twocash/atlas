@@ -129,7 +129,7 @@ describe("extractContent routing", () => {
       expect(opts.headers["x-wait-for-selector"]).toBeUndefined()
       expect(opts.headers["x-target-selector"]).toBeUndefined()
       expect(opts.headers["x-no-cache"]).toBe("true")
-      expect(opts.headers["x-timeout"]).toBe("15")
+      expect(opts.headers["x-timeout"]).toBe("20")
       expect(opts.headers["Accept"]).toBe("application/json")
 
       return Promise.resolve(
@@ -200,28 +200,19 @@ describe("HTTP extraction", () => {
 // ─── Jina Fallback ───────────────────────────────────────
 
 describe("Jina fallback to HTTP", () => {
-  it("falls back to HTTP when Jina fails", async () => {
-    let callCount = 0
+  it("skips HTTP fallback for SPA sources when Jina fails (SPA guard — Part 2)", async () => {
     mockFetch.mockImplementation(() => {
-      callCount++
-      if (callCount === 1) {
-        // First call: Jina fails
-        return Promise.reject(new Error("Jina timeout"))
-      }
-      // Second call: HTTP fallback
-      return Promise.resolve(
-        new Response("<html><head><title>Fallback Title</title></head><body>Content</body></html>", {
-          status: 200,
-        }),
-      )
+      // All fetch calls fail (Jina + any cookie refresh attempt)
+      return Promise.reject(new Error("Jina timeout"))
     })
 
     const result = await extractContent("https://www.threads.net/@user/post/abc123")
-    expect(result.fallbackUsed).toBe(true)
-    expect(result.status).toBe("degraded")
-    expect(result.title).toBe("Fallback Title")
-    expect(callCount).toBe(2) // Jina attempt + HTTP fallback
+    // SPA sources: no HTTP fallback (would return login page garbage)
+    expect(result.fallbackUsed).toBe(false)
+    expect(result.status).toBe("failed")
+    expect(result.error).toContain("Jina timeout") // Original error preserved in chain
   })
+
 
   it("returns degraded when Jina returns empty content", async () => {
     mockFetch.mockImplementationOnce(() =>
@@ -438,8 +429,9 @@ describe("mapIntentToRequestType fix", () => {
   // focused regex test on the source to confirm the fix is present.
   it("capture intent returns Process, not Research", async () => {
     const fs = await import("fs")
+    const path = await import("path")
     const source = fs.readFileSync(
-      "apps/telegram/src/conversation/socratic-adapter.ts",
+      path.resolve(import.meta.dir, "../src/conversation/socratic-adapter.ts"),
       "utf-8",
     )
 
