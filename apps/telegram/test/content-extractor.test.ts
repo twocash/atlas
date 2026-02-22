@@ -122,15 +122,16 @@ describe("extractContent routing", () => {
     expect(result.source).toBe("linkedin")
   })
 
-  it("passes correct Jina headers for Threads (Shadow DOM, no target selector — CEX-002)", async () => {
+  it("passes correct Jina headers for Threads (article + shadow DOM + networkidle0 — CEX-002)", async () => {
     mockFetch.mockImplementationOnce((url: string, opts: any) => {
-      // CEX-002: Threads uses Shadow DOM flattening, NO target selector
-      // Jina 422: "No content available with target selector main" — Threads has no <main>
-      expect(opts.headers["x-target-selector"]).toBeUndefined()
-      expect(opts.headers["x-wait-for-selector"]).toBeUndefined()
+      // CEX-002: Jim's tuned recipe — article target survives login wall,
+      // networkidle0 waits for background data, shadow DOM flattens Meta components
+      expect(opts.headers["x-target-selector"]).toBe("article")
+      expect(opts.headers["x-wait-for-selector"]).toBe("article")
       expect(opts.headers["x-with-shadow-dom"]).toBe("true")
+      expect(opts.headers["x-wait-until"]).toBe("networkidle0")
       expect(opts.headers["x-no-cache"]).toBe("true")
-      expect(opts.headers["x-timeout"]).toBe("25")
+      expect(opts.headers["x-timeout"]).toBe("30")
       expect(opts.headers["x-retain-images"]).toBe("none")
       expect(opts.headers["x-return-format"]).toBe("text")
       expect(opts.headers["Accept"]).toBe("application/json")
@@ -146,6 +147,26 @@ describe("extractContent routing", () => {
     })
 
     await extractContent("https://www.threads.net/@user/post/abc123")
+    expect(mockFetch).toHaveBeenCalledTimes(1)
+  })
+
+  it("normalizes threads.com → threads.net before Jina request (CEX-002)", async () => {
+    mockFetch.mockImplementationOnce((url: string, opts: any) => {
+      // Should have rewritten threads.com to www.threads.net
+      expect(url).toContain("www.threads.net")
+      expect(url).not.toContain("threads.com")
+
+      return Promise.resolve(
+        new Response(
+          JSON.stringify({
+            data: { title: "Thread", content: "Real post content from normalized URL that is definitely long enough to pass the SPA quality gate threshold of 100 characters minimum.", description: "" },
+          }),
+          { status: 200 },
+        ),
+      )
+    })
+
+    await extractContent("https://www.threads.com/@user/post/abc123")
     expect(mockFetch).toHaveBeenCalledTimes(1)
   })
 })

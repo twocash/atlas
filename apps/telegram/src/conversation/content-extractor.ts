@@ -89,6 +89,8 @@ interface SourceDefaults {
   returnFormat?: string
   /** Flatten Shadow DOM components — required for Meta SPAs (Threads, Instagram) */
   withShadowDom?: boolean
+  /** Puppeteer-style wait strategy — 'networkidle0' waits for all background data to finish */
+  waitUntil?: string
 }
 
 /** Sources that require browser rendering — HTTP fallback returns garbage (login page, not content) */
@@ -99,15 +101,18 @@ const SPA_MIN_CONTENT_LENGTH = 100
 
 const SOURCE_DEFAULTS: Partial<Record<ContentSource, SourceDefaults>> = {
   threads: {
-    // CEX-002: Shadow DOM flattening + no target selector for Meta SPA.
-    // Jina 422: "No content available with target selector main" — Threads has no <main>.
-    // Shadow DOM flattening exposes text content without needing a target element.
-    withShadowDom: true,       // Flatten Meta's Shadow DOM to expose text content
-    timeout: 25,               // More time for SPA hydration + Shadow DOM flattening
+    // CEX-002: Jim's tuned Jina recipe for Meta Threads SPA.
+    // Login wall renders INSTEAD of content — <main> never appears.
+    // article targets the actual post even behind login blur.
+    // networkidle0 forces Jina to wait for all background data to finish.
+    targetSelector: 'article',   // Target post element (survives login wall)
+    waitForSelector: 'article',  // Wait for post element to render
+    withShadowDom: true,         // Flatten Meta's Shadow DOM components
+    waitUntil: 'networkidle0',   // Wait for all background fetches to complete
     noCache: true,
-    retainImages: 'none',      // Strip all images — profile pics slip through quality gate
-    returnFormat: 'text',      // Plain text — no markdown image syntax to slip through
-    removeSelector: 'header, nav, [role="banner"]',  // Strip nav/header boilerplate
+    timeout: 30,                 // Extra time for SPA hydration + networkidle0
+    retainImages: 'none',        // Strip all images — profile pics slip through quality gate
+    returnFormat: 'text',        // Plain text — no markdown image syntax to slip through
   },
   twitter: {
     waitForSelector: "article",
@@ -216,6 +221,7 @@ async function extractWithJina(
   if (effectiveOpts.removeSelector) headers["x-remove-selector"] = effectiveOpts.removeSelector
   if (effectiveOpts.waitForSelector) headers["x-wait-for-selector"] = effectiveOpts.waitForSelector
   if (effectiveOpts.withShadowDom) headers["x-with-shadow-dom"] = "true"
+  if (effectiveOpts.waitUntil) headers["x-wait-until"] = effectiveOpts.waitUntil
 
   // Cookies (for auth-walled platforms — Threads, X, LinkedIn)
   if (effectiveOpts.cookies) {
@@ -476,6 +482,11 @@ function normalizeUrl(url: string, source: ContentSource): string {
   if (source === "threads") {
     try {
       const u = new URL(url)
+      // threads.com → threads.net (Meta's canonical domain)
+      // Using .com causes redirect loops or instant login walls
+      if (u.hostname === "threads.com" || u.hostname === "www.threads.com") {
+        u.hostname = "www.threads.net"
+      }
       u.searchParams.delete("xmt")
       u.searchParams.delete("slof")
       return u.toString()
