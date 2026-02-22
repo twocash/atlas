@@ -920,6 +920,8 @@ async function runBridgeToolDispatchTests(cwd: string): Promise<SuiteResult> {
       'test/master-blaster-sdk-url.test.ts',
       'test/bridge-identity.test.ts',
       'test/bridge-goals.test.ts',
+      'test/dispatch.test.ts',
+      'test/dispatch-chain.test.ts',
     ],
     bridgeCwd,
     60000
