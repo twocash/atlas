@@ -17,6 +17,8 @@ import { detectContentSource, determineExtractionMethod } from "./content-router
 import { logger } from "../logger"
 import { loadCookiesForUrl, requestCookieRefresh } from "../utils/chrome-cookies"
 import { isBridgeAvailable, extractWithBridge } from "./bridge-extractor"
+import { getFeatureFlags } from "../config/features"
+import { getSpaSourcesSync, getSourceDefaultsSync } from "../config/content-sources"
 
 // ─── Types ────────────────────────────────────────────────
 
@@ -94,13 +96,22 @@ interface SourceDefaults {
   waitUntil?: string
 }
 
-/** Sources that require browser rendering — HTTP fallback returns garbage (login page, not content) */
-const SPA_SOURCES: ContentSource[] = ["threads", "twitter", "linkedin"]
+/** @internal Fallback SPA list — used when Notion lookup is disabled */
+const FALLBACK_SPA_SOURCES: ContentSource[] = ["threads", "twitter", "linkedin"]
+
+/** Sources that require browser rendering — reads from Notion when flag enabled */
+function getSpaSources(): ContentSource[] {
+  if (getFeatureFlags().contentSourcesNotion) {
+    return getSpaSourcesSync();
+  }
+  return FALLBACK_SPA_SOURCES;
+}
 
 /** Minimum content length for SPA sources to be considered real content (not boilerplate) */
 const SPA_MIN_CONTENT_LENGTH = 100
 
-const SOURCE_DEFAULTS: Partial<Record<ContentSource, SourceDefaults>> = {
+/** @internal Fallback source defaults — used when Notion lookup is disabled */
+const FALLBACK_SOURCE_DEFAULTS: Partial<Record<ContentSource, SourceDefaults>> = {
   threads: {
     // CEX-002: Jim's tuned Jina recipe for Meta Threads SPA.
     // Login wall renders INSTEAD of content — <main> never appears.
@@ -206,7 +217,9 @@ async function extractWithJina(
   const jinaUrl = `${JINA_BASE_URL}${url}`
 
   // Merge per-source defaults with caller overrides (caller wins)
-  const defaults = SOURCE_DEFAULTS[source] || {}
+  const defaults = getFeatureFlags().contentSourcesNotion
+    ? getSourceDefaultsSync(source) as SourceDefaults
+    : FALLBACK_SOURCE_DEFAULTS[source] || {}
   const effectiveOpts = { ...defaults, ...options }
 
   const headers: Record<string, string> = {
@@ -316,7 +329,7 @@ async function extractWithJina(
     // bare URLs, and HTML tags. Jina can return profile picture markdown that exceeds
     // the raw length threshold but contains zero actual text.
     const textualContent = stripNonTextContent(content)
-    if (SPA_SOURCES.includes(source) && textualContent.length < SPA_MIN_CONTENT_LENGTH) {
+    if (getSpaSources().includes(source) && textualContent.length < SPA_MIN_CONTENT_LENGTH) {
       logger.warn("[ContentExtractor] SPA content quality gate FAILED — textual content too short (likely boilerplate)", {
         url,
         source,
@@ -594,7 +607,7 @@ export async function extractContent(
 
   // Auto-load cookies for SPA sources (if available and not already provided)
   const effectiveOptions = { ...options }
-  if (!effectiveOptions.cookies && SPA_SOURCES.includes(source)) {
+  if (!effectiveOptions.cookies && getSpaSources().includes(source)) {
     const cookieResult = loadCookiesForUrl(cleanUrl)
     if (cookieResult) {
       effectiveOptions.cookies = cookieResult.cookieString
@@ -610,7 +623,7 @@ export async function extractContent(
 
   // Login wall detection + auto-retry with fresh cookies
   if (
-    SPA_SOURCES.includes(source) &&
+    getSpaSources().includes(source) &&
     (jinaResult.status === "degraded" || jinaResult.status === "failed") &&
     isLikelyLoginWall(jinaResult)
   ) {
@@ -664,7 +677,7 @@ export async function extractContent(
   // If Jina failed completely, try HTTP as degraded fallback
   if (jinaResult.status === "failed") {
     // SPA sources: HTTP fallback ALWAYS returns login page garbage — skip it
-    if (SPA_SOURCES.includes(source)) {
+    if (getSpaSources().includes(source)) {
       logger.error("[ContentExtractor] Jina FAILED for SPA source — no fallback available", {
         url: cleanUrl,
         source,
@@ -715,7 +728,7 @@ export async function extractContent(
 export function toUrlContent(result: ExtractionResult): UrlContent {
   // SPA + degraded = login page HTML, not real content. Treat as failure.
   const isSpaGarbage =
-    result.status === "degraded" && SPA_SOURCES.includes(result.source)
+    result.status === "degraded" && getSpaSources().includes(result.source)
 
   if (isSpaGarbage) {
     logger.warn("[ContentExtractor] SPA degraded → FAILURE (HTTP fallback is garbage for SPAs)", {

@@ -13,6 +13,11 @@
  */
 
 import { logger } from '../logger';
+import { getFeatureFlags } from '../config/features';
+import {
+  getContentSourcesSync,
+  detectContentSourceFromEntries,
+} from '../config/content-sources';
 
 /**
  * Content source types - determines extraction strategy
@@ -74,29 +79,45 @@ export interface RouteResult {
   needsBrowser: boolean;
 }
 
-/**
- * Detect the content source from a URL
- * Determines which extraction strategy to use
- */
-export function detectContentSource(url: string): ContentSource {
+// ─── Fallback Constants (ADR-001: preserved as circuit breaker) ────
+// These are used when contentSourcesNotion flag is OFF or Notion is unreachable.
+
+/** @internal Fallback domain detection — used when Notion lookup is disabled */
+function detectContentSourceFallback(url: string): ContentSource {
   try {
     const hostname = new URL(url).hostname.toLowerCase();
 
-    // Social media - requires browser extraction with hydration gates
     if (hostname.includes('threads.net') || hostname.includes('threads.com')) return 'threads';
     if (hostname.includes('twitter.com') || hostname.includes('x.com')) return 'twitter';
     if (hostname.includes('linkedin.com')) return 'linkedin';
-
-    // Platforms with APIs or special handling
     if (hostname.includes('github.com')) return 'github';
     if (hostname.includes('youtube.com') || hostname.includes('youtu.be')) return 'youtube';
 
-    // Default to article extraction (readability)
     return 'article';
   } catch (error) {
     logger.warn('Failed to parse URL for content detection', { url, error });
     return 'generic';
   }
+}
+
+/**
+ * Detect the content source from a URL
+ * Determines which extraction strategy to use.
+ *
+ * When contentSourcesNotion flag is enabled, matches against
+ * Notion-backed domain patterns. Falls back to hardcoded constants.
+ */
+export function detectContentSource(url: string): ContentSource {
+  if (!getFeatureFlags().contentSourcesNotion) {
+    return detectContentSourceFallback(url);
+  }
+
+  const entries = getContentSourcesSync();
+  const match = detectContentSourceFromEntries(url, entries);
+  if (match) return match.sourceType;
+
+  // No match in Notion entries — use fallback
+  return detectContentSourceFallback(url);
 }
 
 /**
@@ -112,23 +133,26 @@ export function extractDomain(url: string): string {
   }
 }
 
+/** @internal Fallback browser list — used when Notion lookup is disabled */
+const FALLBACK_BROWSER_REQUIRED: ContentSource[] = ['threads', 'twitter', 'linkedin'];
+
 /**
  * Determine the best extraction method for a content source
  *
- * Social media ALWAYS requires browser extraction because:
- * - SPAs need hydration (content loads via JavaScript)
- * - Auth walls may block unauthenticated fetches
- * - Chrome Extension has logged-in sessions
+ * When contentSourcesNotion flag is enabled, reads extraction method
+ * from Notion-backed entries. Falls back to hardcoded list.
  */
 export function determineExtractionMethod(source: ContentSource): ExtractionMethod {
-  // Social media requires browser extraction with hydration gates
-  const browserRequired: ContentSource[] = ['threads', 'twitter', 'linkedin'];
-
-  if (browserRequired.includes(source)) {
-    return 'Browser';
+  if (getFeatureFlags().contentSourcesNotion) {
+    const entries = getContentSourcesSync();
+    const entry = entries.find(e => e.sourceType === source && e.active);
+    if (entry) return entry.extractionMethod;
   }
 
-  // Everything else uses standard fetch
+  // Fallback: hardcoded browser-required list
+  if (FALLBACK_BROWSER_REQUIRED.includes(source)) {
+    return 'Browser';
+  }
   return 'Fetch';
 }
 

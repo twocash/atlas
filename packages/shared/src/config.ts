@@ -38,6 +38,7 @@ export const NOTION_DB = {
   WORKER_RESULTS: '671f6a0a-7574-4fb2-81f9-8424d7c4dd59',
   POV_LIBRARY: 'ea3d86b7-cdb8-403e-ba03-edc410ae6498',
   SYSTEM_PROMPTS: '2fc780a7-8eef-8196-b29b-db4a6adfdc27',
+  CONTENT_SOURCES: 'e09b4475-cb3c-413d-8af5-7e6d015b71e0',
 } as const;
 
 /** Which Atlas surface uses a database */
@@ -76,6 +77,7 @@ export const NOTION_DB_META: Record<keyof typeof NOTION_DB, DbMeta> = {
   WORKER_RESULTS:  { label: 'Worker Results',      surfaces: ['telegram'], criticality: 'enrichment' },
   POV_LIBRARY:     { label: 'POV Library',         surfaces: ['bridge'],   criticality: 'enrichment' },
   SYSTEM_PROMPTS:  { label: 'System Prompts',      surfaces: ['shared'],   criticality: 'critical' },
+  CONTENT_SOURCES: { label: 'Content Sources',     surfaces: ['telegram'], criticality: 'enrichment' },
 };
 
 /**
@@ -90,6 +92,7 @@ export const NOTION_MCP = {
   WORK_QUEUE: '6a8d9c43-b084-47b5-bc83-bc363640f2cd',
   DEV_PIPELINE: '1460539c-7002-447a-a8b7-17bba06c6559',
   SYSTEM_PROMPTS: '2fc780a7-8eef-816a-ab6a-000be58429f2',
+  CONTENT_SOURCES: '0541cafe-eed3-40fb-b9a3-6a9f06fdd45a',
 } as const;
 
 /** @deprecated Use NOTION_DB instead. Alias retained for backward compatibility during migration. */
