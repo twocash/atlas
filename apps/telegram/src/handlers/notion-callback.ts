@@ -24,6 +24,7 @@ import {
   runResearchAgentWithNotifications,
   sendCompletionNotification,
 } from '../services/research-executor';
+import { EVIDENCE_PRESETS } from '../../../../packages/agents/src';
 
 /**
  * Handle Notion callback queries
@@ -159,6 +160,9 @@ async function handleProcess(
           query: pageInfo.title,
           depth: 'standard',
           focus: pageInfo.content?.substring(0, 500) || undefined,
+          // V2 fields
+          evidenceRequirements: EVIDENCE_PRESETS['standard'],
+          sourceType: 'notion' as const,
         },
         chatId,
         ctx.api,

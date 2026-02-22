@@ -32,7 +32,7 @@ import {
   runResearchAgentWithNotifications,
   sendCompletionNotification,
 } from '../services/research-executor';
-import { buildResearchQuery, isGenericTitle, type ResearchConfig } from '../../../../packages/agents/src';
+import { buildResearchQuery, isGenericTitle, type ResearchConfig, EVIDENCE_PRESETS, type ResearchConfigV2 } from '../../../../packages/agents/src';
 
 /** Idempotency guard: prevents double-dispatch for the same WQ item */
 const _activeResearchItems = new Set<string>();
@@ -813,11 +813,15 @@ async function handleConfirm(
             fallbackTitle: pending.originalText.substring(0, 200),
             url: pending.url,
           });
-          const researchConfig: ResearchConfig = {
+          const researchConfig: ResearchConfigV2 = {
             query,
             depth: 'standard',
             focus: pending.url,
             queryMode: 'canonical',
+            // V2 fields
+            evidenceRequirements: EVIDENCE_PRESETS['standard'],
+            sourceType: 'article',
+            qualityFloor: 'primary_sources',
           };
           const notionUrl = result.workQueueUrl;
           ctx.api.sendMessage(
