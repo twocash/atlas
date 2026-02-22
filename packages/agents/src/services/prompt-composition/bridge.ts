@@ -2,7 +2,8 @@
  * Bridge Claude — Identity Composition
  *
  * Resolves Bridge Claude's identity from Notion System Prompts DB:
- *   - bridge.soul  → Who Bridge Claude is (persona, principles, voice)
+ *   - atlas.constitution → Foundational governance (planning, verification, self-improvement)
+ *   - bridge.soul  → Who Bridge Claude is (surface-specific persona, tools, context)
  *   - user         → Who Jim is (clients, pillars, projects)
  *   - bridge.memory → What Bridge Claude has learned (corrections, patterns)
  *   - bridge.goals  → What Jim is working toward (active projects, priorities)
@@ -17,13 +18,14 @@
 import { getPromptManager } from '../prompt-manager';
 
 /** Prompt IDs in Notion System Prompts DB */
+const CONSTITUTION_ID = 'atlas.constitution';
 const BRIDGE_SOUL_ID = 'bridge.soul';
 const BRIDGE_MEMORY_ID = 'bridge.memory';
 const BRIDGE_GOALS_ID = 'bridge.goals';
 const USER_ID = 'system.general';  // Existing user/system context entry
 
-/** Token budget ceiling for full Slot 0 assembly (SOUL + USER + MEMORY + GOALS) */
-const SLOT_0_TOKEN_CEILING = 6000;
+/** Token budget ceiling for full Slot 0 assembly (CONSTITUTION + SOUL + USER + MEMORY + GOALS) */
+const SLOT_0_TOKEN_CEILING = 8000;
 
 /** Rough chars-per-token estimate (conservative) */
 const CHARS_PER_TOKEN = 4;
@@ -35,6 +37,7 @@ export interface BridgePromptResult {
   tokenCount: number;
   /** Which components were loaded */
   components: {
+    constitution: boolean;
     soul: boolean;
     user: boolean;
     memory: boolean;
@@ -47,28 +50,40 @@ export interface BridgePromptResult {
 /**
  * Compose Bridge Claude's identity prompt from Notion-governed documents.
  *
- * Resolves BRIDGE-SOUL (required), USER (optional), MEMORY (optional),
- * and GOALS (optional) from the System Prompts DB via PromptManager.
+ * Resolves CONSTITUTION (required), BRIDGE-SOUL (required), USER (optional),
+ * MEMORY (optional), and GOALS (optional) from the System Prompts DB via
+ * PromptManager.
  *
- * Hard-fails if BRIDGE-SOUL cannot be resolved — Bridge Claude does not
- * start with a degraded identity (ADR-008).
+ * Hard-fails if CONSTITUTION or BRIDGE-SOUL cannot be resolved — Bridge
+ * Claude does not start without governance or identity (ADR-008).
  *
  * GOALS is optional — if unavailable, Bridge operates in degraded mode
  * with explicit awareness that goal context is missing (ADR-008).
  *
- * @throws {Error} If bridge.soul cannot be resolved from Notion
+ * @throws {Error} If atlas.constitution or bridge.soul cannot be resolved from Notion
  */
 export async function composeBridgePrompt(): Promise<BridgePromptResult> {
   const pm = getPromptManager();
   const warnings: string[] = [];
 
-  // Resolve all four identity documents in parallel
-  const [soul, user, memory, goals] = await Promise.all([
+  // Resolve all five identity documents in parallel
+  const [constitution, soul, user, memory, goals] = await Promise.all([
+    pm.getPromptById(CONSTITUTION_ID),
     pm.getPromptById(BRIDGE_SOUL_ID),
     pm.getPromptById(USER_ID),
     pm.getPromptById(BRIDGE_MEMORY_ID),
     pm.getPromptById(BRIDGE_GOALS_ID),
   ]);
+
+  // ADR-008: Hard-fail if constitution resolution returns null
+  if (!constitution) {
+    throw new Error(
+      `[Bridge Identity] FATAL: atlas.constitution not found in System Prompts DB. ` +
+      `Bridge Claude cannot start without governance. ` +
+      `Check Notion entry with ID="${CONSTITUTION_ID}" exists and is Active. ` +
+      `DB: 2fc780a78eef8196b29bdb4a6adfdc27`
+    );
+  }
 
   // ADR-008: Hard-fail if identity resolution returns null
   if (!soul) {
@@ -80,8 +95,11 @@ export async function composeBridgePrompt(): Promise<BridgePromptResult> {
     );
   }
 
-  // Assemble the prompt
-  const sections: string[] = [soul];
+  // Assemble the prompt — constitution FIRST (foundational governance layer)
+  const sections: string[] = [
+    `## Atlas Constitution\n${constitution}`,
+    `---\n\n${soul}`,
+  ];
 
   if (user) {
     sections.push(`---\n\n## System Context\n${user}`);
@@ -130,6 +148,7 @@ export async function composeBridgePrompt(): Promise<BridgePromptResult> {
     prompt,
     tokenCount,
     components: {
+      constitution: true,
       soul: true,
       user: !!user,
       memory: !!memory,

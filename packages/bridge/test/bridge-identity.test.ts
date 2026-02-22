@@ -64,18 +64,19 @@ describe('composeBridgePrompt()', () => {
     expect(src).not.toContain("from '@notionhq/client'");
   });
 
-  it('resolves all four documents in parallel', async () => {
+  it('resolves all five documents in parallel (constitution + soul + user + memory + goals)', async () => {
     const src = await readAgents('src/services/prompt-composition/bridge.ts');
     expect(src).toContain('Promise.all([');
+    expect(src).toContain('pm.getPromptById(CONSTITUTION_ID)');
     expect(src).toContain('pm.getPromptById(BRIDGE_SOUL_ID)');
     expect(src).toContain('pm.getPromptById(USER_ID)');
     expect(src).toContain('pm.getPromptById(BRIDGE_MEMORY_ID)');
     expect(src).toContain('pm.getPromptById(BRIDGE_GOALS_ID)');
   });
 
-  it('enforces Slot 0 token ceiling of 6000 (SOUL+USER+MEMORY+GOALS)', async () => {
+  it('enforces Slot 0 token ceiling of 8000 (CONSTITUTION+SOUL+USER+MEMORY+GOALS)', async () => {
     const src = await readAgents('src/services/prompt-composition/bridge.ts');
-    expect(src).toContain('SLOT_0_TOKEN_CEILING = 6000');
+    expect(src).toContain('SLOT_0_TOKEN_CEILING = 8000');
     expect(src).toContain('tokenCount > SLOT_0_TOKEN_CEILING');
   });
 
@@ -167,9 +168,10 @@ describe('server.ts identity wiring', () => {
     expect(src).toContain('cwd: BRIDGE_CWD || repoRoot');
   });
 
-  it('logs component status on successful hydration', async () => {
+  it('logs component status on successful hydration (including constitution)', async () => {
     const src = await readSource('src/server.ts');
     expect(src).toContain('Bridge identity hydrated');
+    expect(src).toContain('result.components.constitution');
     expect(src).toContain('result.components.soul');
     expect(src).toContain('result.components.user');
     expect(src).toContain('result.components.memory');
