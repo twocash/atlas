@@ -142,6 +142,50 @@ export const TOOL_SCHEMAS: ToolSchema[] = [
     },
   },
 
+  {
+    name: "atlas_browser_open_and_read",
+    description:
+      "Open a URL in a background browser tab, wait for SPA hydration, " +
+      "extract the page content, and close the tab. Use this for SPA sites " +
+      "(Threads, Twitter/X, LinkedIn, Instagram) that require JavaScript " +
+      "rendering and authenticated browser sessions. Returns the page title, " +
+      "URL, extracted text content, and metadata. The browser uses the " +
+      "user's authenticated sessions, so login-walled content is accessible.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        url: {
+          type: "string",
+          description: "The URL to open and read.",
+        },
+        waitFor: {
+          type: "string",
+          description:
+            "CSS selector to wait for before extracting content. If not " +
+            "provided, a platform-specific default is used based on the URL domain.",
+        },
+        waitTimeout: {
+          type: "number",
+          description: "Maximum milliseconds to wait for hydration. Defaults to 10000 (10s).",
+          default: 10000,
+        },
+        extractionMode: {
+          type: "string",
+          description:
+            "Content extraction strategy: 'full' extracts all page text, " +
+            "'main' tries to extract only the main content area. Defaults to 'full'.",
+          enum: ["full", "main"],
+        },
+        closeAfter: {
+          type: "boolean",
+          description: "Whether to close the tab after extraction. Defaults to true.",
+          default: true,
+        },
+      },
+      required: ["url"],
+    },
+  },
+
   // ─── Bridge-Local Tools (handled by MCP server, not dispatched to browser) ───
 
   BRIDGE_MEMORY_TOOL_SCHEMA as ToolSchema,

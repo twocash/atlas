@@ -38,6 +38,7 @@ import { handleBridgeGoalsTool } from "./bridge-goals"
 import {
   MCP_SERVER_NAME,
   TOOL_TIMEOUT_MS,
+  getToolTimeout,
   type ToolDispatchRequest,
   type ToolDispatchResponse,
 } from "../types/tool-protocol"
@@ -59,7 +60,8 @@ async function dispatchTool(
   const body: ToolDispatchRequest = { id, name, input: args }
 
   const controller = new AbortController()
-  const timeout = setTimeout(() => controller.abort(), TOOL_TIMEOUT_MS)
+  const toolTimeout = getToolTimeout(name)
+  const timeout = setTimeout(() => controller.abort(), toolTimeout)
 
   try {
     const res = await fetch(`${BRIDGE_URL}/tool-dispatch`, {
@@ -77,7 +79,7 @@ async function dispatchTool(
     return (await res.json()) as ToolDispatchResponse
   } catch (err: any) {
     if (err.name === "AbortError") {
-      return { id, error: `Tool '${name}' timed out after ${TOOL_TIMEOUT_MS}ms` }
+      return { id, error: `Tool '${name}' timed out after ${toolTimeout}ms` }
     }
     return { id, error: `Bridge unreachable: ${err.message}` }
   } finally {

@@ -48,6 +48,7 @@ import {
 } from "./connections"
 import {
   TOOL_TIMEOUT_MS,
+  getToolTimeout,
   type ToolDispatchRequest,
   type ToolDispatchResponse,
   type ToolRequest,
@@ -587,11 +588,12 @@ async function handleToolDispatch(req: Request): Promise<Response> {
   }
 
   // Create a promise that will resolve when the extension responds
+  const toolTimeout = getToolTimeout(body.name)
   const response = await new Promise<ToolDispatchResponse>((resolve) => {
     const timer = setTimeout(() => {
       pendingRequests.delete(body.id)
-      resolve({ id: body.id, error: `Tool '${body.name}' timed out after ${TOOL_TIMEOUT_MS}ms` })
-    }, TOOL_TIMEOUT_MS)
+      resolve({ id: body.id, error: `Tool '${body.name}' timed out after ${toolTimeout}ms` })
+    }, toolTimeout)
 
     pendingRequests.set(body.id, { resolve, timer })
 
