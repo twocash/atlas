@@ -855,20 +855,31 @@ When a feature is shipped via Pit Crew (`update_status → shipped/deployed`):
 ## SOP-013: Atlas Stack Startup
 
 **Effective:** 2026-02-18
+**Updated:** 2026-02-22 (AnythingLLM auto-start, Bridge .env loading, supervisor v3.0)
 **Scope:** Starting the Atlas production stack for a dev or monitoring session
 
 ### Overview
 
-The Atlas production stack has 3 components. Each runs in its own terminal.
-The supervisor (Claude Code) monitors the other two — it does not start them.
+The Atlas production stack has 4 components. Bot and Bridge each run in their own terminal.
+AnythingLLM is auto-started by the supervisor if offline. The supervisor monitors all three.
 
 ### Components
 
-| # | Component | Purpose | Start Script |
+| # | Component | Purpose | Start Method |
 |---|-----------|---------|-------------|
-| 1 | Telegram Bot | Handles messages from Jim's phone | `start-telegram.bat` |
-| 2 | Bridge Server | Claude Code ↔ Chrome Extension WebSocket | `start-bridge.bat` |
-| 3 | Supervisor | Monitors bot + bridge, dispatches errors to Pit Crew | `/atlas-supervisor` in Claude Code |
+| 1 | Telegram Bot | Handles messages from Jim's phone | `start-telegram.bat` (Terminal 1) |
+| 2 | Bridge Server | Claude Code ↔ Chrome Extension WebSocket | `start-bridge.bat` (Terminal 2) |
+| 3 | AnythingLLM | RAG slot for document search | Auto-started by supervisor, or launch manually |
+| 4 | Supervisor | Monitors all components, dispatches errors to Pit Crew | `/atlas-supervisor` in Claude Code |
+
+### Environment Variables
+
+**Single source of truth:** `apps/telegram/.env`
+
+- **Bot** loads `.env` via `dotenv` package (in `src/index.ts`)
+- **Bridge** loads `.env` via PowerShell parser in `start-bridge.ps1` (added 2026-02-22)
+- Both processes see the same env vars. System-level env vars take precedence over `.env` values.
+- **AnythingLLM** uses `ANYTHINGLLM_API_KEY` from `.env` — both bot and bridge need this for RAG queries.
 
 ### Startup Sequence
 
@@ -886,13 +897,19 @@ Wait for: `Bot started as @MyBoyAtlas_bot`
 C:\github\atlas\start-bridge.bat
 ```
 
-Wait for: server listening on port 3848
+Wait for: `Bridge identity hydrated` and `Claude Code connected via WebSocket!`
+
+The bridge startup script loads env vars from `apps/telegram/.env` before launching bun.
 
 **Step 3 — Start the Supervisor (Claude Code)**
 
 In a Claude Code session, invoke `/atlas-supervisor`.
 
-The supervisor will detect running processes and attach to their logs.
+The supervisor will:
+1. Detect running processes (bot PID, bridge port, AnythingLLM ping)
+2. Auto-start AnythingLLM if it's offline
+3. Check Bridge identity health (constitution, soul, user, memory, goals)
+4. Attach to log files for monitoring
 
 ### Log Files
 
@@ -904,16 +921,18 @@ C:\github\atlas\apps\telegram\data\logs\
   atlas-bridge.log    ← Bridge server stdout
 ```
 
-To follow logs in a terminal:
-
+**Note:** Log files are UTF-16 encoded. Use PowerShell for searching:
 ```powershell
-Get-Content -Wait 'C:\github\atlas\apps\telegram\data\logs\atlas-bot.log'
+Get-Content -Encoding Unicode 'C:\github\atlas\apps\telegram\data\logs\atlas-bot.log' -Tail 50
 ```
+
+Standard `grep` will NOT work on these files.
 
 ### Stopping the Stack
 
 - **Bot:** Ctrl+C in Terminal 1 (or close the window)
 - **Bridge:** Ctrl+C in Terminal 2 (or close the window)
+- **AnythingLLM:** Close the desktop app (or let supervisor manage it)
 - **Supervisor:** Say "stop" in the Claude Code session
 
 ### When to Skip the Bridge
@@ -933,6 +952,8 @@ Dev work happens in a worktree. To supervise a dev worktree bot:
 
 - [ ] Bot responds to Telegram messages
 - [ ] Bridge responds on `ws://localhost:3848` (if started)
+- [ ] Bridge identity fully hydrated (constitution, soul, user, memory, goals)
+- [ ] AnythingLLM online (auto-started or manual)
 - [ ] Log files are being written under `data/logs/`
 - [ ] Supervisor dashboard shows all green
 
@@ -1266,28 +1287,36 @@ This includes:
 ## SOP-014: AnythingLLM RAG Infrastructure
 
 **Effective:** 2026-02-18
-**Scope:** AnythingLLM Docker container on grove-node-1
+**Updated:** 2026-02-22 (native Windows app, auto-start, API key fix)
+**Scope:** AnythingLLM native desktop app on Jim's laptop
 
 ### Overview
 
-AnythingLLM is a RAG (Retrieval-Augmented Generation) server running as a Docker container on grove-node-1. It provides document ingestion and semantic search for Atlas agents.
+AnythingLLM is a RAG (Retrieval-Augmented Generation) server running as a **native Windows desktop application** (NOT Docker — Docker setup was abandoned). It provides document ingestion and semantic search for Atlas agents.
 
 ### Instance Details
 
 | Property | Value |
 |----------|-------|
-| **Container** | `anythingllm` |
+| **Executable** | `C:\Users\jimca\AppData\Local\Programs\AnythingLLM\AnythingLLM.exe` |
 | **Local URL** | `http://localhost:3001` |
-| **Tailscale URL** | `http://<grove-node-1-tailscale-ip>:3001` |
 | **Health endpoint** | `GET /api/ping` → `{"online":true}` |
 | **Storage** | `C:/anythingllm-storage` ← **PRODUCTION DATA — NEVER WIPE** |
+| **Workspaces** | My Workspace, grove-vision, grove-technical, monarch, take-flight |
 
 ### Environment Variables
 
+In `apps/telegram/.env`:
 ```
-ANYTHINGLLM_BASE_URL=http://localhost:3001   # or Tailscale URL for cross-machine
+ANYTHINGLLM_URL=http://localhost:3001
 ANYTHINGLLM_API_KEY=<from AnythingLLM Settings > Tools > API Keys>
 ```
+
+Both bot and bridge read from this `.env` file:
+- Bot loads via `dotenv` package in `src/index.ts`
+- Bridge loads via PowerShell parser in `start-bridge.ps1`
+
+**API key gotcha:** If the key doesn't persist across AnythingLLM restarts, regenerate it in AnythingLLM Settings > Tools > API Keys and update `.env`.
 
 ### Health Check
 
@@ -1299,46 +1328,56 @@ Invoke-RestMethod -Uri "http://localhost:3001/api/ping"
 # Expected: @{online=True}
 ```
 
+Verify API key works:
+```powershell
+curl -s -H "Authorization: Bearer <key>" http://localhost:3001/api/v1/workspaces
+# Expected: JSON with workspaces array
+```
+
 ### Recovery SOPs
 
-**Case 1: Container stopped (no errors, just stopped)**
-```powershell
-docker start anythingllm
-```
-Wait ~10s, then re-run `/health` to confirm `AnythingLLM: online`.
+**Case 1: App closed (supervisor auto-starts)**
 
-**Case 2: Container missing (needs fresh start)**
+The `/atlas-supervisor` v3.0 auto-starts AnythingLLM if it detects it's offline:
 ```powershell
-docker run -d \
-  --name anythingllm \
-  -p 3001:3001 \
-  -v C:/anythingllm-storage:/app/server/storage \
-  mintplexlabs/anythingllm
+Start-Process 'C:\Users\jimca\AppData\Local\Programs\AnythingLLM\AnythingLLM.exe'
+```
+Wait ~10s, verify with `/api/ping`. One auto-start attempt per supervisor session.
+
+**Case 2: Manual start**
+
+Launch from Start Menu or run:
+```powershell
+Start-Process 'C:\Users\jimca\AppData\Local\Programs\AnythingLLM\AnythingLLM.exe'
 ```
 
-**Case 3: Docker daemon not running**
-Start Docker Desktop from the system tray, then use Case 1 or Case 2.
+**Case 3: API key 403 errors**
+
+If bridge or bot logs show `No valid api key found`:
+1. Open AnythingLLM desktop app > Settings > Tools > API Keys
+2. Copy or regenerate the key
+3. Update `ANYTHINGLLM_API_KEY` in `apps/telegram/.env`
+4. Restart bridge (`start-bridge.bat`) to pick up new key
+5. Bot picks up `.env` changes on next restart
 
 ### Storage Warning
 
 `C:/anythingllm-storage` contains all ingested documents and vector indexes.
 
 **NEVER:**
-- `docker rm -v anythingllm` (deletes volume — destroys data)
 - Wipe or format the storage directory
-- Run a fresh container with a new storage path (creates orphaned data)
+- Uninstall AnythingLLM without backing up storage first
 
 **ALWAYS:**
-- Mount the same `C:/anythingllm-storage` path in any new container run
-- Back up the storage directory before major Docker operations
+- Back up the storage directory before major updates
 
 ### Supervisor Integration
 
-The `/atlas-supervisor` checks AnythingLLM status via HTTP ping on each `status` or `logs` command.
+The `/atlas-supervisor` v3.0 checks AnythingLLM status via HTTP ping on each `status` or `logs` command.
 
-- If offline: report as ⚠️ WARN (not ❌ ERROR — it's a RAG slot, not core infrastructure)
-- If offline 3 checks in a row: dispatch Pit Crew ticket
-- Restart guidance: `docker start anythingllm` (never restart bot/bridge for this)
+- If offline: **auto-starts** the desktop app (one attempt per session)
+- If still offline after auto-start: report as warning, continue (RAG is non-critical)
+- Restart command: `restart-anythingllm` in supervisor session
 
 ---
 

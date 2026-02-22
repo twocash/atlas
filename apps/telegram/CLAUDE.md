@@ -411,6 +411,13 @@ When Atlas detects actionable bugs during triage or monitoring, it can tag them 
 - First autonomous fix dispatched: SKILL.md frontmatter in 5 skills
 - Race condition fix in self-improvement listener (double-dispatch prevention)
 
+### Session: 2026-02-22
+- Supervisor v3.0: AnythingLLM auto-start, Bridge identity health, pipeline flow awareness, model roster, constraint detection
+- Fixed Bridge .env loading: `start-bridge.ps1` now parses `apps/telegram/.env` before bun launch
+- AnythingLLM API key persistence fix (regenerated, set in .env)
+- SOP-013 updated (4-component stack, .env single source of truth, UTF-16 log notes)
+- SOP-014 rewritten (native Windows app, not Docker; auto-start; API key recovery)
+
 ---
 
 *ATLAS v4.0 - Triage, organize, execute, learn*
