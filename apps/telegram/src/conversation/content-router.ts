@@ -1,15 +1,11 @@
 /**
  * Content Router - Universal Content Analysis
  *
- * Intelligently routes URLs to the appropriate extraction method:
- * - Social media (Threads, Twitter, LinkedIn) → Browser extraction via Chrome Extension
- * - Articles/blogs → Basic fetch with readability
- * - GitHub repos → GitHub API extraction
- * - YouTube → YouTube API extraction
- * - Generic URLs → Basic fetch + OG tags
+ * Browser-first: ALL URLs route through the full extraction chain:
+ *   Bridge (Tier 0) → Jina Reader (Tier 2) → HTTP fetch (Tier 1 fallback)
  *
- * This prevents "blind" fetching and ensures Atlas uses the Chrome Extension's
- * hydration gates for SPA-heavy social media sites.
+ * When contentSourcesNotion flag is ON, per-domain routing from Notion
+ * Content Sources DB overrides the browser-first default for granular control.
  */
 
 import { logger } from '../logger';
@@ -133,14 +129,12 @@ export function extractDomain(url: string): string {
   }
 }
 
-/** @internal Fallback browser list — used when Notion lookup is disabled */
-const FALLBACK_BROWSER_REQUIRED: ContentSource[] = ['threads', 'twitter', 'linkedin'];
-
 /**
  * Determine the best extraction method for a content source
  *
- * When contentSourcesNotion flag is enabled, reads extraction method
- * from Notion-backed entries. Falls back to hardcoded list.
+ * Default: Browser-first for ALL sources (Bridge → Jina → HTTP fallback).
+ * When contentSourcesNotion flag is enabled, reads per-domain extraction
+ * method from Notion Content Sources DB for granular routing.
  */
 export function determineExtractionMethod(source: ContentSource): ExtractionMethod {
   if (getFeatureFlags().contentSourcesNotion) {
@@ -149,11 +143,9 @@ export function determineExtractionMethod(source: ContentSource): ExtractionMeth
     if (entry) return entry.extractionMethod;
   }
 
-  // Fallback: hardcoded browser-required list
-  if (FALLBACK_BROWSER_REQUIRED.includes(source)) {
-    return 'Browser';
-  }
-  return 'Fetch';
+  // Browser-first: all sources go through Bridge → Jina → HTTP fallback chain.
+  // Enable contentSourcesNotion for granular per-domain routing from Notion.
+  return 'Browser';
 }
 
 /**

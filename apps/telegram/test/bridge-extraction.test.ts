@@ -35,9 +35,9 @@ mock.module('../src/conversation/content-router', () => ({
     if (url.includes('linkedin.com')) return 'linkedin';
     return 'article';
   },
-  determineExtractionMethod: (source: string) => {
-    if (['threads', 'twitter', 'linkedin'].includes(source)) return 'Browser';
-    return 'Fetch';
+  determineExtractionMethod: () => {
+    // Browser-first: all sources route through Bridge → Jina → HTTP
+    return 'Browser';
   },
   extractDomain: (url: string) => {
     try { return new URL(url).hostname.replace('www.', ''); }
@@ -333,7 +333,7 @@ describe('Bridge Content Extraction Pipeline', () => {
       expect(bridgeLog).toBeUndefined();
     });
 
-    it('non-SPA source skips bridge entirely', async () => {
+    it('article source also routes through bridge (browser-first default)', async () => {
       bridgeAvailable = true;
       let bridgeCalled = false;
       bridgeExtractFn = (url, source) => {
@@ -342,10 +342,11 @@ describe('Bridge Content Extraction Pipeline', () => {
       };
 
       const { extractContent } = await import('../src/conversation/content-extractor');
-      // TechCrunch is 'article' → method='Fetch', not 'Browser'
-      await extractContent('https://techcrunch.com/2026/01/30/some-article');
+      // Browser-first: articles go through Bridge → Jina → HTTP chain
+      const result = await extractContent('https://techcrunch.com/2026/01/30/some-article');
 
-      expect(bridgeCalled).toBe(false);
+      expect(bridgeCalled).toBe(true);
+      expect(result.method).toBe('Browser');
     });
   });
 
