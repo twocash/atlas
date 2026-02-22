@@ -99,11 +99,9 @@ const SPA_MIN_CONTENT_LENGTH = 100
 
 const SOURCE_DEFAULTS: Partial<Record<ContentSource, SourceDefaults>> = {
   threads: {
-    // CEX-002: Semantic HTML selectors + Shadow DOM for Meta SPA extraction.
-    // ATLAS-CEX-001 stripped CSS class selectors (which rotated frequently).
-    // Semantic tags (main, article) are stable across Meta DOM changes.
-    targetSelector: 'main',    // Semantic container — stable across Meta DOM rotations
-    waitForSelector: 'article', // Wait for SPA hydration (matches working Twitter config)
+    // CEX-002: Shadow DOM flattening + no target selector for Meta SPA.
+    // Jina 422: "No content available with target selector main" — Threads has no <main>.
+    // Shadow DOM flattening exposes text content without needing a target element.
     withShadowDom: true,       // Flatten Meta's Shadow DOM to expose text content
     timeout: 25,               // More time for SPA hydration + Shadow DOM flattening
     noCache: true,

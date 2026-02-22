@@ -122,12 +122,12 @@ describe("extractContent routing", () => {
     expect(result.source).toBe("linkedin")
   })
 
-  it("passes correct Jina headers for Threads (semantic selectors + Shadow DOM — CEX-002)", async () => {
+  it("passes correct Jina headers for Threads (Shadow DOM, no target selector — CEX-002)", async () => {
     mockFetch.mockImplementationOnce((url: string, opts: any) => {
-      // CEX-002: Threads uses semantic HTML selectors + Shadow DOM flattening
-      // (ATLAS-CEX-001 stripped CSS class selectors; CEX-002 adds stable semantic tags)
-      expect(opts.headers["x-target-selector"]).toBe("main")
-      expect(opts.headers["x-wait-for-selector"]).toBe("article")
+      // CEX-002: Threads uses Shadow DOM flattening, NO target selector
+      // Jina 422: "No content available with target selector main" — Threads has no <main>
+      expect(opts.headers["x-target-selector"]).toBeUndefined()
+      expect(opts.headers["x-wait-for-selector"]).toBeUndefined()
       expect(opts.headers["x-with-shadow-dom"]).toBe("true")
       expect(opts.headers["x-no-cache"]).toBe("true")
       expect(opts.headers["x-timeout"]).toBe("25")
