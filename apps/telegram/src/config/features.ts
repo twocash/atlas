@@ -188,6 +188,18 @@ export interface FeatureFlags {
    * @default true (core fix - disable with ATLAS_RESEARCH_ERROR_SANITIZATION=false)
    */
   researchErrorSanitization: boolean;
+
+  // === ADR-001 Compliance ===
+
+  /**
+   * Content Sources from Notion (ADR-001 Compliance)
+   * When enabled, reads content source detection rules (domain patterns,
+   * extraction methods, browser requirements, Jina defaults) from the
+   * Content Sources Notion database instead of hardcoded constants.
+   * Falls back to hardcoded FALLBACK constants when Notion is unreachable.
+   * @default false (opt-in - enable with ATLAS_CONTENT_SOURCES_NOTION=true)
+   */
+  contentSourcesNotion: boolean;
 }
 
 /**
@@ -294,6 +306,8 @@ function loadFeatureFlags(): FeatureFlags {
     duplicateConfirmationGuard: process.env.ATLAS_DUPLICATE_CONFIRMATION_GUARD !== 'false', // Default ON
     vehiclePillarRouting: process.env.ATLAS_VEHICLE_PILLAR_ROUTING !== 'false', // Default ON
     researchErrorSanitization: process.env.ATLAS_RESEARCH_ERROR_SANITIZATION !== 'false', // Default ON
+    // ADR-001 Compliance — opt-in (requires explicit enable)
+    contentSourcesNotion: process.env.ATLAS_CONTENT_SOURCES_NOTION === 'true', // Default OFF
   };
 }
 

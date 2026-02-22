@@ -27,6 +27,7 @@ import { triageMessage, type TriageResult } from '../cognitive/triage-skill';
 import { extractContent, toUrlContent } from './content-extractor';
 import { preReadContent } from './content-pre-reader';
 import { reportExtractionFailure, type ExtractionChainTrace } from '../../../../packages/shared/src/extraction-failure-reporter';
+import { getSpaSourcesSync } from '../config/content-sources';
 
 // ==========================================
 // Bug #1 Fix: Duplicate Confirmation Guard
@@ -126,7 +127,7 @@ export function detectContentShare(text: string): ContentDetectionResult {
 
   // Determine if browser extraction is needed
   const source = detectContentSource(primaryUrl);
-  const needsBrowser = ['threads', 'twitter', 'linkedin'].includes(source);
+  const needsBrowser = getSpaSourcesSync().includes(source);
 
   return {
     isContentShare,
@@ -280,8 +281,7 @@ export async function triggerContentConfirmation(
   }
 
   // CONSTRAINT 4: Auto-dispatch P1 to Dev Pipeline when SPA extraction chain fails
-  const SPA_SOURCES: ContentSource[] = ['threads', 'twitter', 'linkedin'];
-  if (urlContent && !urlContent.success && SPA_SOURCES.includes(route.source)) {
+  if (urlContent && !urlContent.success && getSpaSourcesSync().includes(route.source)) {
     void reportExtractionFailure({
       url,
       source: route.source,
