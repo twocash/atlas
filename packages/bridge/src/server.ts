@@ -58,6 +58,8 @@ import { composeBridgePrompt } from "../../agents/src/services/prompt-compositio
 import { hydrateSystemPreamble } from "./context/prompt-constructor"
 import { detectStaleness } from "./staleness"
 import { runBridgeHealthCheck } from "./health"
+import { handleDispatch } from "./handlers/dispatch"
+import { getDispatchStats } from "./dispatch/spawner"
 
 // ─── Config ──────────────────────────────────────────────────
 
@@ -804,6 +806,7 @@ async function handleHttpRequest(req: Request, server: any): Promise<Response | 
       clients: counts.clients,
       uptime: Math.floor((Date.now() - new Date(startedAt).getTime()) / 1000),
       startedAt,
+      dispatch: getDispatchStats(),
     }
     return new Response(JSON.stringify(body), {
       headers: {
@@ -845,6 +848,11 @@ async function handleHttpRequest(req: Request, server: any): Promise<Response | 
   // POST /cookie-refresh — Telegram bot triggers cookie refresh from extension
   if (url.pathname === "/cookie-refresh" && req.method === "POST") {
     return await handleCookieRefresh(req)
+  }
+
+  // POST /dispatch — Autonomous dispatch: WQ item → Claude Code session
+  if (url.pathname === "/dispatch" && req.method === "POST") {
+    return await handleDispatch(req)
   }
 
   // CORS preflight
@@ -988,7 +996,7 @@ startBridge()
 
 console.log(`
   ╔══════════════════════════════════════════════════╗
-  ║         Atlas Bridge v0.6.0 (SDK URL)            ║
+  ║         Atlas Bridge v0.7.0 (SDK URL)            ║
   ║──────────────────────────────────────────────────║
   ║  Client WS : ws://localhost:${PORT}/client          ║
   ║  CLI WS    : ws://localhost:${PORT}/ws/cli/:id      ║
@@ -996,6 +1004,7 @@ console.log(`
   ║  Spawn     : POST http://localhost:${PORT}/spawn     ║
   ║  Kill      : POST http://localhost:${PORT}/kill      ║
   ║  Tools     : POST http://localhost:${PORT}/tool-dispatch ║
+  ║  Dispatch  : POST http://localhost:${PORT}/dispatch  ║
   ╚══════════════════════════════════════════════════╝
 
   Claude Code connects via --sdk-url WebSocket.
