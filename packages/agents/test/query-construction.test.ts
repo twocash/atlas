@@ -60,22 +60,22 @@ describe('buildResearchQuery', () => {
     expect(result).toBe('Agent Architecture Patterns — MCP, tool-use');
   });
 
-  it('skips keywords when they would exceed 200 chars', () => {
+  it('includes keywords even for long titles (no 200-char budget)', () => {
     const longTitle = 'A'.repeat(195);
     const result = buildResearchQuery({
       triageTitle: longTitle,
       keywords: ['keyword1', 'keyword2'],
     });
-    expect(result).toBe(longTitle);
-    expect(result).not.toContain('keyword');
+    expect(result).toContain('keyword1');
+    expect(result).toContain('keyword2');
   });
 
-  it('caps total length at 200 chars', () => {
-    const longTitle = 'A'.repeat(250);
+  it('caps total length at 2000 chars (soft cap)', () => {
+    const longTitle = 'A'.repeat(2500);
     const result = buildResearchQuery({
       triageTitle: longTitle,
     });
-    expect(result.length).toBe(200);
+    expect(result.length).toBe(2000);
     expect(result).toEndWith('...');
   });
 
@@ -250,13 +250,13 @@ describe('ADR-003 anti-pattern regression', () => {
       expect(result).not.toEndWith('...');
     });
 
-    it('handles title at 201 chars (just over)', () => {
+    it('handles title at 201 chars (no truncation — under 2000 soft cap)', () => {
       const title = 'A'.repeat(201);
       const result = buildResearchQuery({
         triageTitle: title,
       });
-      expect(result.length).toBe(200);
-      expect(result).toEndWith('...');
+      expect(result.length).toBe(201);
+      expect(result).not.toEndWith('...');
     });
   });
 });

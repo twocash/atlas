@@ -27,6 +27,13 @@ import { runResearchAgentWithNotifications, sendCompletionNotification } from '.
 import { routeForAnalysis } from './content-router';
 import { stripNonTextContent } from './content-extractor';
 import { buildResearchQuery, type ResearchDepth, type ResearchConfig } from '../../../../packages/agents/src/agents/research';
+import {
+  parseAnswerToRouting,
+  fetchPOVContext,
+  EVIDENCE_PRESETS,
+  type ResearchConfigV2,
+  type SourceType,
+} from '../../../../packages/agents/src';
 import type { Pillar, RequestType } from './types';
 import type { UrlContent } from '../types';
 
@@ -281,8 +288,9 @@ async function handleResolved(
 
     // Dispatch research agent if that's what was resolved
     if (requestType === 'Research' && result.workQueueId && chatId) {
-      // ADR-003: Extract routing signals from Socratic answer
-      // Answer informs routing (pillar, depth, voice) — NOT query text
+      // Research Intelligence v2: Parse Socratic answer into structured routing signals
+      const parsed = parseAnswerToRouting(resolved);
+      // Legacy routing still needed for non-V2 fields (requestType, focusDirection)
       const routing = mapAnswerToRouting(resolved);
 
       // ADR-003: Content Router consulted before any server-side extraction.
@@ -357,19 +365,57 @@ async function handleResolved(
         userIntent: answerContext,   // ATLAS-CEX-001 B2: Jim's Socratic reply → query construction
       });
 
-      // ADR-003: User direction → focus field, never query text
-      const researchConfig: ResearchConfig = {
+      // Research Intelligence v2: Fetch POV Library context when thesis hook is available
+      let povContext: ResearchConfigV2['povContext'] | undefined;
+      if (parsed.thesisHook || triageResult?.keywords?.length) {
+        try {
+          const povResult = await fetchPOVContext(
+            routing.pillar,
+            parsed.thesisHook,
+            triageResult?.keywords,
+          );
+          if (povResult.status === 'found' && povResult.context) {
+            povContext = povResult.context;
+            logger.info('Research Intelligence: POV context loaded', {
+              title: povResult.context.title,
+              thesisHook: parsed.thesisHook,
+            });
+          } else if (povResult.status === 'unreachable') {
+            logger.warn('POV Library unreachable — research proceeds without epistemic context', {
+              error: povResult.error,
+              pillar: routing.pillar,
+            });
+          }
+        } catch (err) {
+          logger.warn('POV fetch failed — research proceeds without epistemic context', {
+            error: (err as Error).message,
+          });
+        }
+      }
+
+      // Research Intelligence v2: Build structured ResearchConfigV2
+      const researchDepth = parsed.depth;
+      const researchConfig: ResearchConfigV2 = {
+        // V1 fields (backward compatible)
         query: researchQuery,
-        depth: routing.depth,
+        depth: researchDepth,
         pillar: routing.pillar,
         focus: routing.focusDirection,
         queryMode: 'canonical',
         sourceContent: extractedContent,
         userContext: answerContext,   // ATLAS-CEX-001 B3: Jim's Socratic reply → research prompt
-        sourceUrl: contentType === 'url' ? content : undefined,  // Original URL for Gemini grounding
+        sourceUrl: contentType === 'url' ? content : undefined,
+        // V2 fields (structured context composition)
+        thesisHook: parsed.thesisHook,
+        evidenceRequirements: EVIDENCE_PRESETS[researchDepth],
+        povContext,
+        qualityFloor: researchDepth === 'deep' ? 'grove_grade' : researchDepth === 'standard' ? 'primary_sources' : 'any',
+        sourceType: contentType as SourceType,
+        intent: parsed.intent,
+        userDirection: answerContext,
       };
 
-      await ctx.reply(`\uD83D\uDD2C Starting research agent...\nDepth: ${routing.depth}`);
+      await ctx.reply(`\uD83D\uDD2C Starting research agent...\nDepth: ${researchDepth}${povContext ? ` \u00B7 POV: ${povContext.title}` : ''}`);
 
       void runResearchAgentWithNotifications(
         researchConfig,

@@ -16,6 +16,8 @@ import {
 import {
   createResearchWorkItem,
   type ResearchConfig,
+  EVIDENCE_PRESETS,
+  type ResearchConfigV2,
 } from "../../../../packages/agents/src";
 
 /**
@@ -101,13 +103,16 @@ export async function handleVoiceCallback(ctx: Context): Promise<void> {
       { parse_mode: "HTML" }
     );
 
-    // Build config with voice
-    const config: ResearchConfig = {
+    // Build config with voice + V2 evidence requirements
+    const voiceDepth = pending.depth || 'standard';
+    const config: ResearchConfigV2 = {
       query: pending.query,
-      depth: pending.depth,
+      depth: voiceDepth,
       focus: pending.focus,
       voice: "custom",
       voiceInstructions: voiceContent,
+      // V2 fields
+      evidenceRequirements: EVIDENCE_PRESETS[voiceDepth],
     };
 
     // Execute research

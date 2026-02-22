@@ -21,6 +21,8 @@ import {
   createResearchWorkItem,
   type ResearchConfig,
   type ResearchDepth,
+  type ResearchConfigV2,
+  EVIDENCE_PRESETS,
 } from "../../../packages/agents/src";
 
 
@@ -183,12 +185,13 @@ async function handleResearchCommand(
   }
 
   // Build config
-  const config: ResearchConfig = {
+  const config: ResearchConfigV2 = {
     query: query.trim(),
     depth,
     focus,
     voice: voiceInstructions ? "custom" : undefined,
     voiceInstructions,
+    evidenceRequirements: EVIDENCE_PRESETS[depth],
   };
 
   // Depth descriptions for user feedback
@@ -322,10 +325,11 @@ async function handleCancelCommand(
  */
 async function handleTestCommand(ctx: Context): Promise<void> {
   // Run the test query
-  const config: ResearchConfig = {
+  const config: ResearchConfigV2 = {
     query: "What are the top 3 AI coding assistants and their pricing?",
     depth: "light",
     focus: "pricing",
+    evidenceRequirements: EVIDENCE_PRESETS['light'],
   };
 
   const chatId = ctx.chat?.id;

@@ -16,6 +16,8 @@ import type { Agent, AgentResult, AgentMetrics, Pillar } from "../types";
 import { getPromptManager, type PromptPillar } from "../services/prompt-manager";
 import { degradedWarning, logDegradedFallback } from "../services/degraded-context";
 import { resolveDrafterId, resolveDefaultDrafterId } from "../services/prompt-composition/composer";
+import { isResearchConfigV2 } from "../types/research-v2";
+import { buildResearchPromptV2 } from "../services/research-prompt-v2";
 
 // ==========================================
 // Research Agent Types
@@ -300,17 +302,17 @@ export function buildResearchQuery(input: QueryInput): string {
   // Strip HTML tags (triage sometimes includes them)
   let query = title.replace(/<[^>]*>/g, '').trim();
 
-  // Append keyword focus if present and under budget
+  // Append keyword focus if present
   if (input.keywords && input.keywords.length > 0) {
     const keywordSuffix = ` — ${input.keywords.join(', ')}`;
-    if (query.length + keywordSuffix.length <= 200) {
-      query += keywordSuffix;
-    }
+    query += keywordSuffix;
   }
 
-  // Hard cap at 200 chars
-  if (query.length > 200) {
-    query = query.slice(0, 197) + '...';
+  // Soft cap at 2000 chars — structured context handles the rest.
+  // The 200-char hard cap was a legacy web search constraint (ADR-003).
+  // Modern LLMs with grounding don't need short queries — they need context.
+  if (query.length > 2000) {
+    query = query.slice(0, 1997) + '...';
   }
 
   return query;
@@ -1231,7 +1233,31 @@ export async function executeResearch(
     await registry.updateProgress(agent.id, 15, "Searching with Google");
 
     // Build prompt and execute
-    const { prompt, isDrafterMode } = await buildResearchPrompt(config);
+    // V2 configs get structured context composition; V1 configs use the legacy prompt builder
+    let prompt: string;
+    let isDrafterMode: boolean;
+    if (isResearchConfigV2(config)) {
+      const v2Sections = buildResearchPromptV2(config);
+      const v1Result = await buildResearchPrompt(config);
+      // V2 sections are INJECTED into the V1 prompt between Instructions and Output Format.
+      // This preserves voice, Notion instructions, output format, and quality guidelines
+      // while adding POV context, evidence requirements, and quality floor.
+      prompt = v1Result.prompt.replace(
+        'Begin your research now.',
+        v2Sections + '\n\nBegin your research now.',
+      );
+      isDrafterMode = v1Result.isDrafterMode;
+      console.log('[Research] V2 prompt composed — structured context injected', {
+        hasThesisHook: !!(config as any).thesisHook,
+        hasPovContext: !!(config as any).povContext,
+        hasEvidenceReqs: !!(config as any).evidenceRequirements,
+        v2SectionsLength: v2Sections.length,
+      });
+    } else {
+      const result = await buildResearchPrompt(config);
+      prompt = result.prompt;
+      isDrafterMode = result.isDrafterMode;
+    }
 
     await registry.updateProgress(agent.id, 30, `Analyzing sources (${depth})`);
     const response = await gemini.generateContent(prompt, depthCfg.maxTokens);

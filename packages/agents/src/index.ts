@@ -93,6 +93,22 @@ export {
   type ResearchDepth,
 } from "./agents/research";
 
+// Research Intelligence v2
+export {
+  EVIDENCE_PRESETS,
+  isResearchConfigV2,
+  type ResearchConfigV2,
+  type EvidenceRequirements,
+  type POVContext,
+  type ParsedRouting,
+  type ResearchIntent,
+  type SourceType,
+  type QualityFloor,
+} from "./types/research-v2";
+export { parseAnswerToRouting } from "./services/answer-parser";
+export { fetchPOVContext, clearPovCache, type PovFetchResult, type PovFetchStatus } from "./services/pov-fetcher";
+export { buildResearchPromptV2 } from "./services/research-prompt-v2";
+
 // Services
 export {
   PromptManager,
