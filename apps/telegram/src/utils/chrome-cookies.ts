@@ -38,6 +38,18 @@ const DOMAIN_MAP: Record<string, string> = {
   "www.linkedin.com": "linkedin.com",
 }
 
+/**
+ * Maps cookie file domains → Jina injection domain scope.
+ * CEX-002: Jina's headless browser treats cookies without Domain= as host-only,
+ * which get dropped on Meta's redirect chains (threads.net → www.threads.net).
+ * Explicit domain scoping makes cookies "sticky" across subdomains and redirects.
+ */
+const COOKIE_INJECTION_DOMAIN: Record<string, string> = {
+  "threads.com": ".threads.net",      // Cookies captured on .com, injected for .net
+  "instagram.com": ".instagram.com",
+  "linkedin.com": ".linkedin.com",
+}
+
 // ─── Types ───────────────────────────────────────────────
 
 interface CookieEntry {
@@ -96,10 +108,18 @@ export function loadCookiesForUrl(url: string): CookieLoadResult | null {
       return null
     }
 
-    // Format as "name=value; name=value" for x-set-cookie header
-    const cookieString = data.cookies
-      .map((c) => `${c.name}=${c.value}`)
-      .join("; ")
+    // CEX-002: Format cookies with domain scoping for Jina's headless browser.
+    // Without Domain= attribute, cookies become host-only and get dropped on
+    // Meta's redirect chains (threads.net → www.threads.net).
+    // Comma-separated per Jina's standard header folding for x-set-cookie.
+    const injectionDomain = COOKIE_INJECTION_DOMAIN[cookieDomain]
+    const cookieString = injectionDomain
+      ? data.cookies
+          .map((c) => `${c.name}=${c.value}; Domain=${injectionDomain}; Path=/; Secure; HttpOnly`)
+          .join(", ")
+      : data.cookies
+          .map((c) => `${c.name}=${c.value}`)
+          .join("; ")
 
     const refreshedAt = data.refreshedAt || new Date(0).toISOString()
     const age = Date.now() - new Date(refreshedAt).getTime()

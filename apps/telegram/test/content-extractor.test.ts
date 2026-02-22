@@ -122,16 +122,16 @@ describe("extractContent routing", () => {
     expect(result.source).toBe("linkedin")
   })
 
-  it("passes correct Jina headers for Threads (article + shadow DOM + networkidle0 — CEX-002)", async () => {
+  it("passes correct Jina headers for Threads (article + shadow DOM + networkidle2 — CEX-002)", async () => {
     mockFetch.mockImplementationOnce((url: string, opts: any) => {
       // CEX-002: Jim's tuned recipe — article target survives login wall,
-      // networkidle0 waits for background data, shadow DOM flattens Meta components
+      // shadow DOM flattens Meta components, networkidle2 waits for JS data fetching
       expect(opts.headers["x-target-selector"]).toBe("article")
       expect(opts.headers["x-wait-for-selector"]).toBe("article")
       expect(opts.headers["x-with-shadow-dom"]).toBe("true")
-      expect(opts.headers["x-wait-until"]).toBe("networkidle0")
+      expect(opts.headers["x-wait-until"]).toBe("networkidle2")
       expect(opts.headers["x-no-cache"]).toBe("true")
-      expect(opts.headers["x-timeout"]).toBe("30")
+      expect(opts.headers["x-timeout"]).toBe("45")
       expect(opts.headers["x-retain-images"]).toBe("none")
       expect(opts.headers["x-return-format"]).toBe("text")
       expect(opts.headers["Accept"]).toBe("application/json")
@@ -168,6 +168,36 @@ describe("extractContent routing", () => {
 
     await extractContent("https://www.threads.com/@user/post/abc123")
     expect(mockFetch).toHaveBeenCalledTimes(1)
+  })
+})
+
+// ─── Cookie Domain Scoping (CEX-002) ─────────────────────
+
+describe("Cookie domain scoping for Jina", () => {
+  it("formats Threads cookies with Domain=.threads.net and comma separation (CEX-002)", async () => {
+    // Import the cookie loader directly
+    const { loadCookiesForUrl } = await import("../src/utils/chrome-cookies")
+    const result = loadCookiesForUrl("https://www.threads.net/@user/post/abc123")
+
+    if (!result) {
+      // Skip if no cookie file exists (CI environments)
+      console.log("  ⏭ No cookie file for threads.com — skipping domain scoping assertion")
+      return
+    }
+
+    // CEX-002: Cookies MUST include Domain=.threads.net for Jina's headless browser.
+    // Without domain scoping, cookies are host-only and get dropped on Meta's redirect chains.
+    expect(result.cookieString).toContain("Domain=.threads.net")
+    expect(result.cookieString).toContain("Path=/")
+    expect(result.cookieString).toContain("Secure")
+    expect(result.cookieString).toContain("HttpOnly")
+
+    // Comma-separated (not semicolon-joined) per Jina's standard header folding
+    expect(result.cookieString).toContain(", ")
+
+    // Critical cookies must be present
+    expect(result.cookieString).toContain("sessionid=")
+    expect(result.cookieString).toContain("ds_user_id=")
   })
 })
 

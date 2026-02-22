@@ -104,15 +104,16 @@ const SOURCE_DEFAULTS: Partial<Record<ContentSource, SourceDefaults>> = {
     // CEX-002: Jim's tuned Jina recipe for Meta Threads SPA.
     // Login wall renders INSTEAD of content — <main> never appears.
     // article targets the actual post even behind login blur.
-    // networkidle0 forces Jina to wait for all background data to finish.
-    targetSelector: 'article',   // Target post element (survives login wall)
-    waitForSelector: 'article',  // Wait for post element to render
-    withShadowDom: true,         // Flatten Meta's Shadow DOM components
-    waitUntil: 'networkidle0',   // Wait for all background fetches to complete
+    // Cookies must include Domain=.threads.net to survive Meta's redirect chains.
+    // networkidle2 waits for JS data fetching to finish before extraction.
+    targetSelector: 'article',      // Target post element (survives login wall)
+    waitForSelector: 'article',     // Wait for post element to render
+    withShadowDom: true,            // Flatten Meta's Shadow DOM components
+    waitUntil: 'networkidle2',      // Wait for JS data fetching to stop
     noCache: true,
-    timeout: 30,                 // Extra time for SPA hydration + networkidle0
-    retainImages: 'none',        // Strip all images — profile pics slip through quality gate
-    returnFormat: 'text',        // Plain text — no markdown image syntax to slip through
+    timeout: 45,                    // Long timeout: SPA hydration + networkidle2 + Shadow DOM
+    retainImages: 'none',           // Strip all images — profile pics slip through quality gate
+    returnFormat: 'text',           // Plain text — no markdown image syntax to slip through
   },
   twitter: {
     waitForSelector: "article",
