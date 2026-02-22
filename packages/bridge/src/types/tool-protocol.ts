@@ -115,8 +115,32 @@ export interface LinkedInContextResult {
   data: Record<string, unknown>
 }
 
+export interface BrowserOpenAndReadResult {
+  url: string
+  title: string
+  content: string
+  contentLength: number
+  truncated: boolean
+  platform: string
+  hydrationSelector: string
+  hydrationWaitMs: number
+  extractionMode: string
+  extractionSource: string
+  tabClosed: boolean
+}
+
 // ─── Constants ──────────────────────────────────────────────
 
 export const TOOL_TIMEOUT_MS = 5000
 export const CONTENT_TRUNCATION_BYTES = 50 * 1024 // 50KB
 export const MCP_SERVER_NAME = "atlas-browser"
+
+/** Per-tool timeout overrides (ms). Tools not listed use TOOL_TIMEOUT_MS. */
+const TOOL_TIMEOUT_OVERRIDES: Record<string, number> = {
+  atlas_browser_open_and_read: 30_000,
+}
+
+/** Get the timeout for a specific tool (supports long-running browser tools). */
+export function getToolTimeout(toolName: string): number {
+  return TOOL_TIMEOUT_OVERRIDES[toolName] ?? TOOL_TIMEOUT_MS
+}

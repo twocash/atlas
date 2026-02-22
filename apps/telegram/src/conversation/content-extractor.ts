@@ -16,6 +16,7 @@ import type { ContentSource, ExtractionMethod } from "./content-router"
 import { detectContentSource, determineExtractionMethod } from "./content-router"
 import { logger } from "../logger"
 import { loadCookiesForUrl, requestCookieRefresh } from "../utils/chrome-cookies"
+import { isBridgeAvailable, extractWithBridge } from "./bridge-extractor"
 
 // ─── Types ────────────────────────────────────────────────
 
@@ -524,7 +525,9 @@ function isLikelyLoginWall(result: ExtractionResult): boolean {
  * Extract content from a URL using the best available method.
  *
  * Routing logic:
- * - SPA sites (threads, twitter, linkedin) → Jina Reader (Tier 2) with auto-cookies
+ * - SPA sites (threads, twitter, linkedin):
+ *     → Bridge + Chrome Extension (Tier 0) if available — best quality
+ *     → Jina Reader (Tier 2) with auto-cookies as fallback
  * - Everything else → HTTP fetch + regex (Tier 1)
  * - Jina failure → fallback to HTTP with status='degraded'
  * - Login wall detected → auto-refresh cookies via Bridge → retry once
@@ -546,6 +549,34 @@ export async function extractContent(
   // Tier 1: HTTP fetch for non-browser sources
   if (method === "Fetch") {
     return extractWithHttp(cleanUrl, source)
+  }
+
+  // Tier 0: Bridge + Chrome Extension (best quality for SPAs — uses Jim's authenticated sessions)
+  if (method === "Browser") {
+    try {
+      const bridgeUp = await isBridgeAvailable()
+      if (bridgeUp) {
+        logger.info("[ContentExtractor] Bridge available — attempting browser extraction", {
+          url: cleanUrl,
+          source,
+        })
+        const bridgeResult = await extractWithBridge(cleanUrl, source)
+        if (bridgeResult.status === "success") {
+          return bridgeResult
+        }
+        // Bridge failed — log and fall through to Jina
+        logger.warn("[ContentExtractor] Bridge extraction failed — falling through to Jina", {
+          url: cleanUrl,
+          source,
+          error: bridgeResult.error,
+        })
+      }
+    } catch (err: any) {
+      logger.warn("[ContentExtractor] Bridge check failed — falling through to Jina", {
+        url: cleanUrl,
+        error: err.message,
+      })
+    }
   }
 
   // Tier 2: Jina Reader for browser-required sources

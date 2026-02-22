@@ -64,6 +64,8 @@ async function dispatch(
       return getLinkedInContext(input)
     case "atlas_refresh_cookies":
       return refreshCookies(input)
+    case "atlas_browser_open_and_read":
+      return browserOpenAndRead(input)
     default:
       throw new Error(`Unknown tool: ${name}`)
   }
@@ -244,6 +246,176 @@ async function refreshCookies(input: Record<string, unknown>) {
       Object.entries(results).map(([d, c]) => [d, c.length]),
     ),
     cookies: results,
+  }
+}
+
+// ─── Browser Open & Read ────────────────────────────────
+
+/** Platform-specific hydration selectors — tells us the SPA has finished rendering. */
+const HYDRATION_SELECTORS: Record<string, string> = {
+  "threads.net": "div[role='main'], [data-pressable-container]",
+  "twitter.com": "[data-testid='tweetText'], [data-testid='UserName']",
+  "x.com": "[data-testid='tweetText'], [data-testid='UserName']",
+  "linkedin.com": ".feed-shared-update-v2, .artdeco-card, .scaffold-layout__main",
+  "instagram.com": "article, main",
+  "youtube.com": "#content, ytd-watch-flexy",
+}
+
+const DEFAULT_HYDRATION_SELECTOR = "body"
+const HYDRATION_POLL_INTERVAL = 500
+const DEFAULT_HYDRATION_TIMEOUT = 10_000
+const TAB_LOAD_TIMEOUT_MS = 15_000
+
+/** Detect platform from URL hostname and return the hydration selector. */
+function getHydrationSelector(url: string): { platform: string; selector: string } {
+  try {
+    const hostname = new URL(url).hostname
+    // Match against known platforms (strip leading "www.")
+    const bare = hostname.replace(/^www\./, "")
+    for (const [domain, selector] of Object.entries(HYDRATION_SELECTORS)) {
+      if (bare === domain || bare.endsWith(`.${domain}`)) {
+        return { platform: domain, selector }
+      }
+    }
+    return { platform: "generic", selector: DEFAULT_HYDRATION_SELECTOR }
+  } catch {
+    return { platform: "unknown", selector: DEFAULT_HYDRATION_SELECTOR }
+  }
+}
+
+/** Wait for a tab to reach "complete" load status. */
+function waitForTabLoad(tabId: number): Promise<void> {
+  return new Promise<void>((resolve) => {
+    const listener = (tid: number, changeInfo: chrome.tabs.TabChangeInfo) => {
+      if (tid === tabId && changeInfo.status === "complete") {
+        chrome.tabs.onUpdated.removeListener(listener)
+        resolve()
+      }
+    }
+    chrome.tabs.onUpdated.addListener(listener)
+    setTimeout(() => {
+      chrome.tabs.onUpdated.removeListener(listener)
+      resolve() // Proceed even on timeout — extraction may still work
+    }, TAB_LOAD_TIMEOUT_MS)
+  })
+}
+
+/** Poll for a CSS selector match in the tab (SPA hydration gate). */
+async function waitForHydration(
+  tabId: number,
+  selector: string,
+  timeout: number,
+): Promise<{ found: boolean; waitMs: number }> {
+  const start = Date.now()
+
+  while (Date.now() - start < timeout) {
+    try {
+      const found = await executeInTab(tabId, (sel: string) => {
+        return document.querySelector(sel) !== null
+      }, [selector])
+
+      if (found) return { found: true, waitMs: Date.now() - start }
+    } catch {
+      // Script execution may fail while page is loading — retry
+    }
+    await new Promise<void>((r) => setTimeout(r, HYDRATION_POLL_INTERVAL))
+  }
+
+  return { found: false, waitMs: Date.now() - start }
+}
+
+async function browserOpenAndRead(input: Record<string, unknown>) {
+  const url = input.url as string
+  if (!url) throw new Error("Missing required parameter: url")
+
+  const closeAfter = input.closeAfter !== false // default true
+  const extractionMode = (input.extractionMode as string) || "full"
+  const waitTimeout = (input.waitTimeout as number) || DEFAULT_HYDRATION_TIMEOUT
+
+  // Determine hydration selector: explicit > platform default > generic
+  const detected = getHydrationSelector(url)
+  const waitFor = (input.waitFor as string) || detected.selector
+  const platform = detected.platform
+
+  let tabId: number | null = null
+
+  try {
+    // 1. Create background tab (doesn't steal focus)
+    const tab = await chrome.tabs.create({ url, active: false })
+    tabId = tab.id!
+
+    // 2. Wait for basic page load
+    await waitForTabLoad(tabId)
+
+    // 3. Wait for SPA hydration
+    const hydration = await waitForHydration(tabId, waitFor, waitTimeout)
+
+    // 4. Extract content
+    const maxLength = CONTENT_MAX_CHARS
+    const data = await executeInTab(tabId, (mode: string, maxLen: number) => {
+      let content = ""
+      let source = "body"
+
+      if (mode === "main") {
+        const mainSelectors = [
+          "article",
+          "main",
+          "[role='main']",
+          "#content",
+          ".post-content",
+          ".article-body",
+        ]
+        for (const sel of mainSelectors) {
+          const el = document.querySelector(sel)
+          if (el && (el as HTMLElement).innerText?.trim().length > 100) {
+            content = (el as HTMLElement).innerText
+            source = sel
+            break
+          }
+        }
+      }
+
+      if (!content) {
+        content = document.body?.innerText || ""
+        source = "body"
+      }
+
+      return {
+        title: document.title,
+        content: content.slice(0, maxLen),
+        contentLength: content.length,
+        truncated: content.length > maxLen,
+        extractionSource: source,
+      }
+    }, [extractionMode, maxLength])
+
+    // 5. Close tab if requested
+    let tabClosed = false
+    if (closeAfter && tabId) {
+      try {
+        await chrome.tabs.remove(tabId)
+        tabClosed = true
+      } catch {
+        // Tab may already be closed by user
+      }
+    }
+
+    return {
+      url,
+      ...data,
+      platform,
+      hydrationSelector: waitFor,
+      hydrationFound: hydration.found,
+      hydrationWaitMs: hydration.waitMs,
+      extractionMode,
+      tabClosed,
+    }
+  } catch (err: any) {
+    // Cleanup: close tab on error
+    if (closeAfter && tabId) {
+      try { await chrome.tabs.remove(tabId) } catch { /* ignore */ }
+    }
+    throw err
   }
 }
 
