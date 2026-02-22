@@ -31,14 +31,14 @@ import { getPromptManager } from '../services/prompt-manager';
 /** Prompt slug in Notion System Prompts DB */
 const INTENT_PROMPT_SLUG = 'intent-analysis';
 
-/** Model for intent interpretation — Haiku is fast + cheap (~$0.001/call) */
-const HAIKU_MODEL = 'claude-3-5-haiku-20241022';
+/** Model for intent interpretation — env-configurable, never hardcode model IDs */
+const HAIKU_MODEL = process.env.ATLAS_INTENT_MODEL || 'claude-haiku-4-5-20251001';
 
 /** Max tokens for intent response (JSON is small) */
-const MAX_TOKENS = 256;
+const MAX_TOKENS = Number(process.env.ATLAS_INTENT_MAX_TOKENS) || 256;
 
 /** Timeout for the Haiku call — bail to regex if slower than this */
-const HAIKU_TIMEOUT_MS = 5_000;
+const HAIKU_TIMEOUT_MS = Number(process.env.ATLAS_INTENT_TIMEOUT_MS) || 5_000;
 
 /**
  * Claude Haiku-powered intent interpreter.
@@ -213,6 +213,7 @@ export class RatchetInterpreter implements IntentInterpreter {
   readonly name = 'ratchet';
   private primary: IntentInterpreter;
   private fallback: IntentInterpreter;
+  private consecutiveFailures = 0;
 
   constructor(primary?: IntentInterpreter, fallback?: IntentInterpreter) {
     this.primary = primary || new HaikuInterpreter();
@@ -225,11 +226,17 @@ export class RatchetInterpreter implements IntentInterpreter {
   ): Promise<InterpretationResult> {
     try {
       const result = await this.primary.interpret(answer, context);
+      this.consecutiveFailures = 0;
       return result;
     } catch (err) {
+      this.consecutiveFailures++;
       const errorMsg = err instanceof Error ? err.message : String(err);
-      console.warn(
-        `[RatchetInterpreter] Primary (${this.primary.name}) failed: ${errorMsg} — falling back to ${this.fallback.name}`
+
+      // CONSTRAINT 4: Fail loud. A single fallback is fine; persistent failure is a system issue.
+      console.error(
+        `[RatchetInterpreter] PRIMARY FAILED (${this.consecutiveFailures}x consecutive): ` +
+        `${this.primary.name} → ${errorMsg}. Falling back to ${this.fallback.name}. ` +
+        `Model: ${HAIKU_MODEL}`
       );
 
       const fallbackResult = await this.fallback.interpret(answer, context);
