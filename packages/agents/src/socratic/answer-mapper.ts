@@ -1,9 +1,18 @@
 /**
  * Answer Mapper — Answer → Structured Intent Mapping
  *
- * Maps user answers (from tap-friendly options) back to structured
- * intent values. Uses answer_map entries from Notion config for
- * skill-specific mappings, with sensible defaults.
+ * Maps user answers (from tap-friendly options or freeform text) back to
+ * structured intent values. Primary path: LLM interpretation via HaikuInterpreter.
+ * Fallback: deterministic regex matching (RegexFallbackInterpreter).
+ *
+ * V2 (Conversational Intent Resolution):
+ *   - LLM-first interpretation replaces brittle keyword matching
+ *   - "just helping me keep up" → research (not capture)
+ *   - Training data collected for future fine-tuning
+ *   - Notion answer_map entries still honored for tap-friendly button answers
+ *
+ * @see ADR-001: Prompts from Notion via PromptManager
+ * @see ADR-008: Fail fast, fail loud — regex fallback with logging
  */
 
 import type { Pillar, IntentType, DepthLevel, AudienceType } from '../services/prompt-composition/types';
@@ -14,11 +23,15 @@ import type {
   SocraticConfig,
   SocraticConfigEntry,
   SocraticQuestion,
+  InterpretationContext,
 } from './types';
 import { assessContext } from './context-assessor';
+import { getIntentInterpreter } from './intent-interpreter';
+import { RegexFallbackInterpreter } from './intent-interpreter';
+import { logTrainingEntry } from './training-collector';
 
 // ==========================================
-// Pillar Mapping
+// Pillar Mapping (for tap-friendly buttons + Notion answer maps)
 // ==========================================
 
 const PILLAR_ALIASES: Record<string, Pillar> = {
@@ -34,7 +47,7 @@ const PILLAR_ALIASES: Record<string, Pillar> = {
 };
 
 // ==========================================
-// Intent Mapping
+// Intent Mapping (for tap-friendly button answers)
 // ==========================================
 
 const INTENT_ALIASES: Record<string, IntentType> = {
@@ -69,7 +82,7 @@ const INTENT_ALIASES: Record<string, IntentType> = {
 };
 
 // ==========================================
-// Depth Mapping
+// Depth Mapping (for tap-friendly button answers)
 // ==========================================
 
 const DEPTH_ALIASES: Record<string, DepthLevel> = {
@@ -84,7 +97,7 @@ const DEPTH_ALIASES: Record<string, DepthLevel> = {
 };
 
 // ==========================================
-// Answer Map Parsing
+// Answer Map Parsing (Notion config)
 // ==========================================
 
 interface ParsedMapping {
@@ -146,7 +159,7 @@ function parseAnswerMap(entry: SocraticConfigEntry): ParsedMapping[] {
 }
 
 // ==========================================
-// Answer Mapping
+// Answer Mapping (Primary Export)
 // ==========================================
 
 /**
@@ -166,22 +179,37 @@ function findAnswerMap(
 }
 
 /**
+ * Detect if an answer matches a tap-friendly button option exactly.
+ * Button answers are short, normalized tokens — not conversational text.
+ */
+function isButtonAnswer(answer: string): boolean {
+  const normalized = answer.toLowerCase().replace(/[^a-z0-9]+/g, '-');
+  return !!(INTENT_ALIASES[normalized] || DEPTH_ALIASES[normalized] || PILLAR_ALIASES[normalized]);
+}
+
+/**
  * Map a user's answer to structured intent values.
  *
- * Uses the answer map from Notion config for skill-specific mappings,
- * then falls back to built-in aliases.
+ * V2 flow:
+ *   1. Check Notion answer_map for skill-specific button mappings
+ *   2. If the answer is a button tap (exact alias match), use deterministic mapping
+ *   3. For freeform/conversational answers, delegate to IntentInterpreter (LLM → regex fallback)
+ *   4. Log training data for future fine-tuning
+ *   5. Compute new confidence with updated signals
+ *
+ * NOW ASYNC — callers must await.
  */
-export function mapAnswer(
+export async function mapAnswer(
   answer: string,
   question: SocraticQuestion,
   signals: ContextSignals,
   config: SocraticConfig,
   skill?: string
-): MappedAnswer {
+): Promise<MappedAnswer> {
   const normalizedAnswer = answer.toLowerCase().replace(/[^a-z0-9]+/g, '-');
   const resolved: MappedAnswer['resolved'] = {};
 
-  // Try skill-specific answer map from Notion
+  // ── Layer 1: Notion answer_map (skill-specific button mappings) ──
   const mapEntry = findAnswerMap(config, skill);
   if (mapEntry) {
     const parsedMappings = parseAnswerMap(mapEntry);
@@ -193,70 +221,73 @@ export function mapAnswer(
     }
   }
 
-  // Natural language extraction: parse freeform answers for embedded signals.
-  // Jim's answer to "What's the play?" is often: "Research for the Grove, thinkpiece material"
-  // This contains: intent (research), pillar (Grove), output format (thinkpiece → draft).
+  // ── Layer 2: Button answer fast-path (deterministic) ──
+  if (isButtonAnswer(answer) && !resolved.intent) {
+    if (INTENT_ALIASES[normalizedAnswer]) resolved.intent = INTENT_ALIASES[normalizedAnswer];
+    if (DEPTH_ALIASES[normalizedAnswer]) resolved.depth = DEPTH_ALIASES[normalizedAnswer];
+    if (PILLAR_ALIASES[normalizedAnswer]) resolved.pillar = PILLAR_ALIASES[normalizedAnswer];
+  }
+
+  // ── Layer 3: LLM interpretation for conversational answers ──
   if (!resolved.intent || !resolved.pillar || !resolved.depth) {
-    const lower = answer.toLowerCase();
-
-    // Extract pillar from natural language
-    if (!resolved.pillar) {
-      if (lower.includes('grove') || lower.includes('ai') || lower.includes('tech')) {
-        resolved.pillar = 'The Grove';
-      } else if (lower.includes('consulting') || lower.includes('client') || lower.includes('drumwave')) {
-        resolved.pillar = 'Consulting';
-      } else if (lower.includes('personal') || lower.includes('health') || lower.includes('family')) {
-        resolved.pillar = 'Personal';
-      } else if (lower.includes('home') || lower.includes('garage') || lower.includes('car') || lower.includes('vehicle')) {
-        resolved.pillar = 'Home/Garage';
-      }
-    }
-
-    // Extract intent from natural language
-    if (!resolved.intent) {
-      if (lower.includes('research') || lower.includes('look into') || lower.includes('find out') || lower.includes('summarize')) {
-        resolved.intent = 'research';
-      } else if (lower.includes('draft') || lower.includes('write') || lower.includes('thinkpiece') || lower.includes('blog') || lower.includes('post')) {
-        resolved.intent = 'draft';
-      } else if (lower.includes('save') || lower.includes('capture') || lower.includes('bookmark') || lower.includes('just')) {
-        resolved.intent = 'capture';
-      }
-    }
-
-    // Extract depth from natural language
-    if (!resolved.depth) {
-      if (lower.includes('deep') || lower.includes('thorough') || lower.includes('comprehensive')) {
-        resolved.depth = 'deep';
-      } else if (lower.includes('quick') || lower.includes('brief') || lower.includes('light') || lower.includes('skim')) {
-        resolved.depth = 'quick';
-      }
-      // "medium" / "standard" are default — no need to detect
-    }
-
-    // Preserve the FULL answer as user direction for downstream use
-    // This is critical: "thinkpiece on prompt engineering for the Grove" carries
-    // intent that the research query needs.
-    resolved.extraContext = {
-      ...resolved.extraContext,
-      userDirection: answer,
+    const interpretationContext: InterpretationContext = {
+      title: signals.contentSignals?.title,
+      sourceType: signals.contentSignals?.contentType,
+      targetSlot: question.targetSlot,
+      questionText: question.text,
+      existingSignals: {
+        intent: signals.classification?.intent,
+        pillar: signals.classification?.pillar,
+        depth: signals.classification?.depth,
+      },
     };
+
+    try {
+      const interpreter = getIntentInterpreter();
+      const result = await interpreter.interpret(answer, interpretationContext);
+
+      // Apply LLM results for any unresolved fields
+      if (!resolved.intent) resolved.intent = result.interpreted.intent;
+      if (!resolved.depth) resolved.depth = result.interpreted.depth;
+      if (!resolved.pillar && result.interpreted.pillar) resolved.pillar = result.interpreted.pillar;
+      if (!resolved.audience) resolved.audience = result.interpreted.audience;
+
+      // Always preserve the full answer as user direction
+      resolved.extraContext = {
+        ...resolved.extraContext,
+        userDirection: answer,
+        interpretationMethod: result.method,
+        interpretationConfidence: String(result.interpreted.confidence),
+        interpretationReasoning: result.interpreted.reasoning,
+      };
+
+      // Log training data (regex baseline for comparison)
+      try {
+        const regexInterpreter = new RegexFallbackInterpreter();
+        const regexResult = await regexInterpreter.interpret(answer, interpretationContext);
+        logTrainingEntry(answer, interpretationContext, result, regexResult);
+      } catch {
+        // Training collection is non-critical
+      }
+    } catch (err) {
+      // Fail loud per ADR-008 — but don't block the answer mapping
+      const errorMsg = err instanceof Error ? err.message : String(err);
+      console.error(`[mapAnswer] Intent interpretation failed: ${errorMsg}`);
+
+      // Preserve user direction even on failure
+      resolved.extraContext = {
+        ...resolved.extraContext,
+        userDirection: answer,
+        interpretationMethod: 'error',
+        interpretationError: errorMsg,
+      };
+    }
   }
 
-  // Fall back to built-in aliases for anything not resolved
-  if (!resolved.intent && INTENT_ALIASES[normalizedAnswer]) {
-    resolved.intent = INTENT_ALIASES[normalizedAnswer];
-  }
-  if (!resolved.depth && DEPTH_ALIASES[normalizedAnswer]) {
-    resolved.depth = DEPTH_ALIASES[normalizedAnswer];
-  }
-  if (!resolved.pillar && PILLAR_ALIASES[normalizedAnswer]) {
-    resolved.pillar = PILLAR_ALIASES[normalizedAnswer];
-  }
-
-  // Map slot-specific answers to context updates
+  // ── Layer 4: Slot-specific context enrichment ──
   switch (question.targetSlot) {
     case 'contact_data':
-      resolved.extraContext = { relationship: answer };
+      resolved.extraContext = { ...resolved.extraContext, relationship: answer };
       break;
     case 'content_signals':
       resolved.extraContext = { ...resolved.extraContext, contentType: answer };
@@ -267,7 +298,7 @@ export function mapAnswer(
       }
       break;
     case 'bridge_context':
-      resolved.extraContext = { bridgeNote: answer };
+      resolved.extraContext = { ...resolved.extraContext, bridgeNote: answer };
       break;
     case 'skill_requirements':
       if (!resolved.depth) {
@@ -276,7 +307,7 @@ export function mapAnswer(
       break;
   }
 
-  // Estimate new confidence after this answer
+  // ── Estimate new confidence ──
   const slotUpdate = buildSignalUpdate(question.targetSlot, answer, signals);
   const updatedSignals: ContextSignals = {
     ...signals,

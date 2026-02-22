@@ -255,6 +255,68 @@ export type EngineResult =
   | { type: 'error'; message: string };
 
 // ==========================================
+// Intent Interpretation (LLM-based)
+// ==========================================
+
+/** Structured output from the intent interpretation prompt */
+export interface InterpretedIntent {
+  intent: IntentType;
+  depth: DepthLevel;
+  audience: AudienceType;
+  confidence: number;
+  reasoning: string;
+  /** Which pillar was detected (not always present) */
+  pillar?: Pillar;
+}
+
+/** How was the intent resolved? */
+export type InterpretationMethod = 'haiku' | 'local_model' | 'regex_fallback';
+
+/** Full result from an IntentInterpreter, including diagnostics */
+export interface InterpretationResult {
+  interpreted: InterpretedIntent;
+  method: InterpretationMethod;
+  /** Wall-clock ms for the interpretation call */
+  latencyMs: number;
+  /** Raw model response (for training data collection) */
+  rawResponse?: string;
+}
+
+/**
+ * Pluggable intent interpreter interface.
+ * Implementations: HaikuInterpreter (cloud), future LocalModelInterpreter (8B),
+ * HybridInterpreter (ratchet-down).
+ */
+export interface IntentInterpreter {
+  /** Interpret a user's natural-language answer into structured intent. */
+  interpret(
+    answer: string,
+    context: InterpretationContext,
+  ): Promise<InterpretationResult>;
+
+  /** Name of this interpreter for logging/diagnostics */
+  readonly name: string;
+}
+
+/** Context passed to the interpreter alongside the raw answer */
+export interface InterpretationContext {
+  /** Content title if available */
+  title?: string;
+  /** Source type: 'threads', 'linkedin', 'article', 'unknown', etc. */
+  sourceType?: string;
+  /** Which context slot the question targeted */
+  targetSlot?: ContextSlot;
+  /** The question text that was asked */
+  questionText?: string;
+  /** Existing classification signals (for grounding) */
+  existingSignals?: {
+    intent?: IntentType;
+    pillar?: Pillar;
+    depth?: DepthLevel;
+  };
+}
+
+// ==========================================
 // Composition Integration
 // ==========================================
 
@@ -282,3 +344,19 @@ export interface SocraticCompositionInput {
   /** Contact name if known */
   contactName?: string;
 }
+
+// ==========================================
+// Intent Lifecycle Tracking (Feed 2.0)
+// ==========================================
+
+/**
+ * Tracks the lifecycle of intent resolution for Feed 2.0 entries.
+ * Stored as rich_text in Notion (CONSTRAINT 8: measure first).
+ * Will be promoted to select after 30+ days of observed patterns.
+ */
+export type IntentLifecycleStatus =
+  | 'pending'      // Socratic question asked, awaiting answer
+  | 'resolved'     // Intent resolved via interview answer
+  | 'dispatched'   // Resolved intent sent to execution pipeline
+  | 'complete'     // Execution finished (research done, draft written, etc.)
+  | 'abandoned';   // Session expired without resolution
