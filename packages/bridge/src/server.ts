@@ -93,6 +93,9 @@ let mcpConfigured = false
 let mcpRequestId: string | null = null
 let autoRespawn = true
 
+/** Identity hydration state — populated at startup, read by /status */
+let identityComponents: { constitution: boolean; soul: boolean; user: boolean; memory: boolean; goals: boolean } | null = null
+
 function isClaudeRunning(): boolean {
   return claudeProcess !== null && claudeProcess.exitCode === null
 }
@@ -806,6 +809,13 @@ async function handleHttpRequest(req: Request, server: any): Promise<Response | 
       clients: counts.clients,
       uptime: Math.floor((Date.now() - new Date(startedAt).getTime()) / 1000),
       startedAt,
+      identity: identityComponents ? {
+        constitution: identityComponents.constitution,
+        soul: identityComponents.soul,
+        user: identityComponents.user,
+        memory: identityComponents.memory,
+        goals: identityComponents.goals,
+      } : null,
       dispatch: getDispatchStats(),
     }
     return new Response(JSON.stringify(body), {
@@ -933,11 +943,13 @@ async function hydrateBridgeIdentity(): Promise<void> {
   try {
     const result = await composeBridgePrompt()
     hydrateSystemPreamble(result.prompt)
+    identityComponents = result.components
     if (result.warnings.length > 0) {
       console.warn("[bridge] Identity hydration warnings:", result.warnings)
     }
     console.log(
       `[bridge] Bridge identity hydrated — ` +
+      `constitution: ${result.components.constitution ? "OK" : "MISSING"}, ` +
       `soul: ${result.components.soul ? "OK" : "MISSING"}, ` +
       `user: ${result.components.user ? "OK" : "skipped"}, ` +
       `memory: ${result.components.memory ? "OK" : "skipped"}, ` +
