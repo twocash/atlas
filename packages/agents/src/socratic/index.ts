@@ -4,6 +4,8 @@
  * Transport-agnostic engine for context-aware interview flows.
  * Assesses context gaps, generates targeted questions, and maps
  * answers to structured composition inputs.
+ *
+ * V2: LLM-based intent interpretation (Haiku → regex fallback)
  */
 
 // Engine (primary interface)
@@ -19,8 +21,25 @@ export type { GapAnalysis } from './gap-analyzer';
 // Question Generation
 export { generateQuestions } from './question-generator';
 
-// Answer Mapping
+// Answer Mapping (V2: async, LLM-first)
 export { mapAnswer } from './answer-mapper';
+
+// Intent Interpretation (V2: pluggable interpreters)
+export {
+  HaikuInterpreter,
+  RegexFallbackInterpreter,
+  RatchetInterpreter,
+  getIntentInterpreter,
+  injectInterpreter,
+} from './intent-interpreter';
+
+// Training Data Collection
+export {
+  logTrainingEntry,
+  getTrainingCount,
+  readTrainingEntries,
+} from './training-collector';
+export type { TrainingEntry } from './training-collector';
 
 // Notion Config
 export {
@@ -60,8 +79,18 @@ export type {
   // Answers
   MappedAnswer,
 
+  // Intent Interpretation (V2)
+  IntentInterpreter,
+  InterpretedIntent,
+  InterpretationResult,
+  InterpretationContext,
+  InterpretationMethod,
+
   // Composition
   SocraticCompositionInput,
+
+  // Intent Lifecycle (Feed 2.0)
+  IntentLifecycleStatus,
 } from './types';
 
 export { CONTEXT_WEIGHTS } from './types';

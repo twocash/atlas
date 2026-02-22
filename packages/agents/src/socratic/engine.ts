@@ -157,7 +157,7 @@ export class SocraticEngine {
     }
 
     session.state = 'MAPPING';
-    const mapped = mapAnswer(answerValue, question, session.signals, config, session.skill);
+    const mapped = await mapAnswer(answerValue, question, session.signals, config, session.skill);
     session.answersReceived.push(mapped);
 
     // Check if we have enough confidence now or have asked enough questions

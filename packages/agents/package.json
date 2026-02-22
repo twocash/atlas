@@ -13,6 +13,7 @@
     "test:e2e:research": "bun run test/research-e2e.spike.ts"
   },
   "dependencies": {
+    "@anthropic-ai/sdk": "^0.78.0",
     "@atlas/shared": "workspace:*",
     "@google/genai": "^1.0.0",
     "@google/generative-ai": "^0.21.0",

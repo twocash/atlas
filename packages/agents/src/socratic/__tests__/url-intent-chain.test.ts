@@ -219,7 +219,7 @@ describe('URL Intent Chain — Question Generation', () => {
 // ==========================================
 
 describe('URL Intent Chain — Answer Mapping', () => {
-  test('parses "Research for the Grove, thinkpiece material" correctly', () => {
+  test('parses "Research for the Grove, thinkpiece material" correctly', async () => {
     injectConfig(TEST_CONFIG);
 
     const signals = buildUrlSignals({
@@ -232,14 +232,14 @@ describe('URL Intent Chain — Answer Mapping', () => {
     const questions = generateQuestions(gaps, signals);
 
     const answer = 'Research for the Grove, thinkpiece material on prompt engineering';
-    const mapped = mapAnswer(answer, questions[0], signals, TEST_CONFIG);
+    const mapped = await mapAnswer(answer, questions[0], signals, TEST_CONFIG);
 
     expect(mapped.resolved.intent).toBe('research');
     expect(mapped.resolved.pillar).toBe('The Grove');
     expect(mapped.resolved.extraContext?.userDirection).toBe(answer);
   });
 
-  test('parses "just save it" as capture intent', () => {
+  test('parses "just save it" as capture intent', async () => {
     injectConfig(TEST_CONFIG);
 
     const signals = buildUrlSignals({ fetchedTitle: 'Some Article' });
@@ -247,12 +247,12 @@ describe('URL Intent Chain — Answer Mapping', () => {
     const gaps = analyzeGaps(assessment, TEST_CONFIG, 'telegram');
     const questions = generateQuestions(gaps, signals);
 
-    const mapped = mapAnswer('just save it', questions[0], signals, TEST_CONFIG);
+    const mapped = await mapAnswer('just save it', questions[0], signals, TEST_CONFIG);
 
     expect(mapped.resolved.intent).toBe('capture');
   });
 
-  test('parses "deep research for consulting" with depth + pillar', () => {
+  test('parses "deep research for consulting" with depth + pillar', async () => {
     injectConfig(TEST_CONFIG);
 
     const signals = buildUrlSignals({ fetchedTitle: 'Market Analysis Report' });
@@ -260,14 +260,14 @@ describe('URL Intent Chain — Answer Mapping', () => {
     const gaps = analyzeGaps(assessment, TEST_CONFIG, 'telegram');
     const questions = generateQuestions(gaps, signals);
 
-    const mapped = mapAnswer('deep research for consulting, client deliverable', questions[0], signals, TEST_CONFIG);
+    const mapped = await mapAnswer('deep research for consulting, client deliverable', questions[0], signals, TEST_CONFIG);
 
     expect(mapped.resolved.intent).toBe('research');
     expect(mapped.resolved.pillar).toBe('Consulting');
     expect(mapped.resolved.depth).toBe('deep');
   });
 
-  test('tapping "Research this" button option still works', () => {
+  test('tapping "Research this" button option still works', async () => {
     injectConfig(TEST_CONFIG);
 
     const signals = buildUrlSignals({ fetchedTitle: 'Article' });
@@ -276,12 +276,12 @@ describe('URL Intent Chain — Answer Mapping', () => {
     const questions = generateQuestions(gaps, signals);
 
     // Simulate tapping the button (value from option)
-    const mapped = mapAnswer('research', questions[0], signals, TEST_CONFIG);
+    const mapped = await mapAnswer('research', questions[0], signals, TEST_CONFIG);
 
     expect(mapped.resolved.intent).toBe('research');
   });
 
-  test('handles vehicle content routed to Home/Garage', () => {
+  test('handles vehicle content routed to Home/Garage', async () => {
     injectConfig(TEST_CONFIG);
 
     const signals = buildUrlSignals({
@@ -292,7 +292,7 @@ describe('URL Intent Chain — Answer Mapping', () => {
     const gaps = analyzeGaps(assessment, TEST_CONFIG, 'telegram');
     const questions = generateQuestions(gaps, signals);
 
-    const mapped = mapAnswer('just save this, garage project research', questions[0], signals, TEST_CONFIG);
+    const mapped = await mapAnswer('just save this, garage project research', questions[0], signals, TEST_CONFIG);
 
     expect(mapped.resolved.pillar).toBe('Home/Garage');
   });
@@ -303,7 +303,7 @@ describe('URL Intent Chain — Answer Mapping', () => {
 // ==========================================
 
 describe('URL Intent Chain — Full Scenario', () => {
-  test('Threads post about Google Research paper → correct research query ingredients', () => {
+  test('Threads post about Google Research paper → correct research query ingredients', async () => {
     injectConfig(TEST_CONFIG);
 
     // Step 1: Build signals (what socratic-adapter.ts produces after fetch)
@@ -324,7 +324,7 @@ describe('URL Intent Chain — Full Scenario', () => {
     expect(questions[0].text).toContain("What's the play");
 
     // Step 4: Map Jim's answer
-    const mapped = mapAnswer(
+    const mapped = await mapAnswer(
       'Research this for the Grove, could be a great thinkpiece on prompt engineering techniques',
       questions[0],
       signals,
