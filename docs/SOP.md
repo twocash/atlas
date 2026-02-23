@@ -1287,7 +1287,7 @@ This includes:
 ## SOP-014: AnythingLLM RAG Infrastructure
 
 **Effective:** 2026-02-18
-**Updated:** 2026-02-22 (native Windows app, auto-start, API key fix)
+**Updated:** 2026-02-23 (binding fix, cleanup, Windows auto-start, Tailscale access)
 **Scope:** AnythingLLM native desktop app on Jim's laptop
 
 ### Overview
@@ -1301,8 +1301,11 @@ AnythingLLM is a RAG (Retrieval-Augmented Generation) server running as a **nati
 | **Executable** | `C:\Users\jimca\AppData\Local\Programs\AnythingLLM\AnythingLLM.exe` |
 | **Local URL** | `http://localhost:3001` |
 | **Health endpoint** | `GET /api/ping` → `{"online":true}` |
-| **Storage** | `C:/anythingllm-storage` ← **PRODUCTION DATA — NEVER WIPE** |
-| **Workspaces** | My Workspace, grove-vision, grove-technical, monarch, take-flight |
+| **Storage** | `C:\Users\jimca\AppData\Roaming\anythingllm-desktop\storage` ← **PRODUCTION DATA — NEVER WIPE** |
+| **Binding** | `0.0.0.0:3001` (Tailscale-accessible via `APP_DISCOVERABLE=true`) |
+| **Tailscale IP** | `100.80.12.118` |
+| **Workspaces** | My Workspace, grove-vision, grove-technical, monarch, take-flight, gtm-consulting |
+| **Auto-start** | Windows startup registry (`HKCU\...\Run`) |
 
 ### Environment Variables
 
@@ -1336,7 +1339,11 @@ curl -s -H "Authorization: Bearer <key>" http://localhost:3001/api/v1/workspaces
 
 ### Recovery SOPs
 
-**Case 1: App closed (supervisor auto-starts)**
+**Case 0: Normal boot**
+
+AnythingLLM is registered in Windows startup (`HKCU\...\Run`) and launches automatically on login. No action needed.
+
+**Case 1: App closed mid-session (supervisor auto-starts)**
 
 The `/atlas-supervisor` v3.0 auto-starts AnythingLLM if it detects it's offline:
 ```powershell
@@ -1362,7 +1369,9 @@ If bridge or bot logs show `No valid api key found`:
 
 ### Storage Warning
 
-`C:/anythingllm-storage` contains all ingested documents and vector indexes.
+Production data lives at `C:\Users\jimca\AppData\Roaming\anythingllm-desktop\storage` — this is the `.env`, SQLite DB, lancedb vectors, and all ingested documents.
+
+> **Note:** `C:/anythingllm-storage/` was a Docker-era leftover with stale API keys and Docker paths. It was deleted on 2026-02-23. If it reappears, something has recreated the Docker setup — investigate.
 
 **NEVER:**
 - Wipe or format the storage directory
@@ -1370,6 +1379,19 @@ If bridge or bot logs show `No valid api key found`:
 
 **ALWAYS:**
 - Back up the storage directory before major updates
+
+### AnythingLLM Configuration
+
+The app reads its `.env` from the storage directory at startup via `dotenv.config()`. Key settings:
+
+| Setting | Value | Effect |
+|---------|-------|--------|
+| `APP_DISCOVERABLE` | `true` | Binds to `0.0.0.0` instead of `127.0.0.1` (enables Tailscale access) |
+| `EMBEDDING_ENGINE` | `native` | Uses built-in MiniLM-L6-v2 for embeddings |
+| `VECTOR_DB` | `lancedb` | Local vector store, no external service needed |
+| `SERVER_PORT` | `3001` | HTTP API port |
+
+**Config file:** `C:\Users\jimca\AppData\Roaming\anythingllm-desktop\storage\.env`
 
 ### Supervisor Integration
 
