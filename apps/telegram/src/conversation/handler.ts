@@ -42,7 +42,7 @@ import { createAuditTrail, type AuditEntry } from './audit';
 import { getAllTools, executeTool } from './tools';
 import { recordUsage } from './stats';
 import { maybeHandleAsContentShare, triggerMediaConfirmation, triggerInstantClassification } from './content-flow';
-import { hasPendingSocraticSessionForUser } from './socratic-session';
+import { hasPendingSocraticSessionForUser, getSocraticSessionByUserId, removeSocraticSession } from './socratic-session';
 import { handleSocraticAnswer } from './socratic-adapter';
 import { logAction, isFeatureEnabled } from '../skills';
 import { reportFailure } from '@atlas/shared/error-escalation';
@@ -321,15 +321,44 @@ export async function handleConversation(ctx: Context): Promise<void> {
   if (CONTENT_CONFIRM_ENABLED && !hasAttachment && messageText) {
     const handled = await maybeHandleAsContentShare(ctx);
     if (handled) {
-      // Content confirmation keyboard shown - don't continue with Claude processing
+      // New content share detected — cancel any pending Socratic session
+      // (the old question is stale now that Jim is sharing new content)
+      const staleSession = getSocraticSessionByUserId(userId);
+      if (staleSession) {
+        removeSocraticSession(staleSession.chatId);
+        logger.info('Cancelled stale Socratic session (new content share)', {
+          userId,
+          cancelledSessionId: staleSession.sessionId,
+        });
+      }
       await setReaction(ctx, REACTIONS.DONE);
       logger.info('Content share detected, confirmation keyboard shown', { userId });
       return;
     }
+  }
 
-    // SOCRATIC SESSION: Check if user has a pending Socratic question
-    // If so, treat their text reply as the answer to the question
-    if (hasPendingSocraticSessionForUser(userId)) {
+  // SOCRATIC SESSION: Check if user has a pending Socratic question
+  // Moved OUTSIDE CONTENT_CONFIRM_ENABLED gate — Socratic answers must be
+  // processed regardless of the content confirmation feature flag.
+  //
+  // Bypass heuristic: if the message contains a URL, it's a new content share,
+  // not an answer to the pending question. Cancel the session and let the
+  // message flow through normal processing. (ADR-008: log bypass explicitly)
+  if (!hasAttachment && messageText && hasPendingSocraticSessionForUser(userId)) {
+    const containsUrl = /https?:\/\/\S+/i.test(messageText);
+    if (containsUrl) {
+      // URL in message = new content, not a Socratic answer
+      const staleSession = getSocraticSessionByUserId(userId);
+      if (staleSession) {
+        removeSocraticSession(staleSession.chatId);
+        logger.info('Socratic session bypassed: message contains URL (new content)', {
+          userId,
+          cancelledSessionId: staleSession.sessionId,
+        });
+      }
+      // Fall through to normal processing — this URL will get triaged fresh
+    } else {
+      // No URL — treat as answer to the pending Socratic question
       const handled = await handleSocraticAnswer(ctx, messageText);
       if (handled) {
         await setReaction(ctx, REACTIONS.DONE);
