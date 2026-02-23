@@ -58,6 +58,12 @@ import {
   type PendingDispatch,
 } from './dispatch-choice';
 import { getLastAgentResult, clearLastAgentResult } from './context-manager';
+import {
+  assessRequest,
+  type RequestAssessment,
+  type AssessmentContext,
+  getCachedModel,
+} from '../../../../packages/agents/src';
 
 // Feature flag for content confirmation keyboard (Universal Content Analysis)
 // Enabled by default - set ATLAS_CONTENT_CONFIRM=false to disable
@@ -474,6 +480,47 @@ export async function handleConversation(ctx: Context): Promise<void> {
         : undefined,
       degraded: contextEnrichment?.degradedContextNote != null,
     };
+  }
+
+  // REQUEST ASSESSMENT: Classify complexity + build approach proposal
+  // Feature gate: ATLAS_SELF_MODEL (assessment needs capability model from Fix 1)
+  // Observability-only in STAB-001: logs to trace, does NOT alter conversation flow
+  let assessment: RequestAssessment | null = null;
+  if (process.env.ATLAS_SELF_MODEL === 'true' && preflightTriage) {
+    const assessStep = addStep(trace, 'request-assessment');
+    try {
+      const model = getCachedModel();
+      if (!model) {
+        // Explicit trace — not silent degradation (ADR-008)
+        assessStep.metadata = { status: 'skipped', reason: 'no-cached-model' };
+        completeStep(assessStep);
+      } else {
+        const assessmentContext: AssessmentContext = {
+          intent: preflightTriage.intent,
+          pillar: preflightTriage.pillar,
+          keywords: preflightTriage.keywords,
+          hasUrl: /https?:\/\//.test(messageText),
+          hasContact: false,
+          hasDeadline: false,
+        };
+        assessment = assessRequest(messageText, assessmentContext, model);
+        assessStep.metadata = {
+          status: 'ok',
+          complexity: assessment.complexity,
+          signalCount: assessment.signals ? Object.values(assessment.signals).filter(Boolean).length : 0,
+          hasProposal: !!assessment.approach,
+        };
+        completeStep(assessStep);
+      }
+    } catch (err) {
+      // Explicit trace failure — ADR-008: surface failure in metadata, not just log
+      assessStep.metadata = {
+        status: 'failed',
+        error: err instanceof Error ? err.message : String(err),
+      };
+      completeStep(assessStep);
+      logger.warn('Assessment failed', { error: err });
+    }
   }
 
   // Get conversation history

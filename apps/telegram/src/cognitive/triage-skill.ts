@@ -96,9 +96,9 @@ const SubIntentSchema = z.object({
 const TriageResultSchema = z.object({
   intent: z.enum(['command', 'capture', 'query', 'clarify']),
   confidence: z.number().min(0).max(1),
-  command: TriageCommandSchema.optional().nullable(),
-  title: z.string().max(80).optional().nullable(),  // Allow slight overflow, truncate later
-  titleRationale: z.string().optional().nullable(),
+  command: TriageCommandSchema.optional().nullable().default(null),
+  title: z.string().max(80).optional().nullable().default(null),  // Allow slight overflow, truncate later
+  titleRationale: z.string().optional().nullable().default(null),
   pillar: z.string(),  // Validated against Pillar type downstream
   requestType: z.string(),
   keywords: z.array(z.string()).default([]),
