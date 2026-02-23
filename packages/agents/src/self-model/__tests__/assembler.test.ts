@@ -242,3 +242,220 @@ describe("graceful degradation", () => {
     expect(model.knowledge).toHaveLength(1)
   })
 })
+
+// ─── Edge Cases ──────────────────────────────────────────
+
+describe("edge cases", () => {
+  beforeEach(() => {
+    invalidateCache()
+  })
+
+  it("skill with zero execution count has undefined successRate", async () => {
+    const provider = createMockProvider({
+      getSkills: async () => [
+        {
+          name: "new-skill",
+          description: "Never executed",
+          triggers: [],
+          enabled: true,
+          metrics: { executionCount: 0, successCount: 0, avgExecutionTime: 0 },
+        },
+      ],
+    })
+
+    const model = await assembleCapabilityModel(provider)
+    const skill = model.skills.find((s) => s.id === "new-skill")!
+
+    expect(skill.successRate).toBeUndefined() // 0/0 → undefined, not NaN
+  })
+
+  it("skill without metrics has undefined successRate and usageCount", async () => {
+    const provider = createMockProvider({
+      getSkills: async () => [
+        { name: "bare-skill", description: "No metrics", triggers: [], enabled: true },
+      ],
+    })
+
+    const model = await assembleCapabilityModel(provider)
+    const skill = model.skills.find((s) => s.id === "bare-skill")!
+
+    expect(skill.successRate).toBeUndefined()
+    expect(skill.usageCount).toBeUndefined()
+    expect(skill.averageExecutionMs).toBeUndefined()
+  })
+
+  it("bridge dispatch is unavailable when BRIDGE_DISPATCH flag is false", async () => {
+    const provider = createMockProvider({
+      getFeatureFlags: () => ({ BRIDGE_DISPATCH: false }),
+    })
+
+    const model = await assembleCapabilityModel(provider)
+    const dispatch = model.execution.find((e) => e.type === "bridge_dispatch")!
+
+    expect(dispatch.available).toBe(false)
+  })
+
+  it("bridge dispatch unavailable when BRIDGE_DISPATCH flag is missing", async () => {
+    const provider = createMockProvider({
+      getFeatureFlags: () => ({}), // No BRIDGE_DISPATCH at all
+    })
+
+    const model = await assembleCapabilityModel(provider)
+    const dispatch = model.execution.find((e) => e.type === "bridge_dispatch")!
+
+    expect(dispatch.available).toBe(false) // Defaults to false
+  })
+
+  it("all MCP servers disconnected → all marked disconnected", async () => {
+    const provider = createMockProvider({
+      getMCPServers: async () => [
+        { serverId: "notion", status: "error", toolCount: 0, toolNames: [], error: "timeout" },
+        { serverId: "supabase", status: "disconnected", toolCount: 0, toolNames: [], error: "auth" },
+        { serverId: "anythingllm", status: "error", toolCount: 0, toolNames: [], error: "unreachable" },
+      ],
+    })
+
+    const model = await assembleCapabilityModel(provider)
+
+    for (const mcp of model.mcpTools) {
+      expect(mcp.connected).toBe(false)
+    }
+    // All 3 should appear in degraded capabilities
+    expect(model.health.degradedCapabilities).toContain("mcp:notion")
+    expect(model.health.degradedCapabilities).toContain("mcp:supabase")
+    expect(model.health.degradedCapabilities).toContain("mcp:anythingllm")
+  })
+
+  it("computes critical status when majority degraded", async () => {
+    // Need more than 50% degraded for critical
+    const provider = createMockProvider({
+      getSkills: async () => [
+        { name: "s1", description: "d", triggers: [], enabled: false },
+        { name: "s2", description: "d", triggers: [], enabled: false },
+      ],
+      getMCPServers: async () => [
+        { serverId: "a", status: "error", toolCount: 0, toolNames: [] },
+        { serverId: "b", status: "error", toolCount: 0, toolNames: [] },
+      ],
+      getKnowledgeSources: async () => [],
+      getIntegrationHealth: async () => [
+        { service: "notion", capabilities: ["read"], status: "error", message: "down" },
+      ],
+      getSurfaces: async () => [
+        { surface: "telegram", available: false, features: [] },
+      ],
+      // Execution has 5 static entries (4 always-on + 1 bridge)
+      // bridge_dispatch is off → 1 degraded
+      getFeatureFlags: () => ({ BRIDGE_DISPATCH: false }),
+    })
+
+    const model = await assembleCapabilityModel(provider)
+
+    // 2 skills off + 2 MCP off + 1 integration off + 1 surface off + 1 execution off = 7 degraded
+    // Total = 2 + 2 + 0 + 5 + 1 + 1 = 11
+    // 7/11 > 50% → critical
+    expect(model.health.status).toBe("critical")
+    expect(model.health.degradedCount).toBeGreaterThan(model.health.availableCount)
+  })
+
+  it("integration status=error maps to offline health", async () => {
+    const provider = createMockProvider({
+      getIntegrationHealth: async () => [
+        { service: "notion", capabilities: ["read"], status: "error", message: "connection refused" },
+      ],
+    })
+
+    const model = await assembleCapabilityModel(provider)
+    const notion = model.integrations.find((i) => i.service === "notion")!
+
+    expect(notion.health).toBe("offline")
+    expect(notion.authenticated).toBe(false) // error → not authenticated
+    expect(notion.healthDetail).toBe("connection refused")
+  })
+
+  it("integration status=warn maps to degraded with detail", async () => {
+    const provider = createMockProvider({
+      getIntegrationHealth: async () => [
+        { service: "gemini", capabilities: ["search"], status: "warn", message: "rate limited" },
+      ],
+    })
+
+    const model = await assembleCapabilityModel(provider)
+    const gemini = model.integrations.find((i) => i.service === "gemini")!
+
+    expect(gemini.health).toBe("degraded")
+    expect(gemini.authenticated).toBe(true) // warn ≠ error
+    expect(gemini.healthDetail).toBe("rate limited")
+  })
+
+  it("integration status=ok maps to healthy with no detail", async () => {
+    const provider = createMockProvider({
+      getIntegrationHealth: async () => [
+        { service: "notion", capabilities: ["read", "write"], status: "ok", message: "healthy" },
+      ],
+    })
+
+    const model = await assembleCapabilityModel(provider)
+    const notion = model.integrations.find((i) => i.service === "notion")!
+
+    expect(notion.health).toBe("healthy")
+    expect(notion.authenticated).toBe(true)
+    expect(notion.healthDetail).toBeUndefined()
+  })
+
+  it("maps trigger types correctly", async () => {
+    const provider = createMockProvider({
+      getSkills: async () => [
+        {
+          name: "multi-trigger",
+          description: "d",
+          triggers: [
+            { type: "phrase", value: "/test" },
+            { type: "keyword", value: "testing" },
+            { type: "intentHash", value: "test-intent" },
+            { type: "pattern", value: "/test-*" },
+            { type: "contentType", value: "url" },
+            { type: "pillar", value: "The Grove" },
+            { type: "unknown-future-type", value: "foo" },
+          ],
+          enabled: true,
+        },
+      ],
+    })
+
+    const model = await assembleCapabilityModel(provider)
+    const skill = model.skills[0]
+
+    expect(skill.triggers[0].type).toBe("command")  // phrase → command
+    expect(skill.triggers[1].type).toBe("keyword")  // keyword → keyword
+    expect(skill.triggers[2].type).toBe("intent")   // intentHash → intent
+    expect(skill.triggers[3].type).toBe("command")  // pattern → command
+    expect(skill.triggers[4].type).toBe("keyword")  // contentType → keyword
+    expect(skill.triggers[5].type).toBe("intent")   // pillar → intent
+    expect(skill.triggers[6].type).toBe("keyword")  // unknown → keyword (default)
+  })
+
+  it("extracts pillars from triggers with pillar field", async () => {
+    const provider = createMockProvider({
+      getSkills: async () => [
+        {
+          name: "pillar-skill",
+          description: "d",
+          triggers: [
+            { type: "keyword", value: "research", pillar: "The Grove" },
+            { type: "keyword", value: "client", pillar: "Consulting" },
+            { type: "keyword", value: "general" }, // no pillar
+          ],
+          enabled: true,
+        },
+      ],
+    })
+
+    const model = await assembleCapabilityModel(provider)
+    const skill = model.skills[0]
+
+    expect(skill.pillars).toContain("The Grove")
+    expect(skill.pillars).toContain("Consulting")
+    expect(skill.pillars).toHaveLength(2) // "general" has no pillar → not included
+  })
+})

@@ -319,4 +319,210 @@ describe("strengths and limitations", () => {
     const hasOfflineKnowledge = result.limitations.some((l) => l.includes("atlas-worldview"))
     expect(hasOfflineKnowledge).toBe(true)
   })
+
+  it("reports unavailable execution modes as limitations", () => {
+    const model = createTestModel({
+      execution: [
+        { type: "bridge_dispatch", name: "Bridge Dispatch", available: false, constraints: ["BRIDGE_DISPATCH=false"] },
+      ],
+    })
+    const triage = createTriage()
+    const result = matchCapabilities(triage, "something", model)
+
+    const hasBridgeLimitation = result.limitations.some((l) => l.includes("Bridge Dispatch"))
+    expect(hasBridgeLimitation).toBe(true)
+  })
+
+  it("reports multiple surfaces as strength", () => {
+    const model = createTestModel()
+    const triage = createTriage()
+    const result = matchCapabilities(triage, "something", model)
+
+    const hasMultiSurface = result.strengths.some((s) => s.includes("active surfaces"))
+    expect(hasMultiSurface).toBe(true)
+  })
+})
+
+// ─── Boundary Conditions ─────────────────────────────────
+
+describe("boundary conditions", () => {
+  it("confidence at exactly 0.5 IS included in relevant", () => {
+    // A chat intent maps prompt_composition to 0.5 — exactly at threshold
+    const model = createTestModel()
+    const triage = createTriage({ intent: "chat", keywords: [], complexityTier: 1 })
+    const result = matchCapabilities(triage, "hello there", model)
+
+    const promptComp = result.relevant.find((r) => r.capabilityId === "prompt_composition")
+    expect(promptComp).toBeTruthy()
+    expect(promptComp!.confidence).toBe(0.5)
+  })
+
+  it("confidence below 0.5 is NOT in relevant", () => {
+    // Provide model with no skills, no matching knowledge, minimal execution
+    // Only chat intent → prompt_composition at 0.5
+    const model = createTestModel({
+      skills: [],
+      knowledge: [],
+      integrations: [],
+      execution: [
+        { type: "prompt_composition", name: "Prompt Composition", available: true, constraints: [] },
+      ],
+    })
+    const triage = createTriage({ intent: "chat", keywords: [], complexityTier: 0 })
+    const result = matchCapabilities(triage, "hello", model)
+
+    // All matches should be >= 0.5
+    for (const match of result.relevant) {
+      expect(match.confidence).toBeGreaterThanOrEqual(0.5)
+    }
+  })
+
+  it("tier exactly 2 DOES trigger bridge dispatch", () => {
+    const model = createTestModel()
+    const triage = createTriage({ complexityTier: 2 })
+    const result = matchCapabilities(triage, "deep analysis", model)
+
+    const dispatch = result.relevant.find((r) => r.capabilityId === "bridge_dispatch")
+    expect(dispatch).toBeTruthy()
+  })
+
+  it("tier exactly 1 does NOT trigger bridge dispatch", () => {
+    const model = createTestModel()
+    const triage = createTriage({ complexityTier: 1, intent: "chat", keywords: [] })
+    const result = matchCapabilities(triage, "quick question", model)
+
+    const dispatch = result.relevant.find((r) => r.capabilityId === "bridge_dispatch")
+    expect(dispatch).toBeUndefined()
+  })
+
+  it("tier 3 triggers bridge dispatch", () => {
+    const model = createTestModel()
+    const triage = createTriage({ complexityTier: 3 })
+    const result = matchCapabilities(triage, "deeply complex multi-step research", model)
+
+    const dispatch = result.relevant.find((r) => r.capabilityId === "bridge_dispatch")
+    expect(dispatch).toBeTruthy()
+  })
+
+  it("command match gets 0.95 confidence (above autoRoute 0.9)", () => {
+    const model = createTestModel()
+    const triage = createTriage({
+      intent: "command",
+      command: { name: "/health" },
+      keywords: [],
+    })
+    const result = matchCapabilities(triage, "/health", model)
+
+    const health = result.relevant.find((r) => r.capabilityId === "health-check")
+    expect(health).toBeTruthy()
+    expect(health!.confidence).toBeGreaterThanOrEqual(0.9) // auto-route threshold
+  })
+
+  it("keyword match gets 0.7 confidence (below autoRoute, above relevant)", () => {
+    const model = createTestModel()
+    const triage = createTriage({ keywords: ["research"], pillar: "Personal" })
+    const result = matchCapabilities(triage, "research something", model)
+
+    const agent = result.relevant.find((r) => r.capabilityId === "agent-dispatch")
+    expect(agent).toBeTruthy()
+    expect(agent!.confidence).toBe(0.7) // No pillar boost (Personal != The Grove)
+  })
+})
+
+// ─── Edge Cases ──────────────────────────────────────────
+
+describe("edge cases", () => {
+  it("handles empty model gracefully", () => {
+    const model = createTestModel({
+      skills: [],
+      mcpTools: [],
+      knowledge: [],
+      execution: [],
+      integrations: [],
+      surfaces: [],
+      health: { status: "critical", availableCount: 0, degradedCount: 0, summary: "0/0", degradedCapabilities: [] },
+    })
+    const triage = createTriage()
+    const result = matchCapabilities(triage, "anything", model)
+
+    expect(result.relevant).toHaveLength(0)
+    expect(result.primary).toBeNull()
+    expect(result.strengths).toHaveLength(0)
+  })
+
+  it("handles empty keywords gracefully", () => {
+    const model = createTestModel()
+    const triage = createTriage({ keywords: [] })
+    const result = matchCapabilities(triage, "something without keywords", model)
+
+    // Should still get execution matches from intent, just no skill keyword matches
+    expect(result).toBeTruthy()
+    expect(Array.isArray(result.relevant)).toBe(true)
+  })
+
+  it("handles unknown intent gracefully", () => {
+    const model = createTestModel()
+    const triage = createTriage({ intent: "unknown_future_intent", keywords: [] })
+    const result = matchCapabilities(triage, "something new", model)
+
+    // Unknown intent gets no execution matches, but shouldn't crash
+    const execMatches = result.relevant.filter((r) => r.layer === "execution")
+    // May have bridge_dispatch if complexityTier >= 2
+    expect(result).toBeTruthy()
+  })
+
+  it("wires alternatives into matches", () => {
+    const model = createTestModel()
+    const triage = createTriage({ intent: "query", keywords: ["research"] })
+    const result = matchCapabilities(triage, "research something deeply", model)
+
+    // With multiple relevant matches, each should have alternatives
+    const multipleRelevant = result.relevant.length > 1
+    if (multipleRelevant) {
+      const withAlternatives = result.relevant.filter((r) => r.alternatives.length > 0)
+      expect(withAlternatives.length).toBeGreaterThan(0)
+    }
+  })
+
+  it("alternatives are capped at 3", () => {
+    const model = createTestModel()
+    const triage = createTriage({ intent: "query", keywords: ["research", "AI"] })
+    const result = matchCapabilities(triage, "research AI product strategy deeply", model)
+
+    for (const match of result.relevant) {
+      expect(match.alternatives.length).toBeLessThanOrEqual(3)
+    }
+  })
+
+  it("query intent tier 1 does NOT match anythingllm", () => {
+    const model = createTestModel()
+    const triage = createTriage({ intent: "query", complexityTier: 1 })
+    const result = matchCapabilities(triage, "quick question", model)
+
+    const rag = result.relevant.find((r) => r.capabilityId === "anythingllm")
+    expect(rag).toBeUndefined()
+  })
+
+  it("capture intent matches Notion even with no keywords", () => {
+    const model = createTestModel()
+    const triage = createTriage({ intent: "capture", keywords: [] })
+    const result = matchCapabilities(triage, "save this", model)
+
+    const notion = result.relevant.find((r) => r.capabilityId === "notion")
+    expect(notion).toBeTruthy()
+  })
+
+  it("all knowledge offline produces no knowledge matches", () => {
+    const model = createTestModel({
+      knowledge: [
+        { source: "anythingllm", workspace: "grove-vision", documentCount: 50, domains: ["AI"], available: false },
+        { source: "notion", workspace: "atlas-worldview", documentCount: 10, domains: ["beliefs"], available: false },
+      ],
+    })
+    const triage = createTriage({ keywords: ["AI", "beliefs"] })
+    const result = matchCapabilities(triage, "AI beliefs", model)
+
+    const knowledgeMatches = result.relevant.filter((r) => r.layer === "knowledge")
+    expect(knowledgeMatches).toHaveLength(0)
+  })
 })
