@@ -1065,15 +1065,21 @@ export async function handleConversation(ctx: Context): Promise<void> {
       }),
     };
 
-    // Assessment gates audit trail: simple requests skip redundant Feed/WQ
-    // entries ONLY when Claude already handled it via tool use (preventing
-    // double-write). If Claude didn't use tools, audit trail is the fallback.
-    const skipAudit = assessment?.complexity === 'simple' && toolsUsed.length > 0;
+    // Assessment gates audit trail: when assessment says simple, skip audit if
+    // either (a) Claude already handled via tools (no double-write), or
+    // (b) triage confidence is too low to trust (no wrong-pillar garbage).
+    // Wrong entries are worse than missing entries.
+    const AUDIT_CONFIDENCE_THRESHOLD = 0.7;
+    const skipAudit = assessment?.complexity === 'simple' &&
+      (toolsUsed.length > 0 || classification.confidence < AUDIT_CONFIDENCE_THRESHOLD);
 
     const auditStep = addStep(trace, 'audit-trail');
     let auditResult: AuditResult | null = null;
     if (skipAudit) {
-      auditStep.metadata = { status: 'skipped', reason: 'assessment-simple-tools-handled' };
+      const reason = toolsUsed.length > 0
+        ? 'assessment-simple-tools-handled'
+        : `assessment-simple-low-confidence:${classification.confidence}`;
+      auditStep.metadata = { status: 'skipped', reason };
     } else {
       auditResult = await createAuditTrail(auditEntry, trace);
       auditStep.metadata = {

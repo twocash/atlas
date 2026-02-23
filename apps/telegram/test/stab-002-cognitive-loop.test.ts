@@ -381,31 +381,40 @@ describe("STAB-002: Terrain classification routing", () => {
 // ─── Assessment Gates Audit Trail (STAB-002b) ────────────
 
 describe("STAB-002b: Assessment gates audit trail", () => {
-  // The gate: skip audit ONLY when simple AND Claude already used tools.
-  // This prevents double-write without causing zero-write.
+  // The gate: skip audit when simple AND (tools handled OR confidence too low).
+  // Wrong entries are worse than missing entries.
+  const THRESHOLD = 0.7
 
-  it("simple + tools used → SKIP audit (double-write prevention)", () => {
+  function shouldSkipAudit(
+    assessment: RequestAssessment | null,
+    toolsUsed: string[],
+    confidence: number,
+  ): boolean {
+    return assessment?.complexity === "simple" &&
+      (toolsUsed.length > 0 || confidence < THRESHOLD)
+  }
+
+  it("simple + tools used → SKIP (double-write prevention)", () => {
     const assessment = makeAssessment({ complexity: "simple" })
-    const toolsUsed = ["notion-create-page"]
-    const skipAudit = assessment?.complexity === "simple" && toolsUsed.length > 0
-    expect(skipAudit).toBe(true)
+    expect(shouldSkipAudit(assessment, ["work_queue_create"], 0.85)).toBe(true)
   })
 
-  it("simple + NO tools → audit RUNS (fallback, no zero-write)", () => {
+  it("simple + low confidence + no tools → SKIP (garbage-data prevention)", () => {
     const assessment = makeAssessment({ complexity: "simple" })
-    const toolsUsed: string[] = []
-    const skipAudit = assessment?.complexity === "simple" && toolsUsed.length > 0
-    expect(skipAudit).toBe(false)
+    expect(shouldSkipAudit(assessment, [], 0.4)).toBe(true)
   })
 
-  it("moderate + tools used → audit RUNS (tracking needed)", () => {
+  it("simple + high confidence + no tools → audit RUNS (data reliable)", () => {
+    const assessment = makeAssessment({ complexity: "simple" })
+    expect(shouldSkipAudit(assessment, [], 0.85)).toBe(false)
+  })
+
+  it("moderate + low confidence → audit RUNS (tracking needed)", () => {
     const assessment = makeAssessment({ complexity: "moderate" })
-    const toolsUsed = ["notion-create-page"]
-    const skipAudit = assessment?.complexity === "simple" && toolsUsed.length > 0
-    expect(skipAudit).toBe(false)
+    expect(shouldSkipAudit(assessment, [], 0.4)).toBe(false)
   })
 
-  it("complex assessment → audit RUNS regardless of tools", () => {
+  it("complex → audit RUNS regardless", () => {
     const assessment = makeAssessment({
       complexity: "complex",
       signals: {
@@ -417,31 +426,24 @@ describe("STAB-002b: Assessment gates audit trail", () => {
         novelPattern: false,
       },
     })
-    const toolsUsed = ["notion-create-page", "notion-search"]
-    const skipAudit = assessment?.complexity === "simple" && toolsUsed.length > 0
-    expect(skipAudit).toBe(false)
+    expect(shouldSkipAudit(assessment, ["notion-search"], 0.9)).toBe(false)
   })
 
-  it("rough assessment → audit RUNS (but typically unreachable)", () => {
+  it("rough → audit RUNS (typically unreachable)", () => {
     const assessment = makeRoughAssessment()
-    const toolsUsed: string[] = []
-    const skipAudit = assessment?.complexity === "simple" && toolsUsed.length > 0
-    expect(skipAudit).toBe(false)
+    expect(shouldSkipAudit(assessment, [], 0.3)).toBe(false)
   })
 
   it("null assessment (feature off) → audit RUNS (backward compat)", () => {
-    const assessment: RequestAssessment | null = null
-    const toolsUsed = ["notion-create-page"]
-    const skipAudit = assessment?.complexity === "simple" && toolsUsed.length > 0
-    expect(skipAudit).toBe(false)
+    expect(shouldSkipAudit(null, ["work_queue_create"], 0.85)).toBe(false)
   })
 
   it("actionTaken reflects tool use even when audit skipped", () => {
-    const auditResult = null // skipped
-    const toolsUsed = ["notion-create-page"]
+    const auditResult = null
+    const toolsUsed = ["work_queue_create"]
     const mediaContext = null
     const actionTaken = !!auditResult || toolsUsed.length > 0 || !!mediaContext
-    expect(actionTaken).toBe(true) // DONE reaction from tool use
+    expect(actionTaken).toBe(true)
   })
 
   it("actionTaken is false when no audit and no tools (pure chat)", () => {
@@ -449,30 +451,28 @@ describe("STAB-002b: Assessment gates audit trail", () => {
     const toolsUsed: string[] = []
     const mediaContext = null
     const actionTaken = !!auditResult || toolsUsed.length > 0 || !!mediaContext
-    expect(actionTaken).toBe(false) // CHAT reaction
+    expect(actionTaken).toBe(false)
   })
 
-  it("skill logger skipped when audit skipped (tools already logged to Feed)", () => {
+  it("skill logger skipped when audit skipped", () => {
     const assessment = makeAssessment({ complexity: "simple" })
-    const toolsUsed = ["work_queue_create"]
-    const skipAudit = assessment?.complexity === "simple" && toolsUsed.length > 0
-    const skillLoggingEnabled = true
+    const skip = shouldSkipAudit(assessment, ["work_queue_create"], 0.85)
+    expect(skip).toBe(true)
+    expect(true && !skip).toBe(false) // skillLoggingEnabled && !skipAudit
+  })
 
-    // Handler logic: skill logger only runs when !skipAudit
-    const shouldLogAction = skillLoggingEnabled && !skipAudit
-    expect(skipAudit).toBe(true)
-    expect(shouldLogAction).toBe(false) // No redundant third Feed entry
+  it("skill logger skipped for low-confidence simple (no redundant Feed)", () => {
+    const assessment = makeAssessment({ complexity: "simple" })
+    const skip = shouldSkipAudit(assessment, [], 0.4)
+    expect(skip).toBe(true)
+    expect(true && !skip).toBe(false)
   })
 
   it("skill logger runs when audit runs (merges via existingFeedId)", () => {
     const assessment = makeAssessment({ complexity: "moderate" })
-    const toolsUsed = ["work_queue_create"]
-    const skipAudit = assessment?.complexity === "simple" && toolsUsed.length > 0
-    const skillLoggingEnabled = true
-
-    const shouldLogAction = skillLoggingEnabled && !skipAudit
-    expect(skipAudit).toBe(false)
-    expect(shouldLogAction).toBe(true) // Runs and merges into audit's Feed entry
+    const skip = shouldSkipAudit(assessment, ["work_queue_create"], 0.85)
+    expect(skip).toBe(false)
+    expect(true && !skip).toBe(true) // skillLoggingEnabled && !skipAudit
   })
 })
 
