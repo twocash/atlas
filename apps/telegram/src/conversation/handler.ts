@@ -494,6 +494,7 @@ export async function handleConversation(ctx: Context): Promise<void> {
         // Explicit trace — not silent degradation (ADR-008)
         assessStep.metadata = { status: 'skipped', reason: 'no-cached-model' };
         completeStep(assessStep);
+        logger.info('Assessment skipped: no cached capability model');
       } else {
         const assessmentContext: AssessmentContext = {
           intent: preflightTriage.intent,
@@ -511,6 +512,11 @@ export async function handleConversation(ctx: Context): Promise<void> {
           hasProposal: !!assessment.approach,
         };
         completeStep(assessStep);
+        logger.info('Assessment complete', {
+          complexity: assessment.complexity,
+          signalCount: assessment.signals ? Object.values(assessment.signals).filter(Boolean).length : 0,
+          hasProposal: !!assessment.approach,
+        });
       }
     } catch (err) {
       // Explicit trace failure — ADR-008: surface failure in metadata, not just log

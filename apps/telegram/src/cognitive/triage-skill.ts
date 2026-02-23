@@ -99,8 +99,8 @@ const TriageResultSchema = z.object({
   command: TriageCommandSchema.optional().nullable().default(null),
   title: z.string().max(80).optional().nullable().default(null),  // Allow slight overflow, truncate later
   titleRationale: z.string().optional().nullable().default(null),
-  pillar: z.string(),  // Validated against Pillar type downstream
-  requestType: z.string(),
+  pillar: z.string().nullable().default('The Grove'),  // Validated against Pillar type downstream
+  requestType: z.string().nullable().default('Quick'),
   keywords: z.array(z.string()).default([]),
   complexityTier: z.union([z.literal(0), z.literal(1), z.literal(2), z.literal(3)]).default(1),
   suggestedModel: z.string().optional(),
