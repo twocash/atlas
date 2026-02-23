@@ -291,11 +291,18 @@ describe("Request Assessment (CONV-ARCH-002)", () => {
       })).toBe("moderate")
     })
 
-    it("3-4 signals → complex", () => {
+    it("3 signals → complex", () => {
       expect(classifyComplexity({
         multiStep: true, ambiguousGoal: true, contextDependent: true,
         timeSensitive: false, highStakes: false, novelPattern: false,
       })).toBe("complex")
+    })
+
+    it("4+ signals → rough", () => {
+      expect(classifyComplexity({
+        multiStep: true, ambiguousGoal: true, contextDependent: true,
+        timeSensitive: true, highStakes: false, novelPattern: false,
+      })).toBe("rough")
     })
 
     it("5-6 signals → rough", () => {
@@ -349,7 +356,49 @@ describe("Request Assessment (CONV-ARCH-002)", () => {
     })
   })
 
-  // ── Test 9: Assessment defaults ──
+  // ── Test 9: Classifier hotfix verification ──
+  describe("Classifier hotfix verification", () => {
+    it("'add milk' classifies as simple", () => {
+      const result = assessRequest("add milk", {}, model)
+      expect(result.complexity).toBe("simple")
+    })
+
+    it("'Research agent orchestration' classifies as moderate or complex", () => {
+      const result = assessRequest(
+        "Research agent orchestration",
+        { pillar: "The Grove", keywords: ["research", "agent"] },
+        model,
+      )
+      expect(["moderate", "complex"]).toContain(result.complexity)
+    })
+
+    it("'figure out what to do about everything' classifies as rough", () => {
+      const result = assessRequest(
+        "figure out what to do about everything",
+        {},
+        model,
+      )
+      expect(result.complexity).toBe("rough")
+    })
+
+    it("simple action verbs are not novel", () => {
+      const signals = detectSignals("add milk", {}, [])
+      expect(signals.novelPattern).toBe(false)
+    })
+
+    it("exploration verbs trigger multiStep", () => {
+      const signals = detectSignals("Research agent orchestration", {}, [])
+      expect(signals.multiStep).toBe(true)
+    })
+
+    it("'everything' triggers ambiguous + contextDependent", () => {
+      const signals = detectSignals("figure out what to do about everything", {}, [])
+      expect(signals.ambiguousGoal).toBe(true)
+      expect(signals.contextDependent).toBe(true)
+    })
+  })
+
+  // ── Test 10: Assessment defaults ──
   describe("Configuration", () => {
     it("ASSESSMENT_DEFAULTS has expected structure", () => {
       expect(ASSESSMENT_DEFAULTS.featureFlag).toBe("ATLAS_REQUEST_ASSESSMENT")
@@ -357,8 +406,8 @@ describe("Request Assessment (CONV-ARCH-002)", () => {
       expect(ASSESSMENT_DEFAULTS.maxAlternativeAngles).toBe(3)
       expect(ASSESSMENT_DEFAULTS.thresholds.simple).toBe(0)
       expect(ASSESSMENT_DEFAULTS.thresholds.moderate).toBe(2)
-      expect(ASSESSMENT_DEFAULTS.thresholds.complex).toBe(4)
-      expect(ASSESSMENT_DEFAULTS.thresholds.rough).toBe(5)
+      expect(ASSESSMENT_DEFAULTS.thresholds.complex).toBe(3)
+      expect(ASSESSMENT_DEFAULTS.thresholds.rough).toBe(4)
     })
   })
 })
