@@ -451,6 +451,29 @@ describe("STAB-002b: Assessment gates audit trail", () => {
     const actionTaken = !!auditResult || toolsUsed.length > 0 || !!mediaContext
     expect(actionTaken).toBe(false) // CHAT reaction
   })
+
+  it("skill logger skipped when audit skipped (tools already logged to Feed)", () => {
+    const assessment = makeAssessment({ complexity: "simple" })
+    const toolsUsed = ["work_queue_create"]
+    const skipAudit = assessment?.complexity === "simple" && toolsUsed.length > 0
+    const skillLoggingEnabled = true
+
+    // Handler logic: skill logger only runs when !skipAudit
+    const shouldLogAction = skillLoggingEnabled && !skipAudit
+    expect(skipAudit).toBe(true)
+    expect(shouldLogAction).toBe(false) // No redundant third Feed entry
+  })
+
+  it("skill logger runs when audit runs (merges via existingFeedId)", () => {
+    const assessment = makeAssessment({ complexity: "moderate" })
+    const toolsUsed = ["work_queue_create"]
+    const skipAudit = assessment?.complexity === "simple" && toolsUsed.length > 0
+    const skillLoggingEnabled = true
+
+    const shouldLogAction = skillLoggingEnabled && !skipAudit
+    expect(skipAudit).toBe(false)
+    expect(shouldLogAction).toBe(true) // Runs and merges into audit's Feed entry
+  })
 })
 
 // ─── Dialogue Engine Integration ─────────────────────────

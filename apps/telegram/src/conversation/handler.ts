@@ -1129,7 +1129,9 @@ export async function handleConversation(ctx: Context): Promise<void> {
 
     // Log action for skill pattern detection (Phase 1)
     // Non-blocking - pass existingFeedId to prevent dual-write (Bug A fix)
-    if (isFeatureEnabled('skillLogging')) {
+    // When audit was skipped (simple + tools handled), tools already logged
+    // to Feed — skill logger would create a redundant third entry.
+    if (isFeatureEnabled('skillLogging') && !skipAudit) {
       logAction({
         messageText,
         pillar: classification.pillar,
