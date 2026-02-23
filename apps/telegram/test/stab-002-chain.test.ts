@@ -103,6 +103,7 @@ function createMockProvider(): CapabilityDataProvider {
 function makeAssessment(overrides: Partial<RequestAssessment> = {}): RequestAssessment {
   return {
     complexity: "simple",
+    pillar: "Personal",
     approach: null,
     capabilities: [],
     reasoning: "Simple request",

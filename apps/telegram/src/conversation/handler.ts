@@ -1037,9 +1037,12 @@ export async function handleConversation(ctx: Context): Promise<void> {
     }
 
     // Create audit trail (Feed + Work Queue)
+    // Assessment pillar (keyword-based) overrides triage pillar (Haiku-based)
+    // when available — triage guesses wrong at low confidence (e.g. "add milk" → The Grove).
+    const auditPillar = (assessment?.pillar ?? classification.pillar) as Pillar;
     const auditEntry: AuditEntry = {
       entry: smartTitle,
-      pillar: classification.pillar,
+      pillar: auditPillar,
       requestType: classification.requestType,
       source: 'Telegram',
       author: 'Jim',

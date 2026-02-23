@@ -90,6 +90,8 @@ export interface ApproachProposal {
 export interface RequestAssessment {
   /** Complexity tier */
   complexity: Complexity
+  /** Inferred pillar from message keywords (bypasses triage) */
+  pillar: string
   /** Approach proposal (null for simple requests) */
   approach: ApproachProposal | null
   /** Matched capabilities from self-model */

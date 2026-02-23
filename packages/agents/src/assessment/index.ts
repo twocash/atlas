@@ -24,4 +24,4 @@ export { detectSignals, classifyComplexity, countSignals } from "./complexity-cl
 export { buildApproach } from "./approach-builder"
 
 // Request Assessor (main entry point)
-export { assessRequest, quickClassify, isAssessmentEnabled } from "./request-assessor"
+export { assessRequest, quickClassify, isAssessmentEnabled, inferPillar } from "./request-assessor"

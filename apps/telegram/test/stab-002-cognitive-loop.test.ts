@@ -40,6 +40,7 @@ import {
 } from "../../../packages/agents/src/self-model"
 import {
   assessRequest,
+  inferPillar,
   type AssessmentContext,
 } from "../../../packages/agents/src/assessment"
 import type { RequestAssessment, ComplexitySignals } from "../../../packages/agents/src/assessment/types"
@@ -96,6 +97,7 @@ function createMockProvider(): CapabilityDataProvider {
 function makeAssessment(overrides: Partial<RequestAssessment> = {}): RequestAssessment {
   return {
     complexity: "simple",
+    pillar: "Personal",
     approach: null,
     capabilities: [],
     reasoning: "Simple request",
@@ -473,6 +475,69 @@ describe("STAB-002b: Assessment gates audit trail", () => {
     const skip = shouldSkipAudit(assessment, ["work_queue_create"], 0.85)
     expect(skip).toBe(false)
     expect(true && !skip).toBe(true) // skillLoggingEnabled && !skipAudit
+  })
+})
+
+// ─── Pillar Inference (HOTFIX) ──────────────────────────
+
+describe("Assessment pillar inference", () => {
+  it("'add milk' → Personal (default)", () => {
+    expect(inferPillar("add milk")).toBe("Personal")
+  })
+
+  it("'add mouthwash' → Personal (default)", () => {
+    expect(inferPillar("add mouthwash")).toBe("Personal")
+  })
+
+  it("'grove infrastructure review' → The Grove", () => {
+    expect(inferPillar("grove infrastructure review")).toBe("The Grove")
+  })
+
+  it("'fix the atlas bug in triage' → Atlas Dev", () => {
+    expect(inferPillar("fix the atlas bug in triage")).toBe("Atlas Dev")
+  })
+
+  it("'sprint planning for STAB-005' → Atlas Dev", () => {
+    expect(inferPillar("sprint planning for STAB-005")).toBe("Atlas Dev")
+  })
+
+  it("'chase client meeting notes' → Consulting", () => {
+    expect(inferPillar("chase client meeting notes")).toBe("Consulting")
+  })
+
+  it("'walmart consulting proposal' → Consulting", () => {
+    expect(inferPillar("walmart consulting proposal")).toBe("Consulting")
+  })
+
+  it("'concentration techniques for deep work' → The Grove", () => {
+    expect(inferPillar("concentration techniques for deep work")).toBe("The Grove")
+  })
+
+  it("'new feature request from users' → Atlas Dev", () => {
+    expect(inferPillar("new feature request from users")).toBe("Atlas Dev")
+  })
+
+  it("assessment.pillar overrides triage pillar for audit", () => {
+    const assessment = makeAssessment({ pillar: "Personal" })
+    const triagePillar = "The Grove" // triage guessed wrong
+    const auditPillar = assessment.pillar ?? triagePillar
+    expect(auditPillar).toBe("Personal")
+  })
+
+  it("falls back to triage pillar when assessment is null", () => {
+    const assessment: RequestAssessment | null = null
+    const triagePillar = "The Grove"
+    const auditPillar = (assessment as any)?.pillar ?? triagePillar
+    expect(auditPillar).toBe("The Grove")
+  })
+
+  it("assessRequest returns pillar in result", async () => {
+    const provider = createMockProvider()
+    await assembleCapabilityModel(provider)
+    const model = getCachedModel()!
+    const context: AssessmentContext = { intent: "capture", keywords: ["milk"] }
+    const result = assessRequest("add milk to the grocery list", context, model)
+    expect(result.pillar).toBe("Personal")
   })
 })
 

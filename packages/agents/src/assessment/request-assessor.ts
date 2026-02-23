@@ -51,6 +51,20 @@ function buildTriageLike(context: AssessmentContext): TriageLike {
   }
 }
 
+// ─── Pillar Inference ────────────────────────────────────
+
+/**
+ * Infer pillar from message keywords. Deterministic, no LLM.
+ * Default: Personal (groceries, errands, health — the most common simple requests).
+ */
+export function inferPillar(message: string): string {
+  const lower = message.toLowerCase()
+  if (/\b(grove|infrastructure|concentration)\b/.test(lower)) return "The Grove"
+  if (/\b(atlas|bug|sprint|feature|stab-)\b/.test(lower)) return "Atlas Dev"
+  if (/\b(client|chase|walmart|consulting)\b/.test(lower)) return "Consulting"
+  return "Personal"
+}
+
 // ─── Reasoning Generation ────────────────────────────────
 
 function generateReasoning(
@@ -125,8 +139,12 @@ export function assessRequest(
   // Step 5: Generate reasoning
   const reasoning = generateReasoning(complexity, signalCount, capabilities)
 
+  // Step 6: Infer pillar from message keywords
+  const pillar = inferPillar(request)
+
   return {
     complexity,
+    pillar,
     approach,
     capabilities,
     reasoning,

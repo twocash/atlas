@@ -57,6 +57,7 @@ function makeSignals(overrides: Partial<ComplexitySignals> = {}): ComplexitySign
 function makeAssessment(overrides: Partial<RequestAssessment> = {}): RequestAssessment {
   return {
     complexity: "simple",
+    pillar: "Personal",
     signals: makeSignals(),
     signalCount: 0,
     capabilities: [],
