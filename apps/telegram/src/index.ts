@@ -27,6 +27,8 @@ import { getPromptManager } from "../../../packages/agents/src/services/prompt-m
 import { startHealthAlertProducer, stopHealthAlertProducer } from "./feed/alert-producer";
 import { startApprovalListener, stopApprovalListener } from "./feed/approval-listener";
 import { startReviewListener, stopReviewListener } from "./feed/review-listener";
+import { registerSelfModelProvider } from "../../../packages/bridge/src/context";
+import { createSelfModelProvider } from "./conversation/self-model-provider";
 import { existsSync, writeFileSync, unlinkSync, readFileSync } from "fs";
 import { join } from "path";
 
@@ -124,6 +126,16 @@ async function main() {
   await initializeSkillRegistry().catch(err => {
     logger.warn("Skill registry initialization failed (non-fatal)", { error: err.message });
   });
+
+  // Register self-model data provider (STAB-001: Wire The Stack)
+  // Must run after MCP + skill registry init (those populate data the provider reads)
+  if (process.env.ATLAS_SELF_MODEL === 'true') {
+    try {
+      registerSelfModelProvider(createSelfModelProvider());
+    } catch (err) {
+      logger.warn("Self-model provider registration failed (non-fatal)", { error: (err as Error).message });
+    }
+  }
 
   // Initialize PromptManager singleton (Sprint: Prompt Manager Wiring)
   // Warm-up validates Notion connectivity — LOUD fail if DB unreachable

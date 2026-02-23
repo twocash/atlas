@@ -558,6 +558,7 @@ async function runRegressionTests(cwd: string): Promise<SuiteResult> {
     'test/spa-silent-fallback-chain.test.ts',   // fix/spa-silent-fallback-chain: Jina 422 → ADR-008 chain tests
     'test/bridge-extraction.test.ts',            // Bridge Phase 4.5: Chrome Extension content extraction pipeline
     'test/content-sources.test.ts',              // ADR-001: Content Sources Notion-backed config + fallback
+    'test/stab-001-chain.test.ts',               // STAB-001: Self-model → assessment chain tests
   ];
 
   const result = await runCommand(
@@ -977,6 +978,7 @@ async function runAgentsUnitTests(cwd: string): Promise<SuiteResult> {
       'test/self-model-master-blaster.test.ts',
       'test/request-assessment.test.ts',
       'test/dialogue.test.ts',
+      'test/stab-001-wiring.test.ts',  // STAB-001: Provider + assessment pipeline unit tests
     ],
     agentsCwd,
     60000
