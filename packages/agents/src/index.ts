@@ -257,3 +257,22 @@ export {
   type RequestAssessment,
   type AssessmentContext,
 } from "./assessment";
+
+// Dialogue (Rough Terrain Collaborative Exploration)
+export {
+  classifyTerrain,
+  needsDialogue,
+  assessmentNeedsDialogue,
+  surfaceThreads,
+  identifyAmbiguity,
+  resetThreadCounter,
+  enterDialogue,
+  continueDialogue,
+  isDialogueResolved,
+  DIALOGUE_DEFAULTS,
+  type Terrain,
+  type ThreadSource,
+  type Thread,
+  type DialogueState,
+  type DialogueResult,
+} from "./dialogue";

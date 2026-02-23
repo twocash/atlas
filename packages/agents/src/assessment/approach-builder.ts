@@ -164,12 +164,14 @@ export function buildApproach(
   // Simple requests: no proposal needed
   if (complexity === "simple") return null
 
-  // Rough requests: Sprint 3 placeholder
+  // Rough requests: defer to DialogueEngine (Sprint 3)
+  // The dialogue module handles multi-turn collaborative exploration.
+  // Return a marker proposal that signals the caller to enter dialogue.
   if (complexity === "rough") {
     return {
       steps: [
         {
-          description: "This needs collaborative exploration — multiple unknowns to resolve",
+          description: "Enter collaborative exploration — multiple unknowns to resolve together",
         },
       ],
       timeEstimate: "Requires dialogue",
@@ -177,7 +179,7 @@ export function buildApproach(
         "Break into smaller sub-requests",
         "Start with the most constrained piece",
       ],
-      questionForJim: "This is a big one. Where should I start?",
+      questionForJim: "This has a few threads. Let me surface what I see.",
     }
   }
 
