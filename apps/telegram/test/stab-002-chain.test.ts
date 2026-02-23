@@ -104,6 +104,8 @@ function makeAssessment(overrides: Partial<RequestAssessment> = {}): RequestAsse
   return {
     complexity: "simple",
     pillar: "Personal",
+    domain: "personal",
+    audience: "self",
     approach: null,
     capabilities: [],
     reasoning: "Simple request",
@@ -147,11 +149,11 @@ function makeRoughAssessment(): RequestAssessment {
  * Replicates the handler's assessment step in isolation.
  * Same pattern as STAB-001 chain tests.
  */
-function runAssessmentStep(
+async function runAssessmentStep(
   trace: ReturnType<typeof createTrace>,
   messageText: string,
   preflightTriage: { intent?: string; pillar?: string; keywords?: string[] } | null,
-): RequestAssessment | null {
+): Promise<RequestAssessment | null> {
   let assessment: RequestAssessment | null = null
 
   if (preflightTriage) {
@@ -170,7 +172,7 @@ function runAssessmentStep(
           hasContact: false,
           hasDeadline: false,
         }
-        assessment = assessRequest(messageText, context, model)
+        assessment = await assessRequest(messageText, context, model)
         assessStep.metadata = {
           status: "ok",
           complexity: assessment.complexity,
@@ -348,7 +350,7 @@ describe("STAB-002 Chain: Simple request → no dialogue", () => {
     completeStep(triageStep)
 
     // Step 2: Assessment
-    const assessment = runAssessmentStep(trace, "Add milk to grocery list", triage)
+    const assessment = await runAssessmentStep(trace, "Add milk to grocery list", triage)
 
     // Simple request → no dialogue
     expect(assessment).not.toBeNull()
@@ -480,7 +482,7 @@ describe("STAB-002 Chain: Dialogue continuation → resolved", () => {
     const entryTrace = createTrace()
     addStep(entryTrace, "preflight-triage")
     completeStep(entryTrace.steps[0])
-    runAssessmentStep(entryTrace, messageText, triage)
+    await runAssessmentStep(entryTrace, messageText, triage)
     const assessment = makeRoughAssessment() // Use known rough assessment
     const entryResult = runDialogueEntryStep(entryTrace, messageText, assessment, triage)
     expect(entryResult.entered).toBe(true)
@@ -616,7 +618,7 @@ describe("STAB-002 Chain: Assessment injected into prompt", () => {
 
     const trace = createTrace()
     const triage = { intent: "command", pillar: "Personal", keywords: ["grocery"] }
-    const assessment = runAssessmentStep(trace, "Add milk to grocery list", triage)
+    const assessment = await runAssessmentStep(trace, "Add milk to grocery list", triage)
 
     expect(assessment).not.toBeNull()
 

@@ -66,6 +66,11 @@ import {
   assessmentNeedsDialogue,
   enterDialogue,
   continueDialogue,
+  derivePillar,
+  detectDomainCorrection,
+  logDomainCorrection,
+  extractKeywords,
+  type DomainType,
 } from '../../../../packages/agents/src';
 import {
   hasDialogueSessionForUser,
@@ -77,6 +82,13 @@ import {
 // Feature flag for content confirmation keyboard (Universal Content Analysis)
 // Enabled by default - set ATLAS_CONTENT_CONFIRM=false to disable
 const CONTENT_CONFIRM_ENABLED = process.env.ATLAS_CONTENT_CONFIRM !== 'false';
+
+// Feature flag for domain/audience unbundling (STAB-002c)
+const DOMAIN_AUDIENCE_ENABLED = process.env.ATLAS_DOMAIN_AUDIENCE === 'true';
+
+// Per-user last-domain cache for correction detection (STAB-002c)
+// Lightweight in-memory map — only tracks the most recent domain per user.
+const lastDomainByUser = new Map<number, DomainType>();
 
 /**
  * Format tool context for conversation history
@@ -343,6 +355,28 @@ export async function handleConversation(ctx: Context): Promise<void> {
       await setReaction(ctx, REACTIONS.DONE);
       logger.info('Content share detected, confirmation keyboard shown', { userId });
       return;
+    }
+  }
+
+  // DOMAIN CORRECTION DETECTION (STAB-002c)
+  // Check if Jim's message is correcting the domain from a previous assessment.
+  // Feature-gated — only runs when ATLAS_DOMAIN_AUDIENCE=true.
+  if (DOMAIN_AUDIENCE_ENABLED && messageText && lastDomainByUser.has(userId)) {
+    const currentDomain = lastDomainByUser.get(userId)!;
+    const correction = detectDomainCorrection(messageText, currentDomain);
+    if (correction) {
+      const keywords = extractKeywords(messageText);
+      // Fire-and-forget: telemetry shouldn't block the conversation
+      logDomainCorrection(currentDomain, correction.corrected, keywords, messageText).catch(err => {
+        logger.warn('Domain correction logging failed', { error: err });
+      });
+      // Update the cached domain so subsequent messages use the corrected value
+      lastDomainByUser.set(userId, correction.corrected);
+      logger.info('Domain correction detected', {
+        userId,
+        original: currentDomain,
+        corrected: correction.corrected,
+      });
     }
   }
 
@@ -614,7 +648,7 @@ export async function handleConversation(ctx: Context): Promise<void> {
           hasContact: false,
           hasDeadline: false,
         };
-        assessment = assessRequest(messageText, assessmentContext, model);
+        assessment = await assessRequest(messageText, assessmentContext, model);
         assessStep.metadata = {
           status: 'ok',
           complexity: assessment.complexity,
@@ -627,6 +661,11 @@ export async function handleConversation(ctx: Context): Promise<void> {
           signalCount: assessment.signals ? Object.values(assessment.signals).filter(Boolean).length : 0,
           hasProposal: !!assessment.approach,
         });
+
+        // Cache domain for correction detection on next message (STAB-002c)
+        if (DOMAIN_AUDIENCE_ENABLED && assessment.domain) {
+          lastDomainByUser.set(userId, assessment.domain);
+        }
       }
     } catch (err) {
       // Explicit trace failure — ADR-008: surface failure in metadata, not just log
@@ -1039,7 +1078,10 @@ export async function handleConversation(ctx: Context): Promise<void> {
     // Create audit trail (Feed + Work Queue)
     // Assessment pillar (keyword-based) overrides triage pillar (Haiku-based)
     // when available — triage guesses wrong at low confidence (e.g. "add milk" → The Grove).
-    const auditPillar = (assessment?.pillar ?? classification.pillar) as Pillar;
+    // STAB-002c: When domain is available, derive pillar from domain for consistency.
+    const auditPillar = (assessment?.domain
+      ? derivePillar(assessment.domain, assessment.audience)
+      : (assessment?.pillar ?? classification.pillar)) as Pillar;
     const auditEntry: AuditEntry = {
       entry: smartTitle,
       pillar: auditPillar,

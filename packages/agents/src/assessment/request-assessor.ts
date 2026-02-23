@@ -18,10 +18,17 @@
 import type { CapabilityModel, CapabilityMatch } from "../self-model/types"
 import { matchCapabilities } from "../self-model/matcher"
 import type { TriageLike, MatchResult } from "../self-model/matcher"
-import type { RequestAssessment, AssessmentContext, Complexity } from "./types"
+import type { RequestAssessment, AssessmentContext, Complexity, DomainType, AudienceType } from "./types"
 import { ASSESSMENT_DEFAULTS } from "./types"
 import { detectSignals, classifyComplexity, countSignals } from "./complexity-classifier"
 import { buildApproach } from "./approach-builder"
+import {
+  inferDomain,
+  inferDomainSync,
+  inferAudience,
+  inferAudienceSync,
+  derivePillar,
+} from "./domain-inferrer"
 
 // ─── Feature Flag ────────────────────────────────────────
 
@@ -56,6 +63,9 @@ function buildTriageLike(context: AssessmentContext): TriageLike {
 /**
  * Infer pillar from message keywords. Deterministic, no LLM.
  * Default: Personal (groceries, errands, health — the most common simple requests).
+ *
+ * @deprecated Use inferDomain() + derivePillar() instead (STAB-002c).
+ * Kept for backward compat — existing tests reference this directly.
  */
 export function inferPillar(message: string): string {
   const lower = message.toLowerCase()
@@ -116,11 +126,11 @@ function generateReasoning(
  * @param capabilityModel - The assembled capability model from Sprint 1
  * @returns The complete assessment with complexity, approach, and capabilities
  */
-export function assessRequest(
+export async function assessRequest(
   request: string,
   context: AssessmentContext,
   capabilityModel: CapabilityModel,
-): RequestAssessment {
+): Promise<RequestAssessment> {
   // Step 1: Match capabilities from self-model
   const triage = buildTriageLike(context)
   const matchResult: MatchResult = matchCapabilities(triage, request, capabilityModel)
@@ -139,12 +149,29 @@ export function assessRequest(
   // Step 5: Generate reasoning
   const reasoning = generateReasoning(complexity, signalCount, capabilities)
 
-  // Step 6: Infer pillar from message keywords
-  const pillar = inferPillar(request)
+  // Step 6: Infer domain + audience (STAB-002c)
+  // Feature-flagged: when ATLAS_DOMAIN_AUDIENCE=true, use async Notion-backed inference
+  // Otherwise: sync defaults (backward compat)
+  const domainAudienceEnabled = process.env[ASSESSMENT_DEFAULTS.domainAudienceFlag] === "true"
+  let domain: DomainType
+  let audience: AudienceType
+
+  if (domainAudienceEnabled) {
+    domain = await inferDomain(request)
+    audience = await inferAudience(request)
+  } else {
+    domain = inferDomainSync(request)
+    audience = inferAudienceSync(request)
+  }
+
+  // Step 7: Derive pillar from domain (backward compat for Feed/WQ)
+  const pillar = derivePillar(domain, audience)
 
   return {
     complexity,
     pillar,
+    domain,
+    audience,
     approach,
     capabilities,
     reasoning,

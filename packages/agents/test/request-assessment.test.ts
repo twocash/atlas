@@ -90,23 +90,23 @@ describe("Request Assessment (CONV-ARCH-002)", () => {
 
   // ── Test 1: Simple requests execute immediately ──
   describe("Simple requests", () => {
-    it("classifies 'save this article' as simple with no proposal", () => {
-      const result = assessRequest("Save this article for later", {}, model)
+    it("classifies 'save this article' as simple with no proposal", async () => {
+      const result = await assessRequest("Save this article for later", {}, model)
 
       expect(result.complexity).toBe("simple")
       expect(result.approach).toBeNull()
       expect(result.reasoning).toContain("Direct execution")
     })
 
-    it("classifies 'check health' as simple", () => {
-      const result = assessRequest("/health", {}, model)
+    it("classifies 'check health' as simple", async () => {
+      const result = await assessRequest("/health", {}, model)
 
       expect(result.complexity).toBe("simple")
       expect(result.approach).toBeNull()
     })
 
-    it("classifies quick capture as simple", () => {
-      const result = assessRequest("Log this to the feed", { intent: "capture" }, model)
+    it("classifies quick capture as simple", async () => {
+      const result = await assessRequest("Log this to the feed", { intent: "capture" }, model)
 
       expect(result.complexity).toBe("simple")
       expect(result.approach).toBeNull()
@@ -115,8 +115,8 @@ describe("Request Assessment (CONV-ARCH-002)", () => {
 
   // ── Test 2: Moderate requests get brief context ──
   describe("Moderate requests", () => {
-    it("classifies time-sensitive research as moderate", () => {
-      const result = assessRequest(
+    it("classifies time-sensitive research as moderate", async () => {
+      const result = await assessRequest(
         "Research the latest on AI infrastructure pricing",
         { pillar: "The Grove", keywords: ["AI", "pricing"], hasDeadline: true },
         model,
@@ -127,8 +127,8 @@ describe("Request Assessment (CONV-ARCH-002)", () => {
       expect(result.approach!.questionForJim).toBeUndefined()
     })
 
-    it("moderate proposal has 1-2 steps", () => {
-      const result = assessRequest(
+    it("moderate proposal has 1-2 steps", async () => {
+      const result = await assessRequest(
         "Find information about enterprise AI budgets by Friday",
         { keywords: ["enterprise", "AI"], hasDeadline: true },
         model,
@@ -143,8 +143,8 @@ describe("Request Assessment (CONV-ARCH-002)", () => {
 
   // ── Test 3: Complex requests get approach proposal ──
   describe("Complex requests", () => {
-    it("classifies meeting prep with person + deadline + client as complex", () => {
-      const result = assessRequest(
+    it("classifies meeting prep with person + deadline + client as complex", async () => {
+      const result = await assessRequest(
         "I need to prepare for my meeting with Sarah from Chase tomorrow. She's skeptical about AI infrastructure.",
         {
           pillar: "Consulting",
@@ -162,8 +162,8 @@ describe("Request Assessment (CONV-ARCH-002)", () => {
       expect(result.approach!.steps.length).toBeGreaterThanOrEqual(1)
     })
 
-    it("complex proposal asks 'Sound right?'", () => {
-      const result = assessRequest(
+    it("complex proposal asks 'Sound right?'", async () => {
+      const result = await assessRequest(
         "Research competitor pricing, draft a comparison doc, and then send it to the team before our Thursday meeting",
         {
           pillar: "Consulting",
@@ -178,8 +178,8 @@ describe("Request Assessment (CONV-ARCH-002)", () => {
       }
     })
 
-    it("complex proposal includes alternative angles", () => {
-      const result = assessRequest(
+    it("complex proposal includes alternative angles", async () => {
+      const result = await assessRequest(
         "Research and draft a position paper on AI agent architectures for the enterprise market",
         {
           pillar: "The Grove",
@@ -315,8 +315,8 @@ describe("Request Assessment (CONV-ARCH-002)", () => {
 
   // ── Test 7: Self-model capabilities referenced ──
   describe("Self-model integration", () => {
-    it("assessment includes matched capabilities from self-model", () => {
-      const result = assessRequest(
+    it("assessment includes matched capabilities from self-model", async () => {
+      const result = await assessRequest(
         "Research AI infrastructure trends",
         { pillar: "The Grove", keywords: ["AI", "research"] },
         model,
@@ -358,13 +358,13 @@ describe("Request Assessment (CONV-ARCH-002)", () => {
 
   // ── Test 9: Classifier hotfix verification ──
   describe("Classifier hotfix verification", () => {
-    it("'add milk' classifies as simple", () => {
-      const result = assessRequest("add milk", {}, model)
+    it("'add milk' classifies as simple", async () => {
+      const result = await assessRequest("add milk", {}, model)
       expect(result.complexity).toBe("simple")
     })
 
-    it("'Research agent orchestration' classifies as moderate or complex", () => {
-      const result = assessRequest(
+    it("'Research agent orchestration' classifies as moderate or complex", async () => {
+      const result = await assessRequest(
         "Research agent orchestration",
         { pillar: "The Grove", keywords: ["research", "agent"] },
         model,
@@ -372,8 +372,8 @@ describe("Request Assessment (CONV-ARCH-002)", () => {
       expect(["moderate", "complex"]).toContain(result.complexity)
     })
 
-    it("'figure out what to do about everything' classifies as rough", () => {
-      const result = assessRequest(
+    it("'figure out what to do about everything' classifies as rough", async () => {
+      const result = await assessRequest(
         "figure out what to do about everything",
         {},
         model,

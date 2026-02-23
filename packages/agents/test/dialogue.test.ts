@@ -58,6 +58,8 @@ function makeAssessment(overrides: Partial<RequestAssessment> = {}): RequestAsse
   return {
     complexity: "simple",
     pillar: "Personal",
+    domain: "personal",
+    audience: "self",
     signals: makeSignals(),
     signalCount: 0,
     capabilities: [],

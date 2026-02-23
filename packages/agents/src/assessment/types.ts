@@ -13,6 +13,20 @@
  */
 
 import type { CapabilityMatch } from "../self-model/types"
+import type { AudienceType } from "../services/prompt-composition/types"
+
+// Re-export AudienceType so consumers can import from assessment
+export type { AudienceType }
+
+// ─── Domain ──────────────────────────────────────────────
+
+/**
+ * Knowledge domain — drives RAG workspace routing, drafter selection.
+ * Separate from audience (who sees the output).
+ *
+ * Sprint: STAB-002c (Domain + Audience Unbundling)
+ */
+export type DomainType = 'personal' | 'consulting' | 'grove' | 'drumwave'
 
 // ─── Complexity ──────────────────────────────────────────
 
@@ -92,6 +106,10 @@ export interface RequestAssessment {
   complexity: Complexity
   /** Inferred pillar from message keywords (bypasses triage) */
   pillar: string
+  /** Knowledge domain — drives RAG + drafter selection (STAB-002c) */
+  domain: DomainType
+  /** Output audience — drives voice + polish (STAB-002c) */
+  audience: AudienceType
   /** Approach proposal (null for simple requests) */
   approach: ApproachProposal | null
   /** Matched capabilities from self-model */
@@ -135,6 +153,12 @@ export interface AssessmentContext {
 export const ASSESSMENT_DEFAULTS = {
   /** Environment variable controlling feature flag */
   featureFlag: "ATLAS_REQUEST_ASSESSMENT",
+  /** Default domain when no keyword matches (STAB-002c) */
+  domainDefault: "personal" as const,
+  /** Default audience when no signal detected (STAB-002c) */
+  audienceDefault: "self" as const,
+  /** Feature flag for domain+audience unbundling (opt-in, default OFF) */
+  domainAudienceFlag: "ATLAS_DOMAIN_AUDIENCE",
   /** Bias toward simple initially — tune via telemetry */
   complexityBias: "simple" as const,
   /** Max steps in an approach proposal */

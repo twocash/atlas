@@ -258,6 +258,26 @@ export {
   type AssessmentContext,
 } from "./assessment";
 
+// Domain + Audience Unbundling (STAB-002c)
+export {
+  inferDomain,
+  inferDomainSync,
+  inferAudience,
+  inferAudienceSync,
+  derivePillar,
+  getDomainSlug,
+  detectDomainCorrection,
+  logDomainCorrection,
+  extractKeywords,
+  type DomainType,
+  type AudienceType,
+  type DomainRulesConfig,
+  type AudienceRulesConfig,
+  type PromptManagerLike,
+  type DomainCorrection,
+  type CorrectionLogEntry,
+} from "./assessment";
+
 // Dialogue (Rough Terrain Collaborative Exploration)
 export {
   classifyTerrain,

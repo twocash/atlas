@@ -99,11 +99,11 @@ function createMockProvider(
  * This lets us test the trace metadata contract without needing
  * the full Telegram handler (which has 20+ dependencies).
  */
-function runAssessmentStep(
+async function runAssessmentStep(
   trace: TraceContext,
   messageText: string,
   preflightTriage: { intent?: string; pillar?: string; keywords?: string[] } | null,
-): RequestAssessment | null {
+): Promise<RequestAssessment | null> {
   let assessment: RequestAssessment | null = null
 
   if (preflightTriage) {
@@ -122,7 +122,7 @@ function runAssessmentStep(
           hasContact: false,
           hasDeadline: false,
         }
-        assessment = assessRequest(messageText, assessmentContext, model)
+        assessment = await assessRequest(messageText, assessmentContext, model)
         assessStep.metadata = {
           status: "ok",
           complexity: assessment.complexity,
@@ -203,7 +203,7 @@ describe("STAB-001 Chain: Assessment trace metadata", () => {
 
     const trace = createTrace()
     const triage = { intent: "query", pillar: "The Grove", keywords: ["status"] }
-    const result = runAssessmentStep(trace, "What's my status?", triage)
+    const result = await runAssessmentStep(trace, "What's my status?", triage)
 
     expect(result).not.toBeNull()
     expect(result!.complexity).toBeDefined()
@@ -217,11 +217,11 @@ describe("STAB-001 Chain: Assessment trace metadata", () => {
     expect(assessStep!.completedAt).toBeDefined()
   })
 
-  it("assessment produces status:skipped when no cached model", () => {
+  it("assessment produces status:skipped when no cached model", async () => {
     // No model assembled — getCachedModel() returns null
     const trace = createTrace()
     const triage = { intent: "query", pillar: "Personal", keywords: [] }
-    const result = runAssessmentStep(trace, "hello", triage)
+    const result = await runAssessmentStep(trace, "hello", triage)
 
     expect(result).toBeNull()
 
@@ -234,9 +234,9 @@ describe("STAB-001 Chain: Assessment trace metadata", () => {
     expect(assessStep!.completedAt).toBeDefined()
   })
 
-  it("assessment skips entirely when no triage (null check)", () => {
+  it("assessment skips entirely when no triage (null check)", async () => {
     const trace = createTrace()
-    const result = runAssessmentStep(trace, "hello", null)
+    const result = await runAssessmentStep(trace, "hello", null)
 
     expect(result).toBeNull()
     // No step should be added when triage is null
@@ -272,7 +272,7 @@ describe("STAB-001 Chain: Full pipeline triage → assessment", () => {
     completeStep(enrichStep)
 
     // Step 3: Assessment (the code under test)
-    const result = runAssessmentStep(
+    const result = await runAssessmentStep(
       trace,
       "Research this client's recent acquisitions and draft a briefing",
       triage,
@@ -307,7 +307,7 @@ describe("STAB-001 Chain: Full pipeline triage → assessment", () => {
       keywords: ["research", "client", "deliverable", "deadline"],
     }
 
-    const result = runAssessmentStep(
+    const result = await runAssessmentStep(
       trace,
       "Research https://example.com/client and draft a briefing doc with competitive analysis by Friday",
       triage,
@@ -338,7 +338,7 @@ describe("STAB-001 Chain: Full pipeline triage → assessment", () => {
 
     const trace = createTrace()
     const triage = { intent: "query", pillar: "Personal", keywords: ["status"] }
-    const result = runAssessmentStep(trace, "What's happening?", triage)
+    const result = await runAssessmentStep(trace, "What's happening?", triage)
 
     expect(result).not.toBeNull()
     expect(result!.complexity).toBeDefined()

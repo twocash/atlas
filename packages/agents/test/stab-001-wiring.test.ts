@@ -200,7 +200,7 @@ describe("STAB-001: Assessment from triage", () => {
     model = await assembleCapabilityModel(provider)
   })
 
-  it("assessRequest returns valid assessment for simple request", () => {
+  it("assessRequest returns valid assessment for simple request", async () => {
     const context: AssessmentContext = {
       intent: "query",
       pillar: "The Grove",
@@ -209,7 +209,7 @@ describe("STAB-001: Assessment from triage", () => {
       hasContact: false,
       hasDeadline: false,
     }
-    const result = assessRequest("What's my status?", context, model)
+    const result = await assessRequest("What's my status?", context, model)
     expect(result).toBeDefined()
     expect(result.complexity).toBeDefined()
     expect(["simple", "moderate", "complex", "rough"]).toContain(result.complexity)
@@ -217,7 +217,7 @@ describe("STAB-001: Assessment from triage", () => {
     expect(result.reasoning).toBeDefined()
   })
 
-  it("assessRequest returns valid assessment for complex request", () => {
+  it("assessRequest returns valid assessment for complex request", async () => {
     const context: AssessmentContext = {
       intent: "command",
       pillar: "Consulting",
@@ -226,7 +226,7 @@ describe("STAB-001: Assessment from triage", () => {
       hasContact: true,
       hasDeadline: true,
     }
-    const result = assessRequest(
+    const result = await assessRequest(
       "Research this client's recent acquisitions, draft a briefing doc with competitive analysis, and schedule a review meeting by Friday",
       context,
       model,
@@ -239,9 +239,9 @@ describe("STAB-001: Assessment from triage", () => {
     expect(signalCount).toBeGreaterThanOrEqual(1)
   })
 
-  it("assessRequest handles minimal context gracefully", () => {
+  it("assessRequest handles minimal context gracefully", async () => {
     const context: AssessmentContext = {}
-    const result = assessRequest("hello", context, model)
+    const result = await assessRequest("hello", context, model)
     expect(result).toBeDefined()
     // Should return a valid complexity tier (don't assert specific value — depends on scoring)
     expect(["simple", "moderate", "complex", "rough"]).toContain(result.complexity)
@@ -260,7 +260,7 @@ describe("STAB-001: Null triage handling", () => {
       keywords: undefined,
       hasUrl: false,
     }
-    const result = assessRequest("Some idea", context, model)
+    const result = await assessRequest("Some idea", context, model)
     expect(result).toBeDefined()
     expect(result.complexity).toBeDefined()
   })
@@ -275,7 +275,7 @@ describe("STAB-001: Null triage handling", () => {
       pillar: "",
       keywords: [],
     }
-    const result = assessRequest("", context, model)
+    const result = await assessRequest("", context, model)
     expect(result).toBeDefined()
   })
 })

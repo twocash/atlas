@@ -98,6 +98,8 @@ function makeAssessment(overrides: Partial<RequestAssessment> = {}): RequestAsse
   return {
     complexity: "simple",
     pillar: "Personal",
+    domain: "personal",
+    audience: "self",
     approach: null,
     capabilities: [],
     reasoning: "Simple request",
@@ -536,7 +538,7 @@ describe("Assessment pillar inference", () => {
     await assembleCapabilityModel(provider)
     const model = getCachedModel()!
     const context: AssessmentContext = { intent: "capture", keywords: ["milk"] }
-    const result = assessRequest("add milk to the grocery list", context, model)
+    const result = await assessRequest("add milk to the grocery list", context, model)
     expect(result.pillar).toBe("Personal")
   })
 })
