@@ -145,9 +145,9 @@ export const ASSESSMENT_DEFAULTS = {
     simple: 0,
     /** 1-2 signals → moderate */
     moderate: 2,
-    /** 3-4 signals → complex */
-    complex: 4,
-    /** 5+ signals → rough */
-    rough: 5,
+    /** 3 signals → complex */
+    complex: 3,
+    /** 4+ signals → rough */
+    rough: 4,
   },
 } as const

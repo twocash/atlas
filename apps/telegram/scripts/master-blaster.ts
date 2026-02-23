@@ -559,6 +559,8 @@ async function runRegressionTests(cwd: string): Promise<SuiteResult> {
     'test/bridge-extraction.test.ts',            // Bridge Phase 4.5: Chrome Extension content extraction pipeline
     'test/content-sources.test.ts',              // ADR-001: Content Sources Notion-backed config + fallback
     'test/stab-001-chain.test.ts',               // STAB-001: Self-model → assessment chain tests
+    'test/stab-002-cognitive-loop.test.ts',      // STAB-002: Cognitive loop unit tests (session store, injection, routing)
+    'test/stab-002-chain.test.ts',               // STAB-002: Cognitive loop chain tests (triage → assessment → dialogue)
   ];
 
   const result = await runCommand(

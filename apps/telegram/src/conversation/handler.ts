@@ -63,7 +63,16 @@ import {
   type RequestAssessment,
   type AssessmentContext,
   getCachedModel,
+  assessmentNeedsDialogue,
+  enterDialogue,
+  continueDialogue,
 } from '../../../../packages/agents/src';
+import {
+  hasDialogueSessionForUser,
+  getDialogueSessionByUserId,
+  storeDialogueSession,
+  removeDialogueSession,
+} from './dialogue-session';
 
 // Feature flag for content confirmation keyboard (Universal Content Analysis)
 // Enabled by default - set ATLAS_CONTENT_CONFIRM=false to disable
@@ -368,6 +377,78 @@ export async function handleConversation(ctx: Context): Promise<void> {
     }
   }
 
+  // DIALOGUE SESSION: Check for pending rough-terrain dialogue
+  // Moved AFTER Socratic check — Socratic handles content capture,
+  // dialogue handles rough-terrain exploration. Mutually exclusive by design.
+  if (!hasAttachment && messageText && hasDialogueSessionForUser(userId)) {
+    const containsUrl = /https?:\/\/\S+/i.test(messageText);
+    if (containsUrl) {
+      // URL = new content, cancel stale dialogue
+      const staleSession = getDialogueSessionByUserId(userId);
+      if (staleSession) {
+        removeDialogueSession(staleSession.chatId);
+        logger.info('Dialogue session bypassed: new URL content', { userId });
+      }
+    } else {
+      // Continue dialogue with Jim's response
+      const dialogueSession = getDialogueSessionByUserId(userId);
+      if (dialogueSession) {
+        const dialogueStep = addStep(trace, 'dialogue-continue');
+        try {
+          const model = getCachedModel();
+          if (!model) {
+            // Can't continue without model — cancel and fall through
+            removeDialogueSession(dialogueSession.chatId);
+            dialogueStep.metadata = { status: 'cancelled', reason: 'no-cached-model' };
+            completeStep(dialogueStep);
+          } else {
+            const result = continueDialogue(messageText, dialogueSession.dialogueState, model);
+            if (result.needsResponse) {
+              // Dialogue continues — update state, send next message
+              storeDialogueSession({
+                ...dialogueSession,
+                dialogueState: result.state,
+                questionMessageId: (await ctx.reply(
+                  result.message.length > 4000 ? result.message.substring(0, 3997) + '...' : result.message,
+                  { parse_mode: 'HTML' },
+                )).message_id,
+              });
+              dialogueStep.metadata = {
+                status: 'continued',
+                turn: result.state.turnCount,
+                openQuestions: result.state.openQuestions.length,
+              };
+              completeStep(dialogueStep);
+              completeTrace(trace);
+              return;
+            } else {
+              // Dialogue resolved — remove session, proceed with refined request
+              removeDialogueSession(dialogueSession.chatId);
+              // TODO (STAB-003): Use result.refinedRequest and result.proposal
+              // to drive the downstream pipeline instead of the original message
+              dialogueStep.metadata = {
+                status: 'resolved',
+                turns: result.state.turnCount,
+                hasProposal: !!result.proposal,
+              };
+              completeStep(dialogueStep);
+              // Fall through to normal processing with original message
+            }
+          }
+        } catch (err) {
+          removeDialogueSession(dialogueSession.chatId);
+          dialogueStep.metadata = {
+            status: 'failed',
+            error: err instanceof Error ? err.message : String(err),
+          };
+          completeStep(dialogueStep);
+          logger.warn('Dialogue continuation failed, falling through to normal flow', { error: err });
+          // Fall through to normal processing
+        }
+      }
+    }
+  }
+
   // Build the message content
   let userContent = messageText;
 
@@ -558,6 +639,67 @@ export async function handleConversation(ctx: Context): Promise<void> {
     }
   }
 
+  // DIALOGUE ROUTING: If rough terrain, enter collaborative exploration
+  // instead of sending directly to Claude
+  if (assessment && assessmentNeedsDialogue(assessment)) {
+    const dialogueStep = addStep(trace, 'dialogue-entry');
+    try {
+      const model = getCachedModel();
+      if (!model) {
+        dialogueStep.metadata = { status: 'skipped', reason: 'no-cached-model' };
+        completeStep(dialogueStep);
+        // Fall through to normal Claude conversation
+      } else {
+        const assessCtx: AssessmentContext = {
+          intent: preflightTriage?.intent,
+          pillar: preflightTriage?.pillar,
+          keywords: preflightTriage?.keywords,
+          hasUrl: /https?:\/\//.test(messageText),
+          hasContact: false,
+          hasDeadline: false,
+        };
+        const result = enterDialogue(messageText, assessment, assessCtx, model);
+
+        const dialogueMsg = result.message.length > 4000
+          ? result.message.substring(0, 3997) + '...'
+          : result.message;
+        const sentMsg = await ctx.reply(dialogueMsg, { parse_mode: 'HTML' });
+        storeDialogueSession({
+          chatId: ctx.chat!.id,
+          userId,
+          questionMessageId: sentMsg.message_id,
+          dialogueState: result.state,
+          assessment,
+          assessmentContext: assessCtx,
+          originalMessage: messageText,
+          createdAt: Date.now(),
+        });
+
+        dialogueStep.metadata = {
+          status: 'entered',
+          terrain: 'rough',
+          threadCount: result.state.threads.length,
+          openQuestions: result.state.openQuestions.length,
+        };
+        completeStep(dialogueStep);
+        completeTrace(trace);
+        logger.info('Entered dialogue: rough terrain', {
+          terrain: 'rough',
+          threads: result.state.threads.length,
+        });
+        return; // Skip normal Claude conversation
+      }
+    } catch (err) {
+      dialogueStep.metadata = {
+        status: 'failed',
+        error: err instanceof Error ? err.message : String(err),
+      };
+      completeStep(dialogueStep);
+      logger.warn('Dialogue entry failed, falling through to normal flow', { error: err });
+      // Fall through — ADR-008 compliant: visible failure, graceful degradation
+    }
+  }
+
   // Get conversation history
   const conversation = await getConversation(userId);
 
@@ -574,6 +716,42 @@ export async function handleConversation(ctx: Context): Promise<void> {
     if (contextEnrichment.degradedContextNote) {
       systemPrompt += `\n\n${contextEnrichment.degradedContextNote}`;
     }
+  }
+
+  // Inject assessment context: complexity tier + approach proposal
+  // This tells Claude HOW to respond, not just WHAT context is available
+  if (assessment) {
+    const assessmentLines = [
+      `\n\n---\n\n## Request Assessment`,
+      ``,
+      `**Complexity:** ${assessment.complexity}`,
+      `**Reasoning:** ${assessment.reasoning}`,
+    ];
+
+    // For complex/rough: include the approach proposal
+    if (assessment.approach) {
+      assessmentLines.push(
+        ``,
+        `**Proposed Approach:**`,
+        ...assessment.approach.steps.map((s, i) => `${i + 1}. ${s.description}`),
+      );
+      if (assessment.approach.timeEstimate) {
+        assessmentLines.push(`**Estimated Time:** ${assessment.approach.timeEstimate}`);
+      }
+      if (assessment.approach.questionForJim) {
+        assessmentLines.push(``, `**Before proceeding, ask Jim:** ${assessment.approach.questionForJim}`);
+      }
+    }
+
+    // Surface matched capabilities
+    if (assessment.capabilities.length > 0) {
+      assessmentLines.push(
+        ``,
+        `**Relevant Capabilities:** ${assessment.capabilities.map(c => c.capabilityId).join(', ')}`,
+      );
+    }
+
+    systemPrompt += assessmentLines.join('\n');
   }
 
   // Inject last agent result for follow-on conversion awareness

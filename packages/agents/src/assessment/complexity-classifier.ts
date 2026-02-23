@@ -28,6 +28,8 @@ const MULTI_STEP_PATTERNS = [
   /\b(?:first|then|next|after\s+that|finally)\b/i,
   /\b(?:prepare|assemble|compile|gather)\b.*\b(?:and|then|plus)\b/i,
   /\b(?:research|draft|review|send)\b.*\b(?:and|then|plus)\b.*\b(?:research|draft|review|send)\b/i,
+  // Verbs that inherently imply multi-step work (search → filter → synthesize)
+  /\b(?:research|analyze|explore|investigate|rethink|plan|figure\s+out)\b/i,
 ]
 
 /** Patterns indicating vague or underspecified goals */
@@ -37,6 +39,11 @@ const AMBIGUOUS_PATTERNS = [
   /\b(?:something\s+(?:about|like|related))\b/i,
   /\b(?:figure\s+out|think\s+about|deal\s+with)\b/i,
   /\b(?:stuff|things|whatever)\b/i,
+  // Broad scope markers — "everything" or "all of this" without specifics
+  /\b(?:everything|anything|all\s+of\s+(?:this|that|it))\b/i,
+  // Explicit uncertainty
+  /\b(?:what\s+to\s+do|how\s+to\s+(?:handle|approach|tackle))\b/i,
+  /\b(?:not\s+sure|don't\s+know|no\s+idea)\b/i,
 ]
 
 /** Patterns indicating need for external context */
@@ -46,6 +53,10 @@ const CONTEXT_PATTERNS = [
   /\b(?:follow\s+up|circle\s+back|revisit)\b/i,
   /\b(?:remember\s+(?:when|that|the))\b/i,
   /\b(?:based\s+on\s+(?:what|our|the))\b/i,
+  // Domain references that imply needing system/project context
+  /\b(?:the\s+Grove|Atlas|content\s+strategy|our\s+(?:approach|strategy|plan|pipeline|system))\b/i,
+  // Broad scope — "everything" implies needing full picture
+  /\b(?:everything|the\s+whole\s+(?:thing|picture|situation))\b/i,
 ]
 
 /** Patterns indicating time pressure */
@@ -89,7 +100,7 @@ function detectAmbiguousGoal(request: string): boolean {
 
   // Very short requests without clear action are ambiguous
   const words = request.trim().split(/\s+/)
-  if (words.length <= 3 && !/\b(?:save|capture|log|check|health|research|draft|send)\b/i.test(request)) {
+  if (words.length <= 3 && !/\b(?:save|capture|log|check|health|research|draft|send|add|remove|delete|set|get|update|list|create|find|show)\b/i.test(request)) {
     return true
   }
 
@@ -119,7 +130,13 @@ function detectHighStakes(request: string, context: AssessmentContext): boolean 
   return HIGH_STAKES_PATTERNS.some((p) => p.test(request))
 }
 
-function detectNovelPattern(capabilities: CapabilityMatch[]): boolean {
+function detectNovelPattern(request: string, capabilities: CapabilityMatch[]): boolean {
+  // Simple action requests aren't "novel" — they're just basic tasks
+  // without a matching skill (e.g. "add milk" has no skill but isn't novel)
+  if (/^\s*(?:add|remove|delete|check|set|get|list|update|send|log|save|capture|create|find|show)\b/i.test(request)) {
+    return false
+  }
+
   // If no capability matched with decent confidence, it's novel
   if (capabilities.length === 0) return true
 
@@ -147,7 +164,7 @@ export function detectSignals(
     contextDependent: detectContextDependent(request, context),
     timeSensitive: detectTimeSensitive(request, context),
     highStakes: detectHighStakes(request, context),
-    novelPattern: detectNovelPattern(capabilities),
+    novelPattern: detectNovelPattern(request, capabilities),
   }
 }
 
@@ -156,8 +173,8 @@ export function detectSignals(
  *
  * 0 signals → simple
  * 1-2 signals → moderate
- * 3-4 signals → complex
- * 5-6 signals → rough
+ * 3 signals → complex
+ * 4+ signals → rough
  */
 export function classifyComplexity(signals: ComplexitySignals): Complexity {
   const score = Object.values(signals).filter(Boolean).length
