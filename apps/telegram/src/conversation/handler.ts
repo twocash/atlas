@@ -38,7 +38,7 @@ import { getConversation, updateConversation, buildMessages, type ToolContext } 
 import { buildSystemPrompt } from './prompt';
 import { detectAttachment, buildAttachmentPrompt } from './attachments';
 import { processMedia, buildMediaContext, buildAnalysisContent, type Pillar } from './media';
-import { createAuditTrail, type AuditEntry } from './audit';
+import { createAuditTrail, type AuditEntry, type AuditResult } from './audit';
 import { getAllTools, executeTool } from './tools';
 import { recordUsage } from './stats';
 import { maybeHandleAsContentShare, triggerMediaConfirmation, triggerInstantClassification } from './content-flow';
@@ -1065,13 +1065,23 @@ export async function handleConversation(ctx: Context): Promise<void> {
       }),
     };
 
+    // Assessment gates audit trail: simple requests don't get redundant
+    // Feed/WQ entries from unreliable low-confidence triage data.
+    // Claude's own tool use (if any) is the source of truth for simple tasks.
+    const skipAudit = assessment?.complexity === 'simple';
+
     const auditStep = addStep(trace, 'audit-trail');
-    const auditResult = await createAuditTrail(auditEntry, trace);
+    let auditResult: AuditResult | null = null;
+    if (skipAudit) {
+      auditStep.metadata = { status: 'skipped', reason: 'assessment-simple' };
+    } else {
+      auditResult = await createAuditTrail(auditEntry, trace);
+      auditStep.metadata = {
+        feedId: auditResult?.feedId,
+        workQueueId: auditResult?.workQueueId,
+      };
+    }
     completeStep(auditStep);
-    auditStep.metadata = {
-      feedId: auditResult?.feedId,
-      workQueueId: auditResult?.workQueueId,
-    };
 
     // Update conversation history (with tool context for continuity)
     await updateConversation(

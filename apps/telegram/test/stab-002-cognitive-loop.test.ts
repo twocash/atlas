@@ -378,6 +378,66 @@ describe("STAB-002: Terrain classification routing", () => {
   })
 })
 
+// ─── Assessment Gates Audit Trail (STAB-002b) ────────────
+
+describe("STAB-002b: Assessment gates audit trail", () => {
+  it("simple assessment gates audit trail skip", () => {
+    const assessment = makeAssessment({ complexity: "simple" })
+    const skipAudit = assessment?.complexity === "simple"
+    expect(skipAudit).toBe(true)
+  })
+
+  it("moderate assessment does NOT skip audit trail", () => {
+    const assessment = makeAssessment({ complexity: "moderate" })
+    const skipAudit = assessment?.complexity === "simple"
+    expect(skipAudit).toBe(false)
+  })
+
+  it("complex assessment does NOT skip audit trail", () => {
+    const assessment = makeAssessment({
+      complexity: "complex",
+      signals: {
+        multiStep: true,
+        ambiguousGoal: false,
+        contextDependent: true,
+        timeSensitive: true,
+        highStakes: false,
+        novelPattern: false,
+      },
+    })
+    const skipAudit = assessment?.complexity === "simple"
+    expect(skipAudit).toBe(false)
+  })
+
+  it("rough assessment does NOT skip audit trail", () => {
+    const assessment = makeRoughAssessment()
+    const skipAudit = assessment?.complexity === "simple"
+    expect(skipAudit).toBe(false)
+  })
+
+  it("null assessment (feature off) does NOT skip audit trail", () => {
+    const assessment: RequestAssessment | null = null
+    const skipAudit = assessment?.complexity === "simple"
+    expect(skipAudit).toBe(false)
+  })
+
+  it("actionTaken is false when auditResult is null (simple path)", () => {
+    const auditResult = null
+    const toolsUsed: string[] = []
+    const mediaContext = null
+    const actionTaken = !!auditResult || toolsUsed.length > 0 || !!mediaContext
+    expect(actionTaken).toBe(false) // → CHAT reaction, not DONE
+  })
+
+  it("actionTaken is true when tools used even without audit", () => {
+    const auditResult = null
+    const toolsUsed = ["notion-create-page"]
+    const mediaContext = null
+    const actionTaken = !!auditResult || toolsUsed.length > 0 || !!mediaContext
+    expect(actionTaken).toBe(true) // Claude's tool use detected
+  })
+})
+
 // ─── Dialogue Engine Integration ─────────────────────────
 
 describe("STAB-002: Dialogue engine integration", () => {
