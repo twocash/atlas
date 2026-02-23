@@ -315,5 +315,79 @@ describe("STAB-003: Close the Cognitive Loop", () => {
       // Falls back to default question
       expect(msg).toContain("Sound right, or different angle?")
     })
+
+    it("formats proposal with moderate complexity (STAB-003a)", () => {
+      const msg = formatProposalMessage(makeProposal(), "moderate")
+
+      expect(msg).toContain("moderate")
+      expect(msg).toContain("1. Research competitor pricing models")
+      expect(msg).toContain("2. Draft comparison document")
+      expect(msg).toContain("Sound right, or different angle?")
+    })
+  })
+
+  // ── 6. Gate Widening (STAB-003a) ──
+
+  describe("Approval Gate Widening (STAB-003a)", () => {
+    it("moderate + approach should trigger gate (not just complex)", () => {
+      const assessment = makeAssessment({
+        complexity: "moderate",
+        approach: makeProposal(),
+        signals: {
+          multiStep: true,
+          ambiguousGoal: false,
+          contextDependent: false,
+          timeSensitive: false,
+          highStakes: false,
+          novelPattern: false,
+        },
+      })
+
+      // Gate condition: approach exists AND complexity !== 'simple'
+      const shouldGate = assessment.approach && assessment.complexity !== 'simple'
+      expect(shouldGate).toBeTruthy()
+    })
+
+    it("simple + approach=null should NOT trigger gate", () => {
+      const assessment = makeAssessment({
+        complexity: "simple",
+        approach: null,
+      })
+
+      const shouldGate = assessment.approach && assessment.complexity !== 'simple'
+      expect(shouldGate).toBeFalsy()
+    })
+
+    it("simple + approach should NOT trigger gate", () => {
+      // Edge case: simple complexity but approach somehow exists
+      const assessment = makeAssessment({
+        complexity: "simple",
+        approach: makeProposal(),
+      })
+
+      const shouldGate = assessment.approach && assessment.complexity !== 'simple'
+      expect(shouldGate).toBeFalsy()
+    })
+
+    it("complex + approach still triggers gate", () => {
+      const assessment = makeAssessment({
+        complexity: "complex",
+        approach: makeProposal(),
+      })
+
+      const shouldGate = assessment.approach && assessment.complexity !== 'simple'
+      expect(shouldGate).toBeTruthy()
+    })
+
+    it("moderate session stores and retrieves correctly", () => {
+      const session = makeSession({
+        assessment: makeAssessment({ complexity: "moderate" }),
+      })
+      storeApprovalSession(session)
+
+      const retrieved = getApprovalSession(12345)
+      expect(retrieved).toBeDefined()
+      expect(retrieved!.assessment.complexity).toBe("moderate")
+    })
   })
 })

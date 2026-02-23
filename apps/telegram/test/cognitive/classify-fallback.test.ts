@@ -124,6 +124,77 @@ describe('classifyWithFallback()', () => {
   });
 });
 
+describe('Zod schema resilience (STAB-003a)', () => {
+  beforeEach(() => {
+    mockCreate.mockClear();
+  });
+
+  it('handles priority: null without falling to fallback', async () => {
+    // Haiku sometimes returns priority: null instead of omitting it
+    mockCreate.mockResolvedValue({
+      content: [
+        {
+          type: 'text',
+          text: JSON.stringify({
+            intent: 'command',
+            pillar: 'The Grove',
+            requestType: 'Research',
+            confidence: 0.88,
+            title: 'Research agent modes',
+            titleRationale: 'Multi-stage research and draft request',
+            keywords: ['cursor', 'windsurf', 'agent'],
+            complexity: 'Tier 2',
+            command: {
+              verb: 'research',
+              target: 'agent modes',
+              priority: null,  // The null that was causing Zod failure
+              description: 'Research and compare agent mode implementations',
+            },
+          }),
+        },
+      ],
+    });
+
+    const result = await classifyWithFallback(
+      'Research what Cursor and Windsurf are doing with agent modes'
+    );
+
+    // Should NOT fall to fallback — confidence should be from Haiku, not 0.3
+    expect(result.confidence).toBe(0.88);
+    expect(result.pillar).toBe('The Grove');
+  });
+
+  it('handles priority: undefined (omitted) without falling to fallback', async () => {
+    mockCreate.mockResolvedValue({
+      content: [
+        {
+          type: 'text',
+          text: JSON.stringify({
+            intent: 'command',
+            pillar: 'Consulting',
+            requestType: 'Build',
+            confidence: 0.85,
+            title: 'Client report',
+            titleRationale: 'Build request for client deliverable',
+            keywords: ['client', 'report'],
+            command: {
+              verb: 'build',
+              target: 'client report',
+              // priority omitted entirely
+              description: 'Build the quarterly client report',
+            },
+          }),
+        },
+      ],
+    });
+
+    const result = await classifyWithFallback('Build the quarterly client report');
+
+    expect(result.confidence).toBe(0.85);
+    expect(result.pillar).toBe('Consulting');
+  });
+});
+
 describe('triageForAudit()', () => {
   beforeEach(() => {
     mockCreate.mockClear();

@@ -324,6 +324,69 @@ describe("STAB-003 Chain: Cognitive Loop Closure", () => {
     })
   })
 
+  // ── Chain 3a: Moderate terrain also triggers approval gate (STAB-003a) ──
+
+  describe("Chain 3a: Moderate terrain with proposal triggers gate", () => {
+    it("moderate assessment with approach triggers approval gate", async () => {
+      const model = await assembleCapabilityModel(createMockProvider())
+
+      // A multi-step request that may assess as moderate (1-2 signals)
+      const assessment = await assessRequest(
+        "Research what Cursor and Windsurf are doing with agent modes and draft a comparison for the blog",
+        {
+          pillar: "The Grove",
+          keywords: ["cursor", "windsurf", "agent", "research", "blog"],
+        },
+        model,
+      )
+
+      // Whether moderate or complex, the gate should fire if approach exists
+      if (assessment.approach) {
+        const shouldGate = assessment.complexity !== 'simple'
+        expect(shouldGate).toBe(true)
+
+        // Proposal should format correctly regardless of complexity tier
+        const msg = formatProposalMessage(assessment.approach, assessment.complexity)
+        expect(msg).toContain("<b>")
+        expect(msg).toContain(assessment.complexity)
+        expect(msg).toMatch(/\d+\./)
+      }
+    })
+
+    it("moderate approval session round-trips through store", () => {
+      const session: PendingApprovalSession = {
+        chatId: 99999,
+        userId: 88888,
+        proposalMessageId: 555,
+        proposal: {
+          steps: [
+            { description: "Research Cursor and Windsurf agent modes" },
+            { description: "Draft comparison blog post" },
+          ],
+          timeEstimate: "~20 min",
+          questionForJim: "Sound right?",
+          alternativeAngles: [],
+        },
+        originalMessage: "Research Cursor/Windsurf agent modes and draft a blog post",
+        assessment: { complexity: "moderate" } as RequestAssessment,
+        assessmentContext: { pillar: "The Grove" },
+        createdAt: Date.now(),
+      }
+
+      storeApprovalSession(session)
+
+      const retrieved = getApprovalSession(99999)
+      expect(retrieved).toBeDefined()
+      expect(retrieved!.assessment.complexity).toBe("moderate")
+      expect(retrieved!.proposal.steps).toHaveLength(2)
+
+      // Approval clears it
+      expect(isApprovalSignal("yes")).toBe(true)
+      removeApprovalSession(99999)
+      expect(getApprovalSession(99999)).toBeUndefined()
+    })
+  })
+
   // ── Chain 4: Full loop trace ──
 
   describe("Chain 4: Trace metadata captures loop closure", () => {

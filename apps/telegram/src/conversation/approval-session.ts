@@ -2,7 +2,7 @@
  * Approval Session State — Telegram Surface
  *
  * Maps chatId -> pending approval session state.
- * When assessment classifies a request as "complex" with a proposal,
+ * When assessment classifies a request as moderate+ with a proposal,
  * this module stores the proposal. When Jim replies with an approval
  * or rejection signal, handler.ts retrieves the session.
  *

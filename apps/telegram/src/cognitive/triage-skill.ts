@@ -81,7 +81,7 @@ export interface TriageResult {
 const TriageCommandSchema = z.object({
   verb: z.string(),
   target: z.string(),
-  priority: z.string().optional(),
+  priority: z.string().nullish(),
   description: z.string(),
 });
 

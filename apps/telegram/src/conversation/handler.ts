@@ -845,10 +845,10 @@ export async function handleConversation(ctx: Context): Promise<void> {
     }
   }
 
-  // APPROVAL GATE: Complex terrain with proposal → surface for approval (STAB-003)
-  // Bumpy terrain has a clear angle but is complex enough to warrant sign-off.
-  // Surface the proposal and await approval before executing.
-  if (assessment && assessment.approach && assessment.complexity === 'complex') {
+  // APPROVAL GATE: Moderate+ terrain with proposal → surface for approval (STAB-003/003a)
+  // Any non-simple request with an approach proposal gets surfaced for sign-off.
+  // Rough terrain routes to dialogue first, so in practice this gates moderate + complex.
+  if (assessment && assessment.approach && assessment.complexity !== 'simple') {
     const approvalStep = addStep(trace, 'approval-gate');
     const proposalMsg = formatProposalMessage(assessment.approach, assessment.complexity);
     const sentMsg = await ctx.reply(
@@ -875,13 +875,13 @@ export async function handleConversation(ctx: Context): Promise<void> {
     });
     approvalStep.metadata = {
       status: 'proposal-surfaced',
-      complexity: 'complex',
+      complexity: assessment.complexity,
       stepsCount: assessment.approach.steps.length,
     };
     completeStep(approvalStep);
     completeTrace(trace);
-    logger.info('Complex terrain: proposal surfaced, awaiting approval', {
-      complexity: 'complex',
+    logger.info('Proposal surfaced, awaiting approval', {
+      complexity: assessment.complexity,
       steps: assessment.approach.steps.length,
     });
     return;
