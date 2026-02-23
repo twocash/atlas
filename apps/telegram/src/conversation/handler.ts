@@ -78,6 +78,15 @@ import {
   storeDialogueSession,
   removeDialogueSession,
 } from './dialogue-session';
+import {
+  hasApprovalSessionForUser,
+  getApprovalSessionByUserId,
+  storeApprovalSession,
+  removeApprovalSession,
+  isApprovalSignal,
+  isRejectionSignal,
+  formatProposalMessage,
+} from './approval-session';
 
 // Feature flag for content confirmation keyboard (Universal Content Analysis)
 // Enabled by default - set ATLAS_CONTENT_CONFIRM=false to disable
@@ -308,7 +317,7 @@ function detectFollowOnConversionIntent(text: string): boolean {
  */
 export async function handleConversation(ctx: Context): Promise<void> {
   const userId = ctx.from!.id;
-  const messageText = ctx.message?.text || ctx.message?.caption || '';
+  let messageText = ctx.message?.text || ctx.message?.caption || '';
   const username = ctx.from?.username || String(userId);
 
   // Pipeline trace: tracks every step with timing and metadata
@@ -411,6 +420,57 @@ export async function handleConversation(ctx: Context): Promise<void> {
     }
   }
 
+  // APPROVAL SESSION: Check for pending complex-terrain proposal (STAB-003)
+  // Runs AFTER Socratic, BEFORE Dialogue — approval is a quick yes/no gate.
+  if (!hasAttachment && messageText && hasApprovalSessionForUser(userId)) {
+    const containsUrl = /https?:\/\/\S+/i.test(messageText);
+    if (containsUrl) {
+      // URL = new content, cancel stale approval
+      const staleSession = getApprovalSessionByUserId(userId);
+      if (staleSession) {
+        removeApprovalSession(staleSession.chatId);
+        logger.info('Approval session bypassed: new URL content', { userId });
+      }
+    } else {
+      const approvalSession = getApprovalSessionByUserId(userId);
+      if (approvalSession) {
+        const approvalStep = addStep(trace, 'approval-check');
+        if (isApprovalSignal(messageText)) {
+          // Approved — proceed with refined (or original) message
+          removeApprovalSession(approvalSession.chatId);
+          if (approvalSession.refinedRequest) {
+            messageText = approvalSession.refinedRequest;
+          } else {
+            messageText = approvalSession.originalMessage;
+          }
+          approvalStep.metadata = { status: 'approved', hasRefinedRequest: !!approvalSession.refinedRequest };
+          completeStep(approvalStep);
+          logger.info('Proposal approved, proceeding with execution', { userId });
+          // Fall through to normal processing with the approved message
+        } else if (isRejectionSignal(messageText)) {
+          // Rejected — ask for adjustment
+          removeApprovalSession(approvalSession.chatId);
+          await ctx.reply(
+            "Got it — what would you adjust? I can rethink the approach.",
+            { parse_mode: 'HTML' },
+          );
+          approvalStep.metadata = { status: 'rejected' };
+          completeStep(approvalStep);
+          completeTrace(trace);
+          logger.info('Proposal rejected', { userId });
+          return;
+        } else {
+          // Ambiguous — treat as new message, remove session, re-assess
+          removeApprovalSession(approvalSession.chatId);
+          approvalStep.metadata = { status: 'ambiguous', treatedAsNewMessage: true };
+          completeStep(approvalStep);
+          logger.info('Ambiguous approval reply, treating as new message', { userId });
+          // Fall through — messageText stays as-is, gets full pipeline treatment
+        }
+      }
+    }
+  }
+
   // DIALOGUE SESSION: Check for pending rough-terrain dialogue
   // Moved AFTER Socratic check — Socratic handles content capture,
   // dialogue handles rough-terrain exploration. Mutually exclusive by design.
@@ -458,15 +518,61 @@ export async function handleConversation(ctx: Context): Promise<void> {
             } else {
               // Dialogue resolved — remove session, proceed with refined request
               removeDialogueSession(dialogueSession.chatId);
-              // TODO (STAB-003): Use result.refinedRequest and result.proposal
-              // to drive the downstream pipeline instead of the original message
+
+              // STAB-003 Fix 1: Substitute refined request for downstream processing.
+              // The dialogue engine synthesizes user intent into a clear, actionable
+              // request. Using the original vague message would discard that work.
+              if (result.refinedRequest) {
+                const original = messageText;
+                messageText = result.refinedRequest;
+                logger.info('Refined request substituted (STAB-003)', {
+                  original: original.substring(0, 50),
+                  refined: messageText.substring(0, 50),
+                });
+              }
+
+              // STAB-003 Fix 2: If dialogue produced a proposal, surface it for approval
+              // before executing. Complex terrain deserves user sign-off.
+              if (result.proposal) {
+                const proposalMsg = formatProposalMessage(result.proposal, 'complex');
+                const sentMsg = await ctx.reply(
+                  proposalMsg.length > 4000 ? proposalMsg.substring(0, 3997) + '...' : proposalMsg,
+                  { parse_mode: 'HTML' },
+                );
+                storeApprovalSession({
+                  chatId: ctx.chat!.id,
+                  userId,
+                  proposalMessageId: sentMsg.message_id,
+                  proposal: result.proposal,
+                  refinedRequest: result.refinedRequest,
+                  originalMessage: dialogueSession.originalMessage,
+                  assessment: dialogueSession.assessment,
+                  assessmentContext: dialogueSession.assessmentContext,
+                  createdAt: Date.now(),
+                });
+                dialogueStep.metadata = {
+                  status: 'resolved-awaiting-approval',
+                  turns: result.state.turnCount,
+                  hasProposal: true,
+                  hasRefinedRequest: !!result.refinedRequest,
+                };
+                completeStep(dialogueStep);
+                completeTrace(trace);
+                logger.info('Dialogue resolved, approval pending', {
+                  turns: result.state.turnCount,
+                  hasRefinedRequest: !!result.refinedRequest,
+                });
+                return;
+              }
+
               dialogueStep.metadata = {
                 status: 'resolved',
                 turns: result.state.turnCount,
-                hasProposal: !!result.proposal,
+                hasProposal: false,
+                hasRefinedRequest: !!result.refinedRequest,
               };
               completeStep(dialogueStep);
-              // Fall through to normal processing with original message
+              // Fall through to normal processing with refined (or original) message
             }
           }
         } catch (err) {
@@ -737,6 +843,48 @@ export async function handleConversation(ctx: Context): Promise<void> {
       logger.warn('Dialogue entry failed, falling through to normal flow', { error: err });
       // Fall through — ADR-008 compliant: visible failure, graceful degradation
     }
+  }
+
+  // APPROVAL GATE: Complex terrain with proposal → surface for approval (STAB-003)
+  // Bumpy terrain has a clear angle but is complex enough to warrant sign-off.
+  // Surface the proposal and await approval before executing.
+  if (assessment && assessment.approach && assessment.complexity === 'complex') {
+    const approvalStep = addStep(trace, 'approval-gate');
+    const proposalMsg = formatProposalMessage(assessment.approach, assessment.complexity);
+    const sentMsg = await ctx.reply(
+      proposalMsg.length > 4000 ? proposalMsg.substring(0, 3997) + '...' : proposalMsg,
+      { parse_mode: 'HTML' },
+    );
+    const assessCtx: AssessmentContext = {
+      intent: preflightTriage?.intent,
+      pillar: preflightTriage?.pillar,
+      keywords: preflightTriage?.keywords,
+      hasUrl: /https?:\/\//.test(messageText),
+      hasContact: false,
+      hasDeadline: false,
+    };
+    storeApprovalSession({
+      chatId: ctx.chat!.id,
+      userId,
+      proposalMessageId: sentMsg.message_id,
+      proposal: assessment.approach,
+      originalMessage: messageText,
+      assessment,
+      assessmentContext: assessCtx,
+      createdAt: Date.now(),
+    });
+    approvalStep.metadata = {
+      status: 'proposal-surfaced',
+      complexity: 'complex',
+      stepsCount: assessment.approach.steps.length,
+    };
+    completeStep(approvalStep);
+    completeTrace(trace);
+    logger.info('Complex terrain: proposal surfaced, awaiting approval', {
+      complexity: 'complex',
+      steps: assessment.approach.steps.length,
+    });
+    return;
   }
 
   // Get conversation history

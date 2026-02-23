@@ -561,6 +561,8 @@ async function runRegressionTests(cwd: string): Promise<SuiteResult> {
     'test/stab-001-chain.test.ts',               // STAB-001: Self-model → assessment chain tests
     'test/stab-002-cognitive-loop.test.ts',      // STAB-002: Cognitive loop unit tests (session store, injection, routing)
     'test/stab-002-chain.test.ts',               // STAB-002: Cognitive loop chain tests (triage → assessment → dialogue)
+    'test/stab-003-loop-closure.test.ts',        // STAB-003: Loop closure unit tests (approval session, signal matching)
+    'test/stab-003-chain.test.ts',               // STAB-003: Loop closure chain tests (dialogue → refinement → approval)
   ];
 
   const result = await runCommand(
