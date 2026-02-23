@@ -1065,15 +1065,15 @@ export async function handleConversation(ctx: Context): Promise<void> {
       }),
     };
 
-    // Assessment gates audit trail: simple requests don't get redundant
-    // Feed/WQ entries from unreliable low-confidence triage data.
-    // Claude's own tool use (if any) is the source of truth for simple tasks.
-    const skipAudit = assessment?.complexity === 'simple';
+    // Assessment gates audit trail: simple requests skip redundant Feed/WQ
+    // entries ONLY when Claude already handled it via tool use (preventing
+    // double-write). If Claude didn't use tools, audit trail is the fallback.
+    const skipAudit = assessment?.complexity === 'simple' && toolsUsed.length > 0;
 
     const auditStep = addStep(trace, 'audit-trail');
     let auditResult: AuditResult | null = null;
     if (skipAudit) {
-      auditStep.metadata = { status: 'skipped', reason: 'assessment-simple' };
+      auditStep.metadata = { status: 'skipped', reason: 'assessment-simple-tools-handled' };
     } else {
       auditResult = await createAuditTrail(auditEntry, trace);
       auditStep.metadata = {

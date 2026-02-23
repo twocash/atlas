@@ -381,19 +381,31 @@ describe("STAB-002: Terrain classification routing", () => {
 // ─── Assessment Gates Audit Trail (STAB-002b) ────────────
 
 describe("STAB-002b: Assessment gates audit trail", () => {
-  it("simple assessment gates audit trail skip", () => {
+  // The gate: skip audit ONLY when simple AND Claude already used tools.
+  // This prevents double-write without causing zero-write.
+
+  it("simple + tools used → SKIP audit (double-write prevention)", () => {
     const assessment = makeAssessment({ complexity: "simple" })
-    const skipAudit = assessment?.complexity === "simple"
+    const toolsUsed = ["notion-create-page"]
+    const skipAudit = assessment?.complexity === "simple" && toolsUsed.length > 0
     expect(skipAudit).toBe(true)
   })
 
-  it("moderate assessment does NOT skip audit trail", () => {
-    const assessment = makeAssessment({ complexity: "moderate" })
-    const skipAudit = assessment?.complexity === "simple"
+  it("simple + NO tools → audit RUNS (fallback, no zero-write)", () => {
+    const assessment = makeAssessment({ complexity: "simple" })
+    const toolsUsed: string[] = []
+    const skipAudit = assessment?.complexity === "simple" && toolsUsed.length > 0
     expect(skipAudit).toBe(false)
   })
 
-  it("complex assessment does NOT skip audit trail", () => {
+  it("moderate + tools used → audit RUNS (tracking needed)", () => {
+    const assessment = makeAssessment({ complexity: "moderate" })
+    const toolsUsed = ["notion-create-page"]
+    const skipAudit = assessment?.complexity === "simple" && toolsUsed.length > 0
+    expect(skipAudit).toBe(false)
+  })
+
+  it("complex assessment → audit RUNS regardless of tools", () => {
     const assessment = makeAssessment({
       complexity: "complex",
       signals: {
@@ -405,36 +417,39 @@ describe("STAB-002b: Assessment gates audit trail", () => {
         novelPattern: false,
       },
     })
-    const skipAudit = assessment?.complexity === "simple"
+    const toolsUsed = ["notion-create-page", "notion-search"]
+    const skipAudit = assessment?.complexity === "simple" && toolsUsed.length > 0
     expect(skipAudit).toBe(false)
   })
 
-  it("rough assessment does NOT skip audit trail", () => {
+  it("rough assessment → audit RUNS (but typically unreachable)", () => {
     const assessment = makeRoughAssessment()
-    const skipAudit = assessment?.complexity === "simple"
+    const toolsUsed: string[] = []
+    const skipAudit = assessment?.complexity === "simple" && toolsUsed.length > 0
     expect(skipAudit).toBe(false)
   })
 
-  it("null assessment (feature off) does NOT skip audit trail", () => {
+  it("null assessment (feature off) → audit RUNS (backward compat)", () => {
     const assessment: RequestAssessment | null = null
-    const skipAudit = assessment?.complexity === "simple"
+    const toolsUsed = ["notion-create-page"]
+    const skipAudit = assessment?.complexity === "simple" && toolsUsed.length > 0
     expect(skipAudit).toBe(false)
   })
 
-  it("actionTaken is false when auditResult is null (simple path)", () => {
+  it("actionTaken reflects tool use even when audit skipped", () => {
+    const auditResult = null // skipped
+    const toolsUsed = ["notion-create-page"]
+    const mediaContext = null
+    const actionTaken = !!auditResult || toolsUsed.length > 0 || !!mediaContext
+    expect(actionTaken).toBe(true) // DONE reaction from tool use
+  })
+
+  it("actionTaken is false when no audit and no tools (pure chat)", () => {
     const auditResult = null
     const toolsUsed: string[] = []
     const mediaContext = null
     const actionTaken = !!auditResult || toolsUsed.length > 0 || !!mediaContext
-    expect(actionTaken).toBe(false) // → CHAT reaction, not DONE
-  })
-
-  it("actionTaken is true when tools used even without audit", () => {
-    const auditResult = null
-    const toolsUsed = ["notion-create-page"]
-    const mediaContext = null
-    const actionTaken = !!auditResult || toolsUsed.length > 0 || !!mediaContext
-    expect(actionTaken).toBe(true) // Claude's tool use detected
+    expect(actionTaken).toBe(false) // CHAT reaction
   })
 })
 
