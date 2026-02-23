@@ -239,3 +239,21 @@ export {
   type SurfaceInfo,
   type MatchResult,
 } from "./self-model";
+
+// Request Assessment (Complexity + Approach Proposals)
+export {
+  assessRequest,
+  quickClassify,
+  isAssessmentEnabled,
+  detectSignals,
+  classifyComplexity,
+  countSignals,
+  buildApproach,
+  ASSESSMENT_DEFAULTS,
+  type Complexity,
+  type ComplexitySignals,
+  type ApproachStep,
+  type ApproachProposal,
+  type RequestAssessment,
+  type AssessmentContext,
+} from "./assessment";
