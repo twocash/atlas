@@ -200,6 +200,18 @@ export interface FeatureFlags {
    * @default false (opt-in - enable with ATLAS_CONTENT_SOURCES_NOTION=true)
    */
   contentSourcesNotion: boolean;
+
+  // === Conversational Architecture (EPIC: CONV-ARCH) ===
+
+  /**
+   * Self-Model (CONV-ARCH-001)
+   * When enabled, assembles a runtime capability model (skills, MCP tools,
+   * knowledge sources, integrations, surfaces) and injects a Slot 9 context
+   * slot into Bridge prompt composition. Lets Atlas reason about what it
+   * can do for a given request.
+   * @default false (opt-in - enable with ATLAS_SELF_MODEL=true)
+   */
+  selfModel: boolean;
 }
 
 /**
@@ -308,6 +320,8 @@ function loadFeatureFlags(): FeatureFlags {
     researchErrorSanitization: process.env.ATLAS_RESEARCH_ERROR_SANITIZATION !== 'false', // Default ON
     // ADR-001 Compliance — opt-in (requires explicit enable)
     contentSourcesNotion: process.env.ATLAS_CONTENT_SOURCES_NOTION === 'true', // Default OFF
+    // Conversational Architecture (EPIC: CONV-ARCH) — opt-in
+    selfModel: process.env.ATLAS_SELF_MODEL === 'true', // Default OFF
   };
 }
 

@@ -38,8 +38,9 @@ export const TIER_ROUTES: Record<ComplexityTier, TierRoute> = {
  * Slot 4: Voice — prompt composition output (WIRED)
  * Slot 5: Browser — current page context from extension (WIRED)
  * Slot 6: Output — landing surface + format instructions (WIRED)
+ * Slot 9: Self-Model — runtime capability awareness (WIRED)
  */
-export type SlotId = "intent" | "domain_rag" | "pov" | "voice" | "browser" | "output"
+export type SlotId = "intent" | "domain_rag" | "pov" | "voice" | "browser" | "output" | "self_model"
 
 export interface ContextSlot {
   /** Which slot this represents */
@@ -69,6 +70,7 @@ export const SLOT_TOKEN_BUDGETS: Record<SlotId, number> = {
   voice: 1000,
   browser: 1500,
   output: 500,
+  self_model: 500,
 }
 
 /** Trim priority ordering — higher number = trim last (keep) */
@@ -77,6 +79,7 @@ export const SLOT_PRIORITIES: Record<SlotId, number> = {
   intent: 90,     // Always keep — what the user wants
   voice: 70,      // Important — how to sound
   browser: 50,    // Helpful — page context
+  self_model: 60,  // Useful — what Atlas can do for this request
   pov: 30,        // Nice-to-have — epistemic stance
   domain_rag: 20, // Nice-to-have — corpus knowledge
 }

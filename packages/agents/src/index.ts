@@ -209,3 +209,33 @@ export {
   type PillarOption,
   type ValidationError,
 } from "./services";
+
+// Self-Model (Runtime Capability Awareness)
+export {
+  assembleCapabilityModel,
+  getCachedModel,
+  invalidateCache as invalidateSelfModelCache,
+  matchCapabilities,
+  buildSelfModelSlotContent,
+  buildEmptySelfModelSlot,
+  SELF_MODEL_DEFAULTS,
+  MATCH_THRESHOLDS,
+  type CapabilityModel,
+  type CapabilityHealth,
+  type CapabilityLayer,
+  type SkillCapability,
+  type MCPToolCapability,
+  type KnowledgeCapability,
+  type ExecutionCapability,
+  type IntegrationCapability,
+  type SurfaceCapability,
+  type CapabilityMatch,
+  type SelfModelSlotContent,
+  type CapabilityDataProvider,
+  type SkillInfo,
+  type MCPServerInfo,
+  type KnowledgeSourceInfo,
+  type IntegrationHealthInfo,
+  type SurfaceInfo,
+  type MatchResult,
+} from "./self-model";

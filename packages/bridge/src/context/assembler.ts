@@ -1,5 +1,5 @@
 /**
- * Context Assembler — populates the 6 context slots for orchestration.
+ * Context Assembler — populates the 7 context slots for orchestration.
  *
  * Slot 1: Intent — triage result + structured context     (WIRED)
  * Slot 2: Domain RAG — semantic search over corpus        (WIRED)
@@ -7,6 +7,7 @@
  * Slot 4: Voice — prompt composition output               (WIRED)
  * Slot 5: Browser — current page context from extension   (WIRED)
  * Slot 6: Output — landing surface + format instructions  (WIRED)
+ * Slot 9: Self-Model — runtime capability awareness       (WIRED)
  */
 
 import { triageMessage, type TriageResult } from "../../../../apps/telegram/src/cognitive/triage-skill"
@@ -30,11 +31,12 @@ import {
 } from "./slots"
 import { assembleDomainRagSlot } from "./domain-rag-slot"
 import { assemblePovSlot } from "./pov-slot"
+import { assembleSelfModelSlot, type SelfModelProvider } from "./self-model-slot"
 
 // ─── Assembly Result ──────────────────────────────────────
 
 export interface AssemblyResult {
-  /** All 6 context slots (populated or empty) */
+  /** All context slots (populated or empty) */
   slots: ContextSlot[]
 
   /** The triage result from the intent slot */
@@ -270,11 +272,12 @@ export async function assembleContext(
   const route = TIER_ROUTES[tier]
 
   // Step 2-5: Assemble remaining slots in parallel
-  const [voiceSlot, browserSlot, domainRagSlot, povSlot] = await Promise.all([
+  const [voiceSlot, browserSlot, domainRagSlot, povSlot, selfModelSlot] = await Promise.all([
     assembleVoiceSlot(triage, request.messageText),
     Promise.resolve(assembleBrowserSlot(request.browserContext)),
     assembleDomainRagSlot(triage, request.messageText),
     assemblePovSlot(triage),
+    assembleSelfModelSlot(triage, request.messageText),
   ])
 
   const landingSurface = determineLandingSurface(triage, request.surface)
@@ -287,6 +290,7 @@ export async function assembleContext(
     povSlot,
     voiceSlot,
     browserSlot,
+    selfModelSlot,
     outputSlot,
   ]
 
