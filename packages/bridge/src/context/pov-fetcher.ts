@@ -63,7 +63,7 @@ export function clearPovCache(): void {
  */
 const PILLAR_POV_DOMAINS: Record<string, string[]> = {
   "the-grove": ["Grove Research", "Grove Marketing"],
-  consulting: ["Consulting", "DrumWave"],
+  consulting: ["Consulting", "DrumWave", "gtm-consulting"],
   personal: ["Cross-cutting"],
   "home-garage": [],  // No POV entries for home/garage
 }
