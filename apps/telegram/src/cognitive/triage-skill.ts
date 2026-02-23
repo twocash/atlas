@@ -99,8 +99,8 @@ const TriageResultSchema = z.object({
   command: TriageCommandSchema.optional().nullable().default(null),
   title: z.string().max(80).optional().nullable().default(null),  // Allow slight overflow, truncate later
   titleRationale: z.string().optional().nullable().default(null),
-  pillar: z.string().nullable().default('The Grove'),  // Validated against Pillar type downstream
-  requestType: z.string().nullable().default('Quick'),
+  pillar: z.string().nullable().default('The Grove').transform(v => v ?? 'The Grove'),  // Coalesce null → default
+  requestType: z.string().nullable().default('Quick').transform(v => v ?? 'Quick'),
   keywords: z.array(z.string()).default([]),
   complexityTier: z.union([z.literal(0), z.literal(1), z.literal(2), z.literal(3)]).default(1),
   suggestedModel: z.string().optional(),
@@ -354,7 +354,8 @@ function fallbackTriage(
 // Validation Helpers
 // ==========================================
 
-function validatePillar(value: string): Pillar {
+function validatePillar(value: string | null | undefined): Pillar {
+  if (!value) return 'The Grove';
   if (PILLARS.includes(value as Pillar)) {
     return value as Pillar;
   }
@@ -368,7 +369,8 @@ function validatePillar(value: string): Pillar {
   return 'The Grove';
 }
 
-function validateRequestType(value: string): RequestType {
+function validateRequestType(value: string | null | undefined): RequestType {
+  if (!value) return 'Quick';
   if (REQUEST_TYPES.includes(value as RequestType)) {
     return value as RequestType;
   }
@@ -497,11 +499,12 @@ export async function triageMessage(
 ): Promise<TriageResult> {
   const start = Date.now();
 
+  // Bug #8 Fix: Detect domain-based pillar hint for strong routing signals
+  // Declared outside try so catch block can pass it to fallbackTriage
+  const domainHint = detectDomainPillarHint(messageText);
+
   try {
     const anthropic = getAnthropicClient();
-
-    // Bug #8 Fix: Detect domain-based pillar hint for strong routing signals
-    const domainHint = detectDomainPillarHint(messageText);
 
     const userPrompt = buildTriagePrompt(
       messageText,
