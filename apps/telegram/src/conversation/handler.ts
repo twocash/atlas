@@ -1063,7 +1063,7 @@ export async function handleConversation(ctx: Context): Promise<void> {
         analysisContent: buildAnalysisContent(
           mediaContext,
           attachment,
-          classification.pillar as Pillar
+          auditPillar
         ),
       }),
     };
@@ -1098,7 +1098,7 @@ export async function handleConversation(ctx: Context): Promise<void> {
       messageText,
       historyResponse,
       auditResult ? {
-        pillar: classification.pillar,
+        pillar: auditPillar,
         requestType: classification.requestType,
         feedId: auditResult.feedId,
         workQueueId: auditResult.workQueueId,
@@ -1127,7 +1127,7 @@ export async function handleConversation(ctx: Context): Promise<void> {
     await recordUsage({
       inputTokens: Math.floor(totalTokens * 0.7), // Approximate split
       outputTokens: Math.floor(totalTokens * 0.3),
-      pillar: classification.pillar,
+      pillar: auditPillar,
       requestType: classification.requestType,
       model: 'claude-sonnet-4',
     });
@@ -1143,7 +1143,7 @@ export async function handleConversation(ctx: Context): Promise<void> {
     if (isFeatureEnabled('skillLogging') && !skipAudit) {
       logAction({
         messageText,
-        pillar: classification.pillar,
+        pillar: auditPillar,
         requestType: classification.requestType,
         actionType: toolsUsed.length > 0 ? 'tool' : (mediaContext ? 'media' : 'chat'),
         toolsUsed,
@@ -1163,7 +1163,7 @@ export async function handleConversation(ctx: Context): Promise<void> {
 
     logger.info('Conversation response sent', {
       userId,
-      pillar: classification.pillar,
+      pillar: auditPillar,
       requestType: classification.requestType,
       tokens: totalTokens,
       toolIterations: iterations,
