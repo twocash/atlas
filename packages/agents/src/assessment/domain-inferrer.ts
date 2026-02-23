@@ -57,9 +57,16 @@ export interface PromptManagerLike {
 
 const DEFAULT_DOMAIN_RULES: DomainRulesConfig = {
   keyword_rules: [
+    // Grove: AI research, infrastructure, dev tools, Atlas itself
     { pattern: "grove|infrastructure|concentration|ai\\s+architecture|llm|agent\\s+swarm", domain: "grove" },
+    { pattern: "github|repo|atlas|distributed|consensus|mcp|sdk", domain: "grove" },
+    // Consulting: client work, named clients, professional services
     { pattern: "client|chase|walmart|consulting|take.?flight|monarch", domain: "consulting" },
-    { pattern: "drumwave|drum\\.wave", domain: "drumwave" },
+    { pattern: "quarterly|engagement|competitive|retail\\s+media|go.?to.?market", domain: "consulting" },
+    { pattern: "bank\\s+of\\s+america|bofa", domain: "consulting" },
+    // DrumWave: venture-specific keywords
+    { pattern: "drumwave|drum\\.wave|data\\s+certificate", domain: "drumwave" },
+    // Personal: health, family, errands (explicit only — personal is also the default)
     { pattern: "gym|health|family|personal|groceries|errand|fitness", domain: "personal" },
   ],
   url_domain_rules: [
@@ -71,8 +78,15 @@ const DEFAULT_DOMAIN_RULES: DomainRulesConfig = {
 
 const DEFAULT_AUDIENCE_RULES: AudienceRulesConfig = {
   keyword_rules: [
+    // Client-facing: decks, emails to named parties, investor/board comms
     { pattern: "for\\s+(?:the|a)\\s+client|client\\s+brief|client\\s+deck|client\\s+facing", audience: "client" },
+    { pattern: "(?:email|memo|letter|note)\\s+to\\s+(?:the\\s+)?\\w+", audience: "client" },
+    { pattern: "deck|proposal|deliverable|sow|statement\\s+of\\s+work", audience: "client" },
+    { pattern: "investor|board\\s+(?:update|meeting|deck)|stakeholder", audience: "client" },
+    { pattern: "follow.?up\\s+(?:email|note|memo)", audience: "client" },
+    // Team-facing
     { pattern: "for\\s+the\\s+team|internal\\s+doc|team\\s+update|standup", audience: "team" },
+    // Public-facing: publishing, thought leadership
     { pattern: "publish|blog|linkedin|public|article|post|thinkpiece", audience: "public" },
   ],
   default: "self",

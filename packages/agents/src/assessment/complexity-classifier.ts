@@ -30,20 +30,25 @@ const MULTI_STEP_PATTERNS = [
   /\b(?:research|draft|review|send)\b.*\b(?:and|then|plus)\b.*\b(?:research|draft|review|send)\b/i,
   // Verbs that inherently imply multi-step work (search → filter → synthesize)
   /\b(?:research|analyze|explore|investigate|rethink|plan|figure\s+out)\b/i,
+  // Exploration/thinking verbs (open-ended reasoning → multi-step by nature)
+  /\b(?:think\s+(?:through|about)|work\s+through|reason\s+about|sort\s+out)\b/i,
 ]
 
 /** Patterns indicating vague or underspecified goals */
 const AMBIGUOUS_PATTERNS = [
-  /^(?:help\s+(?:me\s+)?(?:with|on))\b/i,
+  /^(?:help\s+(?:me\s+)?(?:with|on|think|understand|figure))\b/i,
   /^(?:work\s+on|look\s+(?:at|into))\b/i,
   /\b(?:something\s+(?:about|like|related))\b/i,
-  /\b(?:figure\s+out|think\s+about|deal\s+with)\b/i,
+  /\b(?:figure\s+out|think\s+(?:about|through)|deal\s+with|sort\s+out)\b/i,
   /\b(?:stuff|things|whatever)\b/i,
   // Broad scope markers — "everything" or "all of this" without specifics
   /\b(?:everything|anything|all\s+of\s+(?:this|that|it))\b/i,
   // Explicit uncertainty
   /\b(?:what\s+to\s+do|how\s+to\s+(?:handle|approach|tackle))\b/i,
   /\b(?:not\s+sure|don't\s+know|no\s+idea)\b/i,
+  // Emotional uncertainty — gut-feel signals that intent is unresolved
+  /\b(?:feels?\s+(?:off|wrong|weird|like)|uncomfortable\s+with|uneasy\s+about)\b/i,
+  /\b(?:something\s+(?:feels|is)\s+(?:off|wrong))\b/i,
 ]
 
 /** Patterns indicating need for external context */
@@ -54,7 +59,8 @@ const CONTEXT_PATTERNS = [
   /\b(?:remember\s+(?:when|that|the))\b/i,
   /\b(?:based\s+on\s+(?:what|our|the))\b/i,
   // Domain references that imply needing system/project context
-  /\b(?:the\s+Grove|Atlas|content\s+strategy|our\s+(?:approach|strategy|plan|pipeline|system))\b/i,
+  /\b(?:the\s+Grove|Atlas|content\s+strategy)\b/i,
+  /\b(?:our\s+(?:[\w-]+\s+){0,3}(?:approach|strategy|plan|pipeline|system|architecture|positioning|position))\b/i,
   // Broad scope — "everything" implies needing full picture
   /\b(?:everything|the\s+whole\s+(?:thing|picture|situation))\b/i,
 ]
@@ -66,6 +72,8 @@ const TIME_PATTERNS = [
   /\b(?:by\s+(?:end\s+of\s+)?(?:this\s+)?(?:week|month|day|morning|afternoon|evening))\b/i,
   /\b(?:deadline|due\s+(?:date|by)|time.?sensitive)\b/i,
   /\b(?:before\s+(?:the|my|our)\s+(?:meeting|call|session))\b/i,
+  // Standalone time scoping (without "by" prefix)
+  /\b(?:for\s+)?this\s+(?:week|month|quarter|sprint)\b/i,
 ]
 
 /** Patterns indicating high-stakes outcome */
@@ -74,6 +82,8 @@ const HIGH_STAKES_PATTERNS = [
   /\b(?:presentation|pitch|proposal|interview|meeting\s+with)\b/i,
   /\b(?:important|critical|crucial|essential|key)\b/i,
   /\b(?:enterprise|fortune\s+\d+|c-suite|executive)\b/i,
+  // Strategic decisions — architecture/strategy choices have high downstream impact
+  /\b(?:strategy|architecture)\b/i,
 ]
 
 /** Pillars that often indicate higher stakes */
@@ -95,12 +105,20 @@ function detectMultiStep(request: string): boolean {
 }
 
 function detectAmbiguousGoal(request: string): boolean {
+  const trimmed = request.trim()
+
   // Slash commands are explicit intent, never ambiguous
-  if (/^\/\w+/.test(request.trim())) return false
+  if (/^\/\w+/.test(trimmed)) return false
+
+  // Trivial messages (greetings, acknowledgments) aren't ambiguous — they're just short
+  if (/^(?:hey|hi|hello|thanks|thank\s+you|ok|sure|got\s+it|yep|nope|yes|no)[!.?]*$/i.test(trimmed)) {
+    return false
+  }
 
   // Very short requests without clear action are ambiguous
-  const words = request.trim().split(/\s+/)
-  if (words.length <= 3 && !/\b(?:save|capture|log|check|health|research|draft|send|add|remove|delete|set|get|update|list|create|find|show)\b/i.test(request)) {
+  // But short noun phrases (notes, prep, list) are clear capture intent
+  const words = trimmed.split(/\s+/)
+  if (words.length <= 3 && !/\b(?:save|capture|log|check|health|research|draft|send|add|remove|delete|set|get|update|list|create|find|show|remind|schedule|prep|notes?|brief|review)\b/i.test(request)) {
     return true
   }
 
@@ -131,9 +149,26 @@ function detectHighStakes(request: string, context: AssessmentContext): boolean 
 }
 
 function detectNovelPattern(request: string, capabilities: CapabilityMatch[]): boolean {
+  const trimmed = request.trim()
+
+  // Trivial messages (greetings, acknowledgments) aren't novel
+  if (/^(?:hey|hi|hello|thanks|thank\s+you|ok|sure|got\s+it|yep|nope|yes|no)[!.?]*$/i.test(trimmed)) {
+    return false
+  }
+
   // Simple action requests aren't "novel" — they're just basic tasks
   // without a matching skill (e.g. "add milk" has no skill but isn't novel)
-  if (/^\s*(?:add|remove|delete|check|set|get|list|update|send|log|save|capture|create|find|show)\b/i.test(request)) {
+  if (/^\s*(?:add|remove|delete|check|set|get|list|update|send|log|save|capture|create|find|show|remind|schedule|cancel|mark|open|close|prep)\b/i.test(request)) {
+    return false
+  }
+
+  // Short noun phrases (notes, briefs, lists) are clear capture intent
+  if (/^\s*(?:\w+\s+){0,3}(?:notes?|brief|list|update|review|summary)\s*$/i.test(request)) {
+    return false
+  }
+
+  // Question-form queries are lookups, not novel patterns
+  if (/^\s*(?:what|when|where|who|how\s+(?:much|many|long|often))\b/i.test(request)) {
     return false
   }
 

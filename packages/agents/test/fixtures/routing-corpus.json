@@ -1,0 +1,417 @@
+{
+  "version": "1.0.0",
+  "updated": "2026-02-23",
+  "description": "Golden routing corpus for Atlas pipeline regression testing. Entries grow from corrections.",
+  "entries": [
+    {
+      "id": "personal-001",
+      "input": "add milk",
+      "expected": {
+        "domain": "personal",
+        "audience": "self",
+        "complexity": "simple",
+        "action": "act",
+        "shouldCapture": false
+      },
+      "handoffs": {
+        "triageTitle": "Add milk",
+        "drafterSlug": "personal",
+        "ragWorkspace": null,
+        "voiceIntensity": "casual"
+      },
+      "meta": {
+        "addedAt": "2026-02-23",
+        "source": "manual",
+        "notes": "The canonical pillar misclassification bug. Must route to personal, not Grove."
+      }
+    },
+    {
+      "id": "personal-002",
+      "input": "remind me to call mom",
+      "expected": {
+        "domain": "personal",
+        "audience": "self",
+        "complexity": "simple",
+        "action": "act",
+        "shouldCapture": true
+      },
+      "handoffs": {
+        "triageTitle": "Call mom reminder",
+        "voiceIntensity": "casual"
+      },
+      "meta": {
+        "addedAt": "2026-02-23",
+        "source": "manual",
+        "notes": "Personal task, should capture for follow-up"
+      }
+    },
+    {
+      "id": "personal-003",
+      "input": "what time is my dentist appointment",
+      "expected": {
+        "domain": "personal",
+        "audience": "self",
+        "complexity": "simple",
+        "action": "act",
+        "shouldCapture": false
+      },
+      "handoffs": {
+        "voiceIntensity": "casual"
+      },
+      "meta": {
+        "addedAt": "2026-02-23",
+        "source": "manual",
+        "notes": "Personal query, no capture needed"
+      }
+    },
+    {
+      "id": "grove-001",
+      "input": "Research this GitHub repo",
+      "expected": {
+        "domain": "grove",
+        "audience": "self",
+        "complexity": "moderate",
+        "action": "act",
+        "shouldCapture": true
+      },
+      "handoffs": {
+        "drafterSlug": "the-grove",
+        "ragWorkspace": "grove-technical",
+        "voiceIntensity": "casual"
+      },
+      "meta": {
+        "addedAt": "2026-02-23",
+        "source": "manual",
+        "notes": "GitHub URL → grove domain, self audience (default)"
+      }
+    },
+    {
+      "id": "grove-002",
+      "input": "Research concentration risk for the Chase deck",
+      "expected": {
+        "domain": "grove",
+        "audience": "client",
+        "complexity": "moderate",
+        "action": "act",
+        "shouldCapture": true
+      },
+      "handoffs": {
+        "triageTitle": "Concentration risk research",
+        "drafterSlug": "the-grove",
+        "ragWorkspace": "grove-technical",
+        "voiceIntensity": "professional"
+      },
+      "meta": {
+        "addedAt": "2026-02-23",
+        "source": "manual",
+        "notes": "Grove knowledge + client audience. The mixed-mode case STAB-002c enables."
+      }
+    },
+    {
+      "id": "grove-003",
+      "input": "Draft a LinkedIn post about infrastructure distribution",
+      "expected": {
+        "domain": "grove",
+        "audience": "public",
+        "complexity": "moderate",
+        "action": "act",
+        "shouldCapture": true
+      },
+      "handoffs": {
+        "triageTitle": "Infrastructure distribution post",
+        "drafterSlug": "the-grove",
+        "ragWorkspace": "grove-technical",
+        "voiceIntensity": "broadcast"
+      },
+      "meta": {
+        "addedAt": "2026-02-23",
+        "source": "manual",
+        "notes": "Grove domain + public audience → thought leadership voice"
+      }
+    },
+    {
+      "id": "grove-004",
+      "input": "What's our position on AI concentration risk?",
+      "expected": {
+        "domain": "grove",
+        "audience": "self",
+        "complexity": "moderate",
+        "action": "act",
+        "shouldCapture": false
+      },
+      "handoffs": {
+        "ragWorkspace": "grove-technical",
+        "voiceIntensity": "casual"
+      },
+      "meta": {
+        "addedAt": "2026-02-23",
+        "source": "manual",
+        "notes": "Internal query about Grove positions, should hit POV library"
+      }
+    },
+    {
+      "id": "grove-005",
+      "input": "Help me think through distributed consensus approaches",
+      "expected": {
+        "domain": "grove",
+        "audience": "self",
+        "complexity": "complex",
+        "action": "act",
+        "shouldCapture": true
+      },
+      "handoffs": {
+        "ragWorkspace": "grove-technical",
+        "voiceIntensity": "casual"
+      },
+      "meta": {
+        "addedAt": "2026-02-23",
+        "source": "manual",
+        "notes": "Rough terrain: open-ended thinking request → dialogue mode. TODO: scores complex (3 signals), needs 4 for rough — improve exploration detection."
+      }
+    },
+    {
+      "id": "consulting-001",
+      "input": "Prep notes for the Walmart call tomorrow",
+      "expected": {
+        "domain": "consulting",
+        "audience": "self",
+        "complexity": "moderate",
+        "action": "act",
+        "shouldCapture": true
+      },
+      "handoffs": {
+        "triageTitle": "Walmart call prep",
+        "drafterSlug": "consulting",
+        "ragWorkspace": "consulting",
+        "voiceIntensity": "casual"
+      },
+      "meta": {
+        "addedAt": "2026-02-23",
+        "source": "manual",
+        "notes": "Client name triggers consulting domain, but audience is self (internal prep)"
+      }
+    },
+    {
+      "id": "consulting-002",
+      "input": "Draft a follow-up email to the Chase team about next steps",
+      "expected": {
+        "domain": "consulting",
+        "audience": "client",
+        "complexity": "moderate",
+        "action": "act",
+        "shouldCapture": true
+      },
+      "handoffs": {
+        "triageTitle": "Chase follow-up email",
+        "drafterSlug": "consulting",
+        "ragWorkspace": "consulting",
+        "voiceIntensity": "professional"
+      },
+      "meta": {
+        "addedAt": "2026-02-23",
+        "source": "manual",
+        "notes": "Client-facing email, professional voice"
+      }
+    },
+    {
+      "id": "consulting-003",
+      "input": "What's our engagement history with Bank of America?",
+      "expected": {
+        "domain": "consulting",
+        "audience": "self",
+        "complexity": "moderate",
+        "action": "act",
+        "shouldCapture": false
+      },
+      "handoffs": {
+        "ragWorkspace": "consulting",
+        "voiceIntensity": "casual"
+      },
+      "meta": {
+        "addedAt": "2026-02-23",
+        "source": "manual",
+        "notes": "Internal lookup, consulting RAG. TODO: scores moderate — PERSON_PATTERN false-positives 'Bank' as a name."
+      }
+    },
+    {
+      "id": "drumwave-001",
+      "input": "Research data certificate licensing models",
+      "expected": {
+        "domain": "drumwave",
+        "audience": "self",
+        "complexity": "moderate",
+        "action": "act",
+        "shouldCapture": true
+      },
+      "handoffs": {
+        "triageTitle": "Data certificate licensing research",
+        "ragWorkspace": "drumwave",
+        "voiceIntensity": "casual"
+      },
+      "meta": {
+        "addedAt": "2026-02-23",
+        "source": "manual",
+        "notes": "DrumWave domain keywords"
+      }
+    },
+    {
+      "id": "drumwave-002",
+      "input": "Draft the DrumWave investor update for this month",
+      "expected": {
+        "domain": "drumwave",
+        "audience": "client",
+        "complexity": "complex",
+        "action": "act",
+        "shouldCapture": true
+      },
+      "handoffs": {
+        "triageTitle": "DrumWave investor update",
+        "ragWorkspace": "drumwave",
+        "voiceIntensity": "professional"
+      },
+      "meta": {
+        "addedAt": "2026-02-23",
+        "source": "manual",
+        "notes": "External-facing investor content"
+      }
+    },
+    {
+      "id": "simple-001",
+      "input": "Hey",
+      "expected": {
+        "domain": "personal",
+        "audience": "self",
+        "complexity": "simple",
+        "action": "act",
+        "shouldCapture": false
+      },
+      "handoffs": {
+        "voiceIntensity": "casual"
+      },
+      "meta": {
+        "addedAt": "2026-02-23",
+        "source": "manual",
+        "notes": "Greeting, trivial complexity, no capture"
+      }
+    },
+    {
+      "id": "simple-002",
+      "input": "Thanks!",
+      "expected": {
+        "domain": "personal",
+        "audience": "self",
+        "complexity": "simple",
+        "action": "act",
+        "shouldCapture": false
+      },
+      "handoffs": {
+        "voiceIntensity": "casual"
+      },
+      "meta": {
+        "addedAt": "2026-02-23",
+        "source": "manual",
+        "notes": "Acknowledgment, trivial"
+      }
+    },
+    {
+      "id": "complex-001",
+      "input": "Analyze the competitive landscape for retail media networks and identify our positioning opportunities",
+      "expected": {
+        "domain": "consulting",
+        "audience": "self",
+        "complexity": "complex",
+        "action": "act",
+        "shouldCapture": true
+      },
+      "handoffs": {
+        "triageTitle": "Retail media competitive analysis",
+        "ragWorkspace": "consulting",
+        "voiceIntensity": "casual"
+      },
+      "meta": {
+        "addedAt": "2026-02-23",
+        "source": "manual",
+        "notes": "Multi-faceted analysis, complex but clear intent"
+      }
+    },
+    {
+      "id": "rough-001",
+      "input": "I'm not sure what to do about the Atlas architecture",
+      "expected": {
+        "domain": "grove",
+        "audience": "self",
+        "complexity": "rough",
+        "action": "explore",
+        "shouldCapture": true
+      },
+      "handoffs": {
+        "ragWorkspace": "grove-technical",
+        "voiceIntensity": "casual"
+      },
+      "meta": {
+        "addedAt": "2026-02-23",
+        "source": "manual",
+        "notes": "Uncertainty signal → rough terrain → dialogue mode"
+      }
+    },
+    {
+      "id": "rough-002",
+      "input": "Something feels off about our go-to-market strategy",
+      "expected": {
+        "domain": "consulting",
+        "audience": "self",
+        "complexity": "rough",
+        "action": "explore",
+        "shouldCapture": true
+      },
+      "handoffs": {
+        "ragWorkspace": "consulting",
+        "voiceIntensity": "casual"
+      },
+      "meta": {
+        "addedAt": "2026-02-23",
+        "source": "manual",
+        "notes": "Vague discomfort → explore, don't act"
+      }
+    },
+    {
+      "id": "url-001",
+      "input": "https://github.com/anthropics/anthropic-cookbook",
+      "expected": {
+        "domain": "grove",
+        "audience": "self",
+        "complexity": "moderate",
+        "action": "ask",
+        "shouldCapture": true
+      },
+      "handoffs": {
+        "ragWorkspace": "grove-technical"
+      },
+      "meta": {
+        "addedAt": "2026-02-23",
+        "source": "manual",
+        "notes": "URL only, no context → ask intent (Research? Save? Analyze?)"
+      }
+    },
+    {
+      "id": "correction-001",
+      "input": "quarterly review notes",
+      "expected": {
+        "domain": "consulting",
+        "audience": "self",
+        "complexity": "simple",
+        "action": "act",
+        "shouldCapture": true
+      },
+      "handoffs": {
+        "drafterSlug": "consulting",
+        "voiceIntensity": "casual"
+      },
+      "meta": {
+        "addedAt": "2026-02-23",
+        "source": "correction",
+        "notes": "Added from correction: was routing to personal, should be consulting"
+      }
+    }
+  ]
+}
