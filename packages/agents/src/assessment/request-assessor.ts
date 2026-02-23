@@ -31,7 +31,7 @@ import { buildApproach } from "./approach-builder"
  * Opt-in: `ATLAS_REQUEST_ASSESSMENT=true` (default OFF).
  */
 export function isAssessmentEnabled(): boolean {
-  return process.env[ASSESSMENT_DEFAULTS.featureFlag] === "true"
+  return process.env[ASSESSMENT_DEFAULTS.featureFlag] !== "false"
 }
 
 // ─── Triage Construction ─────────────────────────────────

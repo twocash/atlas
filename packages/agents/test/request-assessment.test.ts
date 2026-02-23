@@ -329,10 +329,10 @@ describe("Request Assessment (CONV-ARCH-002)", () => {
   // ── Test 8: Feature flag ──
   describe("Feature flag", () => {
     it("isAssessmentEnabled reads ATLAS_REQUEST_ASSESSMENT env var", () => {
-      // Feature flag defaults to OFF
+      // Feature flag defaults to ON (opt-out kill switch)
       const original = process.env.ATLAS_REQUEST_ASSESSMENT
       delete process.env.ATLAS_REQUEST_ASSESSMENT
-      expect(isAssessmentEnabled()).toBe(false)
+      expect(isAssessmentEnabled()).toBe(true)
 
       process.env.ATLAS_REQUEST_ASSESSMENT = "false"
       expect(isAssessmentEnabled()).toBe(false)
