@@ -422,6 +422,7 @@ export async function handleConversation(ctx: Context): Promise<void> {
 
   // APPROVAL SESSION: Check for pending complex-terrain proposal (STAB-003)
   // Runs AFTER Socratic, BEFORE Dialogue — approval is a quick yes/no gate.
+  let approvalGranted = false;
   if (!hasAttachment && messageText && hasApprovalSessionForUser(userId)) {
     const containsUrl = /https?:\/\/\S+/i.test(messageText);
     if (containsUrl) {
@@ -443,10 +444,11 @@ export async function handleConversation(ctx: Context): Promise<void> {
           } else {
             messageText = approvalSession.originalMessage;
           }
+          approvalGranted = true;
           approvalStep.metadata = { status: 'approved', hasRefinedRequest: !!approvalSession.refinedRequest };
           completeStep(approvalStep);
           logger.info('Proposal approved, proceeding with execution', { userId });
-          // Fall through to normal processing with the approved message
+          // Fall through to normal processing — approvalGranted skips the gate
         } else if (isRejectionSignal(messageText)) {
           // Rejected — ask for adjustment
           removeApprovalSession(approvalSession.chatId);
@@ -848,7 +850,7 @@ export async function handleConversation(ctx: Context): Promise<void> {
   // APPROVAL GATE: Moderate+ terrain with proposal → surface for approval (STAB-003/003a)
   // Any non-simple request with an approach proposal gets surfaced for sign-off.
   // Rough terrain routes to dialogue first, so in practice this gates moderate + complex.
-  if (assessment && assessment.approach && assessment.complexity !== 'simple') {
+  if (assessment && assessment.approach && assessment.complexity !== 'simple' && !approvalGranted) {
     const approvalStep = addStep(trace, 'approval-gate');
     const proposalMsg = formatProposalMessage(assessment.approach, assessment.complexity);
     const sentMsg = await ctx.reply(

@@ -452,7 +452,7 @@ async function executeHaikuTriage(
   try {
     const response = await anthropic.messages.create({
       model: TASK_MODEL_MAP.classification,
-      max_tokens: 400,
+      max_tokens: 800,
       system: TRIAGE_SYSTEM_PROMPT + (isRetry ? '\n\nIMPORTANT: Be extra careful with classification. Double-check pillar and intent.' : ''),
       messages: [{ role: 'user', content: userPrompt }],
     });

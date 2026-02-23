@@ -390,4 +390,49 @@ describe("STAB-003: Close the Cognitive Loop", () => {
       expect(retrieved!.assessment.complexity).toBe("moderate")
     })
   })
+
+  // ── 7. Approval Loop Prevention (STAB-003a hotfix) ──
+
+  describe("Approval Loop Prevention", () => {
+    it("approvalGranted flag prevents re-gating after approval", () => {
+      // Simulate: user approves → message falls through → hits assessment
+      // The approvalGranted flag should prevent the gate from re-firing
+      let approvalGranted = false
+
+      // Phase 1: Proposal surfaced, session stored
+      const assessment = makeAssessment({ complexity: "moderate" })
+      const shouldGateFirst = assessment.approach && assessment.complexity !== 'simple' && !approvalGranted
+      expect(shouldGateFirst).toBeTruthy() // Gate fires first time
+
+      // Phase 2: User says "yes" → approval granted
+      approvalGranted = true
+      const shouldGateAfterApproval = assessment.approach && assessment.complexity !== 'simple' && !approvalGranted
+      expect(shouldGateAfterApproval).toBeFalsy() // Gate skipped after approval
+    })
+
+    it("approval clears session so subsequent messages are not trapped", () => {
+      storeApprovalSession(makeSession())
+      expect(hasApprovalSessionForUser(67890)).toBe(true)
+
+      // Approval clears the session
+      removeApprovalSession(12345)
+      expect(hasApprovalSessionForUser(67890)).toBe(false)
+
+      // Next message from same user should NOT hit approval check
+      expect(getApprovalSessionByUserId(67890)).toBeUndefined()
+    })
+
+    it("approval with refinedRequest uses refined text for downstream", () => {
+      const session = makeSession({
+        refinedRequest: "Compare Cursor vs Windsurf vs Claude Code agent architectures for Grove blog",
+        originalMessage: "Research what Cursor and Windsurf are doing with agent modes",
+      })
+      storeApprovalSession(session)
+
+      const retrieved = getApprovalSession(12345)!
+      // Handler logic: use refinedRequest if available, else originalMessage
+      const executionText = retrieved.refinedRequest || retrieved.originalMessage
+      expect(executionText).toBe("Compare Cursor vs Windsurf vs Claude Code agent architectures for Grove blog")
+    })
+  })
 })
