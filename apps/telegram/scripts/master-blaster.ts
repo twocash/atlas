@@ -975,6 +975,7 @@ async function runAgentsUnitTests(cwd: string): Promise<SuiteResult> {
       'test/research-intelligence.test.ts',
       'test/research-intelligence-chain.test.ts',
       'test/self-model-master-blaster.test.ts',
+      'test/request-assessment.test.ts',
     ],
     agentsCwd,
     60000
