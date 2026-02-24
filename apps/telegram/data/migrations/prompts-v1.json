@@ -262,5 +262,38 @@
     "modelConfig": { "temperature": 0.3, "maxTokens": 4096 },
     "active": true,
     "version": 1
+  },
+  {
+    "id": "research-agent.summary.light",
+    "capability": "Research Agent",
+    "pillars": ["All"],
+    "useCase": "Summary Guidance",
+    "stage": "2-Research",
+    "promptText": "2-3 sentence executive summary with key takeaways",
+    "modelConfig": {},
+    "active": true,
+    "version": 1
+  },
+  {
+    "id": "research-agent.summary.standard",
+    "capability": "Research Agent",
+    "pillars": ["All"],
+    "useCase": "Summary Guidance",
+    "stage": "2-Research",
+    "promptText": "Write 3-5 FULL paragraphs that SYNTHESIZE your research. Para 1: Current landscape overview. Para 2-3: Key players, approaches, and trade-offs. Para 4: Emerging trends and where things are heading. Para 5: Practical implications - what should someone building in this space know? Be opinionated and analytical, not just descriptive.",
+    "modelConfig": {},
+    "active": true,
+    "version": 1
+  },
+  {
+    "id": "research-agent.summary.deep",
+    "capability": "Research Agent",
+    "pillars": ["All"],
+    "useCase": "Summary Guidance",
+    "stage": "2-Research",
+    "promptText": "Comprehensive 4-6 paragraph academic summary including: research context, methodology overview, key findings with evidence strength, limitations, areas of consensus/debate, and implications for further research. Use your full token budget.",
+    "modelConfig": {},
+    "active": true,
+    "version": 1
   }
 ]

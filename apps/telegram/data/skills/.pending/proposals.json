@@ -9337,8 +9337,4177 @@
       },
       "createdAt": "2026-02-19T12:00:13.162Z",
       "status": "pending"
+    },
+    {
+      "id": "p-1771588822745-the-grove-classify-t",
+      "pattern": {
+        "intentHash": "b8df8dcf",
+        "canonicalText": "Test triage property types",
+        "actions": [
+          {
+            "id": "30d780a7-8eef-81ae-b8ff-f3110fa925d1",
+            "intentHash": "b8df8dcf",
+            "actionType": "classify",
+            "pillar": "The Grove",
+            "toolsUsed": [
+              "classify"
+            ],
+            "messageText": "Test triage property types",
+            "timestamp": "2026-02-20T02:43:00.000Z",
+            "confirmed": false,
+            "adjusted": false,
+            "executionTimeMs": null
+          },
+          {
+            "id": "30d780a7-8eef-81d6-8644-e8c8db7c50e2",
+            "intentHash": "b8df8dcf",
+            "actionType": "classify",
+            "pillar": "The Grove",
+            "toolsUsed": [
+              "classify"
+            ],
+            "messageText": "Test triage property types",
+            "timestamp": "2026-02-20T02:43:00.000Z",
+            "confirmed": false,
+            "adjusted": false,
+            "executionTimeMs": null
+          },
+          {
+            "id": "30d780a7-8eef-8186-9e97-f6a188e6a93b",
+            "intentHash": "b8df8dcf",
+            "actionType": "classify",
+            "pillar": "The Grove",
+            "toolsUsed": [
+              "classify"
+            ],
+            "messageText": "Test triage property types",
+            "timestamp": "2026-02-20T02:43:00.000Z",
+            "confirmed": false,
+            "adjusted": false,
+            "executionTimeMs": null
+          },
+          {
+            "id": "30d780a7-8eef-8192-bff4-f4cad997310c",
+            "intentHash": "b8df8dcf",
+            "actionType": "classify",
+            "pillar": "The Grove",
+            "toolsUsed": [
+              "classify"
+            ],
+            "messageText": "Test triage property types",
+            "timestamp": "2026-02-20T02:43:00.000Z",
+            "confirmed": false,
+            "adjusted": false,
+            "executionTimeMs": null
+          },
+          {
+            "id": "30d780a7-8eef-8100-a3ac-f78ad9d34547",
+            "intentHash": "b8df8dcf",
+            "actionType": "classify",
+            "pillar": "The Grove",
+            "toolsUsed": [
+              "classify"
+            ],
+            "messageText": "Test triage property types",
+            "timestamp": "2026-02-20T02:43:00.000Z",
+            "confirmed": false,
+            "adjusted": false,
+            "executionTimeMs": null
+          },
+          {
+            "id": "30d780a7-8eef-8182-b87f-fec7da3c6c22",
+            "intentHash": "b8df8dcf",
+            "actionType": "classify",
+            "pillar": "The Grove",
+            "toolsUsed": [
+              "classify"
+            ],
+            "messageText": "Test triage property types",
+            "timestamp": "2026-02-20T02:43:00.000Z",
+            "confirmed": false,
+            "adjusted": false,
+            "executionTimeMs": null
+          },
+          {
+            "id": "30d780a7-8eef-8177-8562-c93990e98c01",
+            "intentHash": "b8df8dcf",
+            "actionType": "classify",
+            "pillar": "The Grove",
+            "toolsUsed": [
+              "classify"
+            ],
+            "messageText": "Test triage property types",
+            "timestamp": "2026-02-20T02:43:00.000Z",
+            "confirmed": false,
+            "adjusted": false,
+            "executionTimeMs": null
+          },
+          {
+            "id": "30d780a7-8eef-81fc-8e5f-f8035a907f97",
+            "intentHash": "b8df8dcf",
+            "actionType": "classify",
+            "pillar": "The Grove",
+            "toolsUsed": [
+              "classify"
+            ],
+            "messageText": "Test triage property types",
+            "timestamp": "2026-02-20T02:43:00.000Z",
+            "confirmed": false,
+            "adjusted": false,
+            "executionTimeMs": null
+          },
+          {
+            "id": "30d780a7-8eef-8118-bbf0-d5773005cff0",
+            "intentHash": "b8df8dcf",
+            "actionType": "classify",
+            "pillar": "The Grove",
+            "toolsUsed": [
+              "classify"
+            ],
+            "messageText": "Test triage property types",
+            "timestamp": "2026-02-20T02:00:00.000Z",
+            "confirmed": false,
+            "adjusted": false,
+            "executionTimeMs": null
+          },
+          {
+            "id": "30d780a7-8eef-8150-bf34-eae44b3b8543",
+            "intentHash": "b8df8dcf",
+            "actionType": "classify",
+            "pillar": "The Grove",
+            "toolsUsed": [
+              "classify"
+            ],
+            "messageText": "Test triage property types",
+            "timestamp": "2026-02-20T02:00:00.000Z",
+            "confirmed": false,
+            "adjusted": false,
+            "executionTimeMs": null
+          },
+          {
+            "id": "30d780a7-8eef-8100-a9db-c4071617afcc",
+            "intentHash": "b8df8dcf",
+            "actionType": "classify",
+            "pillar": "The Grove",
+            "toolsUsed": [
+              "classify"
+            ],
+            "messageText": "Test triage property types",
+            "timestamp": "2026-02-20T02:00:00.000Z",
+            "confirmed": false,
+            "adjusted": false,
+            "executionTimeMs": null
+          },
+          {
+            "id": "30d780a7-8eef-81eb-9f38-cb1d874c0b75",
+            "intentHash": "b8df8dcf",
+            "actionType": "classify",
+            "pillar": "The Grove",
+            "toolsUsed": [
+              "classify"
+            ],
+            "messageText": "Test triage property types",
+            "timestamp": "2026-02-20T02:00:00.000Z",
+            "confirmed": false,
+            "adjusted": false,
+            "executionTimeMs": null
+          },
+          {
+            "id": "30d780a7-8eef-813c-be9f-c7d16b341900",
+            "intentHash": "b8df8dcf",
+            "actionType": "classify",
+            "pillar": "The Grove",
+            "toolsUsed": [
+              "classify"
+            ],
+            "messageText": "Test triage property types",
+            "timestamp": "2026-02-20T02:00:00.000Z",
+            "confirmed": false,
+            "adjusted": false,
+            "executionTimeMs": null
+          },
+          {
+            "id": "30d780a7-8eef-8188-b97c-c2040ae6e101",
+            "intentHash": "b8df8dcf",
+            "actionType": "classify",
+            "pillar": "The Grove",
+            "toolsUsed": [
+              "classify"
+            ],
+            "messageText": "Test triage property types",
+            "timestamp": "2026-02-20T02:00:00.000Z",
+            "confirmed": false,
+            "adjusted": false,
+            "executionTimeMs": null
+          },
+          {
+            "id": "30d780a7-8eef-81a2-8474-e4e7f4a453d1",
+            "intentHash": "b8df8dcf",
+            "actionType": "classify",
+            "pillar": "The Grove",
+            "toolsUsed": [
+              "classify"
+            ],
+            "messageText": "Test triage property types",
+            "timestamp": "2026-02-20T02:00:00.000Z",
+            "confirmed": false,
+            "adjusted": false,
+            "executionTimeMs": null
+          },
+          {
+            "id": "30d780a7-8eef-81fd-bf2c-df99fc7f540d",
+            "intentHash": "b8df8dcf",
+            "actionType": "classify",
+            "pillar": "The Grove",
+            "toolsUsed": [
+              "classify"
+            ],
+            "messageText": "Test triage property types",
+            "timestamp": "2026-02-20T02:00:00.000Z",
+            "confirmed": false,
+            "adjusted": false,
+            "executionTimeMs": null
+          },
+          {
+            "id": "30d780a7-8eef-8151-896a-d4db280bc5e0",
+            "intentHash": "b8df8dcf",
+            "actionType": "classify",
+            "pillar": "The Grove",
+            "toolsUsed": [
+              "classify"
+            ],
+            "messageText": "Test triage property types",
+            "timestamp": "2026-02-20T01:58:00.000Z",
+            "confirmed": false,
+            "adjusted": false,
+            "executionTimeMs": null
+          },
+          {
+            "id": "30d780a7-8eef-81cb-a87e-e1bd106a6bb1",
+            "intentHash": "b8df8dcf",
+            "actionType": "classify",
+            "pillar": "The Grove",
+            "toolsUsed": [
+              "classify"
+            ],
+            "messageText": "Test triage property types",
+            "timestamp": "2026-02-20T01:58:00.000Z",
+            "confirmed": false,
+            "adjusted": false,
+            "executionTimeMs": null
+          },
+          {
+            "id": "30d780a7-8eef-8180-8e59-e739c5ca2d8a",
+            "intentHash": "b8df8dcf",
+            "actionType": "classify",
+            "pillar": "The Grove",
+            "toolsUsed": [
+              "classify"
+            ],
+            "messageText": "Test triage property types",
+            "timestamp": "2026-02-20T01:58:00.000Z",
+            "confirmed": false,
+            "adjusted": false,
+            "executionTimeMs": null
+          },
+          {
+            "id": "30d780a7-8eef-8112-850f-f260dcce5968",
+            "intentHash": "b8df8dcf",
+            "actionType": "classify",
+            "pillar": "The Grove",
+            "toolsUsed": [
+              "classify"
+            ],
+            "messageText": "Test triage property types",
+            "timestamp": "2026-02-20T01:58:00.000Z",
+            "confirmed": false,
+            "adjusted": false,
+            "executionTimeMs": null
+          },
+          {
+            "id": "30d780a7-8eef-81f3-b3a7-e667035c29a6",
+            "intentHash": "b8df8dcf",
+            "actionType": "classify",
+            "pillar": "The Grove",
+            "toolsUsed": [
+              "classify"
+            ],
+            "messageText": "Test triage property types",
+            "timestamp": "2026-02-20T01:58:00.000Z",
+            "confirmed": false,
+            "adjusted": false,
+            "executionTimeMs": null
+          },
+          {
+            "id": "30d780a7-8eef-8152-b760-c8d3c3382cd5",
+            "intentHash": "b8df8dcf",
+            "actionType": "classify",
+            "pillar": "The Grove",
+            "toolsUsed": [
+              "classify"
+            ],
+            "messageText": "Test triage property types",
+            "timestamp": "2026-02-20T01:58:00.000Z",
+            "confirmed": false,
+            "adjusted": false,
+            "executionTimeMs": null
+          },
+          {
+            "id": "30d780a7-8eef-819c-8a7d-f109aa4c5bb2",
+            "intentHash": "b8df8dcf",
+            "actionType": "classify",
+            "pillar": "The Grove",
+            "toolsUsed": [
+              "classify"
+            ],
+            "messageText": "Test triage property types",
+            "timestamp": "2026-02-20T01:58:00.000Z",
+            "confirmed": false,
+            "adjusted": false,
+            "executionTimeMs": null
+          },
+          {
+            "id": "30d780a7-8eef-815f-903e-e3ca0ee4ed64",
+            "intentHash": "b8df8dcf",
+            "actionType": "classify",
+            "pillar": "The Grove",
+            "toolsUsed": [
+              "classify"
+            ],
+            "messageText": "Test triage property types",
+            "timestamp": "2026-02-20T01:58:00.000Z",
+            "confirmed": false,
+            "adjusted": false,
+            "executionTimeMs": null
+          },
+          {
+            "id": "30d780a7-8eef-817a-84bc-fa175e5ee5b5",
+            "intentHash": "b8df8dcf",
+            "actionType": "classify",
+            "pillar": "The Grove",
+            "toolsUsed": [
+              "classify"
+            ],
+            "messageText": "Test triage property types",
+            "timestamp": "2026-02-20T01:01:00.000Z",
+            "confirmed": false,
+            "adjusted": false,
+            "executionTimeMs": null
+          },
+          {
+            "id": "30d780a7-8eef-81b3-b0d4-ca60937fee23",
+            "intentHash": "b8df8dcf",
+            "actionType": "classify",
+            "pillar": "The Grove",
+            "toolsUsed": [
+              "classify"
+            ],
+            "messageText": "Test triage property types",
+            "timestamp": "2026-02-20T01:01:00.000Z",
+            "confirmed": false,
+            "adjusted": false,
+            "executionTimeMs": null
+          },
+          {
+            "id": "30d780a7-8eef-810a-9835-e74d9e8fec79",
+            "intentHash": "b8df8dcf",
+            "actionType": "classify",
+            "pillar": "The Grove",
+            "toolsUsed": [
+              "classify"
+            ],
+            "messageText": "Test triage property types",
+            "timestamp": "2026-02-20T01:01:00.000Z",
+            "confirmed": false,
+            "adjusted": false,
+            "executionTimeMs": null
+          },
+          {
+            "id": "30d780a7-8eef-817a-af94-d6a51215c49e",
+            "intentHash": "b8df8dcf",
+            "actionType": "classify",
+            "pillar": "The Grove",
+            "toolsUsed": [
+              "classify"
+            ],
+            "messageText": "Test triage property types",
+            "timestamp": "2026-02-20T01:01:00.000Z",
+            "confirmed": false,
+            "adjusted": false,
+            "executionTimeMs": null
+          },
+          {
+            "id": "30d780a7-8eef-817a-a8c1-de696682c2e3",
+            "intentHash": "b8df8dcf",
+            "actionType": "classify",
+            "pillar": "The Grove",
+            "toolsUsed": [
+              "classify"
+            ],
+            "messageText": "Test triage property types",
+            "timestamp": "2026-02-20T01:01:00.000Z",
+            "confirmed": false,
+            "adjusted": false,
+            "executionTimeMs": null
+          },
+          {
+            "id": "30d780a7-8eef-8116-8962-d81716544797",
+            "intentHash": "b8df8dcf",
+            "actionType": "classify",
+            "pillar": "The Grove",
+            "toolsUsed": [
+              "classify"
+            ],
+            "messageText": "Test triage property types",
+            "timestamp": "2026-02-20T01:01:00.000Z",
+            "confirmed": false,
+            "adjusted": false,
+            "executionTimeMs": null
+          },
+          {
+            "id": "30d780a7-8eef-812e-b84e-f7e87a248f36",
+            "intentHash": "b8df8dcf",
+            "actionType": "classify",
+            "pillar": "The Grove",
+            "toolsUsed": [
+              "classify"
+            ],
+            "messageText": "Test triage property types",
+            "timestamp": "2026-02-20T01:01:00.000Z",
+            "confirmed": false,
+            "adjusted": false,
+            "executionTimeMs": null
+          },
+          {
+            "id": "30d780a7-8eef-812b-9c8d-ee52277d1e91",
+            "intentHash": "b8df8dcf",
+            "actionType": "classify",
+            "pillar": "The Grove",
+            "toolsUsed": [
+              "classify"
+            ],
+            "messageText": "Test triage property types",
+            "timestamp": "2026-02-20T01:01:00.000Z",
+            "confirmed": false,
+            "adjusted": false,
+            "executionTimeMs": null
+          },
+          {
+            "id": "30c780a7-8eef-81fb-ae91-f743b9417575",
+            "intentHash": "b8df8dcf",
+            "actionType": "classify",
+            "pillar": "The Grove",
+            "toolsUsed": [
+              "classify"
+            ],
+            "messageText": "Test triage property types",
+            "timestamp": "2026-02-19T21:57:00.000Z",
+            "confirmed": false,
+            "adjusted": false,
+            "executionTimeMs": null
+          },
+          {
+            "id": "30c780a7-8eef-813e-a1f9-dc1dd4fd886c",
+            "intentHash": "b8df8dcf",
+            "actionType": "classify",
+            "pillar": "The Grove",
+            "toolsUsed": [
+              "classify"
+            ],
+            "messageText": "Test triage property types",
+            "timestamp": "2026-02-19T21:57:00.000Z",
+            "confirmed": false,
+            "adjusted": false,
+            "executionTimeMs": null
+          },
+          {
+            "id": "30c780a7-8eef-81bc-8ebf-da597fbba0b2",
+            "intentHash": "b8df8dcf",
+            "actionType": "classify",
+            "pillar": "The Grove",
+            "toolsUsed": [
+              "classify"
+            ],
+            "messageText": "Test triage property types",
+            "timestamp": "2026-02-19T21:57:00.000Z",
+            "confirmed": false,
+            "adjusted": false,
+            "executionTimeMs": null
+          },
+          {
+            "id": "30c780a7-8eef-8116-b7c0-e08fe83f207b",
+            "intentHash": "b8df8dcf",
+            "actionType": "classify",
+            "pillar": "The Grove",
+            "toolsUsed": [
+              "classify"
+            ],
+            "messageText": "Test triage property types",
+            "timestamp": "2026-02-19T21:57:00.000Z",
+            "confirmed": false,
+            "adjusted": false,
+            "executionTimeMs": null
+          },
+          {
+            "id": "30c780a7-8eef-8110-af36-f5fd50b22331",
+            "intentHash": "b8df8dcf",
+            "actionType": "classify",
+            "pillar": "The Grove",
+            "toolsUsed": [
+              "classify"
+            ],
+            "messageText": "Test triage property types",
+            "timestamp": "2026-02-19T21:57:00.000Z",
+            "confirmed": false,
+            "adjusted": false,
+            "executionTimeMs": null
+          },
+          {
+            "id": "30c780a7-8eef-8123-bfeb-e811fc1ad67a",
+            "intentHash": "b8df8dcf",
+            "actionType": "classify",
+            "pillar": "The Grove",
+            "toolsUsed": [
+              "classify"
+            ],
+            "messageText": "Test triage property types",
+            "timestamp": "2026-02-19T21:57:00.000Z",
+            "confirmed": false,
+            "adjusted": false,
+            "executionTimeMs": null
+          },
+          {
+            "id": "30c780a7-8eef-812c-bfb4-c25570902187",
+            "intentHash": "b8df8dcf",
+            "actionType": "classify",
+            "pillar": "The Grove",
+            "toolsUsed": [
+              "classify"
+            ],
+            "messageText": "Test triage property types",
+            "timestamp": "2026-02-19T21:57:00.000Z",
+            "confirmed": false,
+            "adjusted": false,
+            "executionTimeMs": null
+          },
+          {
+            "id": "30c780a7-8eef-81b7-9c8f-eee142025241",
+            "intentHash": "b8df8dcf",
+            "actionType": "classify",
+            "pillar": "The Grove",
+            "toolsUsed": [
+              "classify"
+            ],
+            "messageText": "Test triage property types",
+            "timestamp": "2026-02-19T21:57:00.000Z",
+            "confirmed": false,
+            "adjusted": false,
+            "executionTimeMs": null
+          },
+          {
+            "id": "30c780a7-8eef-8195-b969-c40995098db3",
+            "intentHash": "b8df8dcf",
+            "actionType": "classify",
+            "pillar": "The Grove",
+            "toolsUsed": [
+              "classify"
+            ],
+            "messageText": "Test triage property types",
+            "timestamp": "2026-02-19T21:01:00.000Z",
+            "confirmed": false,
+            "adjusted": false,
+            "executionTimeMs": null
+          },
+          {
+            "id": "30c780a7-8eef-81e5-b383-cca1136d6924",
+            "intentHash": "b8df8dcf",
+            "actionType": "classify",
+            "pillar": "The Grove",
+            "toolsUsed": [
+              "classify"
+            ],
+            "messageText": "Test triage property types",
+            "timestamp": "2026-02-19T21:01:00.000Z",
+            "confirmed": false,
+            "adjusted": false,
+            "executionTimeMs": null
+          },
+          {
+            "id": "30c780a7-8eef-810e-b57b-f36e1299b4ad",
+            "intentHash": "b8df8dcf",
+            "actionType": "classify",
+            "pillar": "The Grove",
+            "toolsUsed": [
+              "classify"
+            ],
+            "messageText": "Test triage property types",
+            "timestamp": "2026-02-19T21:01:00.000Z",
+            "confirmed": false,
+            "adjusted": false,
+            "executionTimeMs": null
+          },
+          {
+            "id": "30c780a7-8eef-8152-9e94-d1f9e5033a86",
+            "intentHash": "b8df8dcf",
+            "actionType": "classify",
+            "pillar": "The Grove",
+            "toolsUsed": [
+              "classify"
+            ],
+            "messageText": "Test triage property types",
+            "timestamp": "2026-02-19T21:01:00.000Z",
+            "confirmed": false,
+            "adjusted": false,
+            "executionTimeMs": null
+          },
+          {
+            "id": "30c780a7-8eef-81bc-9342-e682e7a83b06",
+            "intentHash": "b8df8dcf",
+            "actionType": "classify",
+            "pillar": "The Grove",
+            "toolsUsed": [
+              "classify"
+            ],
+            "messageText": "Test triage property types",
+            "timestamp": "2026-02-19T21:01:00.000Z",
+            "confirmed": false,
+            "adjusted": false,
+            "executionTimeMs": null
+          },
+          {
+            "id": "30c780a7-8eef-8119-bc09-d4caefc2c440",
+            "intentHash": "b8df8dcf",
+            "actionType": "classify",
+            "pillar": "The Grove",
+            "toolsUsed": [
+              "classify"
+            ],
+            "messageText": "Test triage property types",
+            "timestamp": "2026-02-19T21:01:00.000Z",
+            "confirmed": false,
+            "adjusted": false,
+            "executionTimeMs": null
+          },
+          {
+            "id": "30c780a7-8eef-819c-9c71-c23fab5dad87",
+            "intentHash": "b8df8dcf",
+            "actionType": "classify",
+            "pillar": "The Grove",
+            "toolsUsed": [
+              "classify"
+            ],
+            "messageText": "Test triage property types",
+            "timestamp": "2026-02-19T21:01:00.000Z",
+            "confirmed": false,
+            "adjusted": false,
+            "executionTimeMs": null
+          },
+          {
+            "id": "30c780a7-8eef-816e-bc26-d069bf9f36f3",
+            "intentHash": "b8df8dcf",
+            "actionType": "classify",
+            "pillar": "The Grove",
+            "toolsUsed": [
+              "classify"
+            ],
+            "messageText": "Test triage property types",
+            "timestamp": "2026-02-19T21:01:00.000Z",
+            "confirmed": false,
+            "adjusted": false,
+            "executionTimeMs": null
+          },
+          {
+            "id": "30c780a7-8eef-810f-bd6a-d93e72f4b178",
+            "intentHash": "b8df8dcf",
+            "actionType": "classify",
+            "pillar": "The Grove",
+            "toolsUsed": [
+              "classify"
+            ],
+            "messageText": "Test triage property types",
+            "timestamp": "2026-02-19T03:38:00.000Z",
+            "confirmed": false,
+            "adjusted": false,
+            "executionTimeMs": null
+          },
+          {
+            "id": "30c780a7-8eef-814f-ab9e-fe58e62847b4",
+            "intentHash": "b8df8dcf",
+            "actionType": "classify",
+            "pillar": "The Grove",
+            "toolsUsed": [
+              "classify"
+            ],
+            "messageText": "Test triage property types",
+            "timestamp": "2026-02-19T03:38:00.000Z",
+            "confirmed": false,
+            "adjusted": false,
+            "executionTimeMs": null
+          },
+          {
+            "id": "30c780a7-8eef-814a-87cd-c54b3ced83d8",
+            "intentHash": "b8df8dcf",
+            "actionType": "classify",
+            "pillar": "The Grove",
+            "toolsUsed": [
+              "classify"
+            ],
+            "messageText": "Test triage property types",
+            "timestamp": "2026-02-19T03:38:00.000Z",
+            "confirmed": false,
+            "adjusted": false,
+            "executionTimeMs": null
+          },
+          {
+            "id": "30c780a7-8eef-81a7-915a-feda52738595",
+            "intentHash": "b8df8dcf",
+            "actionType": "classify",
+            "pillar": "The Grove",
+            "toolsUsed": [
+              "classify"
+            ],
+            "messageText": "Test triage property types",
+            "timestamp": "2026-02-19T03:38:00.000Z",
+            "confirmed": false,
+            "adjusted": false,
+            "executionTimeMs": null
+          },
+          {
+            "id": "30c780a7-8eef-8181-a99f-f4cb1d78a5f6",
+            "intentHash": "b8df8dcf",
+            "actionType": "classify",
+            "pillar": "The Grove",
+            "toolsUsed": [
+              "classify"
+            ],
+            "messageText": "Test triage property types",
+            "timestamp": "2026-02-19T03:38:00.000Z",
+            "confirmed": false,
+            "adjusted": false,
+            "executionTimeMs": null
+          },
+          {
+            "id": "30c780a7-8eef-8152-a247-fb8c54c2fa0d",
+            "intentHash": "b8df8dcf",
+            "actionType": "classify",
+            "pillar": "The Grove",
+            "toolsUsed": [
+              "classify"
+            ],
+            "messageText": "Test triage property types",
+            "timestamp": "2026-02-19T03:38:00.000Z",
+            "confirmed": false,
+            "adjusted": false,
+            "executionTimeMs": null
+          },
+          {
+            "id": "30c780a7-8eef-814d-8e55-e3deb91f59c2",
+            "intentHash": "b8df8dcf",
+            "actionType": "classify",
+            "pillar": "The Grove",
+            "toolsUsed": [
+              "classify"
+            ],
+            "messageText": "Test triage property types",
+            "timestamp": "2026-02-19T03:38:00.000Z",
+            "confirmed": false,
+            "adjusted": false,
+            "executionTimeMs": null
+          },
+          {
+            "id": "30c780a7-8eef-8155-863b-ce4b7f90a588",
+            "intentHash": "b8df8dcf",
+            "actionType": "classify",
+            "pillar": "The Grove",
+            "toolsUsed": [
+              "classify"
+            ],
+            "messageText": "Test triage property types",
+            "timestamp": "2026-02-19T03:38:00.000Z",
+            "confirmed": false,
+            "adjusted": false,
+            "executionTimeMs": null
+          },
+          {
+            "id": "30b780a7-8eef-810e-a38c-f71ef6eca620",
+            "intentHash": "b8df8dcf",
+            "actionType": "classify",
+            "pillar": "The Grove",
+            "toolsUsed": [
+              "classify"
+            ],
+            "messageText": "Test triage property types",
+            "timestamp": "2026-02-18T20:30:00.000Z",
+            "confirmed": false,
+            "adjusted": false,
+            "executionTimeMs": null
+          },
+          {
+            "id": "30b780a7-8eef-8147-a937-d8da082eafdc",
+            "intentHash": "b8df8dcf",
+            "actionType": "classify",
+            "pillar": "The Grove",
+            "toolsUsed": [
+              "classify"
+            ],
+            "messageText": "Test triage property types",
+            "timestamp": "2026-02-18T20:30:00.000Z",
+            "confirmed": false,
+            "adjusted": false,
+            "executionTimeMs": null
+          },
+          {
+            "id": "30b780a7-8eef-8154-a2c8-d4f9b8a08e26",
+            "intentHash": "b8df8dcf",
+            "actionType": "classify",
+            "pillar": "The Grove",
+            "toolsUsed": [
+              "classify"
+            ],
+            "messageText": "Test triage property types",
+            "timestamp": "2026-02-18T20:30:00.000Z",
+            "confirmed": false,
+            "adjusted": false,
+            "executionTimeMs": null
+          },
+          {
+            "id": "30b780a7-8eef-81d1-a4ce-c5b07ef4febc",
+            "intentHash": "b8df8dcf",
+            "actionType": "classify",
+            "pillar": "The Grove",
+            "toolsUsed": [
+              "classify"
+            ],
+            "messageText": "Test triage property types",
+            "timestamp": "2026-02-18T20:30:00.000Z",
+            "confirmed": false,
+            "adjusted": false,
+            "executionTimeMs": null
+          },
+          {
+            "id": "30b780a7-8eef-8153-852a-f00e6b1c0e33",
+            "intentHash": "b8df8dcf",
+            "actionType": "classify",
+            "pillar": "The Grove",
+            "toolsUsed": [
+              "classify"
+            ],
+            "messageText": "Test triage property types",
+            "timestamp": "2026-02-18T20:30:00.000Z",
+            "confirmed": false,
+            "adjusted": false,
+            "executionTimeMs": null
+          },
+          {
+            "id": "30b780a7-8eef-81e8-b261-c6adc0391f5e",
+            "intentHash": "b8df8dcf",
+            "actionType": "classify",
+            "pillar": "The Grove",
+            "toolsUsed": [
+              "classify"
+            ],
+            "messageText": "Test triage property types",
+            "timestamp": "2026-02-18T20:30:00.000Z",
+            "confirmed": false,
+            "adjusted": false,
+            "executionTimeMs": null
+          },
+          {
+            "id": "30b780a7-8eef-817c-8cb2-d380dd761f02",
+            "intentHash": "b8df8dcf",
+            "actionType": "classify",
+            "pillar": "The Grove",
+            "toolsUsed": [
+              "classify"
+            ],
+            "messageText": "Test triage property types",
+            "timestamp": "2026-02-18T20:30:00.000Z",
+            "confirmed": false,
+            "adjusted": false,
+            "executionTimeMs": null
+          },
+          {
+            "id": "30b780a7-8eef-81a4-8e2f-f9884457b24b",
+            "intentHash": "b8df8dcf",
+            "actionType": "classify",
+            "pillar": "The Grove",
+            "toolsUsed": [
+              "classify"
+            ],
+            "messageText": "Test triage property types",
+            "timestamp": "2026-02-18T20:29:00.000Z",
+            "confirmed": false,
+            "adjusted": false,
+            "executionTimeMs": null
+          },
+          {
+            "id": "30b780a7-8eef-8157-8367-e92e164127e4",
+            "intentHash": "b8df8dcf",
+            "actionType": "classify",
+            "pillar": "The Grove",
+            "toolsUsed": [
+              "classify"
+            ],
+            "messageText": "Test triage property types",
+            "timestamp": "2026-02-18T20:16:00.000Z",
+            "confirmed": false,
+            "adjusted": false,
+            "executionTimeMs": null
+          },
+          {
+            "id": "30b780a7-8eef-81c8-909c-d490d4b63b63",
+            "intentHash": "b8df8dcf",
+            "actionType": "classify",
+            "pillar": "The Grove",
+            "toolsUsed": [
+              "classify"
+            ],
+            "messageText": "Test triage property types",
+            "timestamp": "2026-02-18T20:16:00.000Z",
+            "confirmed": false,
+            "adjusted": false,
+            "executionTimeMs": null
+          },
+          {
+            "id": "30b780a7-8eef-8119-a2a1-e4cb8bdb6491",
+            "intentHash": "b8df8dcf",
+            "actionType": "classify",
+            "pillar": "The Grove",
+            "toolsUsed": [
+              "classify"
+            ],
+            "messageText": "Test triage property types",
+            "timestamp": "2026-02-18T20:16:00.000Z",
+            "confirmed": false,
+            "adjusted": false,
+            "executionTimeMs": null
+          },
+          {
+            "id": "30b780a7-8eef-81a1-af71-f85cc94172a8",
+            "intentHash": "b8df8dcf",
+            "actionType": "classify",
+            "pillar": "The Grove",
+            "toolsUsed": [
+              "classify"
+            ],
+            "messageText": "Test triage property types",
+            "timestamp": "2026-02-18T20:16:00.000Z",
+            "confirmed": false,
+            "adjusted": false,
+            "executionTimeMs": null
+          },
+          {
+            "id": "30b780a7-8eef-8134-8219-eb21cef9d7a1",
+            "intentHash": "b8df8dcf",
+            "actionType": "classify",
+            "pillar": "The Grove",
+            "toolsUsed": [
+              "classify"
+            ],
+            "messageText": "Test triage property types",
+            "timestamp": "2026-02-18T20:15:00.000Z",
+            "confirmed": false,
+            "adjusted": false,
+            "executionTimeMs": null
+          },
+          {
+            "id": "30b780a7-8eef-8101-9cb1-dd5deea277f0",
+            "intentHash": "b8df8dcf",
+            "actionType": "classify",
+            "pillar": "The Grove",
+            "toolsUsed": [
+              "classify"
+            ],
+            "messageText": "Test triage property types",
+            "timestamp": "2026-02-18T20:15:00.000Z",
+            "confirmed": false,
+            "adjusted": false,
+            "executionTimeMs": null
+          },
+          {
+            "id": "30b780a7-8eef-818e-9f0d-f1ee505dea50",
+            "intentHash": "b8df8dcf",
+            "actionType": "classify",
+            "pillar": "The Grove",
+            "toolsUsed": [
+              "classify"
+            ],
+            "messageText": "Test triage property types",
+            "timestamp": "2026-02-18T20:15:00.000Z",
+            "confirmed": false,
+            "adjusted": false,
+            "executionTimeMs": null
+          },
+          {
+            "id": "30b780a7-8eef-8171-9222-c876162d9a86",
+            "intentHash": "b8df8dcf",
+            "actionType": "classify",
+            "pillar": "The Grove",
+            "toolsUsed": [
+              "classify"
+            ],
+            "messageText": "Test triage property types",
+            "timestamp": "2026-02-18T20:15:00.000Z",
+            "confirmed": false,
+            "adjusted": false,
+            "executionTimeMs": null
+          },
+          {
+            "id": "30b780a7-8eef-8192-97e2-e9605c0d8657",
+            "intentHash": "b8df8dcf",
+            "actionType": "classify",
+            "pillar": "The Grove",
+            "toolsUsed": [
+              "classify"
+            ],
+            "messageText": "Test triage property types",
+            "timestamp": "2026-02-18T20:14:00.000Z",
+            "confirmed": false,
+            "adjusted": false,
+            "executionTimeMs": null
+          },
+          {
+            "id": "30b780a7-8eef-81aa-a2a1-cd59157b6fd0",
+            "intentHash": "b8df8dcf",
+            "actionType": "classify",
+            "pillar": "The Grove",
+            "toolsUsed": [
+              "classify"
+            ],
+            "messageText": "Test triage property types",
+            "timestamp": "2026-02-18T20:14:00.000Z",
+            "confirmed": false,
+            "adjusted": false,
+            "executionTimeMs": null
+          },
+          {
+            "id": "30b780a7-8eef-81b6-b2ab-fac857374db0",
+            "intentHash": "b8df8dcf",
+            "actionType": "classify",
+            "pillar": "The Grove",
+            "toolsUsed": [
+              "classify"
+            ],
+            "messageText": "Test triage property types",
+            "timestamp": "2026-02-18T20:14:00.000Z",
+            "confirmed": false,
+            "adjusted": false,
+            "executionTimeMs": null
+          },
+          {
+            "id": "30b780a7-8eef-8169-9f04-f7eefe677605",
+            "intentHash": "b8df8dcf",
+            "actionType": "classify",
+            "pillar": "The Grove",
+            "toolsUsed": [
+              "classify"
+            ],
+            "messageText": "Test triage property types",
+            "timestamp": "2026-02-18T20:14:00.000Z",
+            "confirmed": false,
+            "adjusted": false,
+            "executionTimeMs": null
+          },
+          {
+            "id": "30b780a7-8eef-81de-8909-c96d8581d499",
+            "intentHash": "b8df8dcf",
+            "actionType": "classify",
+            "pillar": "The Grove",
+            "toolsUsed": [
+              "classify"
+            ],
+            "messageText": "Test triage property types",
+            "timestamp": "2026-02-18T20:14:00.000Z",
+            "confirmed": false,
+            "adjusted": false,
+            "executionTimeMs": null
+          },
+          {
+            "id": "30b780a7-8eef-81e6-8cd1-f3caab4d0564",
+            "intentHash": "b8df8dcf",
+            "actionType": "classify",
+            "pillar": "The Grove",
+            "toolsUsed": [
+              "classify"
+            ],
+            "messageText": "Test triage property types",
+            "timestamp": "2026-02-18T20:14:00.000Z",
+            "confirmed": false,
+            "adjusted": false,
+            "executionTimeMs": null
+          },
+          {
+            "id": "30b780a7-8eef-8152-a1dd-cc1f60ce4c11",
+            "intentHash": "b8df8dcf",
+            "actionType": "classify",
+            "pillar": "The Grove",
+            "toolsUsed": [
+              "classify"
+            ],
+            "messageText": "Test triage property types",
+            "timestamp": "2026-02-18T20:14:00.000Z",
+            "confirmed": false,
+            "adjusted": false,
+            "executionTimeMs": null
+          },
+          {
+            "id": "30b780a7-8eef-8157-bc29-d2905ed98b52",
+            "intentHash": "b8df8dcf",
+            "actionType": "classify",
+            "pillar": "The Grove",
+            "toolsUsed": [
+              "classify"
+            ],
+            "messageText": "Test triage property types",
+            "timestamp": "2026-02-18T20:14:00.000Z",
+            "confirmed": false,
+            "adjusted": false,
+            "executionTimeMs": null
+          },
+          {
+            "id": "30b780a7-8eef-812d-bed2-ef52442d4f23",
+            "intentHash": "b8df8dcf",
+            "actionType": "classify",
+            "pillar": "The Grove",
+            "toolsUsed": [
+              "classify"
+            ],
+            "messageText": "Test triage property types",
+            "timestamp": "2026-02-18T18:49:00.000Z",
+            "confirmed": false,
+            "adjusted": false,
+            "executionTimeMs": null
+          },
+          {
+            "id": "30b780a7-8eef-8138-a998-fe90cdb70ff8",
+            "intentHash": "b8df8dcf",
+            "actionType": "classify",
+            "pillar": "The Grove",
+            "toolsUsed": [
+              "classify"
+            ],
+            "messageText": "Test triage property types",
+            "timestamp": "2026-02-18T18:49:00.000Z",
+            "confirmed": false,
+            "adjusted": false,
+            "executionTimeMs": null
+          },
+          {
+            "id": "30b780a7-8eef-81ab-bc76-d5efcd88ca97",
+            "intentHash": "b8df8dcf",
+            "actionType": "classify",
+            "pillar": "The Grove",
+            "toolsUsed": [
+              "classify"
+            ],
+            "messageText": "Test triage property types",
+            "timestamp": "2026-02-18T18:49:00.000Z",
+            "confirmed": false,
+            "adjusted": false,
+            "executionTimeMs": null
+          },
+          {
+            "id": "30b780a7-8eef-81e1-b174-ec4006aa7531",
+            "intentHash": "b8df8dcf",
+            "actionType": "classify",
+            "pillar": "The Grove",
+            "toolsUsed": [
+              "classify"
+            ],
+            "messageText": "Test triage property types",
+            "timestamp": "2026-02-18T18:49:00.000Z",
+            "confirmed": false,
+            "adjusted": false,
+            "executionTimeMs": null
+          },
+          {
+            "id": "30b780a7-8eef-81b2-ac51-f074bb4865e1",
+            "intentHash": "b8df8dcf",
+            "actionType": "classify",
+            "pillar": "The Grove",
+            "toolsUsed": [
+              "classify"
+            ],
+            "messageText": "Test triage property types",
+            "timestamp": "2026-02-18T18:49:00.000Z",
+            "confirmed": false,
+            "adjusted": false,
+            "executionTimeMs": null
+          },
+          {
+            "id": "30b780a7-8eef-8183-bcde-d840b08eacff",
+            "intentHash": "b8df8dcf",
+            "actionType": "classify",
+            "pillar": "The Grove",
+            "toolsUsed": [
+              "classify"
+            ],
+            "messageText": "Test triage property types",
+            "timestamp": "2026-02-18T18:49:00.000Z",
+            "confirmed": false,
+            "adjusted": false,
+            "executionTimeMs": null
+          },
+          {
+            "id": "30b780a7-8eef-819b-b22f-ed82cbcccde9",
+            "intentHash": "b8df8dcf",
+            "actionType": "classify",
+            "pillar": "The Grove",
+            "toolsUsed": [
+              "classify"
+            ],
+            "messageText": "Test triage property types",
+            "timestamp": "2026-02-18T18:49:00.000Z",
+            "confirmed": false,
+            "adjusted": false,
+            "executionTimeMs": null
+          },
+          {
+            "id": "30b780a7-8eef-8100-8f90-fc05d902d871",
+            "intentHash": "b8df8dcf",
+            "actionType": "classify",
+            "pillar": "The Grove",
+            "toolsUsed": [
+              "classify"
+            ],
+            "messageText": "Test triage property types",
+            "timestamp": "2026-02-18T18:49:00.000Z",
+            "confirmed": false,
+            "adjusted": false,
+            "executionTimeMs": null
+          },
+          {
+            "id": "30b780a7-8eef-815c-a8c9-fd43a6bd7abb",
+            "intentHash": "b8df8dcf",
+            "actionType": "classify",
+            "pillar": "The Grove",
+            "toolsUsed": [
+              "classify"
+            ],
+            "messageText": "Test triage property types",
+            "timestamp": "2026-02-18T17:57:00.000Z",
+            "confirmed": false,
+            "adjusted": false,
+            "executionTimeMs": null
+          },
+          {
+            "id": "30b780a7-8eef-814b-8223-e9bb4d286b94",
+            "intentHash": "b8df8dcf",
+            "actionType": "classify",
+            "pillar": "The Grove",
+            "toolsUsed": [
+              "classify"
+            ],
+            "messageText": "Test triage property types",
+            "timestamp": "2026-02-18T17:57:00.000Z",
+            "confirmed": false,
+            "adjusted": false,
+            "executionTimeMs": null
+          },
+          {
+            "id": "30b780a7-8eef-81ad-b14a-d9a4131f7732",
+            "intentHash": "b8df8dcf",
+            "actionType": "classify",
+            "pillar": "The Grove",
+            "toolsUsed": [
+              "classify"
+            ],
+            "messageText": "Test triage property types",
+            "timestamp": "2026-02-18T17:57:00.000Z",
+            "confirmed": false,
+            "adjusted": false,
+            "executionTimeMs": null
+          },
+          {
+            "id": "30b780a7-8eef-81ac-80d5-cade0316d89d",
+            "intentHash": "b8df8dcf",
+            "actionType": "classify",
+            "pillar": "The Grove",
+            "toolsUsed": [
+              "classify"
+            ],
+            "messageText": "Test triage property types",
+            "timestamp": "2026-02-18T17:57:00.000Z",
+            "confirmed": false,
+            "adjusted": false,
+            "executionTimeMs": null
+          },
+          {
+            "id": "30b780a7-8eef-811b-84c8-f6deec1e746f",
+            "intentHash": "b8df8dcf",
+            "actionType": "classify",
+            "pillar": "The Grove",
+            "toolsUsed": [
+              "classify"
+            ],
+            "messageText": "Test triage property types",
+            "timestamp": "2026-02-18T17:57:00.000Z",
+            "confirmed": false,
+            "adjusted": false,
+            "executionTimeMs": null
+          },
+          {
+            "id": "30b780a7-8eef-8115-9de7-ce2098d1e3e1",
+            "intentHash": "b8df8dcf",
+            "actionType": "classify",
+            "pillar": "The Grove",
+            "toolsUsed": [
+              "classify"
+            ],
+            "messageText": "Test triage property types",
+            "timestamp": "2026-02-18T17:57:00.000Z",
+            "confirmed": false,
+            "adjusted": false,
+            "executionTimeMs": null
+          }
+        ],
+        "pillar": "The Grove",
+        "actionType": "classify",
+        "toolsUsed": [
+          "classify"
+        ],
+        "frequency": 94,
+        "firstSeen": "2026-02-18T17:57:00.000Z",
+        "lastSeen": "2026-02-20T02:43:00.000Z",
+        "avgExecutionTimeMs": 0,
+        "proposedTier": 1
+      },
+      "skill": {
+        "name": "the-grove-classify-triage-property-b8df",
+        "version": "1.0.0",
+        "description": "Auto-generated skill from 94 similar actions: \"Test triage property types...\"",
+        "triggers": [
+          {
+            "type": "intentHash",
+            "value": "b8df8dcf"
+          },
+          {
+            "type": "pillar",
+            "value": "The Grove"
+          },
+          {
+            "type": "keyword",
+            "value": "test|triage|property|types"
+          }
+        ],
+        "inputs": {},
+        "outputs": [],
+        "process": {
+          "type": "tool_sequence",
+          "steps": [
+            {
+              "id": "step_1",
+              "tool": "classify",
+              "inputs": {},
+              "onError": "fail"
+            }
+          ]
+        },
+        "tier": 1,
+        "enabled": false,
+        "createdAt": "2026-02-20T12:00:22.745Z",
+        "updatedAt": "2026-02-20T12:00:22.745Z",
+        "source": "generated",
+        "metrics": {
+          "executionCount": 0,
+          "successCount": 0,
+          "failureCount": 0,
+          "avgExecutionTime": 0,
+          "consecutiveFailures": 0
+        },
+        "tags": [
+          "auto-generated"
+        ],
+        "author": "pattern-detector"
+      },
+      "createdAt": "2026-02-20T12:00:22.745Z",
+      "status": "pending"
+    },
+    {
+      "id": "p-1771761632208-the-grove-classify-t",
+      "pattern": {
+        "intentHash": "b8df8dcf",
+        "canonicalText": "Test triage property types",
+        "actions": [
+          {
+            "id": "30f780a7-8eef-8155-9bcc-f10385fa44ec",
+            "intentHash": "b8df8dcf",
+            "actionType": "classify",
+            "pillar": "The Grove",
+            "toolsUsed": [
+              "classify"
+            ],
+            "messageText": "Test triage property types",
+            "timestamp": "2026-02-22T05:37:00.000Z",
+            "confirmed": false,
+            "adjusted": false,
+            "executionTimeMs": null
+          },
+          {
+            "id": "30f780a7-8eef-81a3-9d3e-e13634592b1a",
+            "intentHash": "b8df8dcf",
+            "actionType": "classify",
+            "pillar": "The Grove",
+            "toolsUsed": [
+              "classify"
+            ],
+            "messageText": "Test triage property types",
+            "timestamp": "2026-02-22T05:37:00.000Z",
+            "confirmed": false,
+            "adjusted": false,
+            "executionTimeMs": null
+          },
+          {
+            "id": "30f780a7-8eef-8169-9614-c46dbe243073",
+            "intentHash": "b8df8dcf",
+            "actionType": "classify",
+            "pillar": "The Grove",
+            "toolsUsed": [
+              "classify"
+            ],
+            "messageText": "Test triage property types",
+            "timestamp": "2026-02-22T05:37:00.000Z",
+            "confirmed": false,
+            "adjusted": false,
+            "executionTimeMs": null
+          },
+          {
+            "id": "30f780a7-8eef-816f-a9c2-e72227b6f346",
+            "intentHash": "b8df8dcf",
+            "actionType": "classify",
+            "pillar": "The Grove",
+            "toolsUsed": [
+              "classify"
+            ],
+            "messageText": "Test triage property types",
+            "timestamp": "2026-02-22T05:37:00.000Z",
+            "confirmed": false,
+            "adjusted": false,
+            "executionTimeMs": null
+          },
+          {
+            "id": "30f780a7-8eef-81e3-ab15-c4afa01ffae0",
+            "intentHash": "b8df8dcf",
+            "actionType": "classify",
+            "pillar": "The Grove",
+            "toolsUsed": [
+              "classify"
+            ],
+            "messageText": "Test triage property types",
+            "timestamp": "2026-02-22T05:37:00.000Z",
+            "confirmed": false,
+            "adjusted": false,
+            "executionTimeMs": null
+          },
+          {
+            "id": "30f780a7-8eef-81e9-9300-c2021eeb9c53",
+            "intentHash": "b8df8dcf",
+            "actionType": "classify",
+            "pillar": "The Grove",
+            "toolsUsed": [
+              "classify"
+            ],
+            "messageText": "Test triage property types",
+            "timestamp": "2026-02-22T05:37:00.000Z",
+            "confirmed": false,
+            "adjusted": false,
+            "executionTimeMs": null
+          },
+          {
+            "id": "30f780a7-8eef-81cb-a276-c851752e2584",
+            "intentHash": "b8df8dcf",
+            "actionType": "classify",
+            "pillar": "The Grove",
+            "toolsUsed": [
+              "classify"
+            ],
+            "messageText": "Test triage property types",
+            "timestamp": "2026-02-22T05:37:00.000Z",
+            "confirmed": false,
+            "adjusted": false,
+            "executionTimeMs": null
+          },
+          {
+            "id": "30f780a7-8eef-816e-8f7e-d1a38c8b47a7",
+            "intentHash": "b8df8dcf",
+            "actionType": "classify",
+            "pillar": "The Grove",
+            "toolsUsed": [
+              "classify"
+            ],
+            "messageText": "Test triage property types",
+            "timestamp": "2026-02-22T05:37:00.000Z",
+            "confirmed": false,
+            "adjusted": false,
+            "executionTimeMs": null
+          },
+          {
+            "id": "30f780a7-8eef-819d-8b6f-edec1c085be7",
+            "intentHash": "b8df8dcf",
+            "actionType": "classify",
+            "pillar": "The Grove",
+            "toolsUsed": [
+              "classify"
+            ],
+            "messageText": "Test triage property types",
+            "timestamp": "2026-02-22T05:36:00.000Z",
+            "confirmed": false,
+            "adjusted": false,
+            "executionTimeMs": null
+          },
+          {
+            "id": "30f780a7-8eef-81a7-a365-f0bb5a2c4701",
+            "intentHash": "b8df8dcf",
+            "actionType": "classify",
+            "pillar": "The Grove",
+            "toolsUsed": [
+              "classify"
+            ],
+            "messageText": "Test triage property types",
+            "timestamp": "2026-02-22T05:36:00.000Z",
+            "confirmed": false,
+            "adjusted": false,
+            "executionTimeMs": null
+          },
+          {
+            "id": "30f780a7-8eef-8185-b6a3-decd25c4ce58",
+            "intentHash": "b8df8dcf",
+            "actionType": "classify",
+            "pillar": "The Grove",
+            "toolsUsed": [
+              "classify"
+            ],
+            "messageText": "Test triage property types",
+            "timestamp": "2026-02-22T05:36:00.000Z",
+            "confirmed": false,
+            "adjusted": false,
+            "executionTimeMs": null
+          },
+          {
+            "id": "30f780a7-8eef-814d-90cf-edc72ae21591",
+            "intentHash": "b8df8dcf",
+            "actionType": "classify",
+            "pillar": "The Grove",
+            "toolsUsed": [
+              "classify"
+            ],
+            "messageText": "Test triage property types",
+            "timestamp": "2026-02-22T05:36:00.000Z",
+            "confirmed": false,
+            "adjusted": false,
+            "executionTimeMs": null
+          },
+          {
+            "id": "30f780a7-8eef-8100-a210-c1db8043ce95",
+            "intentHash": "b8df8dcf",
+            "actionType": "classify",
+            "pillar": "The Grove",
+            "toolsUsed": [
+              "classify"
+            ],
+            "messageText": "Test triage property types",
+            "timestamp": "2026-02-22T05:36:00.000Z",
+            "confirmed": false,
+            "adjusted": false,
+            "executionTimeMs": null
+          },
+          {
+            "id": "30f780a7-8eef-81e3-afa9-d9fc720509d7",
+            "intentHash": "b8df8dcf",
+            "actionType": "classify",
+            "pillar": "The Grove",
+            "toolsUsed": [
+              "classify"
+            ],
+            "messageText": "Test triage property types",
+            "timestamp": "2026-02-22T05:36:00.000Z",
+            "confirmed": false,
+            "adjusted": false,
+            "executionTimeMs": null
+          },
+          {
+            "id": "30f780a7-8eef-81ed-a7cd-f86384e291ea",
+            "intentHash": "b8df8dcf",
+            "actionType": "classify",
+            "pillar": "The Grove",
+            "toolsUsed": [
+              "classify"
+            ],
+            "messageText": "Test triage property types",
+            "timestamp": "2026-02-22T05:36:00.000Z",
+            "confirmed": false,
+            "adjusted": false,
+            "executionTimeMs": null
+          },
+          {
+            "id": "30f780a7-8eef-816d-9bdf-c53353b46093",
+            "intentHash": "b8df8dcf",
+            "actionType": "classify",
+            "pillar": "The Grove",
+            "toolsUsed": [
+              "classify"
+            ],
+            "messageText": "Test triage property types",
+            "timestamp": "2026-02-22T05:36:00.000Z",
+            "confirmed": false,
+            "adjusted": false,
+            "executionTimeMs": null
+          },
+          {
+            "id": "30f780a7-8eef-8190-8209-ce8177e47ab2",
+            "intentHash": "b8df8dcf",
+            "actionType": "classify",
+            "pillar": "The Grove",
+            "toolsUsed": [
+              "classify"
+            ],
+            "messageText": "Test triage property types",
+            "timestamp": "2026-02-22T05:35:00.000Z",
+            "confirmed": false,
+            "adjusted": false,
+            "executionTimeMs": null
+          },
+          {
+            "id": "30f780a7-8eef-8180-aa1c-cd6f3161c612",
+            "intentHash": "b8df8dcf",
+            "actionType": "classify",
+            "pillar": "The Grove",
+            "toolsUsed": [
+              "classify"
+            ],
+            "messageText": "Test triage property types",
+            "timestamp": "2026-02-22T05:35:00.000Z",
+            "confirmed": false,
+            "adjusted": false,
+            "executionTimeMs": null
+          },
+          {
+            "id": "30f780a7-8eef-81a5-b0d2-d4033aee9551",
+            "intentHash": "b8df8dcf",
+            "actionType": "classify",
+            "pillar": "The Grove",
+            "toolsUsed": [
+              "classify"
+            ],
+            "messageText": "Test triage property types",
+            "timestamp": "2026-02-22T05:35:00.000Z",
+            "confirmed": false,
+            "adjusted": false,
+            "executionTimeMs": null
+          },
+          {
+            "id": "30f780a7-8eef-810f-9b9b-ee292d492166",
+            "intentHash": "b8df8dcf",
+            "actionType": "classify",
+            "pillar": "The Grove",
+            "toolsUsed": [
+              "classify"
+            ],
+            "messageText": "Test triage property types",
+            "timestamp": "2026-02-22T05:35:00.000Z",
+            "confirmed": false,
+            "adjusted": false,
+            "executionTimeMs": null
+          },
+          {
+            "id": "30f780a7-8eef-8118-a449-fb0d74011480",
+            "intentHash": "b8df8dcf",
+            "actionType": "classify",
+            "pillar": "The Grove",
+            "toolsUsed": [
+              "classify"
+            ],
+            "messageText": "Test triage property types",
+            "timestamp": "2026-02-22T05:35:00.000Z",
+            "confirmed": false,
+            "adjusted": false,
+            "executionTimeMs": null
+          },
+          {
+            "id": "30f780a7-8eef-8103-95fa-fed326e567fe",
+            "intentHash": "b8df8dcf",
+            "actionType": "classify",
+            "pillar": "The Grove",
+            "toolsUsed": [
+              "classify"
+            ],
+            "messageText": "Test triage property types",
+            "timestamp": "2026-02-22T05:35:00.000Z",
+            "confirmed": false,
+            "adjusted": false,
+            "executionTimeMs": null
+          },
+          {
+            "id": "30f780a7-8eef-81f8-a67e-e0ed616215f1",
+            "intentHash": "b8df8dcf",
+            "actionType": "classify",
+            "pillar": "The Grove",
+            "toolsUsed": [
+              "classify"
+            ],
+            "messageText": "Test triage property types",
+            "timestamp": "2026-02-22T05:35:00.000Z",
+            "confirmed": false,
+            "adjusted": false,
+            "executionTimeMs": null
+          },
+          {
+            "id": "30f780a7-8eef-813f-84f4-fad46f4ace31",
+            "intentHash": "b8df8dcf",
+            "actionType": "classify",
+            "pillar": "The Grove",
+            "toolsUsed": [
+              "classify"
+            ],
+            "messageText": "Test triage property types",
+            "timestamp": "2026-02-22T05:34:00.000Z",
+            "confirmed": false,
+            "adjusted": false,
+            "executionTimeMs": null
+          },
+          {
+            "id": "30f780a7-8eef-81a8-8eaf-cb06e0fc5225",
+            "intentHash": "b8df8dcf",
+            "actionType": "classify",
+            "pillar": "The Grove",
+            "toolsUsed": [
+              "classify"
+            ],
+            "messageText": "Test triage property types",
+            "timestamp": "2026-02-22T05:33:00.000Z",
+            "confirmed": false,
+            "adjusted": false,
+            "executionTimeMs": null
+          },
+          {
+            "id": "30f780a7-8eef-81dc-894f-d5721ba3201d",
+            "intentHash": "b8df8dcf",
+            "actionType": "classify",
+            "pillar": "The Grove",
+            "toolsUsed": [
+              "classify"
+            ],
+            "messageText": "Test triage property types",
+            "timestamp": "2026-02-22T05:33:00.000Z",
+            "confirmed": false,
+            "adjusted": false,
+            "executionTimeMs": null
+          },
+          {
+            "id": "30f780a7-8eef-8150-ad31-c8b7ab5ac243",
+            "intentHash": "b8df8dcf",
+            "actionType": "classify",
+            "pillar": "The Grove",
+            "toolsUsed": [
+              "classify"
+            ],
+            "messageText": "Test triage property types",
+            "timestamp": "2026-02-22T05:33:00.000Z",
+            "confirmed": false,
+            "adjusted": false,
+            "executionTimeMs": null
+          },
+          {
+            "id": "30f780a7-8eef-8130-9b6e-fc7c5c40d5d9",
+            "intentHash": "b8df8dcf",
+            "actionType": "classify",
+            "pillar": "The Grove",
+            "toolsUsed": [
+              "classify"
+            ],
+            "messageText": "Test triage property types",
+            "timestamp": "2026-02-22T05:33:00.000Z",
+            "confirmed": false,
+            "adjusted": false,
+            "executionTimeMs": null
+          },
+          {
+            "id": "30f780a7-8eef-817a-a723-cda2d534e4a9",
+            "intentHash": "b8df8dcf",
+            "actionType": "classify",
+            "pillar": "The Grove",
+            "toolsUsed": [
+              "classify"
+            ],
+            "messageText": "Test triage property types",
+            "timestamp": "2026-02-22T05:33:00.000Z",
+            "confirmed": false,
+            "adjusted": false,
+            "executionTimeMs": null
+          },
+          {
+            "id": "30f780a7-8eef-818d-8474-c23a521788bd",
+            "intentHash": "b8df8dcf",
+            "actionType": "classify",
+            "pillar": "The Grove",
+            "toolsUsed": [
+              "classify"
+            ],
+            "messageText": "Test triage property types",
+            "timestamp": "2026-02-22T05:33:00.000Z",
+            "confirmed": false,
+            "adjusted": false,
+            "executionTimeMs": null
+          },
+          {
+            "id": "30f780a7-8eef-8161-be00-cf4c3c4a5692",
+            "intentHash": "b8df8dcf",
+            "actionType": "classify",
+            "pillar": "The Grove",
+            "toolsUsed": [
+              "classify"
+            ],
+            "messageText": "Test triage property types",
+            "timestamp": "2026-02-22T05:33:00.000Z",
+            "confirmed": false,
+            "adjusted": false,
+            "executionTimeMs": null
+          },
+          {
+            "id": "30f780a7-8eef-810b-a35a-f2a1334b5e04",
+            "intentHash": "b8df8dcf",
+            "actionType": "classify",
+            "pillar": "The Grove",
+            "toolsUsed": [
+              "classify"
+            ],
+            "messageText": "Test triage property types",
+            "timestamp": "2026-02-22T05:33:00.000Z",
+            "confirmed": false,
+            "adjusted": false,
+            "executionTimeMs": null
+          },
+          {
+            "id": "30f780a7-8eef-8190-8b2f-ffa8b12ec505",
+            "intentHash": "b8df8dcf",
+            "actionType": "classify",
+            "pillar": "The Grove",
+            "toolsUsed": [
+              "classify"
+            ],
+            "messageText": "Test triage property types",
+            "timestamp": "2026-02-22T05:32:00.000Z",
+            "confirmed": false,
+            "adjusted": false,
+            "executionTimeMs": null
+          },
+          {
+            "id": "30f780a7-8eef-8189-8f90-e79281f4baf0",
+            "intentHash": "b8df8dcf",
+            "actionType": "classify",
+            "pillar": "The Grove",
+            "toolsUsed": [
+              "classify"
+            ],
+            "messageText": "Test triage property types",
+            "timestamp": "2026-02-22T05:32:00.000Z",
+            "confirmed": false,
+            "adjusted": false,
+            "executionTimeMs": null
+          },
+          {
+            "id": "30f780a7-8eef-816e-80bc-e71c4468a522",
+            "intentHash": "b8df8dcf",
+            "actionType": "classify",
+            "pillar": "The Grove",
+            "toolsUsed": [
+              "classify"
+            ],
+            "messageText": "Test triage property types",
+            "timestamp": "2026-02-22T05:32:00.000Z",
+            "confirmed": false,
+            "adjusted": false,
+            "executionTimeMs": null
+          },
+          {
+            "id": "30f780a7-8eef-814e-a513-d7111aa0614a",
+            "intentHash": "b8df8dcf",
+            "actionType": "classify",
+            "pillar": "The Grove",
+            "toolsUsed": [
+              "classify"
+            ],
+            "messageText": "Test triage property types",
+            "timestamp": "2026-02-22T05:32:00.000Z",
+            "confirmed": false,
+            "adjusted": false,
+            "executionTimeMs": null
+          },
+          {
+            "id": "30f780a7-8eef-81c0-b289-e19e4147ac3a",
+            "intentHash": "b8df8dcf",
+            "actionType": "classify",
+            "pillar": "The Grove",
+            "toolsUsed": [
+              "classify"
+            ],
+            "messageText": "Test triage property types",
+            "timestamp": "2026-02-22T05:32:00.000Z",
+            "confirmed": false,
+            "adjusted": false,
+            "executionTimeMs": null
+          },
+          {
+            "id": "30f780a7-8eef-813a-ac8e-f158c4fca113",
+            "intentHash": "b8df8dcf",
+            "actionType": "classify",
+            "pillar": "The Grove",
+            "toolsUsed": [
+              "classify"
+            ],
+            "messageText": "Test triage property types",
+            "timestamp": "2026-02-22T05:32:00.000Z",
+            "confirmed": false,
+            "adjusted": false,
+            "executionTimeMs": null
+          },
+          {
+            "id": "30f780a7-8eef-8145-ae64-f57aa64b50cf",
+            "intentHash": "b8df8dcf",
+            "actionType": "classify",
+            "pillar": "The Grove",
+            "toolsUsed": [
+              "classify"
+            ],
+            "messageText": "Test triage property types",
+            "timestamp": "2026-02-22T05:32:00.000Z",
+            "confirmed": false,
+            "adjusted": false,
+            "executionTimeMs": null
+          },
+          {
+            "id": "30f780a7-8eef-8180-abf9-e552a2167d05",
+            "intentHash": "b8df8dcf",
+            "actionType": "classify",
+            "pillar": "The Grove",
+            "toolsUsed": [
+              "classify"
+            ],
+            "messageText": "Test triage property types",
+            "timestamp": "2026-02-22T05:32:00.000Z",
+            "confirmed": false,
+            "adjusted": false,
+            "executionTimeMs": null
+          },
+          {
+            "id": "30f780a7-8eef-81e5-a3a7-d89ade1f844c",
+            "intentHash": "b8df8dcf",
+            "actionType": "classify",
+            "pillar": "The Grove",
+            "toolsUsed": [
+              "classify"
+            ],
+            "messageText": "Test triage property types",
+            "timestamp": "2026-02-22T05:31:00.000Z",
+            "confirmed": false,
+            "adjusted": false,
+            "executionTimeMs": null
+          },
+          {
+            "id": "30f780a7-8eef-8171-b213-f71f9192715d",
+            "intentHash": "b8df8dcf",
+            "actionType": "classify",
+            "pillar": "The Grove",
+            "toolsUsed": [
+              "classify"
+            ],
+            "messageText": "Test triage property types",
+            "timestamp": "2026-02-22T05:31:00.000Z",
+            "confirmed": false,
+            "adjusted": false,
+            "executionTimeMs": null
+          },
+          {
+            "id": "30f780a7-8eef-8149-bdee-dbed0dde3fcf",
+            "intentHash": "b8df8dcf",
+            "actionType": "classify",
+            "pillar": "The Grove",
+            "toolsUsed": [
+              "classify"
+            ],
+            "messageText": "Test triage property types",
+            "timestamp": "2026-02-22T05:31:00.000Z",
+            "confirmed": false,
+            "adjusted": false,
+            "executionTimeMs": null
+          },
+          {
+            "id": "30f780a7-8eef-817c-9381-f369689fdc86",
+            "intentHash": "b8df8dcf",
+            "actionType": "classify",
+            "pillar": "The Grove",
+            "toolsUsed": [
+              "classify"
+            ],
+            "messageText": "Test triage property types",
+            "timestamp": "2026-02-22T05:31:00.000Z",
+            "confirmed": false,
+            "adjusted": false,
+            "executionTimeMs": null
+          },
+          {
+            "id": "30f780a7-8eef-81fd-9481-d41f68889bde",
+            "intentHash": "b8df8dcf",
+            "actionType": "classify",
+            "pillar": "The Grove",
+            "toolsUsed": [
+              "classify"
+            ],
+            "messageText": "Test triage property types",
+            "timestamp": "2026-02-22T05:31:00.000Z",
+            "confirmed": false,
+            "adjusted": false,
+            "executionTimeMs": null
+          },
+          {
+            "id": "30f780a7-8eef-81ca-bfbe-ce5e2e6c6840",
+            "intentHash": "b8df8dcf",
+            "actionType": "classify",
+            "pillar": "The Grove",
+            "toolsUsed": [
+              "classify"
+            ],
+            "messageText": "Test triage property types",
+            "timestamp": "2026-02-22T05:31:00.000Z",
+            "confirmed": false,
+            "adjusted": false,
+            "executionTimeMs": null
+          },
+          {
+            "id": "30f780a7-8eef-8110-a10d-fd31cb46e1e7",
+            "intentHash": "b8df8dcf",
+            "actionType": "classify",
+            "pillar": "The Grove",
+            "toolsUsed": [
+              "classify"
+            ],
+            "messageText": "Test triage property types",
+            "timestamp": "2026-02-22T05:31:00.000Z",
+            "confirmed": false,
+            "adjusted": false,
+            "executionTimeMs": null
+          },
+          {
+            "id": "30f780a7-8eef-81c8-9d04-c7fbb60cf409",
+            "intentHash": "b8df8dcf",
+            "actionType": "classify",
+            "pillar": "The Grove",
+            "toolsUsed": [
+              "classify"
+            ],
+            "messageText": "Test triage property types",
+            "timestamp": "2026-02-22T05:31:00.000Z",
+            "confirmed": false,
+            "adjusted": false,
+            "executionTimeMs": null
+          },
+          {
+            "id": "30f780a7-8eef-819e-aaa0-d09ef2c24780",
+            "intentHash": "b8df8dcf",
+            "actionType": "classify",
+            "pillar": "The Grove",
+            "toolsUsed": [
+              "classify"
+            ],
+            "messageText": "Test triage property types",
+            "timestamp": "2026-02-22T05:10:00.000Z",
+            "confirmed": false,
+            "adjusted": false,
+            "executionTimeMs": null
+          },
+          {
+            "id": "30f780a7-8eef-815d-acf1-c7e50417e72b",
+            "intentHash": "b8df8dcf",
+            "actionType": "classify",
+            "pillar": "The Grove",
+            "toolsUsed": [
+              "classify"
+            ],
+            "messageText": "Test triage property types",
+            "timestamp": "2026-02-22T05:10:00.000Z",
+            "confirmed": false,
+            "adjusted": false,
+            "executionTimeMs": null
+          },
+          {
+            "id": "30f780a7-8eef-8136-89aa-eb21f30714ea",
+            "intentHash": "b8df8dcf",
+            "actionType": "classify",
+            "pillar": "The Grove",
+            "toolsUsed": [
+              "classify"
+            ],
+            "messageText": "Test triage property types",
+            "timestamp": "2026-02-22T05:10:00.000Z",
+            "confirmed": false,
+            "adjusted": false,
+            "executionTimeMs": null
+          },
+          {
+            "id": "30f780a7-8eef-8166-a277-f27c1ad8cd42",
+            "intentHash": "b8df8dcf",
+            "actionType": "classify",
+            "pillar": "The Grove",
+            "toolsUsed": [
+              "classify"
+            ],
+            "messageText": "Test triage property types",
+            "timestamp": "2026-02-22T05:10:00.000Z",
+            "confirmed": false,
+            "adjusted": false,
+            "executionTimeMs": null
+          },
+          {
+            "id": "30f780a7-8eef-812d-8044-d01bc225818d",
+            "intentHash": "b8df8dcf",
+            "actionType": "classify",
+            "pillar": "The Grove",
+            "toolsUsed": [
+              "classify"
+            ],
+            "messageText": "Test triage property types",
+            "timestamp": "2026-02-22T05:10:00.000Z",
+            "confirmed": false,
+            "adjusted": false,
+            "executionTimeMs": null
+          },
+          {
+            "id": "30f780a7-8eef-81cd-b792-f5d17fc038ec",
+            "intentHash": "b8df8dcf",
+            "actionType": "classify",
+            "pillar": "The Grove",
+            "toolsUsed": [
+              "classify"
+            ],
+            "messageText": "Test triage property types",
+            "timestamp": "2026-02-22T05:10:00.000Z",
+            "confirmed": false,
+            "adjusted": false,
+            "executionTimeMs": null
+          },
+          {
+            "id": "30f780a7-8eef-812f-8999-f406f006f5ce",
+            "intentHash": "b8df8dcf",
+            "actionType": "classify",
+            "pillar": "The Grove",
+            "toolsUsed": [
+              "classify"
+            ],
+            "messageText": "Test triage property types",
+            "timestamp": "2026-02-22T05:10:00.000Z",
+            "confirmed": false,
+            "adjusted": false,
+            "executionTimeMs": null
+          },
+          {
+            "id": "30f780a7-8eef-8109-a2db-f854ff84fbb4",
+            "intentHash": "b8df8dcf",
+            "actionType": "classify",
+            "pillar": "The Grove",
+            "toolsUsed": [
+              "classify"
+            ],
+            "messageText": "Test triage property types",
+            "timestamp": "2026-02-22T05:10:00.000Z",
+            "confirmed": false,
+            "adjusted": false,
+            "executionTimeMs": null
+          },
+          {
+            "id": "30f780a7-8eef-8197-816c-dd50da819fa9",
+            "intentHash": "b8df8dcf",
+            "actionType": "classify",
+            "pillar": "The Grove",
+            "toolsUsed": [
+              "classify"
+            ],
+            "messageText": "Test triage property types",
+            "timestamp": "2026-02-22T05:08:00.000Z",
+            "confirmed": false,
+            "adjusted": false,
+            "executionTimeMs": null
+          },
+          {
+            "id": "30f780a7-8eef-8159-bea8-fdd2b30aaccb",
+            "intentHash": "b8df8dcf",
+            "actionType": "classify",
+            "pillar": "The Grove",
+            "toolsUsed": [
+              "classify"
+            ],
+            "messageText": "Test triage property types",
+            "timestamp": "2026-02-22T05:08:00.000Z",
+            "confirmed": false,
+            "adjusted": false,
+            "executionTimeMs": null
+          },
+          {
+            "id": "30f780a7-8eef-81f3-a297-e68830f92923",
+            "intentHash": "b8df8dcf",
+            "actionType": "classify",
+            "pillar": "The Grove",
+            "toolsUsed": [
+              "classify"
+            ],
+            "messageText": "Test triage property types",
+            "timestamp": "2026-02-22T05:08:00.000Z",
+            "confirmed": false,
+            "adjusted": false,
+            "executionTimeMs": null
+          },
+          {
+            "id": "30f780a7-8eef-81c5-a40a-cba8d0fc616e",
+            "intentHash": "b8df8dcf",
+            "actionType": "classify",
+            "pillar": "The Grove",
+            "toolsUsed": [
+              "classify"
+            ],
+            "messageText": "Test triage property types",
+            "timestamp": "2026-02-22T05:08:00.000Z",
+            "confirmed": false,
+            "adjusted": false,
+            "executionTimeMs": null
+          },
+          {
+            "id": "30f780a7-8eef-8122-997b-d113c1706211",
+            "intentHash": "b8df8dcf",
+            "actionType": "classify",
+            "pillar": "The Grove",
+            "toolsUsed": [
+              "classify"
+            ],
+            "messageText": "Test triage property types",
+            "timestamp": "2026-02-22T05:08:00.000Z",
+            "confirmed": false,
+            "adjusted": false,
+            "executionTimeMs": null
+          },
+          {
+            "id": "30f780a7-8eef-8198-9d41-e0ae77efc174",
+            "intentHash": "b8df8dcf",
+            "actionType": "classify",
+            "pillar": "The Grove",
+            "toolsUsed": [
+              "classify"
+            ],
+            "messageText": "Test triage property types",
+            "timestamp": "2026-02-22T05:08:00.000Z",
+            "confirmed": false,
+            "adjusted": false,
+            "executionTimeMs": null
+          },
+          {
+            "id": "30f780a7-8eef-818a-beb6-c655b128ce7f",
+            "intentHash": "b8df8dcf",
+            "actionType": "classify",
+            "pillar": "The Grove",
+            "toolsUsed": [
+              "classify"
+            ],
+            "messageText": "Test triage property types",
+            "timestamp": "2026-02-22T05:08:00.000Z",
+            "confirmed": false,
+            "adjusted": false,
+            "executionTimeMs": null
+          },
+          {
+            "id": "30f780a7-8eef-81d3-b59d-cca53c00313b",
+            "intentHash": "b8df8dcf",
+            "actionType": "classify",
+            "pillar": "The Grove",
+            "toolsUsed": [
+              "classify"
+            ],
+            "messageText": "Test triage property types",
+            "timestamp": "2026-02-22T05:08:00.000Z",
+            "confirmed": false,
+            "adjusted": false,
+            "executionTimeMs": null
+          },
+          {
+            "id": "30f780a7-8eef-81f0-8eea-e23cf7a33c8e",
+            "intentHash": "b8df8dcf",
+            "actionType": "classify",
+            "pillar": "The Grove",
+            "toolsUsed": [
+              "classify"
+            ],
+            "messageText": "Test triage property types",
+            "timestamp": "2026-02-22T05:07:00.000Z",
+            "confirmed": false,
+            "adjusted": false,
+            "executionTimeMs": null
+          },
+          {
+            "id": "30f780a7-8eef-81b7-ae50-d03c82d5ae37",
+            "intentHash": "b8df8dcf",
+            "actionType": "classify",
+            "pillar": "The Grove",
+            "toolsUsed": [
+              "classify"
+            ],
+            "messageText": "Test triage property types",
+            "timestamp": "2026-02-22T05:07:00.000Z",
+            "confirmed": false,
+            "adjusted": false,
+            "executionTimeMs": null
+          },
+          {
+            "id": "30f780a7-8eef-81b7-9d2f-cd9c7de1c107",
+            "intentHash": "b8df8dcf",
+            "actionType": "classify",
+            "pillar": "The Grove",
+            "toolsUsed": [
+              "classify"
+            ],
+            "messageText": "Test triage property types",
+            "timestamp": "2026-02-22T05:06:00.000Z",
+            "confirmed": false,
+            "adjusted": false,
+            "executionTimeMs": null
+          },
+          {
+            "id": "30f780a7-8eef-819f-a960-eb7d6585fc36",
+            "intentHash": "b8df8dcf",
+            "actionType": "classify",
+            "pillar": "The Grove",
+            "toolsUsed": [
+              "classify"
+            ],
+            "messageText": "Test triage property types",
+            "timestamp": "2026-02-22T05:06:00.000Z",
+            "confirmed": false,
+            "adjusted": false,
+            "executionTimeMs": null
+          },
+          {
+            "id": "30f780a7-8eef-81dc-8f41-fcc9ecc70899",
+            "intentHash": "b8df8dcf",
+            "actionType": "classify",
+            "pillar": "The Grove",
+            "toolsUsed": [
+              "classify"
+            ],
+            "messageText": "Test triage property types",
+            "timestamp": "2026-02-22T05:06:00.000Z",
+            "confirmed": false,
+            "adjusted": false,
+            "executionTimeMs": null
+          },
+          {
+            "id": "30f780a7-8eef-811c-8b4b-ccbce04976e0",
+            "intentHash": "b8df8dcf",
+            "actionType": "classify",
+            "pillar": "The Grove",
+            "toolsUsed": [
+              "classify"
+            ],
+            "messageText": "Test triage property types",
+            "timestamp": "2026-02-22T05:06:00.000Z",
+            "confirmed": false,
+            "adjusted": false,
+            "executionTimeMs": null
+          },
+          {
+            "id": "30f780a7-8eef-8170-a379-c713f5dfa7a5",
+            "intentHash": "b8df8dcf",
+            "actionType": "classify",
+            "pillar": "The Grove",
+            "toolsUsed": [
+              "classify"
+            ],
+            "messageText": "Test triage property types",
+            "timestamp": "2026-02-22T05:06:00.000Z",
+            "confirmed": false,
+            "adjusted": false,
+            "executionTimeMs": null
+          },
+          {
+            "id": "30f780a7-8eef-815b-b204-d0910c77a4f4",
+            "intentHash": "b8df8dcf",
+            "actionType": "classify",
+            "pillar": "The Grove",
+            "toolsUsed": [
+              "classify"
+            ],
+            "messageText": "Test triage property types",
+            "timestamp": "2026-02-22T05:06:00.000Z",
+            "confirmed": false,
+            "adjusted": false,
+            "executionTimeMs": null
+          },
+          {
+            "id": "30f780a7-8eef-8122-a517-ea17fc50b204",
+            "intentHash": "b8df8dcf",
+            "actionType": "classify",
+            "pillar": "The Grove",
+            "toolsUsed": [
+              "classify"
+            ],
+            "messageText": "Test triage property types",
+            "timestamp": "2026-02-22T05:05:00.000Z",
+            "confirmed": false,
+            "adjusted": false,
+            "executionTimeMs": null
+          },
+          {
+            "id": "30f780a7-8eef-81f1-85dc-ffadcc16b571",
+            "intentHash": "b8df8dcf",
+            "actionType": "classify",
+            "pillar": "The Grove",
+            "toolsUsed": [
+              "classify"
+            ],
+            "messageText": "Test triage property types",
+            "timestamp": "2026-02-22T05:05:00.000Z",
+            "confirmed": false,
+            "adjusted": false,
+            "executionTimeMs": null
+          },
+          {
+            "id": "30f780a7-8eef-8140-ad5a-e478fc32c681",
+            "intentHash": "b8df8dcf",
+            "actionType": "classify",
+            "pillar": "The Grove",
+            "toolsUsed": [
+              "classify"
+            ],
+            "messageText": "Test triage property types",
+            "timestamp": "2026-02-22T05:05:00.000Z",
+            "confirmed": false,
+            "adjusted": false,
+            "executionTimeMs": null
+          },
+          {
+            "id": "30f780a7-8eef-8115-affc-c9dcbb2aa11e",
+            "intentHash": "b8df8dcf",
+            "actionType": "classify",
+            "pillar": "The Grove",
+            "toolsUsed": [
+              "classify"
+            ],
+            "messageText": "Test triage property types",
+            "timestamp": "2026-02-22T05:05:00.000Z",
+            "confirmed": false,
+            "adjusted": false,
+            "executionTimeMs": null
+          },
+          {
+            "id": "30f780a7-8eef-81ff-9dce-d263edaae400",
+            "intentHash": "b8df8dcf",
+            "actionType": "classify",
+            "pillar": "The Grove",
+            "toolsUsed": [
+              "classify"
+            ],
+            "messageText": "Test triage property types",
+            "timestamp": "2026-02-22T05:05:00.000Z",
+            "confirmed": false,
+            "adjusted": false,
+            "executionTimeMs": null
+          },
+          {
+            "id": "30f780a7-8eef-8167-9118-e0815a7dbe78",
+            "intentHash": "b8df8dcf",
+            "actionType": "classify",
+            "pillar": "The Grove",
+            "toolsUsed": [
+              "classify"
+            ],
+            "messageText": "Test triage property types",
+            "timestamp": "2026-02-22T05:05:00.000Z",
+            "confirmed": false,
+            "adjusted": false,
+            "executionTimeMs": null
+          },
+          {
+            "id": "30f780a7-8eef-8185-a67f-fe0296dcecf6",
+            "intentHash": "b8df8dcf",
+            "actionType": "classify",
+            "pillar": "The Grove",
+            "toolsUsed": [
+              "classify"
+            ],
+            "messageText": "Test triage property types",
+            "timestamp": "2026-02-22T05:05:00.000Z",
+            "confirmed": false,
+            "adjusted": false,
+            "executionTimeMs": null
+          },
+          {
+            "id": "30f780a7-8eef-81e2-87de-db5976f023b0",
+            "intentHash": "b8df8dcf",
+            "actionType": "classify",
+            "pillar": "The Grove",
+            "toolsUsed": [
+              "classify"
+            ],
+            "messageText": "Test triage property types",
+            "timestamp": "2026-02-22T05:05:00.000Z",
+            "confirmed": false,
+            "adjusted": false,
+            "executionTimeMs": null
+          },
+          {
+            "id": "30f780a7-8eef-816d-8265-cd726ab2402e",
+            "intentHash": "b8df8dcf",
+            "actionType": "classify",
+            "pillar": "The Grove",
+            "toolsUsed": [
+              "classify"
+            ],
+            "messageText": "Test triage property types",
+            "timestamp": "2026-02-22T05:02:00.000Z",
+            "confirmed": false,
+            "adjusted": false,
+            "executionTimeMs": null
+          },
+          {
+            "id": "30f780a7-8eef-818b-bc1b-f2664f5453b4",
+            "intentHash": "b8df8dcf",
+            "actionType": "classify",
+            "pillar": "The Grove",
+            "toolsUsed": [
+              "classify"
+            ],
+            "messageText": "Test triage property types",
+            "timestamp": "2026-02-22T05:02:00.000Z",
+            "confirmed": false,
+            "adjusted": false,
+            "executionTimeMs": null
+          },
+          {
+            "id": "30f780a7-8eef-8160-bd50-c476ceb31fd0",
+            "intentHash": "b8df8dcf",
+            "actionType": "classify",
+            "pillar": "The Grove",
+            "toolsUsed": [
+              "classify"
+            ],
+            "messageText": "Test triage property types",
+            "timestamp": "2026-02-22T05:02:00.000Z",
+            "confirmed": false,
+            "adjusted": false,
+            "executionTimeMs": null
+          },
+          {
+            "id": "30f780a7-8eef-8107-a4bf-e4a7926b0576",
+            "intentHash": "b8df8dcf",
+            "actionType": "classify",
+            "pillar": "The Grove",
+            "toolsUsed": [
+              "classify"
+            ],
+            "messageText": "Test triage property types",
+            "timestamp": "2026-02-22T05:02:00.000Z",
+            "confirmed": false,
+            "adjusted": false,
+            "executionTimeMs": null
+          },
+          {
+            "id": "30f780a7-8eef-817a-a419-e13e89938be6",
+            "intentHash": "b8df8dcf",
+            "actionType": "classify",
+            "pillar": "The Grove",
+            "toolsUsed": [
+              "classify"
+            ],
+            "messageText": "Test triage property types",
+            "timestamp": "2026-02-22T05:02:00.000Z",
+            "confirmed": false,
+            "adjusted": false,
+            "executionTimeMs": null
+          },
+          {
+            "id": "30f780a7-8eef-81ba-8b06-f45a7c6a6c5c",
+            "intentHash": "b8df8dcf",
+            "actionType": "classify",
+            "pillar": "The Grove",
+            "toolsUsed": [
+              "classify"
+            ],
+            "messageText": "Test triage property types",
+            "timestamp": "2026-02-22T05:02:00.000Z",
+            "confirmed": false,
+            "adjusted": false,
+            "executionTimeMs": null
+          },
+          {
+            "id": "30f780a7-8eef-8128-b305-cb0668cb572b",
+            "intentHash": "b8df8dcf",
+            "actionType": "classify",
+            "pillar": "The Grove",
+            "toolsUsed": [
+              "classify"
+            ],
+            "messageText": "Test triage property types",
+            "timestamp": "2026-02-22T05:02:00.000Z",
+            "confirmed": false,
+            "adjusted": false,
+            "executionTimeMs": null
+          },
+          {
+            "id": "30f780a7-8eef-814b-bc1c-dc997d59f01d",
+            "intentHash": "b8df8dcf",
+            "actionType": "classify",
+            "pillar": "The Grove",
+            "toolsUsed": [
+              "classify"
+            ],
+            "messageText": "Test triage property types",
+            "timestamp": "2026-02-22T05:02:00.000Z",
+            "confirmed": false,
+            "adjusted": false,
+            "executionTimeMs": null
+          },
+          {
+            "id": "30f780a7-8eef-81bc-bbc2-e2029fa32ed1",
+            "intentHash": "b8df8dcf",
+            "actionType": "classify",
+            "pillar": "The Grove",
+            "toolsUsed": [
+              "classify"
+            ],
+            "messageText": "Test triage property types",
+            "timestamp": "2026-02-22T05:01:00.000Z",
+            "confirmed": false,
+            "adjusted": false,
+            "executionTimeMs": null
+          },
+          {
+            "id": "30f780a7-8eef-8190-b893-d0255afd6b3c",
+            "intentHash": "b8df8dcf",
+            "actionType": "classify",
+            "pillar": "The Grove",
+            "toolsUsed": [
+              "classify"
+            ],
+            "messageText": "Test triage property types",
+            "timestamp": "2026-02-22T05:01:00.000Z",
+            "confirmed": false,
+            "adjusted": false,
+            "executionTimeMs": null
+          },
+          {
+            "id": "30f780a7-8eef-81b5-8e68-f15b4145f747",
+            "intentHash": "b8df8dcf",
+            "actionType": "classify",
+            "pillar": "The Grove",
+            "toolsUsed": [
+              "classify"
+            ],
+            "messageText": "Test triage property types",
+            "timestamp": "2026-02-22T05:01:00.000Z",
+            "confirmed": false,
+            "adjusted": false,
+            "executionTimeMs": null
+          },
+          {
+            "id": "30f780a7-8eef-81e3-9bbc-e8c3aa5df7fd",
+            "intentHash": "b8df8dcf",
+            "actionType": "classify",
+            "pillar": "The Grove",
+            "toolsUsed": [
+              "classify"
+            ],
+            "messageText": "Test triage property types",
+            "timestamp": "2026-02-22T05:01:00.000Z",
+            "confirmed": false,
+            "adjusted": false,
+            "executionTimeMs": null
+          },
+          {
+            "id": "30f780a7-8eef-8117-85f3-d7f2ed75b22f",
+            "intentHash": "b8df8dcf",
+            "actionType": "classify",
+            "pillar": "The Grove",
+            "toolsUsed": [
+              "classify"
+            ],
+            "messageText": "Test triage property types",
+            "timestamp": "2026-02-22T05:01:00.000Z",
+            "confirmed": false,
+            "adjusted": false,
+            "executionTimeMs": null
+          },
+          {
+            "id": "30f780a7-8eef-81ac-bc03-e74eb719e5fa",
+            "intentHash": "b8df8dcf",
+            "actionType": "classify",
+            "pillar": "The Grove",
+            "toolsUsed": [
+              "classify"
+            ],
+            "messageText": "Test triage property types",
+            "timestamp": "2026-02-22T05:01:00.000Z",
+            "confirmed": false,
+            "adjusted": false,
+            "executionTimeMs": null
+          },
+          {
+            "id": "30f780a7-8eef-8136-ad79-f5f47e602d9c",
+            "intentHash": "b8df8dcf",
+            "actionType": "classify",
+            "pillar": "The Grove",
+            "toolsUsed": [
+              "classify"
+            ],
+            "messageText": "Test triage property types",
+            "timestamp": "2026-02-22T05:01:00.000Z",
+            "confirmed": false,
+            "adjusted": false,
+            "executionTimeMs": null
+          },
+          {
+            "id": "30f780a7-8eef-8135-a2e5-da961df35cce",
+            "intentHash": "b8df8dcf",
+            "actionType": "classify",
+            "pillar": "The Grove",
+            "toolsUsed": [
+              "classify"
+            ],
+            "messageText": "Test triage property types",
+            "timestamp": "2026-02-22T05:01:00.000Z",
+            "confirmed": false,
+            "adjusted": false,
+            "executionTimeMs": null
+          }
+        ],
+        "pillar": "The Grove",
+        "actionType": "classify",
+        "toolsUsed": [
+          "classify"
+        ],
+        "frequency": 96,
+        "firstSeen": "2026-02-22T05:01:00.000Z",
+        "lastSeen": "2026-02-22T05:37:00.000Z",
+        "avgExecutionTimeMs": 0,
+        "proposedTier": 1
+      },
+      "skill": {
+        "name": "the-grove-classify-triage-property-b8df",
+        "version": "1.0.0",
+        "description": "Auto-generated skill from 96 similar actions: \"Test triage property types...\"",
+        "triggers": [
+          {
+            "type": "intentHash",
+            "value": "b8df8dcf"
+          },
+          {
+            "type": "pillar",
+            "value": "The Grove"
+          },
+          {
+            "type": "keyword",
+            "value": "test|triage|property|types"
+          }
+        ],
+        "inputs": {},
+        "outputs": [],
+        "process": {
+          "type": "tool_sequence",
+          "steps": [
+            {
+              "id": "step_1",
+              "tool": "classify",
+              "inputs": {},
+              "onError": "fail"
+            }
+          ]
+        },
+        "tier": 1,
+        "enabled": false,
+        "createdAt": "2026-02-22T12:00:32.208Z",
+        "updatedAt": "2026-02-22T12:00:32.208Z",
+        "source": "generated",
+        "metrics": {
+          "executionCount": 0,
+          "successCount": 0,
+          "failureCount": 0,
+          "avgExecutionTime": 0,
+          "consecutiveFailures": 0
+        },
+        "tags": [
+          "auto-generated"
+        ],
+        "author": "pattern-detector"
+      },
+      "createdAt": "2026-02-22T12:00:32.208Z",
+      "status": "pending"
+    },
+    {
+      "id": "p-1771848006853-the-grove-classify-t",
+      "pattern": {
+        "intentHash": "b8df8dcf",
+        "canonicalText": "Test triage property types",
+        "actions": [
+          {
+            "id": "30f780a7-8eef-8173-bf2e-e37a95923ec2",
+            "intentHash": "b8df8dcf",
+            "actionType": "classify",
+            "pillar": "The Grove",
+            "toolsUsed": [
+              "classify"
+            ],
+            "messageText": "Test triage property types",
+            "timestamp": "2026-02-22T16:58:00.000Z",
+            "confirmed": false,
+            "adjusted": false,
+            "executionTimeMs": null
+          },
+          {
+            "id": "30f780a7-8eef-8151-8429-daeb5dec8238",
+            "intentHash": "b8df8dcf",
+            "actionType": "classify",
+            "pillar": "The Grove",
+            "toolsUsed": [
+              "classify"
+            ],
+            "messageText": "Test triage property types",
+            "timestamp": "2026-02-22T16:58:00.000Z",
+            "confirmed": false,
+            "adjusted": false,
+            "executionTimeMs": null
+          },
+          {
+            "id": "30f780a7-8eef-817b-8470-f25dae694ba7",
+            "intentHash": "b8df8dcf",
+            "actionType": "classify",
+            "pillar": "The Grove",
+            "toolsUsed": [
+              "classify"
+            ],
+            "messageText": "Test triage property types",
+            "timestamp": "2026-02-22T16:58:00.000Z",
+            "confirmed": false,
+            "adjusted": false,
+            "executionTimeMs": null
+          },
+          {
+            "id": "30f780a7-8eef-81e2-8715-dc53eadf9a3f",
+            "intentHash": "b8df8dcf",
+            "actionType": "classify",
+            "pillar": "The Grove",
+            "toolsUsed": [
+              "classify"
+            ],
+            "messageText": "Test triage property types",
+            "timestamp": "2026-02-22T16:58:00.000Z",
+            "confirmed": false,
+            "adjusted": false,
+            "executionTimeMs": null
+          },
+          {
+            "id": "30f780a7-8eef-81b3-a5bf-da9f3c14a30d",
+            "intentHash": "b8df8dcf",
+            "actionType": "classify",
+            "pillar": "The Grove",
+            "toolsUsed": [
+              "classify"
+            ],
+            "messageText": "Test triage property types",
+            "timestamp": "2026-02-22T16:58:00.000Z",
+            "confirmed": false,
+            "adjusted": false,
+            "executionTimeMs": null
+          },
+          {
+            "id": "30f780a7-8eef-815d-ae54-e5c6f6e04394",
+            "intentHash": "b8df8dcf",
+            "actionType": "classify",
+            "pillar": "The Grove",
+            "toolsUsed": [
+              "classify"
+            ],
+            "messageText": "Test triage property types",
+            "timestamp": "2026-02-22T16:58:00.000Z",
+            "confirmed": false,
+            "adjusted": false,
+            "executionTimeMs": null
+          },
+          {
+            "id": "30f780a7-8eef-813d-a4be-d9e799d79b97",
+            "intentHash": "b8df8dcf",
+            "actionType": "classify",
+            "pillar": "The Grove",
+            "toolsUsed": [
+              "classify"
+            ],
+            "messageText": "Test triage property types",
+            "timestamp": "2026-02-22T16:58:00.000Z",
+            "confirmed": false,
+            "adjusted": false,
+            "executionTimeMs": null
+          },
+          {
+            "id": "30f780a7-8eef-81bc-87f8-d7b59e894bda",
+            "intentHash": "b8df8dcf",
+            "actionType": "classify",
+            "pillar": "The Grove",
+            "toolsUsed": [
+              "classify"
+            ],
+            "messageText": "Test triage property types",
+            "timestamp": "2026-02-22T16:58:00.000Z",
+            "confirmed": false,
+            "adjusted": false,
+            "executionTimeMs": null
+          },
+          {
+            "id": "30f780a7-8eef-81d4-92ed-d5a425ef3a03",
+            "intentHash": "b8df8dcf",
+            "actionType": "classify",
+            "pillar": "The Grove",
+            "toolsUsed": [
+              "classify"
+            ],
+            "messageText": "Test triage property types",
+            "timestamp": "2026-02-22T16:57:00.000Z",
+            "confirmed": false,
+            "adjusted": false,
+            "executionTimeMs": null
+          },
+          {
+            "id": "30f780a7-8eef-810b-8f44-f2824b55a225",
+            "intentHash": "b8df8dcf",
+            "actionType": "classify",
+            "pillar": "The Grove",
+            "toolsUsed": [
+              "classify"
+            ],
+            "messageText": "Test triage property types",
+            "timestamp": "2026-02-22T16:57:00.000Z",
+            "confirmed": false,
+            "adjusted": false,
+            "executionTimeMs": null
+          },
+          {
+            "id": "30f780a7-8eef-81ab-989c-d125d1f65ced",
+            "intentHash": "b8df8dcf",
+            "actionType": "classify",
+            "pillar": "The Grove",
+            "toolsUsed": [
+              "classify"
+            ],
+            "messageText": "Test triage property types",
+            "timestamp": "2026-02-22T16:57:00.000Z",
+            "confirmed": false,
+            "adjusted": false,
+            "executionTimeMs": null
+          },
+          {
+            "id": "30f780a7-8eef-817b-b6cd-e7c9d15f8e60",
+            "intentHash": "b8df8dcf",
+            "actionType": "classify",
+            "pillar": "The Grove",
+            "toolsUsed": [
+              "classify"
+            ],
+            "messageText": "Test triage property types",
+            "timestamp": "2026-02-22T16:57:00.000Z",
+            "confirmed": false,
+            "adjusted": false,
+            "executionTimeMs": null
+          },
+          {
+            "id": "30f780a7-8eef-8195-9699-c5b3697390c2",
+            "intentHash": "b8df8dcf",
+            "actionType": "classify",
+            "pillar": "The Grove",
+            "toolsUsed": [
+              "classify"
+            ],
+            "messageText": "Test triage property types",
+            "timestamp": "2026-02-22T16:57:00.000Z",
+            "confirmed": false,
+            "adjusted": false,
+            "executionTimeMs": null
+          },
+          {
+            "id": "30f780a7-8eef-8196-a2a8-e826c81aed20",
+            "intentHash": "b8df8dcf",
+            "actionType": "classify",
+            "pillar": "The Grove",
+            "toolsUsed": [
+              "classify"
+            ],
+            "messageText": "Test triage property types",
+            "timestamp": "2026-02-22T16:57:00.000Z",
+            "confirmed": false,
+            "adjusted": false,
+            "executionTimeMs": null
+          },
+          {
+            "id": "30f780a7-8eef-8188-af9c-e0fa818ebdfa",
+            "intentHash": "b8df8dcf",
+            "actionType": "classify",
+            "pillar": "The Grove",
+            "toolsUsed": [
+              "classify"
+            ],
+            "messageText": "Test triage property types",
+            "timestamp": "2026-02-22T16:57:00.000Z",
+            "confirmed": false,
+            "adjusted": false,
+            "executionTimeMs": null
+          },
+          {
+            "id": "30f780a7-8eef-81ac-bd88-c9e9a1569e34",
+            "intentHash": "b8df8dcf",
+            "actionType": "classify",
+            "pillar": "The Grove",
+            "toolsUsed": [
+              "classify"
+            ],
+            "messageText": "Test triage property types",
+            "timestamp": "2026-02-22T16:57:00.000Z",
+            "confirmed": false,
+            "adjusted": false,
+            "executionTimeMs": null
+          },
+          {
+            "id": "30f780a7-8eef-81e0-b2d5-f0c6bbceb4af",
+            "intentHash": "b8df8dcf",
+            "actionType": "classify",
+            "pillar": "The Grove",
+            "toolsUsed": [
+              "classify"
+            ],
+            "messageText": "Test triage property types",
+            "timestamp": "2026-02-22T16:55:00.000Z",
+            "confirmed": false,
+            "adjusted": false,
+            "executionTimeMs": null
+          },
+          {
+            "id": "30f780a7-8eef-8189-bf4b-ca3f2502bba6",
+            "intentHash": "b8df8dcf",
+            "actionType": "classify",
+            "pillar": "The Grove",
+            "toolsUsed": [
+              "classify"
+            ],
+            "messageText": "Test triage property types",
+            "timestamp": "2026-02-22T16:55:00.000Z",
+            "confirmed": false,
+            "adjusted": false,
+            "executionTimeMs": null
+          },
+          {
+            "id": "30f780a7-8eef-8103-8f52-c1049853c406",
+            "intentHash": "b8df8dcf",
+            "actionType": "classify",
+            "pillar": "The Grove",
+            "toolsUsed": [
+              "classify"
+            ],
+            "messageText": "Test triage property types",
+            "timestamp": "2026-02-22T16:55:00.000Z",
+            "confirmed": false,
+            "adjusted": false,
+            "executionTimeMs": null
+          },
+          {
+            "id": "30f780a7-8eef-812e-a3d5-fcb9b4bd4ca8",
+            "intentHash": "b8df8dcf",
+            "actionType": "classify",
+            "pillar": "The Grove",
+            "toolsUsed": [
+              "classify"
+            ],
+            "messageText": "Test triage property types",
+            "timestamp": "2026-02-22T16:55:00.000Z",
+            "confirmed": false,
+            "adjusted": false,
+            "executionTimeMs": null
+          },
+          {
+            "id": "30f780a7-8eef-81d2-b5e8-ca67bb2abd8d",
+            "intentHash": "b8df8dcf",
+            "actionType": "classify",
+            "pillar": "The Grove",
+            "toolsUsed": [
+              "classify"
+            ],
+            "messageText": "Test triage property types",
+            "timestamp": "2026-02-22T16:55:00.000Z",
+            "confirmed": false,
+            "adjusted": false,
+            "executionTimeMs": null
+          },
+          {
+            "id": "30f780a7-8eef-81bc-8e8f-f972c3947e8c",
+            "intentHash": "b8df8dcf",
+            "actionType": "classify",
+            "pillar": "The Grove",
+            "toolsUsed": [
+              "classify"
+            ],
+            "messageText": "Test triage property types",
+            "timestamp": "2026-02-22T16:55:00.000Z",
+            "confirmed": false,
+            "adjusted": false,
+            "executionTimeMs": null
+          },
+          {
+            "id": "30f780a7-8eef-816d-967c-f9943009332b",
+            "intentHash": "b8df8dcf",
+            "actionType": "classify",
+            "pillar": "The Grove",
+            "toolsUsed": [
+              "classify"
+            ],
+            "messageText": "Test triage property types",
+            "timestamp": "2026-02-22T16:55:00.000Z",
+            "confirmed": false,
+            "adjusted": false,
+            "executionTimeMs": null
+          },
+          {
+            "id": "30f780a7-8eef-813d-b11f-faa25195231a",
+            "intentHash": "b8df8dcf",
+            "actionType": "classify",
+            "pillar": "The Grove",
+            "toolsUsed": [
+              "classify"
+            ],
+            "messageText": "Test triage property types",
+            "timestamp": "2026-02-22T16:55:00.000Z",
+            "confirmed": false,
+            "adjusted": false,
+            "executionTimeMs": null
+          },
+          {
+            "id": "30f780a7-8eef-81c5-a722-f45b0ed82758",
+            "intentHash": "b8df8dcf",
+            "actionType": "classify",
+            "pillar": "The Grove",
+            "toolsUsed": [
+              "classify"
+            ],
+            "messageText": "Test triage property types",
+            "timestamp": "2026-02-22T16:54:00.000Z",
+            "confirmed": false,
+            "adjusted": false,
+            "executionTimeMs": null
+          },
+          {
+            "id": "30f780a7-8eef-818e-9039-fb6d35198fe3",
+            "intentHash": "b8df8dcf",
+            "actionType": "classify",
+            "pillar": "The Grove",
+            "toolsUsed": [
+              "classify"
+            ],
+            "messageText": "Test triage property types",
+            "timestamp": "2026-02-22T16:54:00.000Z",
+            "confirmed": false,
+            "adjusted": false,
+            "executionTimeMs": null
+          },
+          {
+            "id": "30f780a7-8eef-81ff-940a-ca1009803690",
+            "intentHash": "b8df8dcf",
+            "actionType": "classify",
+            "pillar": "The Grove",
+            "toolsUsed": [
+              "classify"
+            ],
+            "messageText": "Test triage property types",
+            "timestamp": "2026-02-22T16:54:00.000Z",
+            "confirmed": false,
+            "adjusted": false,
+            "executionTimeMs": null
+          },
+          {
+            "id": "30f780a7-8eef-8179-b6ce-f58cb71e54e1",
+            "intentHash": "b8df8dcf",
+            "actionType": "classify",
+            "pillar": "The Grove",
+            "toolsUsed": [
+              "classify"
+            ],
+            "messageText": "Test triage property types",
+            "timestamp": "2026-02-22T16:54:00.000Z",
+            "confirmed": false,
+            "adjusted": false,
+            "executionTimeMs": null
+          },
+          {
+            "id": "30f780a7-8eef-81ad-b0aa-d36b5d4fd16b",
+            "intentHash": "b8df8dcf",
+            "actionType": "classify",
+            "pillar": "The Grove",
+            "toolsUsed": [
+              "classify"
+            ],
+            "messageText": "Test triage property types",
+            "timestamp": "2026-02-22T16:54:00.000Z",
+            "confirmed": false,
+            "adjusted": false,
+            "executionTimeMs": null
+          },
+          {
+            "id": "30f780a7-8eef-812f-a990-df6d744c282d",
+            "intentHash": "b8df8dcf",
+            "actionType": "classify",
+            "pillar": "The Grove",
+            "toolsUsed": [
+              "classify"
+            ],
+            "messageText": "Test triage property types",
+            "timestamp": "2026-02-22T16:54:00.000Z",
+            "confirmed": false,
+            "adjusted": false,
+            "executionTimeMs": null
+          },
+          {
+            "id": "30f780a7-8eef-816a-942f-e0105e99e9ad",
+            "intentHash": "b8df8dcf",
+            "actionType": "classify",
+            "pillar": "The Grove",
+            "toolsUsed": [
+              "classify"
+            ],
+            "messageText": "Test triage property types",
+            "timestamp": "2026-02-22T16:54:00.000Z",
+            "confirmed": false,
+            "adjusted": false,
+            "executionTimeMs": null
+          },
+          {
+            "id": "30f780a7-8eef-8132-9e20-ee57b3ce509e",
+            "intentHash": "b8df8dcf",
+            "actionType": "classify",
+            "pillar": "The Grove",
+            "toolsUsed": [
+              "classify"
+            ],
+            "messageText": "Test triage property types",
+            "timestamp": "2026-02-22T16:54:00.000Z",
+            "confirmed": false,
+            "adjusted": false,
+            "executionTimeMs": null
+          },
+          {
+            "id": "30f780a7-8eef-8144-a7b8-e3960328cdff",
+            "intentHash": "b8df8dcf",
+            "actionType": "classify",
+            "pillar": "The Grove",
+            "toolsUsed": [
+              "classify"
+            ],
+            "messageText": "Test triage property types",
+            "timestamp": "2026-02-22T16:53:00.000Z",
+            "confirmed": false,
+            "adjusted": false,
+            "executionTimeMs": null
+          },
+          {
+            "id": "30f780a7-8eef-81c8-a56a-ccbccd617077",
+            "intentHash": "b8df8dcf",
+            "actionType": "classify",
+            "pillar": "The Grove",
+            "toolsUsed": [
+              "classify"
+            ],
+            "messageText": "Test triage property types",
+            "timestamp": "2026-02-22T16:53:00.000Z",
+            "confirmed": false,
+            "adjusted": false,
+            "executionTimeMs": null
+          },
+          {
+            "id": "30f780a7-8eef-818c-a21d-faacc3572349",
+            "intentHash": "b8df8dcf",
+            "actionType": "classify",
+            "pillar": "The Grove",
+            "toolsUsed": [
+              "classify"
+            ],
+            "messageText": "Test triage property types",
+            "timestamp": "2026-02-22T16:53:00.000Z",
+            "confirmed": false,
+            "adjusted": false,
+            "executionTimeMs": null
+          },
+          {
+            "id": "30f780a7-8eef-81c9-ba94-c23f54257fb8",
+            "intentHash": "b8df8dcf",
+            "actionType": "classify",
+            "pillar": "The Grove",
+            "toolsUsed": [
+              "classify"
+            ],
+            "messageText": "Test triage property types",
+            "timestamp": "2026-02-22T16:53:00.000Z",
+            "confirmed": false,
+            "adjusted": false,
+            "executionTimeMs": null
+          },
+          {
+            "id": "30f780a7-8eef-81be-8a49-c053b7608911",
+            "intentHash": "b8df8dcf",
+            "actionType": "classify",
+            "pillar": "The Grove",
+            "toolsUsed": [
+              "classify"
+            ],
+            "messageText": "Test triage property types",
+            "timestamp": "2026-02-22T16:53:00.000Z",
+            "confirmed": false,
+            "adjusted": false,
+            "executionTimeMs": null
+          },
+          {
+            "id": "30f780a7-8eef-8191-847e-df0b4ff04cc7",
+            "intentHash": "b8df8dcf",
+            "actionType": "classify",
+            "pillar": "The Grove",
+            "toolsUsed": [
+              "classify"
+            ],
+            "messageText": "Test triage property types",
+            "timestamp": "2026-02-22T16:53:00.000Z",
+            "confirmed": false,
+            "adjusted": false,
+            "executionTimeMs": null
+          },
+          {
+            "id": "30f780a7-8eef-81ac-ab3d-da067d277c40",
+            "intentHash": "b8df8dcf",
+            "actionType": "classify",
+            "pillar": "The Grove",
+            "toolsUsed": [
+              "classify"
+            ],
+            "messageText": "Test triage property types",
+            "timestamp": "2026-02-22T16:53:00.000Z",
+            "confirmed": false,
+            "adjusted": false,
+            "executionTimeMs": null
+          },
+          {
+            "id": "30f780a7-8eef-81bc-8757-cf97813f32a4",
+            "intentHash": "b8df8dcf",
+            "actionType": "classify",
+            "pillar": "The Grove",
+            "toolsUsed": [
+              "classify"
+            ],
+            "messageText": "Test triage property types",
+            "timestamp": "2026-02-22T16:53:00.000Z",
+            "confirmed": false,
+            "adjusted": false,
+            "executionTimeMs": null
+          },
+          {
+            "id": "30f780a7-8eef-811a-80f5-d49b971a6c4c",
+            "intentHash": "b8df8dcf",
+            "actionType": "classify",
+            "pillar": "The Grove",
+            "toolsUsed": [
+              "classify"
+            ],
+            "messageText": "Test triage property types",
+            "timestamp": "2026-02-22T16:05:00.000Z",
+            "confirmed": false,
+            "adjusted": false,
+            "executionTimeMs": null
+          },
+          {
+            "id": "30f780a7-8eef-8185-8d74-e7ff80e60f94",
+            "intentHash": "b8df8dcf",
+            "actionType": "classify",
+            "pillar": "The Grove",
+            "toolsUsed": [
+              "classify"
+            ],
+            "messageText": "Test triage property types",
+            "timestamp": "2026-02-22T16:05:00.000Z",
+            "confirmed": false,
+            "adjusted": false,
+            "executionTimeMs": null
+          },
+          {
+            "id": "30f780a7-8eef-819c-b5d7-cb7d9352f264",
+            "intentHash": "b8df8dcf",
+            "actionType": "classify",
+            "pillar": "The Grove",
+            "toolsUsed": [
+              "classify"
+            ],
+            "messageText": "Test triage property types",
+            "timestamp": "2026-02-22T16:05:00.000Z",
+            "confirmed": false,
+            "adjusted": false,
+            "executionTimeMs": null
+          },
+          {
+            "id": "30f780a7-8eef-811c-89c0-ef603ac9f672",
+            "intentHash": "b8df8dcf",
+            "actionType": "classify",
+            "pillar": "The Grove",
+            "toolsUsed": [
+              "classify"
+            ],
+            "messageText": "Test triage property types",
+            "timestamp": "2026-02-22T16:05:00.000Z",
+            "confirmed": false,
+            "adjusted": false,
+            "executionTimeMs": null
+          },
+          {
+            "id": "30f780a7-8eef-8180-a735-cc8a77cd97f7",
+            "intentHash": "b8df8dcf",
+            "actionType": "classify",
+            "pillar": "The Grove",
+            "toolsUsed": [
+              "classify"
+            ],
+            "messageText": "Test triage property types",
+            "timestamp": "2026-02-22T16:05:00.000Z",
+            "confirmed": false,
+            "adjusted": false,
+            "executionTimeMs": null
+          },
+          {
+            "id": "30f780a7-8eef-81d6-a510-d9791bd51314",
+            "intentHash": "b8df8dcf",
+            "actionType": "classify",
+            "pillar": "The Grove",
+            "toolsUsed": [
+              "classify"
+            ],
+            "messageText": "Test triage property types",
+            "timestamp": "2026-02-22T16:05:00.000Z",
+            "confirmed": false,
+            "adjusted": false,
+            "executionTimeMs": null
+          },
+          {
+            "id": "30f780a7-8eef-81f7-b887-de5c15355d45",
+            "intentHash": "b8df8dcf",
+            "actionType": "classify",
+            "pillar": "The Grove",
+            "toolsUsed": [
+              "classify"
+            ],
+            "messageText": "Test triage property types",
+            "timestamp": "2026-02-22T16:05:00.000Z",
+            "confirmed": false,
+            "adjusted": false,
+            "executionTimeMs": null
+          },
+          {
+            "id": "30f780a7-8eef-81bf-aa99-ca394e0cf903",
+            "intentHash": "b8df8dcf",
+            "actionType": "classify",
+            "pillar": "The Grove",
+            "toolsUsed": [
+              "classify"
+            ],
+            "messageText": "Test triage property types",
+            "timestamp": "2026-02-22T16:05:00.000Z",
+            "confirmed": false,
+            "adjusted": false,
+            "executionTimeMs": null
+          },
+          {
+            "id": "30f780a7-8eef-8155-9bcc-f10385fa44ec",
+            "intentHash": "b8df8dcf",
+            "actionType": "classify",
+            "pillar": "The Grove",
+            "toolsUsed": [
+              "classify"
+            ],
+            "messageText": "Test triage property types",
+            "timestamp": "2026-02-22T05:37:00.000Z",
+            "confirmed": false,
+            "adjusted": false,
+            "executionTimeMs": null
+          },
+          {
+            "id": "30f780a7-8eef-81a3-9d3e-e13634592b1a",
+            "intentHash": "b8df8dcf",
+            "actionType": "classify",
+            "pillar": "The Grove",
+            "toolsUsed": [
+              "classify"
+            ],
+            "messageText": "Test triage property types",
+            "timestamp": "2026-02-22T05:37:00.000Z",
+            "confirmed": false,
+            "adjusted": false,
+            "executionTimeMs": null
+          },
+          {
+            "id": "30f780a7-8eef-8169-9614-c46dbe243073",
+            "intentHash": "b8df8dcf",
+            "actionType": "classify",
+            "pillar": "The Grove",
+            "toolsUsed": [
+              "classify"
+            ],
+            "messageText": "Test triage property types",
+            "timestamp": "2026-02-22T05:37:00.000Z",
+            "confirmed": false,
+            "adjusted": false,
+            "executionTimeMs": null
+          },
+          {
+            "id": "30f780a7-8eef-816f-a9c2-e72227b6f346",
+            "intentHash": "b8df8dcf",
+            "actionType": "classify",
+            "pillar": "The Grove",
+            "toolsUsed": [
+              "classify"
+            ],
+            "messageText": "Test triage property types",
+            "timestamp": "2026-02-22T05:37:00.000Z",
+            "confirmed": false,
+            "adjusted": false,
+            "executionTimeMs": null
+          },
+          {
+            "id": "30f780a7-8eef-81e3-ab15-c4afa01ffae0",
+            "intentHash": "b8df8dcf",
+            "actionType": "classify",
+            "pillar": "The Grove",
+            "toolsUsed": [
+              "classify"
+            ],
+            "messageText": "Test triage property types",
+            "timestamp": "2026-02-22T05:37:00.000Z",
+            "confirmed": false,
+            "adjusted": false,
+            "executionTimeMs": null
+          },
+          {
+            "id": "30f780a7-8eef-81e9-9300-c2021eeb9c53",
+            "intentHash": "b8df8dcf",
+            "actionType": "classify",
+            "pillar": "The Grove",
+            "toolsUsed": [
+              "classify"
+            ],
+            "messageText": "Test triage property types",
+            "timestamp": "2026-02-22T05:37:00.000Z",
+            "confirmed": false,
+            "adjusted": false,
+            "executionTimeMs": null
+          },
+          {
+            "id": "30f780a7-8eef-81cb-a276-c851752e2584",
+            "intentHash": "b8df8dcf",
+            "actionType": "classify",
+            "pillar": "The Grove",
+            "toolsUsed": [
+              "classify"
+            ],
+            "messageText": "Test triage property types",
+            "timestamp": "2026-02-22T05:37:00.000Z",
+            "confirmed": false,
+            "adjusted": false,
+            "executionTimeMs": null
+          },
+          {
+            "id": "30f780a7-8eef-816e-8f7e-d1a38c8b47a7",
+            "intentHash": "b8df8dcf",
+            "actionType": "classify",
+            "pillar": "The Grove",
+            "toolsUsed": [
+              "classify"
+            ],
+            "messageText": "Test triage property types",
+            "timestamp": "2026-02-22T05:37:00.000Z",
+            "confirmed": false,
+            "adjusted": false,
+            "executionTimeMs": null
+          },
+          {
+            "id": "30f780a7-8eef-819d-8b6f-edec1c085be7",
+            "intentHash": "b8df8dcf",
+            "actionType": "classify",
+            "pillar": "The Grove",
+            "toolsUsed": [
+              "classify"
+            ],
+            "messageText": "Test triage property types",
+            "timestamp": "2026-02-22T05:36:00.000Z",
+            "confirmed": false,
+            "adjusted": false,
+            "executionTimeMs": null
+          },
+          {
+            "id": "30f780a7-8eef-81a7-a365-f0bb5a2c4701",
+            "intentHash": "b8df8dcf",
+            "actionType": "classify",
+            "pillar": "The Grove",
+            "toolsUsed": [
+              "classify"
+            ],
+            "messageText": "Test triage property types",
+            "timestamp": "2026-02-22T05:36:00.000Z",
+            "confirmed": false,
+            "adjusted": false,
+            "executionTimeMs": null
+          },
+          {
+            "id": "30f780a7-8eef-8185-b6a3-decd25c4ce58",
+            "intentHash": "b8df8dcf",
+            "actionType": "classify",
+            "pillar": "The Grove",
+            "toolsUsed": [
+              "classify"
+            ],
+            "messageText": "Test triage property types",
+            "timestamp": "2026-02-22T05:36:00.000Z",
+            "confirmed": false,
+            "adjusted": false,
+            "executionTimeMs": null
+          },
+          {
+            "id": "30f780a7-8eef-814d-90cf-edc72ae21591",
+            "intentHash": "b8df8dcf",
+            "actionType": "classify",
+            "pillar": "The Grove",
+            "toolsUsed": [
+              "classify"
+            ],
+            "messageText": "Test triage property types",
+            "timestamp": "2026-02-22T05:36:00.000Z",
+            "confirmed": false,
+            "adjusted": false,
+            "executionTimeMs": null
+          },
+          {
+            "id": "30f780a7-8eef-8100-a210-c1db8043ce95",
+            "intentHash": "b8df8dcf",
+            "actionType": "classify",
+            "pillar": "The Grove",
+            "toolsUsed": [
+              "classify"
+            ],
+            "messageText": "Test triage property types",
+            "timestamp": "2026-02-22T05:36:00.000Z",
+            "confirmed": false,
+            "adjusted": false,
+            "executionTimeMs": null
+          },
+          {
+            "id": "30f780a7-8eef-81e3-afa9-d9fc720509d7",
+            "intentHash": "b8df8dcf",
+            "actionType": "classify",
+            "pillar": "The Grove",
+            "toolsUsed": [
+              "classify"
+            ],
+            "messageText": "Test triage property types",
+            "timestamp": "2026-02-22T05:36:00.000Z",
+            "confirmed": false,
+            "adjusted": false,
+            "executionTimeMs": null
+          },
+          {
+            "id": "30f780a7-8eef-81ed-a7cd-f86384e291ea",
+            "intentHash": "b8df8dcf",
+            "actionType": "classify",
+            "pillar": "The Grove",
+            "toolsUsed": [
+              "classify"
+            ],
+            "messageText": "Test triage property types",
+            "timestamp": "2026-02-22T05:36:00.000Z",
+            "confirmed": false,
+            "adjusted": false,
+            "executionTimeMs": null
+          },
+          {
+            "id": "30f780a7-8eef-816d-9bdf-c53353b46093",
+            "intentHash": "b8df8dcf",
+            "actionType": "classify",
+            "pillar": "The Grove",
+            "toolsUsed": [
+              "classify"
+            ],
+            "messageText": "Test triage property types",
+            "timestamp": "2026-02-22T05:36:00.000Z",
+            "confirmed": false,
+            "adjusted": false,
+            "executionTimeMs": null
+          },
+          {
+            "id": "30f780a7-8eef-8190-8209-ce8177e47ab2",
+            "intentHash": "b8df8dcf",
+            "actionType": "classify",
+            "pillar": "The Grove",
+            "toolsUsed": [
+              "classify"
+            ],
+            "messageText": "Test triage property types",
+            "timestamp": "2026-02-22T05:35:00.000Z",
+            "confirmed": false,
+            "adjusted": false,
+            "executionTimeMs": null
+          },
+          {
+            "id": "30f780a7-8eef-8180-aa1c-cd6f3161c612",
+            "intentHash": "b8df8dcf",
+            "actionType": "classify",
+            "pillar": "The Grove",
+            "toolsUsed": [
+              "classify"
+            ],
+            "messageText": "Test triage property types",
+            "timestamp": "2026-02-22T05:35:00.000Z",
+            "confirmed": false,
+            "adjusted": false,
+            "executionTimeMs": null
+          },
+          {
+            "id": "30f780a7-8eef-81a5-b0d2-d4033aee9551",
+            "intentHash": "b8df8dcf",
+            "actionType": "classify",
+            "pillar": "The Grove",
+            "toolsUsed": [
+              "classify"
+            ],
+            "messageText": "Test triage property types",
+            "timestamp": "2026-02-22T05:35:00.000Z",
+            "confirmed": false,
+            "adjusted": false,
+            "executionTimeMs": null
+          },
+          {
+            "id": "30f780a7-8eef-810f-9b9b-ee292d492166",
+            "intentHash": "b8df8dcf",
+            "actionType": "classify",
+            "pillar": "The Grove",
+            "toolsUsed": [
+              "classify"
+            ],
+            "messageText": "Test triage property types",
+            "timestamp": "2026-02-22T05:35:00.000Z",
+            "confirmed": false,
+            "adjusted": false,
+            "executionTimeMs": null
+          },
+          {
+            "id": "30f780a7-8eef-8118-a449-fb0d74011480",
+            "intentHash": "b8df8dcf",
+            "actionType": "classify",
+            "pillar": "The Grove",
+            "toolsUsed": [
+              "classify"
+            ],
+            "messageText": "Test triage property types",
+            "timestamp": "2026-02-22T05:35:00.000Z",
+            "confirmed": false,
+            "adjusted": false,
+            "executionTimeMs": null
+          },
+          {
+            "id": "30f780a7-8eef-8103-95fa-fed326e567fe",
+            "intentHash": "b8df8dcf",
+            "actionType": "classify",
+            "pillar": "The Grove",
+            "toolsUsed": [
+              "classify"
+            ],
+            "messageText": "Test triage property types",
+            "timestamp": "2026-02-22T05:35:00.000Z",
+            "confirmed": false,
+            "adjusted": false,
+            "executionTimeMs": null
+          },
+          {
+            "id": "30f780a7-8eef-81f8-a67e-e0ed616215f1",
+            "intentHash": "b8df8dcf",
+            "actionType": "classify",
+            "pillar": "The Grove",
+            "toolsUsed": [
+              "classify"
+            ],
+            "messageText": "Test triage property types",
+            "timestamp": "2026-02-22T05:35:00.000Z",
+            "confirmed": false,
+            "adjusted": false,
+            "executionTimeMs": null
+          },
+          {
+            "id": "30f780a7-8eef-813f-84f4-fad46f4ace31",
+            "intentHash": "b8df8dcf",
+            "actionType": "classify",
+            "pillar": "The Grove",
+            "toolsUsed": [
+              "classify"
+            ],
+            "messageText": "Test triage property types",
+            "timestamp": "2026-02-22T05:34:00.000Z",
+            "confirmed": false,
+            "adjusted": false,
+            "executionTimeMs": null
+          },
+          {
+            "id": "30f780a7-8eef-81a8-8eaf-cb06e0fc5225",
+            "intentHash": "b8df8dcf",
+            "actionType": "classify",
+            "pillar": "The Grove",
+            "toolsUsed": [
+              "classify"
+            ],
+            "messageText": "Test triage property types",
+            "timestamp": "2026-02-22T05:33:00.000Z",
+            "confirmed": false,
+            "adjusted": false,
+            "executionTimeMs": null
+          },
+          {
+            "id": "30f780a7-8eef-81dc-894f-d5721ba3201d",
+            "intentHash": "b8df8dcf",
+            "actionType": "classify",
+            "pillar": "The Grove",
+            "toolsUsed": [
+              "classify"
+            ],
+            "messageText": "Test triage property types",
+            "timestamp": "2026-02-22T05:33:00.000Z",
+            "confirmed": false,
+            "adjusted": false,
+            "executionTimeMs": null
+          },
+          {
+            "id": "30f780a7-8eef-8150-ad31-c8b7ab5ac243",
+            "intentHash": "b8df8dcf",
+            "actionType": "classify",
+            "pillar": "The Grove",
+            "toolsUsed": [
+              "classify"
+            ],
+            "messageText": "Test triage property types",
+            "timestamp": "2026-02-22T05:33:00.000Z",
+            "confirmed": false,
+            "adjusted": false,
+            "executionTimeMs": null
+          },
+          {
+            "id": "30f780a7-8eef-8130-9b6e-fc7c5c40d5d9",
+            "intentHash": "b8df8dcf",
+            "actionType": "classify",
+            "pillar": "The Grove",
+            "toolsUsed": [
+              "classify"
+            ],
+            "messageText": "Test triage property types",
+            "timestamp": "2026-02-22T05:33:00.000Z",
+            "confirmed": false,
+            "adjusted": false,
+            "executionTimeMs": null
+          },
+          {
+            "id": "30f780a7-8eef-817a-a723-cda2d534e4a9",
+            "intentHash": "b8df8dcf",
+            "actionType": "classify",
+            "pillar": "The Grove",
+            "toolsUsed": [
+              "classify"
+            ],
+            "messageText": "Test triage property types",
+            "timestamp": "2026-02-22T05:33:00.000Z",
+            "confirmed": false,
+            "adjusted": false,
+            "executionTimeMs": null
+          },
+          {
+            "id": "30f780a7-8eef-818d-8474-c23a521788bd",
+            "intentHash": "b8df8dcf",
+            "actionType": "classify",
+            "pillar": "The Grove",
+            "toolsUsed": [
+              "classify"
+            ],
+            "messageText": "Test triage property types",
+            "timestamp": "2026-02-22T05:33:00.000Z",
+            "confirmed": false,
+            "adjusted": false,
+            "executionTimeMs": null
+          },
+          {
+            "id": "30f780a7-8eef-8161-be00-cf4c3c4a5692",
+            "intentHash": "b8df8dcf",
+            "actionType": "classify",
+            "pillar": "The Grove",
+            "toolsUsed": [
+              "classify"
+            ],
+            "messageText": "Test triage property types",
+            "timestamp": "2026-02-22T05:33:00.000Z",
+            "confirmed": false,
+            "adjusted": false,
+            "executionTimeMs": null
+          },
+          {
+            "id": "30f780a7-8eef-810b-a35a-f2a1334b5e04",
+            "intentHash": "b8df8dcf",
+            "actionType": "classify",
+            "pillar": "The Grove",
+            "toolsUsed": [
+              "classify"
+            ],
+            "messageText": "Test triage property types",
+            "timestamp": "2026-02-22T05:33:00.000Z",
+            "confirmed": false,
+            "adjusted": false,
+            "executionTimeMs": null
+          },
+          {
+            "id": "30f780a7-8eef-8190-8b2f-ffa8b12ec505",
+            "intentHash": "b8df8dcf",
+            "actionType": "classify",
+            "pillar": "The Grove",
+            "toolsUsed": [
+              "classify"
+            ],
+            "messageText": "Test triage property types",
+            "timestamp": "2026-02-22T05:32:00.000Z",
+            "confirmed": false,
+            "adjusted": false,
+            "executionTimeMs": null
+          },
+          {
+            "id": "30f780a7-8eef-8189-8f90-e79281f4baf0",
+            "intentHash": "b8df8dcf",
+            "actionType": "classify",
+            "pillar": "The Grove",
+            "toolsUsed": [
+              "classify"
+            ],
+            "messageText": "Test triage property types",
+            "timestamp": "2026-02-22T05:32:00.000Z",
+            "confirmed": false,
+            "adjusted": false,
+            "executionTimeMs": null
+          },
+          {
+            "id": "30f780a7-8eef-816e-80bc-e71c4468a522",
+            "intentHash": "b8df8dcf",
+            "actionType": "classify",
+            "pillar": "The Grove",
+            "toolsUsed": [
+              "classify"
+            ],
+            "messageText": "Test triage property types",
+            "timestamp": "2026-02-22T05:32:00.000Z",
+            "confirmed": false,
+            "adjusted": false,
+            "executionTimeMs": null
+          },
+          {
+            "id": "30f780a7-8eef-814e-a513-d7111aa0614a",
+            "intentHash": "b8df8dcf",
+            "actionType": "classify",
+            "pillar": "The Grove",
+            "toolsUsed": [
+              "classify"
+            ],
+            "messageText": "Test triage property types",
+            "timestamp": "2026-02-22T05:32:00.000Z",
+            "confirmed": false,
+            "adjusted": false,
+            "executionTimeMs": null
+          },
+          {
+            "id": "30f780a7-8eef-81c0-b289-e19e4147ac3a",
+            "intentHash": "b8df8dcf",
+            "actionType": "classify",
+            "pillar": "The Grove",
+            "toolsUsed": [
+              "classify"
+            ],
+            "messageText": "Test triage property types",
+            "timestamp": "2026-02-22T05:32:00.000Z",
+            "confirmed": false,
+            "adjusted": false,
+            "executionTimeMs": null
+          },
+          {
+            "id": "30f780a7-8eef-813a-ac8e-f158c4fca113",
+            "intentHash": "b8df8dcf",
+            "actionType": "classify",
+            "pillar": "The Grove",
+            "toolsUsed": [
+              "classify"
+            ],
+            "messageText": "Test triage property types",
+            "timestamp": "2026-02-22T05:32:00.000Z",
+            "confirmed": false,
+            "adjusted": false,
+            "executionTimeMs": null
+          },
+          {
+            "id": "30f780a7-8eef-8145-ae64-f57aa64b50cf",
+            "intentHash": "b8df8dcf",
+            "actionType": "classify",
+            "pillar": "The Grove",
+            "toolsUsed": [
+              "classify"
+            ],
+            "messageText": "Test triage property types",
+            "timestamp": "2026-02-22T05:32:00.000Z",
+            "confirmed": false,
+            "adjusted": false,
+            "executionTimeMs": null
+          },
+          {
+            "id": "30f780a7-8eef-8180-abf9-e552a2167d05",
+            "intentHash": "b8df8dcf",
+            "actionType": "classify",
+            "pillar": "The Grove",
+            "toolsUsed": [
+              "classify"
+            ],
+            "messageText": "Test triage property types",
+            "timestamp": "2026-02-22T05:32:00.000Z",
+            "confirmed": false,
+            "adjusted": false,
+            "executionTimeMs": null
+          },
+          {
+            "id": "30f780a7-8eef-81e5-a3a7-d89ade1f844c",
+            "intentHash": "b8df8dcf",
+            "actionType": "classify",
+            "pillar": "The Grove",
+            "toolsUsed": [
+              "classify"
+            ],
+            "messageText": "Test triage property types",
+            "timestamp": "2026-02-22T05:31:00.000Z",
+            "confirmed": false,
+            "adjusted": false,
+            "executionTimeMs": null
+          },
+          {
+            "id": "30f780a7-8eef-8171-b213-f71f9192715d",
+            "intentHash": "b8df8dcf",
+            "actionType": "classify",
+            "pillar": "The Grove",
+            "toolsUsed": [
+              "classify"
+            ],
+            "messageText": "Test triage property types",
+            "timestamp": "2026-02-22T05:31:00.000Z",
+            "confirmed": false,
+            "adjusted": false,
+            "executionTimeMs": null
+          },
+          {
+            "id": "30f780a7-8eef-8149-bdee-dbed0dde3fcf",
+            "intentHash": "b8df8dcf",
+            "actionType": "classify",
+            "pillar": "The Grove",
+            "toolsUsed": [
+              "classify"
+            ],
+            "messageText": "Test triage property types",
+            "timestamp": "2026-02-22T05:31:00.000Z",
+            "confirmed": false,
+            "adjusted": false,
+            "executionTimeMs": null
+          },
+          {
+            "id": "30f780a7-8eef-817c-9381-f369689fdc86",
+            "intentHash": "b8df8dcf",
+            "actionType": "classify",
+            "pillar": "The Grove",
+            "toolsUsed": [
+              "classify"
+            ],
+            "messageText": "Test triage property types",
+            "timestamp": "2026-02-22T05:31:00.000Z",
+            "confirmed": false,
+            "adjusted": false,
+            "executionTimeMs": null
+          },
+          {
+            "id": "30f780a7-8eef-81fd-9481-d41f68889bde",
+            "intentHash": "b8df8dcf",
+            "actionType": "classify",
+            "pillar": "The Grove",
+            "toolsUsed": [
+              "classify"
+            ],
+            "messageText": "Test triage property types",
+            "timestamp": "2026-02-22T05:31:00.000Z",
+            "confirmed": false,
+            "adjusted": false,
+            "executionTimeMs": null
+          }
+        ],
+        "pillar": "The Grove",
+        "actionType": "classify",
+        "toolsUsed": [
+          "classify"
+        ],
+        "frequency": 93,
+        "firstSeen": "2026-02-22T05:31:00.000Z",
+        "lastSeen": "2026-02-22T16:58:00.000Z",
+        "avgExecutionTimeMs": 0,
+        "proposedTier": 1
+      },
+      "skill": {
+        "name": "the-grove-classify-triage-property-b8df",
+        "version": "1.0.0",
+        "description": "Auto-generated skill from 93 similar actions: \"Test triage property types...\"",
+        "triggers": [
+          {
+            "type": "intentHash",
+            "value": "b8df8dcf"
+          },
+          {
+            "type": "pillar",
+            "value": "The Grove"
+          },
+          {
+            "type": "keyword",
+            "value": "test|triage|property|types"
+          }
+        ],
+        "inputs": {},
+        "outputs": [],
+        "process": {
+          "type": "tool_sequence",
+          "steps": [
+            {
+              "id": "step_1",
+              "tool": "classify",
+              "inputs": {},
+              "onError": "fail"
+            }
+          ]
+        },
+        "tier": 1,
+        "enabled": false,
+        "createdAt": "2026-02-23T12:00:06.853Z",
+        "updatedAt": "2026-02-23T12:00:06.853Z",
+        "source": "generated",
+        "metrics": {
+          "executionCount": 0,
+          "successCount": 0,
+          "failureCount": 0,
+          "avgExecutionTime": 0,
+          "consecutiveFailures": 0
+        },
+        "tags": [
+          "auto-generated"
+        ],
+        "author": "pattern-detector"
+      },
+      "createdAt": "2026-02-23T12:00:06.853Z",
+      "status": "pending"
     }
   ],
-  "lastUpdated": "2026-02-19T12:00:13.178Z",
+  "lastUpdated": "2026-02-23T12:00:06.870Z",
   "version": 1
 }
