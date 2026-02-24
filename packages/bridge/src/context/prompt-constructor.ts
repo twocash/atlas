@@ -7,6 +7,7 @@
  *   [Slot 1: Intent]
  *   [Slot 4: Voice]
  *   [Slot 5: Browser]
+ *   [Slot 7: Session]      (if populated)
  *   [Slot 2: Domain RAG]   (if populated)
  *   [Slot 3: POV]          (if populated)
  *   [Slot 6: Output]
@@ -56,7 +57,7 @@ export function constructPrompt(assembly: AssemblyResult): string {
   const sections: string[] = [systemPreamble]
 
   // Ordered by semantic importance in the prompt
-  const slotOrder: string[] = ["intent", "voice", "browser", "self_model", "domain_rag", "pov", "output"]
+  const slotOrder: string[] = ["intent", "voice", "browser", "self_model", "session", "domain_rag", "pov", "output"]
 
   for (const slotId of slotOrder) {
     const slot = assembly.slots.find((s) => s.id === slotId)
@@ -83,6 +84,7 @@ const SLOT_HEADERS: Record<string, string> = {
   browser: "## Browser Context",
   domain_rag: "## Domain Knowledge",
   self_model: "## Self-Awareness: What I Can Do",
+  session: "## Session Context",
   pov: "## Epistemic Position",
   output: "## Output Instructions",
 }

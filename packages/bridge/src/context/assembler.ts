@@ -1,5 +1,5 @@
 /**
- * Context Assembler — populates the 7 context slots for orchestration.
+ * Context Assembler — populates the 8 context slots for orchestration.
  *
  * Slot 1: Intent — triage result + structured context     (WIRED)
  * Slot 2: Domain RAG — semantic search over corpus        (WIRED)
@@ -7,6 +7,7 @@
  * Slot 4: Voice — prompt composition output               (WIRED)
  * Slot 5: Browser — current page context from extension   (WIRED)
  * Slot 6: Output — landing surface + format instructions  (WIRED)
+ * Slot 7: Session — multi-turn session context            (WIRED)
  * Slot 9: Self-Model — runtime capability awareness       (WIRED)
  */
 
@@ -15,6 +16,7 @@ import { composeFromStructuredContext } from "../../../../packages/agents/src/se
 import type { StructuredCompositionInput } from "../../../../packages/agents/src/services/prompt-composition/types"
 import type {
   OrchestrationRequest,
+  SessionContext,
   BrowserContext,
   LandingSurface,
   ComplexityTier,
@@ -28,6 +30,7 @@ import {
   enforceTokenBudget,
   totalTokens,
   populatedSlotIds,
+  estimateTokens,
 } from "./slots"
 import { assembleDomainRagSlot } from "./domain-rag-slot"
 import { assemblePovSlot } from "./pov-slot"
@@ -247,6 +250,83 @@ function assembleOutputSlot(landingSurface: LandingSurface): ContextSlot {
   })
 }
 
+// ─── Session Slot (Slot 7) ────────────────────────────────
+
+/**
+ * Token metrics for the session slot — logged to Feed 2.0
+ * for observability. No arbitrary limits; measure, don't guess.
+ */
+export interface SessionSlotMetrics {
+  totalTokens: number
+  priorFindingsTokens: number
+  intentSequenceTokens: number
+  wasTrimmed: boolean
+}
+
+/**
+ * Assemble the session context slot from OrchestrationRequest.sessionContext.
+ *
+ * This is the CANONICAL session telemetry path — any surface that
+ * triggers orchestration gets session context automatically (ADR-005).
+ *
+ * Returns empty slot if no session context is provided.
+ */
+export function assembleSessionSlot(
+  sessionContext?: SessionContext,
+): { slot: ContextSlot; metrics: SessionSlotMetrics } {
+  const emptyMetrics: SessionSlotMetrics = {
+    totalTokens: 0,
+    priorFindingsTokens: 0,
+    intentSequenceTokens: 0,
+    wasTrimmed: false,
+  }
+
+  if (!sessionContext) {
+    return { slot: createEmptySlot("session", "conversation-state"), metrics: emptyMetrics }
+  }
+
+  const lines: string[] = []
+
+  if (sessionContext.topic) {
+    lines.push(`Topic: ${sessionContext.topic}`)
+  }
+  lines.push(`Turn: ${sessionContext.turnNumber}`)
+  if (sessionContext.currentDepth) {
+    lines.push(`Depth: ${sessionContext.currentDepth}`)
+  }
+  if (sessionContext.intentSequence.length > 0) {
+    lines.push(`Intent sequence: ${sessionContext.intentSequence.join(" → ")}`)
+  }
+  if (sessionContext.thesisHook) {
+    lines.push(`Thesis: ${sessionContext.thesisHook}`)
+  }
+  if (sessionContext.priorFindings) {
+    lines.push("", "Prior findings:", sessionContext.priorFindings)
+  }
+
+  const content = lines.join("\n")
+
+  // Measure tokens — no truncation here, budget enforcer handles trimming
+  const priorFindingsTokens = estimateTokens(sessionContext.priorFindings ?? "")
+  const intentSequenceTokens = estimateTokens(sessionContext.intentSequence.join(" → "))
+
+  const slot = createSlot({
+    id: "session",
+    source: "conversation-state",
+    content,
+    priority: 10, // Lowest — trimmed first when over budget
+  })
+
+  const metrics: SessionSlotMetrics = {
+    totalTokens: slot.tokens,
+    priorFindingsTokens,
+    intentSequenceTokens,
+    wasTrimmed: slot.content.length < content.length,
+  }
+
+  return { slot, metrics }
+}
+
 // ─── Main Assembler ───────────────────────────────────────
 
 /**
@@ -283,13 +363,17 @@ export async function assembleContext(
   const landingSurface = determineLandingSurface(triage, request.surface)
   const outputSlot = assembleOutputSlot(landingSurface)
 
-  // Step 6: Enforce budget
+  // Step 6: Assemble session slot (Slot 7)
+  const { slot: sessionSlot } = assembleSessionSlot(request.sessionContext)
+
+  // Step 7: Enforce budget
   const rawSlots: ContextSlot[] = [
     intentSlot,
     domainRagSlot,
     povSlot,
     voiceSlot,
     browserSlot,
+    sessionSlot,
     selfModelSlot,
     outputSlot,
   ]

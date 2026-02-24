@@ -2,7 +2,7 @@
  * Context Module — assembles context slots for cognitive orchestration.
  */
 
-export { assembleContext, type AssemblyResult } from "./assembler"
+export { assembleContext, assembleSessionSlot, type AssemblyResult, type SessionSlotMetrics } from "./assembler"
 export {
   constructPrompt,
   buildClaudeMessage,

@@ -931,6 +931,7 @@ async function runBridgeToolDispatchTests(cwd: string): Promise<SuiteResult> {
       'test/bridge-goals.test.ts',
       'test/dispatch.test.ts',
       'test/dispatch-chain.test.ts',
+      'test/slot7-session.test.ts',
     ],
     bridgeCwd,
     60000

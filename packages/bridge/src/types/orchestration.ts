@@ -38,9 +38,10 @@ export const TIER_ROUTES: Record<ComplexityTier, TierRoute> = {
  * Slot 4: Voice — prompt composition output (WIRED)
  * Slot 5: Browser — current page context from extension (WIRED)
  * Slot 6: Output — landing surface + format instructions (WIRED)
+ * Slot 7: Session — multi-turn session context (WIRED)
  * Slot 9: Self-Model — runtime capability awareness (WIRED)
  */
-export type SlotId = "intent" | "domain_rag" | "pov" | "voice" | "browser" | "output" | "self_model"
+export type SlotId = "intent" | "domain_rag" | "pov" | "voice" | "browser" | "output" | "session" | "self_model"
 
 export interface ContextSlot {
   /** Which slot this represents */
@@ -70,6 +71,7 @@ export const SLOT_TOKEN_BUDGETS: Record<SlotId, number> = {
   voice: 1000,
   browser: 1500,
   output: 500,
+  session: 1000,
   self_model: 500,
 }
 
@@ -82,6 +84,7 @@ export const SLOT_PRIORITIES: Record<SlotId, number> = {
   self_model: 60,  // Useful — what Atlas can do for this request
   pov: 30,        // Nice-to-have — epistemic stance
   domain_rag: 20, // Nice-to-have — corpus knowledge
+  session: 10,    // Trimmed first — multi-turn context
 }
 
 /** Total token budget for all slots combined */
@@ -105,8 +108,35 @@ export interface OrchestrationRequest {
   /** Browser context from extension (if available) */
   browserContext?: BrowserContext
 
+  /** Session context for multi-turn refinement (Slot 7) */
+  sessionContext?: SessionContext
+
   /** Timestamp when the bridge received this message */
   timestamp: string
+}
+
+/**
+ * Session context passed by surfaces into orchestration.
+ * Enables "go deeper" and multi-turn refinement by carrying
+ * prior findings and intent sequence across turns.
+ */
+export interface SessionContext {
+  /** Stable session ID (uuid, persists within TTL window) */
+  sessionId: string
+  /** Turn number within this session (1-based) */
+  turnNumber: number
+  /** Intent hash from the previous turn (drift detection) */
+  priorIntentHash?: string
+  /** Sequence of intents across turns (e.g. ['explore', 'research', 'draft']) */
+  intentSequence: string[]
+  /** Compressed prior findings from earlier turns */
+  priorFindings?: string
+  /** Current research depth */
+  currentDepth?: string
+  /** Thesis hook from prior research */
+  thesisHook?: string
+  /** Session topic (inferred from first turn) */
+  topic?: string
 }
 
 export interface BrowserContext {
