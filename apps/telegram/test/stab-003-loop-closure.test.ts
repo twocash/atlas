@@ -188,9 +188,12 @@ describe("STAB-003: Close the Cognitive Loop", () => {
   describe("Approval Signal Matching", () => {
     const approvalCases = [
       "yes", "Yeah", "yep", "YUP", "sure", "ok", "okay",
-      "go", "do it", "sounds good", "looks good",
-      "let's go", "lets go", "proceed", "approved", "approve",
+      "go", "go ahead", "do it", "sounds good", "looks good",
+      "sounds right", "sounds great", "Sounds right",
+      "let's go", "lets go", "let's do it", "proceed", "approved", "approve",
       "right", "correct", "exactly", "perfect",
+      "absolutely", "definitely", "for sure",
+      "works for me", "that works",
       "yes!", "sure.", "go!",
     ]
 
@@ -203,6 +206,8 @@ describe("STAB-003: Close the Cognitive Loop", () => {
     it("approval signals are case-insensitive", () => {
       expect(isApprovalSignal("YES")).toBe(true)
       expect(isApprovalSignal("Sounds Good")).toBe(true)
+      expect(isApprovalSignal("Sounds Right")).toBe(true)
+      expect(isApprovalSignal("SOUNDS RIGHT")).toBe(true)
     })
 
     it("non-approval text is not an approval signal", () => {

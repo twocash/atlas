@@ -46,7 +46,7 @@ export interface PendingApprovalSession {
 
 /** Positive approval signals (case-insensitive) */
 const APPROVAL_PATTERNS = [
-  /^(?:yes|yeah|yep|yup|sure|ok|okay|go|do\s+it|sounds?\s+good|looks?\s+good|let'?s?\s+go|proceed|approved?|right|correct|exactly|perfect)[\s!.]*$/i,
+  /^(?:yes|yeah|yep|yup|sure|ok|okay|go|go\s+ahead|do\s+it|sounds?\s+(?:good|right|great)|looks?\s+good|let'?s?\s+go|let'?s?\s+do\s+it|proceed|approved?|right|correct|exactly|perfect|absolutely|definitely|for\s+sure|works?\s+for\s+me|that\s+works?)[\s!.]*$/i,
   /^👍$/,
   /^✅$/,
 ];
