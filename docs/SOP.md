@@ -1287,119 +1287,213 @@ This includes:
 ## SOP-014: AnythingLLM RAG Infrastructure
 
 **Effective:** 2026-02-18
-**Updated:** 2026-02-23 (binding fix, cleanup, Windows auto-start, Tailscale access)
-**Scope:** AnythingLLM native desktop app on Jim's laptop
+**Updated:** 2026-02-24 (Docker migration, multi-user mode, reboot chain)
+**Scope:** AnythingLLM Docker container on grove-node-1
 
 ### Overview
 
-AnythingLLM is a RAG (Retrieval-Augmented Generation) server running as a **native Windows desktop application** (NOT Docker — Docker setup was abandoned). It provides document ingestion and semantic search for Atlas agents.
+AnythingLLM is a RAG (Retrieval-Augmented Generation) server running as a **Docker container** on grove-node-1. It provides document ingestion and semantic search for Atlas agents.
+
+**History:** The native Windows desktop app was the original deployment (pre-2026-02-24). It was abandoned because the native app does not support multi-user mode. Docker is now canonical. The native app (`C:\Users\jimca\AppData\Local\Programs\AnythingLLM\AnythingLLM.exe`) is still installed but MUST NOT be launched -- it will conflict with the Docker container on port 3001.
 
 ### Instance Details
 
 | Property | Value |
 |----------|-------|
-| **Executable** | `C:\Users\jimca\AppData\Local\Programs\AnythingLLM\AnythingLLM.exe` |
+| **Container name** | `anythingllm` |
+| **Image** | `mintplexlabs/anythingllm:latest` |
+| **Restart policy** | `always` (auto-starts when Docker daemon runs) |
+| **Port mapping** | `0.0.0.0:3001 -> 3001/tcp` |
 | **Local URL** | `http://localhost:3001` |
-| **Health endpoint** | `GET /api/ping` → `{"online":true}` |
-| **Storage** | `C:\Users\jimca\AppData\Roaming\anythingllm-desktop\storage` ← **PRODUCTION DATA — NEVER WIPE** |
-| **Binding** | `0.0.0.0:3001` (Tailscale-accessible via `APP_DISCOVERABLE=true`) |
-| **Tailscale IP** | `100.80.12.118` |
-| **Workspaces** | My Workspace, grove-vision, grove-technical, monarch, take-flight, gtm-consulting |
-| **Auto-start** | Windows startup registry (`HKCU\...\Run`) |
+| **Health endpoint** | `GET /api/ping` -> `{"online":true}` |
+| **Host storage** | `C:\anythingllm-storage` -> `/app/server/storage` (container) |
+| **Tailscale IP** | `100.80.12.118` (remote access: `http://100.80.12.118:3001`) |
+| **Multi-user mode** | Enabled |
+| **Embedding engine** | Native (MiniLM-L6-v2) |
+| **Vector DB** | lancedb |
+| **LLM provider** | Anthropic (Claude Sonnet 4), set via Docker `-e` env vars |
+| **LLM model** | `claude-sonnet-4-20250514` |
+| **Workspaces** | My Workspace, grove-technical, grove-vision, monarch, take-flight, gtm-consulting |
+
+**Storage is PRODUCTION DATA -- NEVER WIPE `C:\anythingllm-storage`.**
+
+### Reboot Chain (Zero-Touch Recovery)
+
+On a normal reboot, AnythingLLM comes back automatically with no human intervention:
+
+1. Windows login
+2. Docker Desktop auto-starts (registered in `HKCU\Software\Microsoft\Windows\CurrentVersion\Run`, added 2026-02-24)
+3. Docker daemon starts
+4. AnythingLLM container auto-starts (`--restart always` policy)
+
+The native Windows desktop app has been **removed** from `HKCU\...\Run` to prevent it from squatting port 3001 before Docker comes up. If AnythingLLM fails to start after reboot, check Case 5 below.
 
 ### Environment Variables
 
-In `apps/telegram/.env`:
+Single source of truth: `apps/telegram/.env`
+
 ```
 ANYTHINGLLM_URL=http://localhost:3001
-ANYTHINGLLM_API_KEY=<from AnythingLLM Settings > Tools > API Keys>
+ANYTHINGLLM_API_KEY=<from apps/telegram/.env>
 ```
 
 Both bot and bridge read from this `.env` file:
 - Bot loads via `dotenv` package in `src/index.ts`
 - Bridge loads via PowerShell parser in `start-bridge.ps1`
 
-**API key gotcha:** If the key doesn't persist across AnythingLLM restarts, regenerate it in AnythingLLM Settings > Tools > API Keys and update `.env`.
-
 ### Health Check
 
 Atlas `/health` command includes an AnythingLLM check via `checkAnythingLlm()` in `health.ts`.
 
-Manual check:
-```powershell
-Invoke-RestMethod -Uri "http://localhost:3001/api/ping"
-# Expected: @{online=True}
+Manual check (unauthenticated):
+```bash
+curl -s http://localhost:3001/api/ping
+# Expected: {"online":true}
 ```
 
-Verify API key works:
-```powershell
-curl -s -H "Authorization: Bearer <key>" http://localhost:3001/api/v1/workspaces
+Authenticated check (verifies API key):
+```bash
+curl -s -H "Authorization: Bearer $ANYTHINGLLM_API_KEY" http://localhost:3001/api/v1/workspaces
 # Expected: JSON with workspaces array
+```
+
+Remote check (from der-tier via Tailscale):
+```bash
+curl -s http://100.80.12.118:3001/api/ping
 ```
 
 ### Recovery SOPs
 
-**Case 0: Normal boot**
+**Case 0: Normal reboot**
 
-AnythingLLM is registered in Windows startup (`HKCU\...\Run`) and launches automatically on login. No action needed.
+Docker Desktop auto-starts -> Docker daemon starts -> container auto-starts (`--restart always`). No action needed. Verify with `curl -s http://localhost:3001/api/ping`.
 
-**Case 1: App closed mid-session (supervisor auto-starts)**
+**Case 1: Docker Desktop not running**
 
-The `/atlas-supervisor` v3.0 auto-starts AnythingLLM if it detects it's offline:
+Docker Desktop is registered in Windows startup but may fail to launch. Start it manually:
 ```powershell
-Start-Process 'C:\Users\jimca\AppData\Local\Programs\AnythingLLM\AnythingLLM.exe'
+Start-Process "C:\Program Files\Docker\Docker\Docker Desktop.exe"
 ```
-Wait ~10s, verify with `/api/ping`. One auto-start attempt per supervisor session.
+Wait for Docker daemon to initialize (~30s). The AnythingLLM container will auto-start once the daemon is ready.
 
-**Case 2: Manual start**
+**Case 2: Container stopped but Docker running**
 
-Launch from Start Menu or run:
+```bash
+docker start anythingllm
+```
+Wait ~10s, verify with `/api/ping`.
+
+**Case 3: Container deleted (nuclear recovery)**
+
+Recreate the container from scratch. Storage is preserved on the host at `C:\anythingllm-storage`:
+
+**CRITICAL: Must use `MSYS_NO_PATHCONV=1` prefix in Git Bash** or paths get mangled to `C:/Program Files/Git/...` which breaks STORAGE_DIR inside the container. LLM config MUST be passed as `-e` env vars (the .env file in storage is unreliable for these).
+
+```bash
+MSYS_NO_PATHCONV=1 docker run -d \
+  -p 3001:3001 \
+  --cap-add SYS_ADMIN \
+  --restart always \
+  -v "C:\anythingllm-storage:/app/server/storage" \
+  -e STORAGE_DIR="/app/server/storage" \
+  -e LLM_PROVIDER="anthropic" \
+  -e ANTHROPIC_API_KEY="$ANTHROPIC_API_KEY" \
+  -e ANTHROPIC_MODEL_PREF="claude-sonnet-4-20250514" \
+  --name anythingllm \
+  mintplexlabs/anythingllm:latest
+```
+
+All data (workspaces, documents, vectors, API keys, users) is in the bind mount and will be restored automatically.
+
+**Why `-e` env vars instead of .env file?** AnythingLLM Docker does not reliably read API keys from the storage `.env` file. Docker `-e` flags inject them into the process environment directly, which the app always picks up. The `.env` file in storage is used for other settings (embedding engine, vector DB, etc.) but LLM provider config must come from Docker env vars.
+
+**Case 4: API key 403 errors**
+
+The API key lives in the SQLite database inside the container. To query it:
+```bash
+docker exec -w /app/server anythingllm node -e "const { PrismaClient } = require('@prisma/client'); const p = new PrismaClient(); p.api_keys.findMany().then(k => { console.log(JSON.stringify(k)); p.\$disconnect(); });"
+```
+
+Alternatively, generate a new key in the web UI at `http://localhost:3001` under Settings > Tools > API Keys. Then update `ANYTHINGLLM_API_KEY` in `apps/telegram/.env` and restart the bot/bridge.
+
+**Case 5: Native app squatting port 3001**
+
+If the native desktop app was accidentally launched or re-added to startup, it will grab port 3001 before Docker can bind it. Symptoms: Docker container starts but AnythingLLM is unreachable, or the container logs show port-in-use errors.
+
+Fix:
 ```powershell
-Start-Process 'C:\Users\jimca\AppData\Local\Programs\AnythingLLM\AnythingLLM.exe'
+# Kill the native app
+taskkill /f /im AnythingLLM.exe
+
+# Remove from startup if re-added
+Remove-ItemProperty -Path 'HKCU:\Software\Microsoft\Windows\CurrentVersion\Run' -Name 'AnythingLLM' -ErrorAction SilentlyContinue
+
+# Restart the Docker container
+docker restart anythingllm
 ```
 
-**Case 3: API key 403 errors**
+The native app MUST NOT be in Windows startup. Only Docker Desktop should be in `HKCU\...\Run`.
 
-If bridge or bot logs show `No valid api key found`:
-1. Open AnythingLLM desktop app > Settings > Tools > API Keys
-2. Copy or regenerate the key
-3. Update `ANYTHINGLLM_API_KEY` in `apps/telegram/.env`
-4. Restart bridge (`start-bridge.bat`) to pick up new key
-5. Bot picks up `.env` changes on next restart
+### Storage Architecture
 
-### Storage Warning
-
-Production data lives at `C:\Users\jimca\AppData\Roaming\anythingllm-desktop\storage` — this is the `.env`, SQLite DB, lancedb vectors, and all ingested documents.
-
-> **Note:** `C:/anythingllm-storage/` was a Docker-era leftover with stale API keys and Docker paths. It was deleted on 2026-02-23. If it reappears, something has recreated the Docker setup — investigate.
+| Path | What it is | Critical? |
+|------|-----------|-----------|
+| `C:\anythingllm-storage` (host) | Docker bind mount -- production data | YES -- NEVER WIPE |
+| `C:\anythingllm-storage\.env` (host) | Docker container's AnythingLLM config | YES |
+| `/app/server/storage` (container) | Same data, mounted inside container | Same data |
+| `C:\Users\jimca\AppData\Roaming\anythingllm-desktop\storage\.env` | Native app config (LEGACY) | NO -- do not use |
 
 **NEVER:**
-- Wipe or format the storage directory
-- Uninstall AnythingLLM without backing up storage first
+- Wipe or format `C:\anythingllm-storage`
+- Run `docker rm anythingllm` without confirming the bind mount is intact
+- Launch the native desktop app while the Docker container is running
+- Confuse the native app config path with the Docker config path
 
 **ALWAYS:**
-- Back up the storage directory before major updates
+- Back up `C:\anythingllm-storage` before major updates or image pulls
+- Use the Docker container for all AnythingLLM operations
+- Verify the bind mount after any `docker run` command: `docker inspect anythingllm --format '{{range .Mounts}}{{.Source}} -> {{.Destination}}{{end}}'`
 
 ### AnythingLLM Configuration
 
-The app reads its `.env` from the storage directory at startup via `dotenv.config()`. Key settings:
+The container reads its config from `/app/server/storage/.env` (host: `C:\anythingllm-storage\.env`). Key settings:
 
 | Setting | Value | Effect |
 |---------|-------|--------|
-| `APP_DISCOVERABLE` | `true` | Binds to `0.0.0.0` instead of `127.0.0.1` (enables Tailscale access) |
 | `EMBEDDING_ENGINE` | `native` | Uses built-in MiniLM-L6-v2 for embeddings |
 | `VECTOR_DB` | `lancedb` | Local vector store, no external service needed |
 | `SERVER_PORT` | `3001` | HTTP API port |
+| `MULTI_USER_MODE` | `true` | Multi-user authentication enabled |
+| `STORAGE_DIR` | `/app/server/storage` | Set via `-e` flag on `docker run` |
 
-**Config file:** `C:\Users\jimca\AppData\Roaming\anythingllm-desktop\storage\.env`
+### Docker Maintenance
+
+**Pull latest image:**
+```bash
+docker pull mintplexlabs/anythingllm:latest
+docker stop anythingllm
+docker rm anythingllm
+# Then recreate with the docker run command from Case 3
+```
+
+**View container logs:**
+```bash
+docker logs anythingllm --tail 100
+docker logs anythingllm -f  # follow/stream
+```
+
+**Check container status:**
+```bash
+docker ps -f name=anythingllm
+```
 
 ### Supervisor Integration
 
 The `/atlas-supervisor` v3.0 checks AnythingLLM status via HTTP ping on each `status` or `logs` command.
 
-- If offline: **auto-starts** the desktop app (one attempt per session)
-- If still offline after auto-start: report as warning, continue (RAG is non-critical)
-- Restart command: `restart-anythingllm` in supervisor session
+- If offline: logs a warning (RAG is non-critical, bot continues without it)
+- Recovery is handled by Docker's `--restart always` policy, not by the supervisor
+- If Docker itself is down, supervisor cannot recover it -- see Case 1 above
 
 ---
 
