@@ -565,6 +565,7 @@ async function runRegressionTests(cwd: string): Promise<SuiteResult> {
     'test/stab-003-chain.test.ts',               // STAB-003: Loop closure chain tests (dialogue → refinement → approval)
     'test/conversation-state.test.ts',           // SESSION-STATE-FOUNDATION: Unified state manager unit tests
     'test/stab-003b-scenarios.test.ts',          // SESSION-STATE-FOUNDATION: Chain tests for 5-bug fix scenarios
+    'test/session-telemetry.test.ts',            // SESSION-TELEMETRY: Session fields flow through logAction
   ];
 
   const result = await runCommand(

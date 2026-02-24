@@ -44,7 +44,7 @@ import { recordUsage } from './stats';
 import { maybeHandleAsContentShare, triggerMediaConfirmation, triggerInstantClassification } from './content-flow';
 import { hasPendingSocraticSessionForUser, getSocraticSessionByUserId, removeSocraticSession } from './socratic-session';
 import { handleSocraticAnswer, executeResolvedGoal } from './socratic-adapter';
-import { logAction, isFeatureEnabled } from '../skills';
+import { logAction, getIntentHash, isFeatureEnabled } from '../skills';
 import { reportFailure } from '@atlas/shared/error-escalation';
 import { createTrace, addStep, completeStep, completeTrace, failTrace, type TraceContext } from '@atlas/shared/trace';
 import { classifyWithFallback, triageForAudit, triageMessage } from '../cognitive/triage-skill';
@@ -97,6 +97,7 @@ import {
   enterApprovalPhase,
   enterGoalClarificationPhase,
   returnToIdle,
+  recordTurn,
 } from './conversation-state';
 import {
   incorporateClarification,
@@ -351,6 +352,11 @@ export async function handleConversation(ctx: Context): Promise<void> {
     textLength: messageText.length,
     traceId: trace.traceId,
   });
+
+  // Session telemetry: record turn + capture intent hash for drift detection
+  const chatId = ctx.chat!.id;
+  const currentIntentHash = messageText ? getIntentHash(messageText).hash : undefined;
+  const sessionTelemetry = recordTurn(chatId, userId, currentIntentHash);
 
   // React to indicate message received
   await setReaction(ctx, REACTIONS.READING);
@@ -1547,6 +1553,10 @@ export async function handleConversation(ctx: Context): Promise<void> {
         workType: classification.workType,
         contentType: mediaContext ? mediaContext.type as 'image' | 'document' | 'video' | 'audio' : undefined,
         existingFeedId: auditResult?.feedId,
+        // Session telemetry
+        sessionId: sessionTelemetry.sessionId,
+        turnNumber: sessionTelemetry.turnNumber,
+        priorIntentHash: sessionTelemetry.priorIntentHash,
       }).catch(err => {
         logger.warn('Skill action logging failed (non-fatal)', { error: err });
       });

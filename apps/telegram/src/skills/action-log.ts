@@ -111,6 +111,17 @@ export interface ActionLogInput {
   /** Intent-First structured context (Phase 0) */
   structuredContext?: StructuredContext;
 
+  // Session Telemetry fields (Sprint: SESSION-TELEMETRY)
+
+  /** Conversation session ID (uuid, stable within a 15-min TTL window) */
+  sessionId?: string;
+
+  /** Turn number within the current session (1-based) */
+  turnNumber?: number;
+
+  /** Intent hash from the previous turn (for drift detection) */
+  priorIntentHash?: string;
+
   /**
    * Existing Feed entry ID to update instead of creating a new one.
    * Use this when createAuditTrail already created the Feed entry
@@ -321,6 +332,25 @@ export async function logAction(input: ActionLogInput): Promise<ActionLogResult>
     if (input.triageTitle) {
       patternProps['Triage Title'] = {
         rich_text: [{ text: { content: input.triageTitle } }],
+      };
+    }
+
+    // Session Telemetry fields
+    if (input.sessionId) {
+      patternProps['Session ID'] = {
+        rich_text: [{ text: { content: input.sessionId } }],
+      };
+    }
+
+    if (input.turnNumber !== undefined) {
+      patternProps['Turn Number'] = {
+        number: input.turnNumber,
+      };
+    }
+
+    if (input.priorIntentHash) {
+      patternProps['Prior Intent Hash'] = {
+        rich_text: [{ text: { content: input.priorIntentHash } }],
       };
     }
 

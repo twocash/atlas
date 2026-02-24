@@ -177,6 +177,15 @@ export interface ConversationState {
   /** Telemetry tracker — accumulates across clarification rounds */
   goalTracker?: GoalTracker;
 
+  // ── Session Telemetry (Sprint: SESSION-TELEMETRY) ──
+
+  /** Stable session ID (uuid, persists across turns within TTL window) */
+  sessionId: string;
+  /** Turn count within this session (1-based, incremented on each message) */
+  turnCount: number;
+  /** Intent hash from the most recent turn (for drift detection) */
+  lastIntentHash?: string;
+
   // ── Timestamps ──
 
   /** When this state was created */
@@ -210,6 +219,8 @@ export function getOrCreateState(chatId: number, userId: number): ConversationSt
     chatId,
     userId,
     phase: 'idle',
+    sessionId: crypto.randomUUID(),
+    turnCount: 0,
     createdAt: Date.now(),
     lastActivity: Date.now(),
   };
@@ -255,6 +266,36 @@ export function updateState(chatId: number, updates: Partial<ConversationState>)
 
   Object.assign(state, updates, { lastActivity: Date.now() });
   return state;
+}
+
+// ─── Session Telemetry ──────────────────────────────────
+
+/**
+ * Record a new conversation turn. Increments turnCount and stores
+ * the current intent hash as lastIntentHash for the NEXT turn's
+ * "prior intent hash" field.
+ *
+ * Call this once per incoming message, early in handleConversation().
+ */
+export function recordTurn(chatId: number, userId: number, intentHash?: string): {
+  sessionId: string;
+  turnNumber: number;
+  priorIntentHash?: string;
+} {
+  const state = getOrCreateState(chatId, userId);
+  const priorIntentHash = state.lastIntentHash;
+
+  state.turnCount += 1;
+  if (intentHash) {
+    state.lastIntentHash = intentHash;
+  }
+  state.lastActivity = Date.now();
+
+  return {
+    sessionId: state.sessionId,
+    turnNumber: state.turnCount,
+    priorIntentHash,
+  };
 }
 
 // ─── Content Context (Bug #2 fix) ──────────────────────

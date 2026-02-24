@@ -26,7 +26,8 @@ import { buildContentPayload } from '../conversation/content-router';
 import { type Pillar as MediaPillar } from '../conversation/media';
 import { getPatternSuggestion, recordClassificationFeedback } from '../conversation/content-patterns';
 import type { Pillar, RequestType } from '../conversation/types';
-import { logAction, isFeatureEnabled, triggerContextualExtraction } from '../skills';
+import { logAction, getIntentHash, isFeatureEnabled, triggerContextualExtraction } from '../skills';
+import { getState } from '../conversation/conversation-state';
 import { safeAnswerCallback } from '../utils/telegram-helpers';
 import {
   runResearchAgentWithNotifications,
@@ -745,6 +746,10 @@ async function handleConfirm(
     // Log action for skill pattern detection (Phase 1)
     // Non-blocking - pass existingFeedId to prevent dual-write (Bug A fix)
     if (isFeatureEnabled('skillLogging')) {
+      // Session telemetry: read from conversation state (callback is same session)
+      const cbChatId = ctx.chat?.id;
+      const cbState = cbChatId ? getState(cbChatId) : undefined;
+
       logAction({
         messageText: pending.originalText,
         pillar: pending.pillar,
@@ -761,6 +766,10 @@ async function handleConfirm(
         keywords: extractKeywords(pending),
         workType: inferWorkType(pending),
         existingFeedId: result?.feedId,
+        // Session telemetry
+        sessionId: cbState?.sessionId,
+        turnNumber: cbState?.turnCount,
+        priorIntentHash: cbState?.lastIntentHash,
       }).catch(err => {
         logger.warn('Skill action logging failed (non-fatal)', { error: err });
       });
