@@ -43,7 +43,7 @@ import { getAllTools, executeTool } from './tools';
 import { recordUsage } from './stats';
 import { maybeHandleAsContentShare, triggerMediaConfirmation, triggerInstantClassification } from './content-flow';
 import { hasPendingSocraticSessionForUser, getSocraticSessionByUserId, removeSocraticSession } from './socratic-session';
-import { handleSocraticAnswer } from './socratic-adapter';
+import { handleSocraticAnswer, executeResolvedGoal } from './socratic-adapter';
 import { logAction, isFeatureEnabled } from '../skills';
 import { reportFailure } from '@atlas/shared/error-escalation';
 import { createTrace, addStep, completeStep, completeTrace, failTrace, type TraceContext } from '@atlas/shared/trace';
@@ -95,8 +95,14 @@ import {
   storeTriage as storeTriageInState,
   enterDialoguePhase,
   enterApprovalPhase,
+  enterGoalClarificationPhase,
   returnToIdle,
 } from './conversation-state';
+import {
+  incorporateClarification,
+  resolveAfterClarification,
+  recordClarification,
+} from '../../../../packages/agents/src/goal';
 
 // Feature flag for content confirmation keyboard (Universal Content Analysis)
 // Enabled by default - set ATLAS_CONTENT_CONFIRM=false to disable
@@ -417,6 +423,95 @@ export async function handleConversation(ctx: Context): Promise<void> {
         await setReaction(ctx, REACTIONS.DONE);
         logger.info('Socratic answer processed', { userId });
         return;
+      }
+    }
+  }
+
+  // GOAL-CLARIFICATION: Check if user has a pending goal-clarification question
+  // (ATLAS-GOAL-FIRST-001). Runs AFTER Socratic, BEFORE Approval.
+  if (!hasAttachment && messageText) {
+    const userState = getStateByUserId(userId);
+    if (userState?.phase === 'goal-clarification' && userState.pendingGoal && userState.goalTargetField) {
+      const containsUrl = /https?:\/\/\S+/i.test(messageText);
+      if (containsUrl) {
+        // URL = new content, cancel stale goal-clarification
+        returnToIdle(userState.chatId);
+        logger.info('Goal-clarification bypassed: new URL content', { userId });
+        // Fall through to normal processing
+      } else {
+        try {
+          // Incorporate Jim's clarification answer into the goal
+          const updatedGoal = await incorporateClarification(
+            userState.pendingGoal,
+            messageText,
+            userState.goalTargetField,
+          );
+
+          // Track clarification in telemetry
+          const tracker = userState.goalTracker;
+          if (tracker) {
+            recordClarification(tracker, userState.goalTargetField || 'unknown');
+          }
+
+          const round = userState.goalClarificationRound || 1;
+          const contentAnalysis = userState.goalContentAnalysis || { content: '' };
+          const goalResult = resolveAfterClarification(updatedGoal, round, contentAnalysis);
+
+          if (goalResult.immediateExecution) {
+            // Snapshot state before returnToIdle clears it
+            const trackerSnapshot = userState.goalTracker;
+            const deferred = userState.goalDeferredExecution;
+            const lastTriage = userState.lastTriage;
+            returnToIdle(userState.chatId);
+            if (deferred) {
+              const cc = getContentContext(userState.chatId);
+              await executeResolvedGoal(
+                ctx,
+                deferred.resolved,
+                deferred.content,
+                deferred.contentType,
+                deferred.title,
+                deferred.answerContext,
+                cc?.prefetchedUrlContent,
+                lastTriage || undefined,
+                updatedGoal,
+                trackerSnapshot,
+              );
+            }
+            await setReaction(ctx, REACTIONS.DONE);
+            logger.info('Goal clarification resolved, executing', {
+              userId,
+              completeness: updatedGoal.completeness,
+              round,
+            });
+            return;
+          }
+
+          if (goalResult.clarificationNeeded && goalResult.nextQuestion) {
+            // Still incomplete, ask next question
+            const nextField = updatedGoal.missingFor[0]?.field || 'endStateRaw';
+            enterGoalClarificationPhase(
+              userState.chatId, userId, updatedGoal, contentAnalysis,
+              nextField, round + 1, userState.goalDeferredExecution,
+              tracker);
+            await ctx.reply(goalResult.nextQuestion);
+            logger.info('Goal clarification round', {
+              userId,
+              round: round + 1,
+              targetField: nextField,
+              completeness: updatedGoal.completeness,
+            });
+            return;
+          }
+        } catch (goalErr) {
+          // CONSTRAINT 4: Log failure, fall through to normal processing
+          logger.error('Goal clarification failed', {
+            error: goalErr instanceof Error ? goalErr.message : String(goalErr),
+            userId,
+          });
+          returnToIdle(userState.chatId);
+          // Fall through to normal processing
+        }
       }
     }
   }

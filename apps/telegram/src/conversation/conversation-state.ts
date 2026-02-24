@@ -21,8 +21,22 @@ import type { RequestAssessment, AssessmentContext } from '../../../../packages/
 import type { ApproachProposal } from '../../../../packages/agents/src/assessment/types';
 import type { DialogueState } from '../../../../packages/agents/src/dialogue/types';
 import type { SocraticQuestion, ContextSignals } from '../../../../packages/agents/src/socratic';
+import type { GoalContext, ContentAnalysis as GoalContentAnalysis, GoalTracker } from '../../../../packages/agents/src/goal';
+import type { ResolvedContext } from '../../../../packages/agents/src/socratic';
 import type { TriageResult } from '../cognitive/triage-skill';
 import type { UrlContent } from '../types';
+
+/**
+ * Deferred execution context stored when goal needs clarification.
+ * Contains everything needed to call handleResolved() once goal is complete.
+ */
+export interface GoalDeferredExecution {
+  resolved: ResolvedContext;
+  content: string;
+  contentType: 'url' | 'text' | 'media';
+  title: string;
+  answerContext?: string;
+}
 
 // ─── Types ──────────────────────────────────────────────
 
@@ -112,7 +126,7 @@ export interface SocraticSessionState {
  * Which sub-state is currently active.
  * Only ONE can be active at a time — they are mutually exclusive.
  */
-export type ActivePhase = 'idle' | 'socratic' | 'dialogue' | 'approval';
+export type ActivePhase = 'idle' | 'socratic' | 'dialogue' | 'approval' | 'goal-clarification';
 
 /**
  * Unified conversation state for a single chat.
@@ -147,6 +161,21 @@ export interface ConversationState {
   dialogue?: DialogueSessionState;
   /** Approval gate state (when phase === 'approval') */
   approval?: ApprovalState;
+
+  // ── Goal-First Capture (ATLAS-GOAL-FIRST-001) ──
+
+  /** Pending goal context (when phase === 'goal-clarification') */
+  pendingGoal?: GoalContext;
+  /** How many clarification rounds we've done (max 2) */
+  goalClarificationRound?: number;
+  /** Content analysis for goal clarification questions */
+  goalContentAnalysis?: GoalContentAnalysis;
+  /** The target field being clarified */
+  goalTargetField?: string;
+  /** Deferred execution context — everything needed to resume after clarification */
+  goalDeferredExecution?: GoalDeferredExecution;
+  /** Telemetry tracker — accumulates across clarification rounds */
+  goalTracker?: GoalTracker;
 
   // ── Timestamps ──
 
@@ -361,6 +390,42 @@ export function enterApprovalPhase(
 }
 
 /**
+ * Enter goal-clarification phase (ATLAS-GOAL-FIRST-001).
+ * The goal parser determined we need more info before executing.
+ */
+export function enterGoalClarificationPhase(
+  chatId: number,
+  userId: number,
+  goal: GoalContext,
+  contentAnalysis: GoalContentAnalysis,
+  targetField: string,
+  clarificationRound: number,
+  deferredExecution?: GoalDeferredExecution,
+  tracker?: GoalTracker,
+): void {
+  const state = getOrCreateState(chatId, userId);
+  state.phase = 'goal-clarification';
+  state.pendingGoal = goal;
+  state.goalClarificationRound = clarificationRound;
+  state.goalContentAnalysis = contentAnalysis;
+  state.goalTargetField = targetField;
+  state.goalDeferredExecution = deferredExecution;
+  state.goalTracker = tracker || state.goalTracker; // Preserve existing tracker across rounds
+  // Keep socratic/dialogue/approval cleared
+  state.socratic = undefined;
+  state.dialogue = undefined;
+  state.approval = undefined;
+  state.lastActivity = Date.now();
+
+  logger.debug('Entered goal-clarification phase', {
+    chatId,
+    completeness: goal.completeness,
+    targetField,
+    clarificationRound,
+  });
+}
+
+/**
  * Return to idle phase (clears active sub-state but preserves context).
  */
 export function returnToIdle(chatId: number): void {
@@ -370,6 +435,12 @@ export function returnToIdle(chatId: number): void {
     state.socratic = undefined;
     state.dialogue = undefined;
     state.approval = undefined;
+    state.pendingGoal = undefined;
+    state.goalClarificationRound = undefined;
+    state.goalContentAnalysis = undefined;
+    state.goalTargetField = undefined;
+    state.goalDeferredExecution = undefined;
+    state.goalTracker = undefined;
     state.lastActivity = Date.now();
   }
 }

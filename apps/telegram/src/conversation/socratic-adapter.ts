@@ -22,8 +22,20 @@ import {
 import type { IntentType } from '../../../../packages/agents/src/services/prompt-composition/types';
 import type { TriageResult } from '../cognitive/triage-skill';
 import { storeSocraticSession, removeSocraticSession, getSocraticSession } from './socratic-session';
-import { enterSocraticPhase, returnToIdle } from './conversation-state';
+import { enterSocraticPhase, enterGoalClarificationPhase, returnToIdle } from './conversation-state';
 import { createAuditTrail } from './audit';
+import {
+  parseGoalFromResponse,
+  startGoalTracker,
+  buildImmediateTelemetry,
+  finalizeGoalTelemetry,
+  goalTelemetryToKeywords,
+  goalTelemetryToMetadata,
+  type GoalContext,
+  type GoalTelemetry,
+  type GoalTracker,
+  type ContentAnalysis as GoalContentAnalysis,
+} from '../../../../packages/agents/src/goal';
 import { runResearchAgentWithNotifications, sendCompletionNotification } from '../services/research-executor';
 import { routeForAnalysis } from './content-router';
 import { stripNonTextContent } from './content-extractor';
@@ -33,6 +45,7 @@ import {
   fetchPOVContext,
   EVIDENCE_PRESETS,
   type ResearchConfigV2,
+  type ResearchIntent,
   type SourceType,
 } from '../../../../packages/agents/src';
 import type { Pillar, RequestType } from './types';
@@ -238,6 +251,13 @@ function mapToResearchDepth(socraticDepth: string | undefined): ResearchDepth {
   return 'standard';
 }
 
+/** Map GoalContext.depthSignal to ResearchDepth */
+function mapGoalDepthToResearch(goalDepth: string): ResearchDepth {
+  if (goalDepth === 'deep') return 'deep';
+  if (goalDepth === 'quick') return 'light';
+  return 'standard';
+}
+
 async function handleResolved(
   ctx: Context,
   resolved: ResolvedContext,
@@ -247,6 +267,10 @@ async function handleResolved(
   answerContext?: string,
   prefetchedUrlContent?: UrlContent,
   triageResult?: TriageResult,
+  /** Pre-parsed goal from clarification loop (skips re-parsing) */
+  preResolvedGoal?: GoalContext,
+  /** Tracker from clarification loop (carries initial completeness + rounds) */
+  preResolvedTracker?: GoalTracker,
 ): Promise<void> {
   const userId = ctx.from?.id;
   const chatId = ctx.chat?.id;
@@ -254,6 +278,70 @@ async function handleResolved(
   if (!userId || !chatId) return;
 
   try {
+    // ─── GOAL-FIRST-CAPTURE: Parse goal from Jim's answer ─────────
+    const goalParseStartMs = Date.now();
+    let goalContext: GoalContext | undefined = preResolvedGoal;
+    let goalTelemetry: GoalTelemetry | undefined;
+
+    if (!goalContext && answerContext) {
+      const contentAnalysis: GoalContentAnalysis = {
+        content,
+        title: (prefetchedUrlContent?.success && prefetchedUrlContent.title) || title,
+        summary: prefetchedUrlContent?.preReadSummary,
+        sourceType: contentType,
+      };
+
+      try {
+        const goalResult = await parseGoalFromResponse(answerContext, contentAnalysis);
+        goalContext = goalResult.goal;
+
+        if (goalResult.clarificationNeeded && goalResult.nextQuestion) {
+          // Start telemetry tracker — survives across clarification rounds
+          const tracker = startGoalTracker(goalContext);
+
+          // Need more info — enter goal-clarification phase
+          enterGoalClarificationPhase(chatId, userId, goalContext, contentAnalysis,
+            goalContext.missingFor[0]?.field || 'endStateRaw', 1,
+            { resolved, content, contentType, title, answerContext },
+            tracker);
+
+          await ctx.reply(goalResult.nextQuestion);
+          logger.info('Goal needs clarification, entering goal-clarification phase', {
+            completeness: goalContext.completeness,
+            targetField: goalContext.missingFor[0]?.field,
+            endState: goalContext.endState,
+          });
+          return; // Don't create audit trail yet — telemetry emitted on resolution
+        }
+
+        // Goal resolved immediately — build telemetry
+        goalTelemetry = buildImmediateTelemetry(goalContext, goalParseStartMs);
+
+        logger.info('Goal parsed from Socratic answer', {
+          endState: goalContext.endState,
+          completeness: goalContext.completeness,
+          thesisHook: goalContext.thesisHook,
+          audience: goalContext.audience,
+          format: goalContext.format,
+          depthSignal: goalContext.depthSignal,
+        });
+      } catch (goalErr) {
+        // CONSTRAINT 4: Log the failure but don't block execution
+        logger.warn('Goal parsing failed, continuing without goal enrichment', {
+          error: goalErr instanceof Error ? goalErr.message : String(goalErr),
+        });
+      }
+    } else if (preResolvedGoal) {
+      // Pre-resolved from clarification loop — use tracker if available
+      if (preResolvedTracker) {
+        goalTelemetry = finalizeGoalTelemetry(preResolvedTracker, preResolvedGoal);
+      } else {
+        // Fallback: no tracker (shouldn't happen but CONSTRAINT 4 — don't hide it)
+        goalTelemetry = buildImmediateTelemetry(preResolvedGoal, goalParseStartMs);
+        logger.warn('Pre-resolved goal has no tracker — telemetry will miss clarification data');
+      }
+    }
+
     // ADR-003: Map resolved context to routing signals
     const { pillar, requestType } = mapAnswerToRouting(resolved);
 
@@ -263,6 +351,11 @@ async function handleResolved(
       || (prefetchedUrlContent?.success ? prefetchedUrlContent.title : undefined)
       || title;
 
+    // ─── TELEMETRY: Merge goal signals into audit trail ─────────
+    const baseKeywords = [resolved.intent, resolved.depth, resolved.audience, `socratic/${resolved.resolvedVia}`].filter(Boolean) as string[];
+    const goalKeywords = goalTelemetry ? goalTelemetryToKeywords(goalTelemetry) : [];
+    const goalMetadata = goalTelemetry ? goalTelemetryToMetadata(goalTelemetry) : undefined;
+
     // Build a proper AuditEntry for createAuditTrail
     const result = await createAuditTrail({
       entry: descriptiveTitle,
@@ -271,14 +364,33 @@ async function handleResolved(
       source: 'Telegram',
       author: ctx.from?.username || 'Jim',
       confidence: resolved.confidence,
-      keywords: [resolved.intent, resolved.depth, resolved.audience, `socratic/${resolved.resolvedVia}`].filter(Boolean) as string[],
+      keywords: [...baseKeywords, ...goalKeywords],
       userId,
       messageText: content,
       hasAttachment: false,
       url: contentType === 'url' ? content : undefined,
       urlTitle: descriptiveTitle,
       contentType: contentType === 'url' ? 'url' : undefined,
+      ...(goalMetadata && {
+        analysisContent: {
+          metadata: goalMetadata,
+        },
+      }),
     });
+
+    // Log goal telemetry (observation layer for Sprint 4 pattern detector)
+    if (goalTelemetry) {
+      logger.info('Goal telemetry emitted', {
+        feedId: result?.feedId,
+        goalEndState: goalTelemetry.goalEndState,
+        initialCompleteness: goalTelemetry.initialCompleteness,
+        finalCompleteness: goalTelemetry.finalCompleteness,
+        clarificationCount: goalTelemetry.clarificationCount,
+        hadThesisHook: goalTelemetry.hadThesisHook,
+        timeToGoalResolutionMs: goalTelemetry.timeToGoalResolutionMs,
+        goalKeywords,
+      });
+    }
 
     if (!result) {
       logger.info('Socratic resolved but createAuditTrail returned null (likely dedup)', { title });
@@ -409,10 +521,16 @@ async function handleResolved(
 
       // Research Intelligence v2: Build structured ResearchConfigV2
       const researchDepth = parsed.depth;
+      // GOAL-FIRST-CAPTURE: GoalContext provides richer signals than legacy routing
+      const goalThesisHook = goalContext?.thesisHook || parsed.thesisHook;
+      const goalDepth = goalContext?.depthSignal
+        ? mapGoalDepthToResearch(goalContext.depthSignal)
+        : researchDepth;
+
       const researchConfig: ResearchConfigV2 = {
         // V1 fields (backward compatible)
         query: researchQuery,
-        depth: researchDepth,
+        depth: goalDepth,
         pillar: routing.pillar,
         focus: routing.focusDirection,
         queryMode: 'canonical',
@@ -420,16 +538,28 @@ async function handleResolved(
         userContext: answerContext,   // ATLAS-CEX-001 B3: Jim's Socratic reply → research prompt
         sourceUrl: contentType === 'url' ? content : undefined,
         // V2 fields (structured context composition)
-        thesisHook: parsed.thesisHook,
-        evidenceRequirements: EVIDENCE_PRESETS[researchDepth],
+        thesisHook: goalThesisHook,
+        evidenceRequirements: EVIDENCE_PRESETS[goalDepth],
         povContext,
-        qualityFloor: researchDepth === 'deep' ? 'grove_grade' : researchDepth === 'standard' ? 'primary_sources' : 'any',
+        qualityFloor: goalDepth === 'deep' ? 'grove_grade' : goalDepth === 'standard' ? 'primary_sources' : 'any',
         sourceType: contentType as SourceType,
-        intent: parsed.intent,
+        intent: goalContext?.endState === 'research' ? 'explore' as ResearchIntent
+          : goalContext?.endState === 'analyze' ? 'explore' as ResearchIntent
+          : goalContext?.endState === 'create' ? 'synthesize' as ResearchIntent
+          : goalContext?.endState === 'summarize' ? 'synthesize' as ResearchIntent
+          : parsed.intent,
         userDirection: answerContext,
       };
 
-      await ctx.reply(`\uD83D\uDD2C Starting research agent...\nDepth: ${researchDepth}${povContext ? ` \u00B7 POV: ${povContext.title}` : ''}`);
+      // GOAL-FIRST-CAPTURE: Enhanced research launch message with goal signals
+      const goalSignals = [
+        goalDepth !== researchDepth ? `Depth: ${goalDepth} (from goal)` : `Depth: ${researchDepth}`,
+        goalThesisHook ? `Angle: ${goalThesisHook}` : '',
+        goalContext?.audience ? `Audience: ${goalContext.audience}` : '',
+        povContext ? `POV: ${povContext.title}` : '',
+      ].filter(Boolean).join(' \u00B7 ');
+
+      await ctx.reply(`\uD83D\uDD2C Starting research agent...\n${goalSignals}`);
 
       void runResearchAgentWithNotifications(
         researchConfig,
@@ -451,6 +581,28 @@ async function handleResolved(
     });
     await ctx.reply('Failed to capture. Try again.');
   }
+}
+
+/**
+ * Execute a resolved goal after clarification loop completes.
+ * Called from handler.ts when a goal-clarification phase resolves.
+ *
+ * Sprint: GOAL-FIRST-CAPTURE
+ */
+export async function executeResolvedGoal(
+  ctx: Context,
+  resolved: ResolvedContext,
+  content: string,
+  contentType: 'url' | 'text' | 'media',
+  title: string,
+  answerContext: string | undefined,
+  prefetchedUrlContent: UrlContent | undefined,
+  triageResult: TriageResult | undefined,
+  goal: GoalContext,
+  tracker?: GoalTracker,
+): Promise<void> {
+  await handleResolved(ctx, resolved, content, contentType, title,
+    answerContext, prefetchedUrlContent, triageResult, goal, tracker);
 }
 
 /**
