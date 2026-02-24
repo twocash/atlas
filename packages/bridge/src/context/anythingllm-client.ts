@@ -2,7 +2,7 @@
  * AnythingLLM HTTP Client — Slot 2 Wiring
  *
  * Query-mode client for AnythingLLM workspaces.
- * Auth via Bearer token, 3s timeout, graceful degradation.
+ * Auth via Bearer token, 5s timeout, graceful degradation.
  */
 
 // ─── Types ───────────────────────────────────────────────
@@ -27,7 +27,7 @@ export interface AnythingLLMResponse {
 
 // ─── Configuration ───────────────────────────────────────
 
-const TIMEOUT_MS = 3000
+const TIMEOUT_MS = 5000
 
 function getConfig(): { url: string; apiKey: string } | null {
   const url = process.env.ANYTHINGLLM_URL?.trim()
