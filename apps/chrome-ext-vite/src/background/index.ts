@@ -39,6 +39,42 @@ console.log("Atlas Orchestrator Initialized")
 chrome.sidePanel?.setPanelBehavior?.({ openPanelOnActionClick: true })
 
 // =============================================================================
+// PERSISTENT BRIDGE CONNECTION — handles tool_request from bridge server
+// (e.g., cookie refresh) without requiring the sidepanel to be open.
+// =============================================================================
+
+import {
+  connect as bgBridgeConnect,
+  onMessage as bgOnMessage,
+  sendRaw as bgSendRaw,
+} from "~src/lib/bridge-client"
+import { executeToolRequest, type ToolRequest } from "~src/lib/tool-executor"
+
+// Background-only tool request handler
+bgOnMessage((raw: string) => {
+  const lines = raw.split("\n").filter((l) => l.trim())
+  for (const line of lines) {
+    let msg: any
+    try { msg = JSON.parse(line) } catch { continue }
+    if (msg.type === "tool_request") {
+      handleBgToolRequest(msg as ToolRequest)
+    }
+  }
+})
+
+async function handleBgToolRequest(request: ToolRequest) {
+  console.log(`[Atlas BG] Tool request: ${request.name} (id: ${request.id})`)
+  const response = await executeToolRequest(request)
+  const sent = bgSendRaw(JSON.stringify(response))
+  console.log(`[Atlas BG] Tool response: ${request.name} (${response.error ? "error" : "ok"}, sent: ${sent})`)
+}
+
+// Connect to bridge on startup — auto-reconnects via bridge-client singleton
+bgBridgeConnect().catch(() => {
+  console.warn("[Atlas BG] Initial bridge connect failed — will retry")
+})
+
+// =============================================================================
 // SIMPLIFIED CAPTURE: Domain-Based Auto-Routing (Gate 1.8)
 // =============================================================================
 
@@ -146,7 +182,8 @@ chrome.alarms.create("atlas-strategy-refresh", { periodInMinutes: 60 })
 
 chrome.alarms.onAlarm.addListener((alarm) => {
   if (alarm.name === "atlas-keepalive") {
-    // Just keep the service worker alive
+    // Re-establish bridge connection if it dropped during suspension
+    bgBridgeConnect().catch(() => {})
   }
 
   if (alarm.name === "atlas-strategy-refresh") {

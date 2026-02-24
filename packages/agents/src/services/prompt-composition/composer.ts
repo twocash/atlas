@@ -40,6 +40,26 @@ export function resolveDrafterId(pillar: Pillar, action: ActionType): string {
 }
 
 /**
+ * Build drafter ID from domain and action (STAB-002c).
+ * Domain-aware alternative to resolveDrafterId.
+ * Pattern: drafter.{domain-slug}.{action}
+ *
+ * @example
+ * resolveDrafterIdByDomain('grove', 'research') → 'drafter.the-grove.research'
+ * resolveDrafterIdByDomain('drumwave', 'draft') → 'drafter.consulting.draft'
+ */
+export function resolveDrafterIdByDomain(domain: string, action: ActionType): string {
+  const DOMAIN_SLUG_MAP: Record<string, string> = {
+    grove: 'the-grove',
+    consulting: 'consulting',
+    drumwave: 'consulting',
+    personal: 'personal',
+  };
+  const slug = DOMAIN_SLUG_MAP[domain] ?? 'personal';
+  return `drafter.${slug}.${action}`;
+}
+
+/**
  * Build voice ID from voice identifier
  * Pattern: voice.{voice-id}
  *

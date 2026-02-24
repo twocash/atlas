@@ -53,6 +53,25 @@ export function resolveWorkspace(pillar: string): string | null {
 }
 
 /**
+ * Resolve a domain to its primary workspace slug (STAB-002c).
+ * Domain-aware alternative to resolveWorkspace.
+ * Returns null if the domain has no workspace mapping.
+ *
+ * @param domain - DomainType from assessment (e.g. "grove", "consulting")
+ */
+export function resolveWorkspaceByDomain(domain: string): string | null {
+  const DOMAIN_KEY_MAP: Record<string, string> = {
+    grove: "the-grove",
+    consulting: "consulting",
+    drumwave: "consulting",
+  }
+  const key = DOMAIN_KEY_MAP[domain]
+  if (!key) return null
+  const mapping = PILLAR_WORKSPACE_MAP[key]
+  return mapping?.primary ?? null
+}
+
+/**
  * Get the full workspace mapping for a pillar (primary + secondary).
  * Returns null if the pillar has no workspace mapping.
  */
