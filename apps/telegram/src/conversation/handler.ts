@@ -361,19 +361,8 @@ export async function handleConversation(ctx: Context): Promise<void> {
   if (CONTENT_CONFIRM_ENABLED && !hasAttachment && messageText) {
     const handled = await maybeHandleAsContentShare(ctx);
     if (handled) {
-      // New content share detected — cancel any pending Socratic session
-      // (the old question is stale now that Jim is sharing new content)
-      const staleSocratic = getSocraticSessionByUserId(userId);
-      if (staleSocratic) {
-        removeSocraticSession(staleSocratic.chatId);
-        returnToIdle(staleSocratic.chatId);
-        logger.info('Cancelled stale Socratic session (new content share)', {
-          userId,
-          cancelledSessionId: staleSocratic.sessionId,
-        });
-      }
       await setReaction(ctx, REACTIONS.DONE);
-      logger.info('Content share detected, confirmation keyboard shown', { userId });
+      logger.info('Content share detected, Socratic question sent', { userId });
       return;
     }
   }
