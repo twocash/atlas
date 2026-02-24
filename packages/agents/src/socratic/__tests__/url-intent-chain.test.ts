@@ -1,5 +1,5 @@
 /**
- * URL Intent Chain Tests — Socratic "What's the Play?" Flow
+ * URL Intent Chain Tests — Goal-First Capture Flow
  *
  * Sprint: SOCRATIC-URL-INTENT
  *
@@ -42,11 +42,9 @@ const TEST_CONFIG: SocraticConfig = {
       contextSlots: ['content_signals', 'classification'],
       confidenceFloor: 0.5,
       skill: '',
-      content: `You are assessing a spark that Jim shared via Telegram.
-What's the play here?
-A) Research this topic
-B) Draft content about it
-C) Just capture for reference`,
+      content: `URL share detected — Jim shared a link via Telegram.
+Context available: {title} | Pillar: {detected_pillar} | Confidence: {classification_confidence}
+What do you want to accomplish with this?`,
     },
   },
   contextRules: [],
@@ -165,7 +163,7 @@ describe('URL Intent Chain — Bridge Context Bypass', () => {
 // ==========================================
 
 describe('URL Intent Chain — Question Generation', () => {
-  test("URL share generates \"What's the play?\" question, not bridge context question", () => {
+  test('URL share generates goal-first question, not bridge context question', () => {
     injectConfig(TEST_CONFIG);
 
     const signals = buildUrlSignals({
@@ -184,8 +182,8 @@ describe('URL Intent Chain — Question Generation', () => {
     expect(q.text).not.toContain('recent context');
     expect(q.text).not.toContain('Recent conversation');
 
-    // Should be the URL intent question
-    expect(q.text).toContain("What's the play");
+    // Should be the goal-first question from Notion config
+    expect(q.text).toContain('What do you want to accomplish');
 
     // Target slot should be content_signals or classification, NOT bridge_context
     expect(['content_signals', 'classification']).toContain(q.targetSlot);
@@ -317,11 +315,11 @@ describe('URL Intent Chain — Full Scenario', () => {
     const assessment = assessContext(signals);
     expect(assessment.regime).toBe('ask_one');
 
-    // Step 3: Generate question → must be "What's the play?"
+    // Step 3: Generate question → must be goal-first
     const gaps = analyzeGaps(assessment, TEST_CONFIG, 'telegram');
     expect(gaps.questionCount).toBe(1);
     const questions = generateQuestions(gaps, signals);
-    expect(questions[0].text).toContain("What's the play");
+    expect(questions[0].text).toContain('What do you want to accomplish');
 
     // Step 4: Map Jim's answer
     const mapped = await mapAnswer(

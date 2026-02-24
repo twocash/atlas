@@ -342,8 +342,22 @@ async function handleResolved(
       }
     }
 
-    // ADR-003: Map resolved context to routing signals
-    const { pillar, requestType } = mapAnswerToRouting(resolved);
+    // ADR-003: Map resolved context to routing signals (legacy path)
+    const legacyRouting = mapAnswerToRouting(resolved);
+    let { pillar, requestType } = legacyRouting;
+
+    // GOAL-FIRST-CAPTURE: GoalContext overrides legacy routing when available.
+    // The goal parser's endState is the authoritative action signal — it comes from
+    // Jim's natural language answer, not from the old Socratic intent mapping.
+    const activeGoal = goalContext || preResolvedGoal;
+    if (activeGoal) {
+      requestType = mapGoalEndStateToRequestType(activeGoal.endState);
+      logger.info('Goal-driven routing override', {
+        legacyRequestType: legacyRouting.requestType,
+        goalEndState: activeGoal.endState,
+        overriddenRequestType: requestType,
+      });
+    }
 
     // Descriptive title priority: Haiku triage → Socratic contentTopic → fetched page → raw input
     const descriptiveTitle = triageResult?.title
@@ -398,14 +412,12 @@ async function handleResolved(
       return;
     }
 
-    // Confirm to user
-    const resolvedEmoji = resolved.resolvedVia === 'auto_draft' ? '\u26A1' : '\u2705';
-    const confirmMsg = [
-      `${resolvedEmoji} <b>${escapeHtml(descriptiveTitle)}</b>`,
-      `\uD83D\uDCC1 ${pillar} \u00B7 ${requestType}`,
-      result.feedUrl ? `\uD83D\uDCCB <a href="${result.feedUrl}">Feed</a>` : '',
-      result.workQueueUrl ? `\uD83D\uDCDD <a href="${result.workQueueUrl}">Work Queue</a>` : '',
-    ].filter(Boolean).join('\n');
+    // GOAL-FIRST-CAPTURE: Goal-aware confirmation message
+    const confirmMsg = buildGoalAwareConfirmation(
+      activeGoal, descriptiveTitle, pillar, requestType,
+      result.feedUrl, result.workQueueUrl,
+      resolved.resolvedVia === 'auto_draft',
+    );
 
     await ctx.reply(confirmMsg, {
       parse_mode: 'HTML',
@@ -551,15 +563,8 @@ async function handleResolved(
         userDirection: answerContext,
       };
 
-      // GOAL-FIRST-CAPTURE: Enhanced research launch message with goal signals
-      const goalSignals = [
-        goalDepth !== researchDepth ? `Depth: ${goalDepth} (from goal)` : `Depth: ${researchDepth}`,
-        goalThesisHook ? `Angle: ${goalThesisHook}` : '',
-        goalContext?.audience ? `Audience: ${goalContext.audience}` : '',
-        povContext ? `POV: ${povContext.title}` : '',
-      ].filter(Boolean).join(' \u00B7 ');
-
-      await ctx.reply(`\uD83D\uDD2C Starting research agent...\n${goalSignals}`);
+      // Research launch — goal confirmation was already sent above
+      await ctx.reply(`\uD83D\uDD2C Research underway. I'll ping you when it's ready.`);
 
       void runResearchAgentWithNotifications(
         researchConfig,
@@ -735,13 +740,9 @@ function formatQuestionMessage(
 
   msg += escapeHtml(question.text);
 
-  // Show options as hints (not buttons)
-  if (question.options.length > 0) {
-    msg += '\n\n';
-    msg += question.options
-      .map(opt => `\u00B7 ${escapeHtml(opt.label)}`)
-      .join('\n');
-  }
+  // GOAL-FIRST-CAPTURE: No option hints. Jim's freeform answer feeds the goal parser.
+  // Options were prescriptive ("Research / Draft / Capture / Summarize") — the goal
+  // parser extracts structured intent from natural language instead.
 
   return msg;
 }
@@ -794,6 +795,116 @@ function mapIntentToRequestType(intent: string): RequestType {
     case 'save': return 'Process';
     default: return 'Research';
   }
+}
+
+/**
+ * Map GoalContext.endState to RequestType.
+ * GOAL-FIRST-CAPTURE: This is the authoritative routing from Jim's natural language answer.
+ *
+ * Key distinction: "research" and "analyze" both dispatch to Research Agent.
+ * "create" dispatches to Research (with synthesis intent) because the research
+ * agent produces the draft. "bookmark" and "summarize" are capture-only.
+ */
+function mapGoalEndStateToRequestType(endState: string): RequestType {
+  switch (endState) {
+    case 'research': return 'Research';
+    case 'analyze': return 'Research';
+    case 'create': return 'Research';  // Research agent produces drafts via synthesis intent
+    case 'summarize': return 'Process';
+    case 'bookmark': return 'Process';
+    default: return 'Research';
+  }
+}
+
+/**
+ * Build goal-aware confirmation message.
+ * GOAL-FIRST-CAPTURE: Acknowledges Jim's specific intent (audience, format, thesis)
+ * instead of generic "Pillar . RequestType" confirmation.
+ */
+function buildGoalAwareConfirmation(
+  goal: GoalContext | undefined,
+  title: string,
+  pillar: string,
+  requestType: string,
+  feedUrl?: string,
+  workQueueUrl?: string,
+  isAutoDraft?: boolean,
+): string {
+  const emoji = isAutoDraft ? '\u26A1' : '\u2705';
+
+  // If we have a rich goal, build a goal-aware message
+  if (goal && goal.endState !== 'bookmark') {
+    const parts: string[] = [];
+
+    // Goal acknowledgment line
+    const goalDesc = buildGoalDescription(goal);
+    parts.push(`${emoji} ${goalDesc}`);
+
+    // Links
+    if (feedUrl) parts.push(`\uD83D\uDCCB <a href="${feedUrl}">Feed</a>`);
+    if (workQueueUrl) parts.push(`\uD83D\uDCDD <a href="${workQueueUrl}">Work Queue</a>`);
+
+    return parts.filter(Boolean).join('\n');
+  }
+
+  // Bookmark / no-goal fallback: simple confirmation
+  if (goal?.endState === 'bookmark') {
+    const parts = [`${emoji} Saved for later.`];
+    if (feedUrl) parts.push(`\uD83D\uDCCB <a href="${feedUrl}">Feed</a>`);
+    return parts.join('\n');
+  }
+
+  // Legacy fallback (no goal parsed)
+  const parts = [
+    `${emoji} <b>${escapeHtml(title)}</b>`,
+    `\uD83D\uDCC1 ${pillar} \u00B7 ${requestType}`,
+    feedUrl ? `\uD83D\uDCCB <a href="${feedUrl}">Feed</a>` : '',
+    workQueueUrl ? `\uD83D\uDCDD <a href="${workQueueUrl}">Work Queue</a>` : '',
+  ];
+  return parts.filter(Boolean).join('\n');
+}
+
+/**
+ * Build a natural language description of Jim's goal.
+ * Examples:
+ *   "Got it -- researching for a LinkedIn thinkpiece with your 'revenge of the B students' angle."
+ *   "Got it -- deep research on this topic."
+ *   "Got it -- drafting a brief for the client."
+ */
+function buildGoalDescription(goal: GoalContext): string {
+  const parts: string[] = ['Got it --'];
+
+  // Action
+  switch (goal.endState) {
+    case 'research':
+    case 'analyze':
+      parts.push(goal.depthSignal === 'deep' ? 'deep research' : 'researching');
+      break;
+    case 'create':
+      parts.push('researching');  // create dispatches to research with synthesis intent
+      break;
+    case 'summarize':
+      parts.push('summarizing');
+      break;
+    default:
+      parts.push('processing');
+  }
+
+  // Format + audience
+  if (goal.format && goal.audience) {
+    parts.push(`for a ${goal.audience} ${goal.format}`);
+  } else if (goal.format) {
+    parts.push(`for a ${goal.format}`);
+  } else if (goal.audience) {
+    parts.push(`for ${goal.audience}`);
+  }
+
+  // Thesis hook
+  if (goal.thesisHook) {
+    parts.push(`with your "${goal.thesisHook}" angle`);
+  }
+
+  return parts.join(' ') + '.';
 }
 
 /**

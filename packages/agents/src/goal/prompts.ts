@@ -25,13 +25,15 @@ USER'S GOAL STATEMENT:
 
 Extract the following fields. Return null for anything not clearly stated. Be conservative — only extract what the user explicitly or strongly implied.
 
-1. endState: What does "done" look like?
+1. endState: What ACTION is the user requesting? Focus on the PRIMARY VERB.
    - "bookmark" = save for later, no processing needed
-   - "research" = investigate, find sources, go deep
-   - "create" = produce content (post, brief, deck, etc.)
+   - "research" = investigate, find sources, go deep, explore a topic
+   - "create" = produce content (post, brief, deck, etc.) — ONLY when the user's primary intent is to write/produce, NOT when they say "research this AS a [format]"
    - "analyze" = structured analysis, breakdown
    - "summarize" = condensed version
    - "custom" = something else (capture in endStateRaw)
+
+   CRITICAL DISAMBIGUATION: When the user says "research this as a think piece" or "research this for LinkedIn", the endState is "research" — NOT "create". The format ("think piece") describes the OUTPUT shape, not the action. Only use "create" when the primary verb is about writing/producing (e.g., "write a post about this", "draft a brief").
 
 2. thesisHook: Any angle, theme, or thesis they mentioned?
    Example: "revenge of the B students" is a thesis hook.

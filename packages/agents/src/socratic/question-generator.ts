@@ -29,12 +29,8 @@ const DEFAULT_QUESTIONS: Record<ContextSlot, { text: string; options: QuestionOp
     ],
   },
   content_signals: {
-    text: "What's the key takeaway from this content?",
-    options: [
-      { label: 'Industry insight', value: 'insight' },
-      { label: 'Personal story', value: 'personal' },
-      { label: 'Technical topic', value: 'technical' },
-    ],
+    text: "What do you want to accomplish with this?",
+    options: [],  // GOAL-FIRST-CAPTURE: No prescriptive options — goal parser handles freeform
   },
   classification: {
     text: 'What area does this belong to?',
