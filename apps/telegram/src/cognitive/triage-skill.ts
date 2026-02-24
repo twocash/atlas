@@ -13,6 +13,7 @@ import { z } from 'zod';
 import { TASK_MODEL_MAP } from './models';
 import { logger } from '../logger';
 import { getFeatureFlags } from '../config/features';
+import { reportFailure } from '@atlas/shared/error-escalation';
 import type { Pillar, RequestType, ClassificationResult } from '../conversation/types';
 import { PILLARS, REQUEST_TYPES } from '../conversation/types';
 
@@ -327,15 +328,27 @@ function buildTriagePrompt(
 
 function fallbackTriage(
   messageText: string,
-  domainHint?: { pillar: Pillar; category: string; domain: string }
+  domainHint?: { pillar: Pillar; category: string; domain: string },
+  failureReason?: string
 ): TriageResult {
   // Domain hint overrides default pillar even in fallback
   const pillar = domainHint?.pillar ?? 'The Grove';
+  const reason = failureReason || 'unknown';
 
   logger.warn('[Triage] Using fallback triage', {
     messageLength: messageText.length,
     domainHint: domainHint ? { domain: domainHint.domain, pillar: domainHint.pillar } : undefined,
     pillar,
+    failureReason: reason,
+  });
+
+  // Constraint 4: Fail fast, fail loud. Fallbacks are degraded experience.
+  // reportFailure tracks failures in a sliding window — 3 in 5 min → Feed 2.0 Alert.
+  reportFailure('triage-fallback', new Error(`Triage fell to fallback: ${reason}`), {
+    messageLength: messageText.length,
+    messagePreview: messageText.substring(0, 80),
+    pillar,
+    failureReason: reason,
   });
 
   return {
@@ -525,7 +538,7 @@ export async function triageMessage(
 
     if (!attempt1.success || !attempt1.result) {
       logger.error('[Triage] First attempt failed', { error: attempt1.error });
-      return fallbackTriage(messageText, domainHint);
+      return fallbackTriage(messageText, domainHint, `haiku-parse: ${attempt1.error || 'unknown'}`);
     }
 
     // Build result from first attempt
@@ -597,7 +610,7 @@ export async function triageMessage(
       error: error instanceof Error ? error.message : String(error),
       latencyMs: Date.now() - start,
     });
-    return fallbackTriage(messageText, domainHint);
+    return fallbackTriage(messageText, domainHint, `exception: ${error instanceof Error ? error.message : String(error)}`);
   }
 }
 
