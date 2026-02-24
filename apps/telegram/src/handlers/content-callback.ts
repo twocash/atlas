@@ -25,7 +25,7 @@ import { createAuditTrail, type AuditEntry } from '../conversation/audit';
 import { buildContentPayload } from '../conversation/content-router';
 import { type Pillar as MediaPillar } from '../conversation/media';
 import { getPatternSuggestion, recordClassificationFeedback } from '../conversation/content-patterns';
-import type { Pillar, RequestType } from '../conversation/types';
+import type { Pillar, RequestType } from '@atlas/agents/src/conversation/types';
 import { logAction, getIntentHash, isFeatureEnabled, triggerContextualExtraction } from '../skills';
 import { getState } from '../conversation/conversation-state';
 import { safeAnswerCallback } from '../utils/telegram-helpers';

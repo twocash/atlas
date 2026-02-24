@@ -25,7 +25,7 @@ export {
   compareIntentHashes,
   hasSameIntent,
   type IntentHashResult,
-} from './intent-hash';
+} from '@atlas/agents/src/skills/intent-hash';
 
 // Action logging
 export {
@@ -37,7 +37,7 @@ export {
   type ActionType,
   type ActionLogInput,
   type ActionLogResult,
-} from './action-log';
+} from '@atlas/agents/src/skills/action-log';
 
 // Schema definitions (Phase 2)
 export {
@@ -64,7 +64,7 @@ export {
   SkillDefinitionSchema,
   TriggerSchema,
   ProcessSchema,
-} from './schema';
+} from '@atlas/agents/src/skills/schema';
 
 // Registry (Phase 2)
 export {

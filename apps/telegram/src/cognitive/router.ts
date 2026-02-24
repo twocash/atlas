@@ -9,9 +9,9 @@
  * 2. OpenRouter fallback (if enabled and available)
  */
 
-import type { ProviderRoute, Endpoint } from "./types";
-import type { ModelId, Provider } from "./models";
-import { MODEL_CATALOG } from "./models";
+import type { ProviderRoute, Endpoint } from "@atlas/agents/src/cognitive/types";
+import type { ModelId, Provider } from "@atlas/agents/src/cognitive/models";
+import { MODEL_CATALOG } from "@atlas/agents/src/cognitive/models";
 import {
   getCognitiveConfig,
   isDirectApiAvailable,

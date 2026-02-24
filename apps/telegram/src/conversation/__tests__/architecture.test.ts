@@ -47,7 +47,7 @@ describe('Content Pipeline Architecture', () => {
       'socratic-adapter.ts',
       'socratic-session.ts',
       'pending-content.ts',
-      'types.ts',
+      // types.ts moved to packages/agents/src/conversation/types.ts (ARCH-CPE-001 Phase 1)
       'index.ts',
     ];
 
@@ -63,6 +63,12 @@ describe('Content Pipeline Architecture', () => {
 
     it('classifier.ts exists', () => {
       expect(fileExists(join(SRC, 'classifier.ts'))).toBe(true);
+    });
+
+    // ARCH-CPE-001 Phase 1: conversation/types.ts moved to packages/agents/
+    const AGENTS_SRC = resolve(ROOT, '..', '..', 'packages', 'agents', 'src');
+    it('conversation/types.ts exists in packages/agents/', () => {
+      expect(fileExists(join(AGENTS_SRC, 'conversation', 'types.ts'))).toBe(true);
     });
   });
 

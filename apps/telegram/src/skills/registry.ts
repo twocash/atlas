@@ -11,7 +11,7 @@ import { join, basename, extname } from 'path';
 import { parse as parseYaml } from 'yaml';
 import { logger } from '../logger';
 import { isFeatureEnabled } from '../config/features';
-import { generateIntentHash, type IntentHashResult } from './intent-hash';
+import { generateIntentHash, type IntentHashResult } from '@atlas/agents/src/skills/intent-hash';
 import {
   type SkillDefinition,
   type SkillTrigger,
@@ -20,9 +20,9 @@ import {
   classifySkillTier,
   createDefaultMetrics,
   SkillDefinitionSchema,
-} from './schema';
-import { parseSkillFrontmatter, extractSkillBody } from './frontmatter';
-import type { Pillar } from '../conversation/types';
+} from '@atlas/agents/src/skills/schema';
+import { parseSkillFrontmatter, extractSkillBody } from '@atlas/agents/src/skills/frontmatter';
+import type { Pillar } from '@atlas/agents/src/conversation/types';
 
 // =============================================================================
 // TRIGGER MATCHING

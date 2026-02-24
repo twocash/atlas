@@ -24,7 +24,7 @@ import {
   REQUIRED_FIELDS,
   NORMALIZATION_MAP,
   SKILL_SCHEMA_PROMPT,
-} from '../src/skills/frontmatter';
+} from '@atlas/agents/src/skills/frontmatter';
 
 // =============================================================================
 // Test data

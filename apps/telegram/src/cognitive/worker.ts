@@ -11,8 +11,8 @@ import type {
   WorkerResult,
   TokenUsage,
   WorkerToolCall,
-} from "./types";
-import { MODEL_CATALOG, estimateCost } from "./models";
+} from "@atlas/agents/src/cognitive/types";
+import { MODEL_CATALOG, estimateCost } from "@atlas/agents/src/cognitive/models";
 import { getCognitiveConfig } from "../config/cognitive";
 import { getFeatureFlags } from "../config/features";
 import { logger } from "../logger";

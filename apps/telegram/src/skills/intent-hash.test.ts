@@ -9,7 +9,7 @@ import {
   generateIntentHash,
   compareIntentHashes,
   hasSameIntent,
-} from './intent-hash';
+} from '@atlas/agents/src/skills/intent-hash';
 
 describe('generateIntentHash', () => {
   it('produces consistent hash for same input', () => {

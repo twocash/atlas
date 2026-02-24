@@ -10,7 +10,7 @@
 import { logger } from '../logger';
 import { isFeatureEnabled } from '../config/features';
 import { getSkillRegistry } from './registry';
-import { logAction } from './action-log';
+import { logAction } from '@atlas/agents/src/skills/action-log';
 import { pushActivity } from '../health/status-server';
 import { createActionFeedEntry } from '../notion';
 import type { ActionDataApproval } from '../types';
@@ -23,8 +23,8 @@ import {
   type ConditionalStep,
   type OnErrorBehavior,
   getTierEmoji,
-} from './schema';
-import type { Pillar } from '../conversation/types';
+} from '@atlas/agents/src/skills/schema';
+import type { Pillar } from '@atlas/agents/src/conversation/types';
 
 // =============================================================================
 // PENDING APPROVALS (P2 Approval Cards)

@@ -13,7 +13,7 @@ import Anthropic from '@anthropic-ai/sdk';
 import { readFile, writeFile } from 'fs/promises';
 import { existsSync } from 'fs';
 import { logger } from '../logger';
-import { SKILL_SCHEMA_PROMPT, validateSkillFrontmatter } from '../skills/frontmatter';
+import { SKILL_SCHEMA_PROMPT, validateSkillFrontmatter } from '@atlas/agents/src/skills/frontmatter';
 import type { SwarmTask, SwarmResult } from './swarm-dispatch';
 
 // ==========================================

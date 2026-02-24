@@ -10,16 +10,16 @@
 import { NOTION_DB } from '@atlas/shared/config';
 import { logger } from '../logger';
 import { isFeatureEnabled, getDetectionConfig, getSafetyLimits } from '../config/features';
-import { hasSameIntent } from './intent-hash';
+import { hasSameIntent } from '@atlas/agents/src/skills/intent-hash';
 import {
   type SkillDefinition,
   type SkillTrigger,
   type SkillProcess,
   type SkillTier,
   createDefaultMetrics,
-} from './schema';
+} from '@atlas/agents/src/skills/schema';
 import { getSkillRegistry } from './registry';
-import type { Pillar } from '../conversation/types';
+import type { Pillar } from '@atlas/agents/src/conversation/types';
 
 // =============================================================================
 // TYPES

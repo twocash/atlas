@@ -20,7 +20,7 @@ import {
   getQueueStats,
 } from '../skills/approval-queue';
 import type { SkillProposal } from '../skills/pattern-detector';
-import { getTierEmoji } from '../skills/schema';
+import { getTierEmoji } from '@atlas/agents/src/skills/schema';
 
 // =============================================================================
 // CALLBACK DATA FORMAT

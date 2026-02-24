@@ -5,8 +5,8 @@
  * In-memory tracking with periodic Notion persistence.
  */
 
-import type { TokenUsage, WorkerResult, TokenLedgerEntry } from "./types";
-import type { Provider } from "./models";
+import type { TokenUsage, WorkerResult, TokenLedgerEntry } from "@atlas/agents/src/cognitive/types";
+import type { Provider } from "@atlas/agents/src/cognitive/models";
 import { logger } from "../logger";
 
 /**

@@ -12,7 +12,7 @@
 import { Client } from '@notionhq/client';
 import { logger } from '../logger';
 import { getFeatureFlags, getSafetyLimits } from '../config/features';
-import { classifyZone, createOperation, type PitCrewOperation } from '../skills/zone-classifier';
+import { classifyZone, createOperation, type PitCrewOperation } from '@atlas/agents/src/skills/zone-classifier';
 import { executeSwarmFix, type SwarmTask, type SwarmResult } from '../pit-crew/swarm-dispatch';
 import { executeWithAPI } from '../pit-crew/api-dispatch';
 import { NOTION_DB } from '@atlas/shared/config';

@@ -38,7 +38,7 @@ mock.module('../src/config/features', () => ({
 
 // Import AFTER mocks are set up
 const { updateWorkQueueStatus } = await import('../src/conversation/notion-url');
-const { logAction } = await import('../src/skills/action-log');
+const { logAction } = await import('@atlas/agents/src/skills/action-log');
 
 describe('BUG 1: WQ Status update property type', () => {
   beforeEach(() => {

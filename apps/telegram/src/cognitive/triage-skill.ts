@@ -10,12 +10,12 @@
 
 import Anthropic from '@anthropic-ai/sdk';
 import { z } from 'zod';
-import { TASK_MODEL_MAP } from './models';
+import { TASK_MODEL_MAP } from '@atlas/agents/src/cognitive/models';
 import { logger } from '../logger';
 import { getFeatureFlags } from '../config/features';
 import { reportFailure } from '@atlas/shared/error-escalation';
-import type { Pillar, RequestType, ClassificationResult } from '../conversation/types';
-import { PILLARS, REQUEST_TYPES } from '../conversation/types';
+import type { Pillar, RequestType, ClassificationResult } from '@atlas/agents/src/conversation/types';
+import { PILLARS, REQUEST_TYPES } from '@atlas/agents/src/conversation/types';
 
 // ==========================================
 // Types

@@ -14,7 +14,7 @@ import {
   detectTouchesAuth,
   detectTouchesExternal,
   type PitCrewOperation,
-} from './zone-classifier';
+} from '@atlas/agents/src/skills/zone-classifier';
 
 describe('Zone Classifier', () => {
   // ==========================================

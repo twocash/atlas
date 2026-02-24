@@ -5,7 +5,7 @@
  * Uses heuristic detection with optional Claude fallback for ambiguous cases.
  */
 
-import type { TaskProfile, TaskComplexity, RiskTier } from "./types";
+import type { TaskProfile, TaskComplexity, RiskTier } from "@atlas/agents/src/cognitive/types";
 import { logger } from "../logger";
 
 /**
