@@ -563,6 +563,8 @@ async function runRegressionTests(cwd: string): Promise<SuiteResult> {
     'test/stab-002-chain.test.ts',               // STAB-002: Cognitive loop chain tests (triage → assessment → dialogue)
     'test/stab-003-loop-closure.test.ts',        // STAB-003: Loop closure unit tests (approval session, signal matching)
     'test/stab-003-chain.test.ts',               // STAB-003: Loop closure chain tests (dialogue → refinement → approval)
+    'test/conversation-state.test.ts',           // SESSION-STATE-FOUNDATION: Unified state manager unit tests
+    'test/stab-003b-scenarios.test.ts',          // SESSION-STATE-FOUNDATION: Chain tests for 5-bug fix scenarios
   ];
 
   const result = await runCommand(

@@ -28,6 +28,7 @@ import { extractContent, toUrlContent } from './content-extractor';
 import { preReadContent } from './content-pre-reader';
 import { reportExtractionFailure, type ExtractionChainTrace } from '../../../../packages/shared/src/extraction-failure-reporter';
 import { getSpaSourcesSync } from '../config/content-sources';
+import { storeContentContext, storeTriage } from './conversation-state';
 
 // ==========================================
 // Bug #1 Fix: Duplicate Confirmation Guard
@@ -316,6 +317,28 @@ export async function triggerContentConfirmation(
         error: err instanceof Error ? err.message : String(err),
       });
     }
+  }
+
+  // UNIFIED STATE: Persist content context so follow-up messages retain URL awareness.
+  // Solves Bug #2 (URL context loss) and Bug #5 (pillar drift on re-triage).
+  if (userId && chatId) {
+    storeContentContext(chatId, userId, {
+      url,
+      title,
+      preReadSummary: urlContent?.preReadSummary,
+      prefetchedUrlContent: urlContent,
+      capturedAt: Date.now(),
+    });
+    if (triageResult) {
+      storeTriage(chatId, triageResult);
+    }
+    logger.debug('Content context persisted to unified state', {
+      chatId,
+      url,
+      title,
+      hasTriage: !!triageResult,
+      hasPreRead: !!urlContent?.preReadSummary,
+    });
   }
 
   // SOCRATIC INTERVIEW: Replace keyboard flow with conversational engine

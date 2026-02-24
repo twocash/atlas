@@ -1,6 +1,11 @@
 /**
  * Dialogue Session State — Telegram Surface
  *
+ * @deprecated SESSION-STATE-FOUNDATION: This module is being superseded by
+ * conversation-state.ts (unified state manager). Session store functions
+ * still work but are mirrored to unified state. Will be fully removed
+ * after unified state is verified in production.
+ *
  * Maps chatId -> pending dialogue session state.
  * When assessment classifies a request as "rough" terrain, this module
  * stores the dialogue state. When Jim replies, handler.ts retrieves

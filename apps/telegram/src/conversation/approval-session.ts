@@ -1,6 +1,12 @@
 /**
  * Approval Session State — Telegram Surface
  *
+ * @deprecated SESSION-STATE-FOUNDATION: This module is being superseded by
+ * conversation-state.ts (unified state manager). Session store functions
+ * still work but are mirrored to unified state. Signal detection utilities
+ * (isApprovalSignal, isRejectionSignal) and formatting (formatProposalMessage)
+ * remain canonical — they are pure functions, not session state.
+ *
  * Maps chatId -> pending approval session state.
  * When assessment classifies a request as moderate+ with a proposal,
  * this module stores the proposal. When Jim replies with an approval

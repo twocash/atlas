@@ -87,6 +87,16 @@ import {
   isRejectionSignal,
   formatProposalMessage,
 } from './approval-session';
+import {
+  getOrCreateState,
+  getStateByUserId,
+  getContentContext,
+  storeAssessment,
+  storeTriage as storeTriageInState,
+  enterDialoguePhase,
+  enterApprovalPhase,
+  returnToIdle,
+} from './conversation-state';
 
 // Feature flag for content confirmation keyboard (Universal Content Analysis)
 // Enabled by default - set ATLAS_CONTENT_CONFIRM=false to disable
@@ -353,12 +363,13 @@ export async function handleConversation(ctx: Context): Promise<void> {
     if (handled) {
       // New content share detected — cancel any pending Socratic session
       // (the old question is stale now that Jim is sharing new content)
-      const staleSession = getSocraticSessionByUserId(userId);
-      if (staleSession) {
-        removeSocraticSession(staleSession.chatId);
+      const staleSocratic = getSocraticSessionByUserId(userId);
+      if (staleSocratic) {
+        removeSocraticSession(staleSocratic.chatId);
+        returnToIdle(staleSocratic.chatId);
         logger.info('Cancelled stale Socratic session (new content share)', {
           userId,
-          cancelledSessionId: staleSession.sessionId,
+          cancelledSessionId: staleSocratic.sessionId,
         });
       }
       await setReaction(ctx, REACTIONS.DONE);
@@ -400,12 +411,13 @@ export async function handleConversation(ctx: Context): Promise<void> {
     const containsUrl = /https?:\/\/\S+/i.test(messageText);
     if (containsUrl) {
       // URL in message = new content, not a Socratic answer
-      const staleSession = getSocraticSessionByUserId(userId);
-      if (staleSession) {
-        removeSocraticSession(staleSession.chatId);
+      const staleSocSession = getSocraticSessionByUserId(userId);
+      if (staleSocSession) {
+        removeSocraticSession(staleSocSession.chatId);
+        returnToIdle(staleSocSession.chatId);
         logger.info('Socratic session bypassed: message contains URL (new content)', {
           userId,
-          cancelledSessionId: staleSession.sessionId,
+          cancelledSessionId: staleSocSession.sessionId,
         });
       }
       // Fall through to normal processing — this URL will get triaged fresh
@@ -430,6 +442,7 @@ export async function handleConversation(ctx: Context): Promise<void> {
       const staleSession = getApprovalSessionByUserId(userId);
       if (staleSession) {
         removeApprovalSession(staleSession.chatId);
+        returnToIdle(staleSession.chatId);
         logger.info('Approval session bypassed: new URL content', { userId });
       }
     } else {
@@ -445,13 +458,17 @@ export async function handleConversation(ctx: Context): Promise<void> {
             messageText = approvalSession.originalMessage;
           }
           approvalGranted = true;
+          // SESSION-STATE-FOUNDATION: Return unified state to idle.
+          // Assessment + triage remain cached — pipeline skip reads them.
+          returnToIdle(approvalSession.chatId);
           approvalStep.metadata = { status: 'approved', hasRefinedRequest: !!approvalSession.refinedRequest };
           completeStep(approvalStep);
           logger.info('Proposal approved, proceeding with execution', { userId });
-          // Fall through to normal processing — approvalGranted skips the gate
+          // Fall through to normal processing — approvalGranted skips triage/enrichment/assessment
         } else if (isRejectionSignal(messageText)) {
           // Rejected — ask for adjustment
           removeApprovalSession(approvalSession.chatId);
+          returnToIdle(approvalSession.chatId);
           await ctx.reply(
             "Got it — what would you adjust? I can rethink the approach.",
             { parse_mode: 'HTML' },
@@ -464,6 +481,7 @@ export async function handleConversation(ctx: Context): Promise<void> {
         } else {
           // Ambiguous — treat as new message, remove session, re-assess
           removeApprovalSession(approvalSession.chatId);
+          returnToIdle(approvalSession.chatId);
           approvalStep.metadata = { status: 'ambiguous', treatedAsNewMessage: true };
           completeStep(approvalStep);
           logger.info('Ambiguous approval reply, treating as new message', { userId });
@@ -483,6 +501,7 @@ export async function handleConversation(ctx: Context): Promise<void> {
       const staleSession = getDialogueSessionByUserId(userId);
       if (staleSession) {
         removeDialogueSession(staleSession.chatId);
+        returnToIdle(staleSession.chatId);
         logger.info('Dialogue session bypassed: new URL content', { userId });
       }
     } else {
@@ -495,19 +514,29 @@ export async function handleConversation(ctx: Context): Promise<void> {
           if (!model) {
             // Can't continue without model — cancel and fall through
             removeDialogueSession(dialogueSession.chatId);
+            returnToIdle(dialogueSession.chatId);
             dialogueStep.metadata = { status: 'cancelled', reason: 'no-cached-model' };
             completeStep(dialogueStep);
           } else {
             const result = continueDialogue(messageText, dialogueSession.dialogueState, model);
             if (result.needsResponse) {
               // Dialogue continues — update state, send next message
+              const nextMsgId = (await ctx.reply(
+                result.message.length > 4000 ? result.message.substring(0, 3997) + '...' : result.message,
+                { parse_mode: 'HTML' },
+              )).message_id;
               storeDialogueSession({
                 ...dialogueSession,
                 dialogueState: result.state,
-                questionMessageId: (await ctx.reply(
-                  result.message.length > 4000 ? result.message.substring(0, 3997) + '...' : result.message,
-                  { parse_mode: 'HTML' },
-                )).message_id,
+                questionMessageId: nextMsgId,
+              });
+              // SESSION-STATE-FOUNDATION: Mirror to unified state
+              enterDialoguePhase(dialogueSession.chatId, userId, {
+                questionMessageId: nextMsgId,
+                dialogueState: result.state,
+                assessment: dialogueSession.assessment,
+                assessmentContext: dialogueSession.assessmentContext,
+                originalMessage: dialogueSession.originalMessage,
               });
               dialogueStep.metadata = {
                 status: 'continued',
@@ -520,6 +549,7 @@ export async function handleConversation(ctx: Context): Promise<void> {
             } else {
               // Dialogue resolved — remove session, proceed with refined request
               removeDialogueSession(dialogueSession.chatId);
+              returnToIdle(dialogueSession.chatId);
 
               // STAB-003 Fix 1: Substitute refined request for downstream processing.
               // The dialogue engine synthesizes user intent into a clear, actionable
@@ -552,6 +582,15 @@ export async function handleConversation(ctx: Context): Promise<void> {
                   assessmentContext: dialogueSession.assessmentContext,
                   createdAt: Date.now(),
                 });
+                // SESSION-STATE-FOUNDATION: Mirror to unified state
+                enterApprovalPhase(ctx.chat!.id, userId, {
+                  proposalMessageId: sentMsg.message_id,
+                  proposal: result.proposal,
+                  refinedRequest: result.refinedRequest,
+                  originalMessage: dialogueSession.originalMessage,
+                  assessment: dialogueSession.assessment,
+                  assessmentContext: dialogueSession.assessmentContext,
+                });
                 dialogueStep.metadata = {
                   status: 'resolved-awaiting-approval',
                   turns: result.state.turnCount,
@@ -579,6 +618,7 @@ export async function handleConversation(ctx: Context): Promise<void> {
           }
         } catch (err) {
           removeDialogueSession(dialogueSession.chatId);
+          returnToIdle(dialogueSession.chatId);
           dialogueStep.metadata = {
             status: 'failed',
             error: err instanceof Error ? err.message : String(err),
@@ -675,70 +715,127 @@ export async function handleConversation(ctx: Context): Promise<void> {
     }
   }
 
-  // PRE-FLIGHT TRIAGE: Detect command intent before sending to Claude
-  // This fixes the meta-request bug where "log a bug about X" gets captured
-  // as a task instead of executing the command. The triage result is reused
-  // for audit later (no duplicate API call).
+  // ────────────────────────────────────────────────────────
+  // PIPELINE SKIP (SESSION-STATE-FOUNDATION)
+  //
+  // When approvalGranted === true, the triage, enrichment, and assessment
+  // were already computed BEFORE the proposal was surfaced. Re-running them
+  // on the approval text ("yes") wastes 4-6 API calls (Bug #1) and drifts
+  // the pillar (Bug #5). Instead, pull cached results from unified state.
+  // ────────────────────────────────────────────────────────
+
   let preflightTriage: TriageResult | null = null;
-  const triageStep = addStep(trace, 'triage');
-  try {
-    preflightTriage = await triageMessage(messageText);
-    completeStep(triageStep);
-    triageStep.metadata = {
-      intent: preflightTriage.intent,
-      confidence: preflightTriage.confidence,
-      pillar: preflightTriage.pillar,
-      source: preflightTriage.source,
-    };
+  let contextEnrichment: EnrichmentResult | null = null;
+  let assessment: RequestAssessment | null = null;
 
-    // Command intent: rewrite userContent so Claude structures the ticket properly
-    if (preflightTriage.intent === 'command' && preflightTriage.command) {
-      const cmd = preflightTriage.command;
-      userContent = [
-        `[USER COMMAND: ${cmd.verb} ${cmd.target}${cmd.priority ? ` priority=${cmd.priority}` : ''}]`,
-        `Pillar: ${preflightTriage.pillar}`,
-        ``,
-        cmd.description,
-      ].join('\n');
-
-      logger.info('Pre-flight triage: command intent detected', {
-        verb: cmd.verb,
-        target: cmd.target,
-        priority: cmd.priority,
-        descriptionLength: cmd.description.length,
+  if (approvalGranted) {
+    // Restore cached triage + assessment from unified state
+    const cachedState = getStateByUserId(userId);
+    if (cachedState?.lastTriage) {
+      preflightTriage = cachedState.lastTriage;
+      logger.info('Pipeline skip: reusing cached triage (post-approval)', {
+        userId,
+        pillar: preflightTriage.pillar,
+        intent: preflightTriage.intent,
       });
     }
-  } catch (err) {
+    if (cachedState?.lastAssessment) {
+      assessment = cachedState.lastAssessment;
+      logger.info('Pipeline skip: reusing cached assessment (post-approval)', {
+        userId,
+        complexity: assessment.complexity,
+      });
+    }
+    // Triage step in trace: mark as skipped-reused
+    const triageStep = addStep(trace, 'triage');
+    triageStep.metadata = { status: 'skipped-reused', reason: 'approval-granted' };
     completeStep(triageStep);
-    triageStep.metadata = { error: err instanceof Error ? err.message : String(err) };
-    logger.warn('Pre-flight triage failed (non-fatal, continuing with raw text)', { error: err });
-  }
+    // Enrichment: skipped post-approval (already computed before proposal)
+    // Assessment: skipped (already have it from cache)
+  } else {
+    // ── Normal path: full triage → enrichment → assessment ──
 
-  // CONTEXT ENRICHMENT: Populate cognitive context slots (domain RAG, POV, voice, intent)
-  // Feature gate: ATLAS_CONTEXT_ENRICHMENT (default: enabled)
-  let contextEnrichment: EnrichmentResult | null = null;
-  if (process.env.ATLAS_CONTEXT_ENRICHMENT !== 'false') {
-    const enrichStep = addStep(trace, 'context-enrichment');
-    // No try/catch — enrichment errors propagate to the outer handler.
-    // Graceful degradation will be re-enabled once the pipeline is stable.
-    contextEnrichment = await enrichWithContextSlots(messageText, userId);
-    completeStep(enrichStep);
-    enrichStep.metadata = {
-      slotsUsed: contextEnrichment?.slotsUsed,
-      tier: contextEnrichment?.tier,
-      totalTokens: contextEnrichment?.totalTokens,
-      slotStatuses: contextEnrichment?.slotResults
-        ? Object.fromEntries(contextEnrichment.slotResults.map((s) => [s.slotName, s.status]))
-        : undefined,
-      degraded: contextEnrichment?.degradedContextNote != null,
-    };
+    // PRE-FLIGHT TRIAGE: Detect command intent before sending to Claude
+    // This fixes the meta-request bug where "log a bug about X" gets captured
+    // as a task instead of executing the command. The triage result is reused
+    // for audit later (no duplicate API call).
+    //
+    // BUG #2 FIX (SESSION-STATE-FOUNDATION): Prepend URL context from unified state
+    // so triage sees the full picture when Jim's follow-up text is decontextualized.
+    // Without this, "research this" after a URL share → triage sees only "research this"
+    // and drifts to the wrong pillar.
+    const triageStep = addStep(trace, 'triage');
+    try {
+      let triageInput = messageText;
+      const contentCtx = getContentContext(ctx.chat!.id);
+      if (contentCtx && !messageText.includes('http')) {
+        // Follow-up text after URL share — prepend URL context for triage
+        const contextParts = [`[URL context: ${contentCtx.url}]`];
+        if (contentCtx.title) contextParts.push(`[Title: ${contentCtx.title}]`);
+        if (contentCtx.preReadSummary) contextParts.push(`[Summary: ${contentCtx.preReadSummary}]`);
+        triageInput = `${contextParts.join(' ')}\n\n${messageText}`;
+        triageStep.metadata = { urlContextPrepended: true, url: contentCtx.url };
+      }
+      preflightTriage = await triageMessage(triageInput);
+      completeStep(triageStep);
+      triageStep.metadata = {
+        ...triageStep.metadata,
+        intent: preflightTriage.intent,
+        confidence: preflightTriage.confidence,
+        pillar: preflightTriage.pillar,
+        source: preflightTriage.source,
+      };
+      // Cache triage in unified state (Bug #4: prevents double triage, Bug #5: stable pillar)
+      storeTriageInState(ctx.chat!.id, preflightTriage);
+
+      // Command intent: rewrite userContent so Claude structures the ticket properly
+      if (preflightTriage.intent === 'command' && preflightTriage.command) {
+        const cmd = preflightTriage.command;
+        userContent = [
+          `[USER COMMAND: ${cmd.verb} ${cmd.target}${cmd.priority ? ` priority=${cmd.priority}` : ''}]`,
+          `Pillar: ${preflightTriage.pillar}`,
+          ``,
+          cmd.description,
+        ].join('\n');
+
+        logger.info('Pre-flight triage: command intent detected', {
+          verb: cmd.verb,
+          target: cmd.target,
+          priority: cmd.priority,
+          descriptionLength: cmd.description.length,
+        });
+      }
+    } catch (err) {
+      completeStep(triageStep);
+      triageStep.metadata = { error: err instanceof Error ? err.message : String(err) };
+      logger.warn('Pre-flight triage failed (non-fatal, continuing with raw text)', { error: err });
+    }
+
+    // CONTEXT ENRICHMENT: Populate cognitive context slots (domain RAG, POV, voice, intent)
+    // Feature gate: ATLAS_CONTEXT_ENRICHMENT (default: enabled)
+    if (process.env.ATLAS_CONTEXT_ENRICHMENT !== 'false') {
+      const enrichStep = addStep(trace, 'context-enrichment');
+      // No try/catch — enrichment errors propagate to the outer handler.
+      // Graceful degradation will be re-enabled once the pipeline is stable.
+      contextEnrichment = await enrichWithContextSlots(messageText, userId);
+      completeStep(enrichStep);
+      enrichStep.metadata = {
+        slotsUsed: contextEnrichment?.slotsUsed,
+        tier: contextEnrichment?.tier,
+        totalTokens: contextEnrichment?.totalTokens,
+        slotStatuses: contextEnrichment?.slotResults
+          ? Object.fromEntries(contextEnrichment.slotResults.map((s) => [s.slotName, s.status]))
+          : undefined,
+        degraded: contextEnrichment?.degradedContextNote != null,
+      };
+    }
   }
 
   // REQUEST ASSESSMENT: Classify complexity + build approach proposal
   // Feature gate: ATLAS_SELF_MODEL (assessment needs capability model from Fix 1)
   // Observability-only in STAB-001: logs to trace, does NOT alter conversation flow
-  let assessment: RequestAssessment | null = null;
-  if (process.env.ATLAS_SELF_MODEL === 'true' && preflightTriage) {
+  // SESSION-STATE-FOUNDATION: Skip when approvalGranted (assessment already cached above)
+  if (!approvalGranted && process.env.ATLAS_SELF_MODEL === 'true' && preflightTriage) {
     const assessStep = addStep(trace, 'request-assessment');
     try {
       const model = getCachedModel();
@@ -774,6 +871,9 @@ export async function handleConversation(ctx: Context): Promise<void> {
         if (DOMAIN_AUDIENCE_ENABLED && assessment.domain) {
           lastDomainByUser.set(userId, assessment.domain);
         }
+
+        // Cache assessment in unified state (Bug #1: reused after approval)
+        storeAssessment(ctx.chat!.id, assessment, assessmentContext);
       }
     } catch (err) {
       // Explicit trace failure — ADR-008: surface failure in metadata, not just log
@@ -821,6 +921,14 @@ export async function handleConversation(ctx: Context): Promise<void> {
           originalMessage: messageText,
           createdAt: Date.now(),
         });
+        // SESSION-STATE-FOUNDATION: Mirror to unified state
+        enterDialoguePhase(ctx.chat!.id, userId, {
+          questionMessageId: sentMsg.message_id,
+          dialogueState: result.state,
+          assessment,
+          assessmentContext: assessCtx,
+          originalMessage: messageText,
+        });
 
         dialogueStep.metadata = {
           status: 'entered',
@@ -850,7 +958,9 @@ export async function handleConversation(ctx: Context): Promise<void> {
   // APPROVAL GATE: Moderate+ terrain with proposal → surface for approval (STAB-003/003a)
   // Any non-simple request with an approach proposal gets surfaced for sign-off.
   // Rough terrain routes to dialogue first, so in practice this gates moderate + complex.
-  if (assessment && assessment.approach && assessment.complexity !== 'simple' && !approvalGranted) {
+  // Bug #3 fix (SESSION-STATE-FOUNDATION): Add steps.length >= 2 to prevent over-gating.
+  // Single-step moderate proposals don't need approval — they're just "do this one thing".
+  if (assessment && assessment.approach && assessment.approach.steps.length >= 2 && assessment.complexity !== 'simple' && !approvalGranted) {
     const approvalStep = addStep(trace, 'approval-gate');
     const proposalMsg = formatProposalMessage(assessment.approach, assessment.complexity);
     const sentMsg = await ctx.reply(
@@ -874,6 +984,14 @@ export async function handleConversation(ctx: Context): Promise<void> {
       assessment,
       assessmentContext: assessCtx,
       createdAt: Date.now(),
+    });
+    // SESSION-STATE-FOUNDATION: Mirror to unified state
+    enterApprovalPhase(ctx.chat!.id, userId, {
+      proposalMessageId: sentMsg.message_id,
+      proposal: assessment.approach,
+      originalMessage: messageText,
+      assessment,
+      assessmentContext: assessCtx,
     });
     approvalStep.metadata = {
       status: 'proposal-surfaced',

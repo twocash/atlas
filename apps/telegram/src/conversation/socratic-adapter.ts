@@ -22,6 +22,7 @@ import {
 import type { IntentType } from '../../../../packages/agents/src/services/prompt-composition/types';
 import type { TriageResult } from '../cognitive/triage-skill';
 import { storeSocraticSession, removeSocraticSession, getSocraticSession } from './socratic-session';
+import { enterSocraticPhase, returnToIdle } from './conversation-state';
 import { createAuditTrail } from './audit';
 import { runResearchAgentWithNotifications, sendCompletionNotification } from '../services/research-executor';
 import { routeForAnalysis } from './content-router';
@@ -179,7 +180,7 @@ export async function socraticInterview(
         reply_parameters: messageId ? { message_id: messageId } : undefined,
       });
 
-      // Store session for answer handling
+      // Store session for answer handling (legacy + unified state)
       storeSocraticSession({
         sessionId: session.id,
         chatId,
@@ -193,6 +194,19 @@ export async function socraticInterview(
         triageResult,
         signals,
         createdAt: Date.now(),
+        prefetchedUrlContent,
+      });
+      // SESSION-STATE-FOUNDATION: Mirror to unified state
+      enterSocraticPhase(chatId, userId, {
+        sessionId: session.id,
+        questionMessageId: questionMsg.message_id,
+        questions: result.questions,
+        currentQuestionIndex: 0,
+        content,
+        contentType,
+        title,
+        triageResult,
+        signals,
         prefetchedUrlContent,
       });
 
@@ -463,8 +477,9 @@ export async function handleSocraticAnswer(
       session.currentQuestionIndex,
     );
 
-    // Clean up session
+    // Clean up session (legacy + unified state)
     removeSocraticSession(chatId);
+    returnToIdle(chatId);
 
     if (result.type === 'resolved') {
       await handleResolved(
@@ -485,13 +500,26 @@ export async function handleSocraticAnswer(
       const questionText = formatQuestionMessage(session.title, result.questions);
       const questionMsg = await ctx.reply(questionText, { parse_mode: 'HTML' });
 
-      // Update session with new question
+      // Update session with new question (legacy + unified state)
       storeSocraticSession({
         ...session,
         questionMessageId: questionMsg.message_id,
         questions: result.questions,
         currentQuestionIndex: 0,
         createdAt: Date.now(), // Reset TTL
+      });
+      // SESSION-STATE-FOUNDATION: Mirror to unified state
+      enterSocraticPhase(session.chatId, session.userId, {
+        sessionId: session.sessionId,
+        questionMessageId: questionMsg.message_id,
+        questions: result.questions,
+        currentQuestionIndex: 0,
+        content: session.content,
+        contentType: session.contentType,
+        title: session.title,
+        triageResult: session.triageResult,
+        signals: session.signals,
+        prefetchedUrlContent: session.prefetchedUrlContent,
       });
 
       return true;
@@ -520,6 +548,7 @@ export async function handleSocraticAnswer(
       error: error instanceof Error ? error.message : String(error),
     });
     removeSocraticSession(chatId);
+    returnToIdle(chatId);
     return false;
   }
 }
