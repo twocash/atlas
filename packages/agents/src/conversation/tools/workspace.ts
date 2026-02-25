@@ -9,7 +9,24 @@ import { readFile, writeFile, mkdir, readdir } from 'fs/promises';
 import { join, resolve, dirname } from 'path';
 import { fileURLToPath } from 'url';
 import { logger } from '../../logger';
-import { listArchivedMedia, type Pillar } from '../media';
+import type { Pillar } from '../types';
+
+// ---- Injectable hooks for media (injected by app layer, no-op defaults) ----
+
+export interface WorkspaceHooks {
+  listArchivedMedia: (pillar?: Pillar) => Promise<Array<{ path: string; pillar: Pillar; type: string; archivedAt: string; originalName?: string }>>;
+}
+
+let _workspaceHooks: WorkspaceHooks = {
+  listArchivedMedia: async () => [],
+};
+
+/**
+ * Inject app-layer media hooks. Called once during app startup.
+ */
+export function setWorkspaceHooks(hooks: Partial<WorkspaceHooks>) {
+  if (hooks.listArchivedMedia) _workspaceHooks.listArchivedMedia = hooks.listArchivedMedia;
+}
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
@@ -260,7 +277,7 @@ async function executeListMedia(
   const limit = Math.min((input.limit as number) || 20, 100);
 
   try {
-    const media = await listArchivedMedia(pillar);
+    const media = await _workspaceHooks.listArchivedMedia(pillar);
     const limited = media.slice(0, limit);
 
     return {

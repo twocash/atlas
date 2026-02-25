@@ -21,7 +21,7 @@ mock.module('../src/logger', () => ({
 }));
 
 // Mock content-router
-mock.module('../src/conversation/content-router', () => ({
+mock.module('@atlas/agents/src/conversation/content-router', () => ({
   routeForAnalysis: async (url: string) => {
     if (url.includes('threads.net')) return { source: 'threads', method: 'Jina', needsBrowser: true, domain: 'threads.net' };
     if (url.includes('twitter.com') || url.includes('x.com')) return { source: 'twitter', method: 'Jina', needsBrowser: true, domain: 'twitter.com' };
@@ -61,7 +61,7 @@ import {
   stripNonTextContent,
   type ExtractionResult,
   type ExtractionStatus,
-} from '../src/conversation/content-extractor';
+} from '@atlas/agents/src/conversation/content-extractor';
 import type { UrlContent } from '../src/types';
 
 // ─── Helpers ─────────────────────────────────────────────

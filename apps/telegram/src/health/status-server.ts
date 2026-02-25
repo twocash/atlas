@@ -128,7 +128,7 @@ app.get('/test', (c) => {
 // Debug endpoint - check skill registry and matching
 app.get('/debug/skills', async (c) => {
   try {
-    const { getSkillRegistry } = await import('../skills/registry');
+    const { getSkillRegistry } = await import('@atlas/agents/src/skills/registry');
     const registry = getSkillRegistry();
 
     const url = c.req.query('url') || 'https://www.threads.com/test';
@@ -395,7 +395,7 @@ async function processCapture(capture: CaptureRequest) {
     // Now trigger skill execution for rich extraction
     pushActivity('page-capture', 'extracting', 'running', ['Running content extraction...']);
 
-    const { getSkillRegistry, initializeSkillRegistry } = await import('../skills/registry');
+    const { getSkillRegistry, initializeSkillRegistry } = await import('@atlas/agents/src/skills/registry');
     const { executeSkill } = await import('../skills/executor');
 
     // Ensure registry is initialized

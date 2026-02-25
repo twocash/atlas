@@ -19,7 +19,7 @@ import { describe, it, expect } from 'bun:test';
 
 // ── Layer 1: Content Extractor — SPA degraded → success: false ──────────
 
-import { toUrlContent, type ExtractionResult } from '../src/conversation/content-extractor';
+import { toUrlContent, type ExtractionResult } from '@atlas/agents/src/conversation/content-extractor';
 
 describe('Chain Layer 1: toUrlContent marks SPA degraded as failure', () => {
   const threadsExtractionDegraded: ExtractionResult = {
@@ -96,7 +96,7 @@ describe('Chain Layer 1: toUrlContent marks SPA degraded as failure', () => {
 
 // ── Layer 2: Content Router — SPA detection ─────────────────────────────
 
-import { routeForAnalysis } from '../src/conversation/content-router';
+import { routeForAnalysis } from '@atlas/agents/src/conversation/content-router';
 
 describe('Chain Layer 2: routeForAnalysis sets needsBrowser for SPA sources', () => {
   it('threads.com → needsBrowser: true', async () => {
@@ -342,7 +342,7 @@ describe('Chain Layer 4: End-to-end SPA URL → research gate decision', () => {
 
 // ── Layer 5: Content Quality — stripNonTextContent ────────────────────
 
-import { stripNonTextContent } from '../src/conversation/content-extractor';
+import { stripNonTextContent } from '@atlas/agents/src/conversation/content-extractor';
 
 describe('Chain Layer 5: stripNonTextContent quality gate', () => {
   it('strips markdown images', () => {

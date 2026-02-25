@@ -18,10 +18,10 @@ import { getHelpText } from "./commands/help";
 import { handleHealthCommand } from "./commands/health";
 import { initWorker, runWorkerCycle, startPolling, stopPolling, formatWorkerStatus } from "./worker";
 import { handleConversation, clearConversation } from "./conversation";
-import { formatStatsMessage, detectPatterns } from "./conversation/stats";
+import { formatStatsMessage, detectPatterns } from "@atlas/agents/src/conversation/stats";
 import { handleSkillsCommand } from "./handlers/skill-callback";
 import { requestStop } from "./skills";
-import { registerTelegramSendCallback } from "./conversation/tools/core";
+import { registerTelegramSendCallback } from "@atlas/agents/src/conversation/tools/core";
 import type { AtlasContext } from "./types";
 
 // Feature flag for conversational UX mode
@@ -282,7 +282,7 @@ export function createBot(): Bot<AtlasContext> {
 
   // Rollback command - rollback recently auto-deployed skills (Sprint: Pit Stop)
   bot.command("rollback", async (ctx) => {
-    const { rollbackDeployment, getRecentDeployments } = await import("./skills/approval-queue");
+    const { rollbackDeployment, getRecentDeployments } = await import("@atlas/agents/src/skills/approval-queue");
 
     const skillName = ctx.message?.text?.split(" ").slice(1).join(" ").trim();
 

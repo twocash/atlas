@@ -13,9 +13,46 @@ import { fileURLToPath } from 'url';
 import { Client } from '@notionhq/client';
 import { NOTION_DB } from '@atlas/shared/config';
 import { logger } from '../../logger';
-import { getScheduledTasks, registerTask, unregisterTask, type ScheduledTask } from '../../scheduler';
-import { restartMcp, getMcpStatus, listMcpTools } from '../../mcp';
-import { checkNotionAccess, formatHealthCheck } from '../../health/notion-check';
+import { getToolHooks } from './hooks';
+
+// ---- Injectable hooks for scheduler and health-check (injected by app layer, no-op defaults) ----
+
+interface ScheduledTask {
+  id: string;
+  cron: string;
+  action: 'execute_skill' | 'send_message' | 'run_script';
+  target: string;
+  description: string;
+  created: string;
+  enabled: boolean;
+}
+
+export interface OperatorHooks {
+  getScheduledTasks: () => ScheduledTask[];
+  registerTask: (task: ScheduledTask) => { success: boolean; nextRun?: string; error?: string };
+  unregisterTask: (id: string) => boolean;
+  checkNotionAccess: () => Promise<any>;
+  formatHealthCheck: (result: any) => string;
+}
+
+let _operatorHooks: OperatorHooks = {
+  getScheduledTasks: () => [],
+  registerTask: () => ({ success: false, error: 'Scheduler hooks not initialized' }),
+  unregisterTask: () => false,
+  checkNotionAccess: async () => ({ success: false, integration: 'unknown', databases: [], timestamp: new Date().toISOString() }),
+  formatHealthCheck: () => 'Health check hooks not initialized',
+};
+
+/**
+ * Inject app-layer scheduler and health-check hooks. Called once during app startup.
+ */
+export function setOperatorHooks(hooks: Partial<OperatorHooks>) {
+  if (hooks.getScheduledTasks) _operatorHooks.getScheduledTasks = hooks.getScheduledTasks;
+  if (hooks.registerTask) _operatorHooks.registerTask = hooks.registerTask;
+  if (hooks.unregisterTask) _operatorHooks.unregisterTask = hooks.unregisterTask;
+  if (hooks.checkNotionAccess) _operatorHooks.checkNotionAccess = hooks.checkNotionAccess;
+  if (hooks.formatHealthCheck) _operatorHooks.formatHealthCheck = hooks.formatHealthCheck;
+}
 
 // ESM compatibility
 const __filename = fileURLToPath(import.meta.url);
@@ -518,10 +555,10 @@ async function executeSystemStatus(
 
   // Check schedules
   try {
-    const tasks = getScheduledTasks();
+    const tasks = _operatorHooks.getScheduledTasks();
     status.scheduledTasks = {
       count: tasks.length,
-      tasks: tasks.map(t => ({ id: t.id, cron: t.cron, action: t.action })),
+      tasks: tasks.map((t: any) => ({ id: t.id, cron: t.cron, action: t.action })),
     };
   } catch {
     status.scheduledTasks = { error: 'Could not load schedules' };
@@ -813,7 +850,7 @@ async function executeCreateSchedule(
     await writeFile(filePath, JSON.stringify(task, null, 2), 'utf-8');
 
     // Hot-register the task (no restart needed)
-    const registration = registerTask(task);
+    const registration = _operatorHooks.registerTask(task);
 
     logger.info('Schedule created', { id, cron, action, hotLoaded: registration.success });
 
@@ -839,7 +876,7 @@ async function executeCreateSchedule(
 async function executeListSchedules(): Promise<{ success: boolean; result: unknown; error?: string }> {
   try {
     // Get active tasks from scheduler
-    const activeTasks = getScheduledTasks();
+    const activeTasks = _operatorHooks.getScheduledTasks();
 
     // Also check files on disk (may include disabled)
     let files: string[] = [];
@@ -884,7 +921,7 @@ async function executeDeleteSchedule(
     await unlink(filePath);
 
     // Hot-unregister the task (no restart needed)
-    const wasActive = unregisterTask(id);
+    const wasActive = _operatorHooks.unregisterTask(id);
 
     logger.info('Schedule deleted', { id, wasActive });
 
@@ -1017,7 +1054,7 @@ async function executeMcpManagement(
   switch (action) {
     case 'restart': {
       try {
-        const result = await restartMcp();
+        const result = await getToolHooks().restartMcp();
         return {
           success: true,
           result: {
@@ -1036,7 +1073,7 @@ async function executeMcpManagement(
     }
 
     case 'status': {
-      const status = getMcpStatus();
+      const status = getToolHooks().getMcpStatus();
       const serverCount = Object.keys(status).length;
       const connectedCount = Object.values(status).filter(s => s.status === 'connected').length;
       const totalTools = Object.values(status).reduce((sum, s) => sum + s.toolCount, 0);
@@ -1051,7 +1088,7 @@ async function executeMcpManagement(
     }
 
     case 'list_tools': {
-      const tools = listMcpTools();
+      const tools = getToolHooks().listMcpTools();
       const byServer: Record<string, string[]> = {};
 
       for (const tool of tools) {
@@ -1085,7 +1122,7 @@ async function executeMcpManagement(
 
 async function executeNotionHealthCheck(): Promise<{ success: boolean; result: unknown; error?: string }> {
   try {
-    const result = await checkNotionAccess();
+    const result = await _operatorHooks.checkNotionAccess();
 
     return {
       success: result.success,
@@ -1093,7 +1130,7 @@ async function executeNotionHealthCheck(): Promise<{ success: boolean; result: u
         integration: result.integration,
         overall: result.success ? 'HEALTHY' : 'ISSUES DETECTED',
         databases: result.databases,
-        formattedOutput: formatHealthCheck(result),
+        formattedOutput: _operatorHooks.formatHealthCheck(result),
         timestamp: result.timestamp,
       },
       error: result.success ? undefined : 'One or more databases are not accessible',

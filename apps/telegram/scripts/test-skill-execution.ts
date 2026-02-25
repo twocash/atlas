@@ -66,7 +66,7 @@ async function runTests() {
   // Test 3: Browser Tools Available
   console.log('\n📋 Test 3: Browser Tools Availability');
   try {
-    const { executeTool } = await import('../src/conversation/tools');
+    const { executeTool } = await import('@atlas/agents/src/conversation/tools');
 
     // Check if browser_open_page tool exists
     const testResult = await executeTool('browser_open_page', {
@@ -96,7 +96,7 @@ async function runTests() {
   // Test 4: Threads Page Extraction
   console.log('\n📋 Test 4: Threads Page Extraction');
   try {
-    const { executeTool } = await import('../src/conversation/tools');
+    const { executeTool } = await import('@atlas/agents/src/conversation/tools');
     const threadsUrl = 'https://www.threads.com/@zaborowitz/post/DUTf4FXSZ9n';
 
     console.log(`   Opening: ${threadsUrl}`);
@@ -135,7 +135,7 @@ async function runTests() {
   // Test 5: Claude Analysis
   console.log('\n📋 Test 5: Claude Analysis Tool');
   try {
-    const { executeTool } = await import('../src/conversation/tools');
+    const { executeTool } = await import('@atlas/agents/src/conversation/tools');
 
     const analysisResult = await executeTool('claude_analyze', {
       content: 'This is a test post about AI and machine learning. The author argues that LLMs are transforming software development.',
@@ -157,7 +157,7 @@ async function runTests() {
   // Test 6: Notion Append Tool
   console.log('\n📋 Test 6: Notion Append Tool');
   try {
-    const { executeTool } = await import('../src/conversation/tools');
+    const { executeTool } = await import('@atlas/agents/src/conversation/tools');
 
     // Create a test page first or use a known test page
     // For now, just verify the tool is callable

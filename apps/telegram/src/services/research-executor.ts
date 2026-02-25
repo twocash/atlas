@@ -13,7 +13,7 @@ import { HallucinationError } from "../errors";
 import { isFeatureEnabled } from "../config/features";
 import { createActionFeedEntry } from "../notion";
 import type { ActionDataReview } from "../types";
-import { stashAgentResult } from "../conversation/context-manager";
+import { stashAgentResult } from "@atlas/agents/src/conversation/context-manager";
 
 // Import from @atlas/agents package
 import {

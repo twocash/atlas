@@ -14,7 +14,7 @@ import {
   recordTurn,
   clearAllStates,
   type ConversationState,
-} from '../src/conversation/conversation-state';
+} from '@atlas/agents/src/conversation/conversation-state';
 
 // ─── Helpers ─────────────────────────────────────────────
 

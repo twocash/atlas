@@ -34,22 +34,22 @@ import type { Context } from 'grammy';
 import Anthropic from '@anthropic-ai/sdk';
 import { logger } from '../logger';
 import { formatMessage } from '../formatting';
-import { getConversation, updateConversation, buildMessages, type ToolContext } from './context';
-import { buildSystemPrompt } from './prompt';
-import { detectAttachment, buildAttachmentPrompt } from './attachments';
+import { getConversation, updateConversation, buildMessages, type ToolContext } from '@atlas/agents/src/conversation/context';
+import { buildSystemPrompt } from '@atlas/agents/src/conversation/prompt';
+import { detectAttachment, buildAttachmentPrompt } from '@atlas/agents/src/conversation/attachments';
 import { processMedia, buildMediaContext, buildAnalysisContent, type Pillar } from './media';
-import { createAuditTrail, type AuditEntry, type AuditResult } from './audit';
-import { getAllTools, executeTool } from './tools';
-import { recordUsage } from './stats';
+import { createAuditTrail, type AuditEntry, type AuditResult } from '@atlas/agents/src/conversation/audit';
+import { getAllTools, executeTool } from '@atlas/agents/src/conversation/tools';
+import { recordUsage } from '@atlas/agents/src/conversation/stats';
 import { maybeHandleAsContentShare, triggerMediaConfirmation, triggerInstantClassification } from './content-flow';
-import { hasPendingSocraticSessionForUser, getSocraticSessionByUserId, removeSocraticSession } from './socratic-session';
+import { hasPendingSocraticSessionForUser, getSocraticSessionByUserId, removeSocraticSession } from '@atlas/agents/src/conversation/socratic-session';
 import { handleSocraticAnswer, executeResolvedGoal } from './socratic-adapter';
 import { logAction, getIntentHash, isFeatureEnabled } from '../skills';
 import { reportFailure } from '@atlas/shared/error-escalation';
 import { createTrace, addStep, completeStep, completeTrace, failTrace, type TraceContext } from '@atlas/shared/trace';
 import { classifyWithFallback, triageForAudit, triageMessage } from '@atlas/agents/src/cognitive/triage-skill';
 import type { TriageResult } from '@atlas/agents/src/cognitive/triage-skill';
-import { enrichWithContextSlots, type EnrichmentResult } from './context-enrichment';
+import { enrichWithContextSlots, type EnrichmentResult } from '@atlas/agents/src/conversation/context-enrichment';
 import {
   generateDispatchChoiceId,
   storePendingDispatch,
@@ -57,7 +57,7 @@ import {
   buildRoutingChoiceKeyboard,
   type PendingDispatch,
 } from './dispatch-choice';
-import { getLastAgentResult, clearLastAgentResult } from './context-manager';
+import { getLastAgentResult, clearLastAgentResult } from '@atlas/agents/src/conversation/context-manager';
 import {
   assessRequest,
   type RequestAssessment,
@@ -86,7 +86,7 @@ import {
   isApprovalSignal,
   isRejectionSignal,
   formatProposalMessage,
-} from './approval-session';
+} from '@atlas/agents/src/conversation/approval-session';
 import {
   getOrCreateState,
   getStateByUserId,
@@ -98,7 +98,7 @@ import {
   enterGoalClarificationPhase,
   returnToIdle,
   recordTurn,
-} from './conversation-state';
+} from '@atlas/agents/src/conversation/conversation-state';
 import {
   incorporateClarification,
   resolveAfterClarification,
@@ -365,7 +365,7 @@ export async function handleConversation(ctx: Context): Promise<void> {
   await ctx.replyWithChatAction('typing');
 
   // Detect attachments
-  const attachment = detectAttachment(ctx);
+  const attachment = detectAttachment(ctx.message);
   const hasAttachment = attachment.type !== 'none';
 
   // Check for content share (URL) - trigger confirmation keyboard if enabled

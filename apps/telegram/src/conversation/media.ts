@@ -11,7 +11,7 @@ import { readFile, writeFile, mkdir, unlink } from 'fs/promises';
 import { join, dirname } from 'path';
 import { fileURLToPath } from 'url';
 import { logger } from '../logger';
-import type { AttachmentInfo } from './attachments';
+import type { AttachmentInfo } from '@atlas/agents/src/conversation/attachments';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);

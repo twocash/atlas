@@ -41,7 +41,7 @@ import {
   isRejectionSignal,
   formatProposalMessage,
   type PendingApprovalSession,
-} from "../src/conversation/approval-session"
+} from "@atlas/agents/src/conversation/approval-session"
 
 // Dialogue session store
 import {

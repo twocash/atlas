@@ -195,7 +195,7 @@ async function testGeminiAPI() {
 async function testCoreTools() {
   startSection('CORE TOOLS', '🔧');
 
-  const { executeCoreTools } = await import('../src/conversation/tools/core');
+  const { executeCoreTools } = await import('@atlas/agents/src/conversation/tools/core');
 
   await runTest('notion_search works', async () => {
     const result = await executeCoreTools('notion_search', { query: 'test', limit: 1 });
@@ -249,7 +249,7 @@ async function testCoreTools() {
 async function testWorkspaceTools() {
   startSection('WORKSPACE TOOLS', '📁');
 
-  const { executeWorkspaceTools } = await import('../src/conversation/tools/workspace');
+  const { executeWorkspaceTools } = await import('@atlas/agents/src/conversation/tools/workspace');
 
   await runTest('list_workspace works', async () => {
     const result = await executeWorkspaceTools('list_workspace', { workspace: 'temp' });
@@ -288,7 +288,7 @@ async function testWorkspaceTools() {
 async function testSelfModTools() {
   startSection('SELF-MOD TOOLS', '🧠');
 
-  const { executeSelfModTools } = await import('../src/conversation/tools/self-mod');
+  const { executeSelfModTools } = await import('@atlas/agents/src/conversation/tools/self-mod');
 
   await runTest('read_soul works', async () => {
     const result = await executeSelfModTools('read_soul', {});
@@ -371,7 +371,7 @@ async function testSkillSystem() {
 async function testConversationContext() {
   startSection('CONVERSATION CONTEXT', '💬');
 
-  const { getConversation, updateConversation, clearConversation } = await import('../src/conversation/context');
+  const { getConversation, updateConversation, clearConversation } = await import('@atlas/agents/src/conversation/context');
   const testUserId = 999999999;
 
   await runTest('Get empty conversation', async () => {
@@ -399,7 +399,7 @@ async function testConversationContext() {
 async function testSystemPrompt() {
   startSection('SYSTEM PROMPT', '📝');
 
-  const { buildSystemPrompt } = await import('../src/conversation/prompt');
+  const { buildSystemPrompt } = await import('@atlas/agents/src/conversation/prompt');
 
   await runTest('Build system prompt', async () => {
     const prompt = await buildSystemPrompt();
@@ -427,7 +427,7 @@ async function testSystemPrompt() {
 async function testContentPatterns() {
   startSection('CONTENT PATTERNS', '🎯');
 
-  const { getPatternSuggestion, recordClassificationFeedback } = await import('../src/conversation/content-patterns');
+  const { getPatternSuggestion, recordClassificationFeedback } = await import('@atlas/agents/src/conversation/content-patterns');
 
   await runTest('Pattern suggestion works', async () => {
     const suggestion = await getPatternSuggestion({
@@ -483,7 +483,7 @@ async function testMCPIntegration() {
 async function testAuditTrail() {
   startSection('AUDIT TRAIL', '📋');
 
-  const { createAuditTrail } = await import('../src/conversation/audit');
+  const { createAuditTrail } = await import('@atlas/agents/src/conversation/audit');
 
   await runTest('Audit trail creation works (dry run)', async () => {
     // We can't actually create entries in smoke test, but we can verify the function exists
@@ -554,7 +554,7 @@ async function testContextualExtraction() {
   });
 
   await runTest('telegram_send callback can be registered', async () => {
-    const { registerTelegramSendCallback } = await import('../src/conversation/tools/core');
+    const { registerTelegramSendCallback } = await import('@atlas/agents/src/conversation/tools/core');
     // Just verify it doesn't throw
     registerTelegramSendCallback(async () => {});
   });
@@ -566,7 +566,7 @@ async function testContextualExtraction() {
 async function testDispatcherTools() {
   startSection('DISPATCHER TOOLS', '🚀');
 
-  const { executeDispatcherTools, DISPATCHER_TOOLS } = await import('../src/conversation/tools/dispatcher');
+  const { executeDispatcherTools, DISPATCHER_TOOLS } = await import('@atlas/agents/src/conversation/tools/dispatcher');
 
   await runTest('submit_ticket tool defined', async () => {
     const tool = DISPATCHER_TOOLS.find(t => t.name === 'submit_ticket');
@@ -586,7 +586,7 @@ async function testDispatcherTools() {
 async function testOperatorTools() {
   startSection('OPERATOR TOOLS', '⚙️');
 
-  const { executeOperatorTools, OPERATOR_TOOLS } = await import('../src/conversation/tools/operator');
+  const { executeOperatorTools, OPERATOR_TOOLS } = await import('@atlas/agents/src/conversation/tools/operator');
 
   await runTest('run_script tool defined', async () => {
     const tool = OPERATOR_TOOLS.find(t => t.name === 'run_script');

@@ -105,7 +105,7 @@ mock.module('fs/promises', () => ({
 
 // Import AFTER mocks are set up
 const { executeSelfModTools, SELF_MOD_TOOLS } = await import(
-  '../src/conversation/tools/self-mod'
+  '@atlas/agents/src/conversation/tools/self-mod'
 );
 const { getHelpText } = await import('../src/commands/help');
 

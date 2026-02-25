@@ -16,9 +16,9 @@ import {
   approveAllPending,
   approveAllTier0,
   deferAllPending,
-  formatProposalForTelegram,
   getQueueStats,
-} from '../skills/approval-queue';
+} from '@atlas/agents/src/skills/approval-queue';
+import { formatProposalForTelegram } from '../adapters/approval-formatter';
 import type { SkillProposal } from '@atlas/agents/src/skills/pattern-detector';
 import { getTierEmoji } from '@atlas/agents/src/skills/schema';
 
@@ -508,7 +508,7 @@ async function showPendingSkills(ctx: Context): Promise<void> {
  * Show all registered skills
  */
 async function showAllSkills(ctx: Context): Promise<void> {
-  const { getSkillRegistry } = await import('../skills/registry');
+  const { getSkillRegistry } = await import('@atlas/agents/src/skills/registry');
   const registry = getSkillRegistry();
   const skills = registry.getEnabled();
 
@@ -544,7 +544,7 @@ async function showAllSkills(ctx: Context): Promise<void> {
  * Show skill system stats
  */
 async function showSkillStats(ctx: Context): Promise<void> {
-  const { getSkillRegistry } = await import('../skills/registry');
+  const { getSkillRegistry } = await import('@atlas/agents/src/skills/registry');
   const registry = getSkillRegistry();
   const registryStats = registry.getStats();
   const queueStats = await getQueueStats();

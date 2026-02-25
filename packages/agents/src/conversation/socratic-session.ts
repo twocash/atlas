@@ -14,9 +14,9 @@
  */
 
 import { logger } from '../logger';
-import type { SocraticQuestion, ContextSignals } from '../../../../packages/agents/src/socratic';
-import type { TriageResult } from '@atlas/agents/src/cognitive/triage-skill';
-import type { UrlContent } from '../types';
+import type { SocraticQuestion, ContextSignals } from '../socratic';
+import type { TriageResult } from '../cognitive/triage-skill';
+import type { UrlContent } from './types';
 
 /**
  * A pending Socratic interview awaiting Jim's reply

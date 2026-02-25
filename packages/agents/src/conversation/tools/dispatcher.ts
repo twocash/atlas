@@ -15,7 +15,7 @@ import { Client } from '@notionhq/client';
 import { convertMarkdownToNotionBlocks } from '@atlas/shared/notion';
 import { NOTION_DB } from '@atlas/shared/config';
 import { logger } from '../../logger';
-import { executeMcpTool, isMcpTool, getMcpStatus } from '../../mcp';
+import { getToolHooks } from './hooks';
 
 // Canonical IDs from @atlas/shared/config
 const DB_WORK_QUEUE = NOTION_DB.WORK_QUEUE;
@@ -192,7 +192,7 @@ async function routeToPitCrew(params: {
   const { title, description, priority, ticketType, reasoning } = params;
 
   // Check if Pit Crew MCP is connected
-  const mcpStatus = getMcpStatus();
+  const mcpStatus = getToolHooks().getMcpStatus();
   const pitCrewStatus = mcpStatus['pit_crew'];
 
   if (!pitCrewStatus || pitCrewStatus.status !== 'connected') {
@@ -205,7 +205,7 @@ async function routeToPitCrew(params: {
     // Build rich context: reasoning (why) + description (what)
     const fullContext = `**Atlas Analysis:**\n${reasoning}\n\n**Task Specification:**\n${description}`;
 
-    const result = await executeMcpTool('mcp__pit_crew__dispatch_work', {
+    const result = await getToolHooks().executeMcpTool('mcp__pit_crew__dispatch_work', {
       type: ticketType,
       title,
       context: fullContext,

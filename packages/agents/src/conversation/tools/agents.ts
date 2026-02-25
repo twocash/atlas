@@ -132,13 +132,13 @@ async function executeDispatchResearch(
   try {
     // Import research agent components
     const { createResearchWorkItem, wireAgentToWorkQueue } = await import(
-      '../../../../../packages/agents/src/workqueue'
+      '../../workqueue'
     );
     const { AgentRegistry } = await import(
-      '../../../../../packages/agents/src/registry'
+      '../../registry'
     );
     const { executeResearch } = await import(
-      '../../../../../packages/agents/src/agents/research'
+      '../../agents/research'
     );
 
     // Create registry for this research task

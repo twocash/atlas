@@ -139,7 +139,7 @@ async function runSystemPromptCanaries(): Promise<CanarySuite> {
   console.log('─'.repeat(50));
 
   try {
-    const { buildSystemPrompt } = await import('../src/conversation/prompt.js');
+    const { buildSystemPrompt } = await import('@atlas/agents/src/conversation/prompt');
     const prompt = await buildSystemPrompt();
 
     // Canary 1: Prompt has minimum viable length
@@ -280,7 +280,7 @@ async function runToolResponseCanaries(): Promise<CanarySuite> {
   }
 
   try {
-    const { executeCoreTools } = await import('../src/conversation/tools/core.js');
+    const { executeCoreTools } = await import('@atlas/agents/src/conversation/tools/core');
 
     // Canary 1: work_queue_list returns structured data (not empty)
     const wqResult = await executeCoreTools('work_queue_list', { limit: 5 });
@@ -321,7 +321,7 @@ async function runToolResponseCanaries(): Promise<CanarySuite> {
     }
 
     // Canary 3: read_soul returns actual SOUL content
-    const { executeSelfModTools } = await import('../src/conversation/tools/self-mod.js');
+    const { executeSelfModTools } = await import('@atlas/agents/src/conversation/tools/self-mod');
     const soulResult = await executeSelfModTools('read_soul', {});
     if (soulResult?.success) {
       const content = (soulResult.result as { content?: string })?.content || '';

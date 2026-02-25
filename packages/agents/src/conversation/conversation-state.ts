@@ -17,14 +17,14 @@
  */
 
 import { logger } from '../logger';
-import type { RequestAssessment, AssessmentContext } from '../../../../packages/agents/src/assessment/types';
-import type { ApproachProposal } from '../../../../packages/agents/src/assessment/types';
-import type { DialogueState } from '../../../../packages/agents/src/dialogue/types';
-import type { SocraticQuestion, ContextSignals } from '../../../../packages/agents/src/socratic';
-import type { GoalContext, ContentAnalysis as GoalContentAnalysis, GoalTracker } from '../../../../packages/agents/src/goal';
-import type { ResolvedContext } from '../../../../packages/agents/src/socratic';
-import type { TriageResult } from '@atlas/agents/src/cognitive/triage-skill';
-import type { UrlContent } from '../types';
+import type { RequestAssessment, AssessmentContext } from '../assessment/types';
+import type { ApproachProposal } from '../assessment/types';
+import type { DialogueState } from '../dialogue/types';
+import type { SocraticQuestion, ContextSignals } from '../socratic';
+import type { GoalContext, ContentAnalysis as GoalContentAnalysis, GoalTracker } from '../goal';
+import type { ResolvedContext } from '../socratic';
+import type { TriageResult } from '../cognitive/triage-skill';
+import type { UrlContent } from './types';
 
 /**
  * Deferred execution context stored when goal needs clarification.

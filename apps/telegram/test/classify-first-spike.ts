@@ -8,7 +8,7 @@
 
 import { Client } from '@notionhq/client';
 import { NOTION_DB } from '@atlas/shared/config';
-import type { AuditEntry } from '../src/conversation/audit';
+import type { AuditEntry } from '@atlas/agents/src/conversation/audit';
 
 // Canonical IDs from @atlas/shared/config
 const FEED_DB_ID = NOTION_DB.FEED;
@@ -70,7 +70,7 @@ async function main() {
   // Test 3a: Simulate audit trail creation (minimal - core fields only)
   console.log('\n3a. Testing audit trail creation (MINIMAL - core fields)...');
   try {
-    const { createAuditTrail } = await import('../src/conversation/audit');
+    const { createAuditTrail } = await import('@atlas/agents/src/conversation/audit');
 
     const minimalEntry: AuditEntry = {
       entry: '[SPIKE TEST] Minimal Entry',
@@ -104,7 +104,7 @@ async function main() {
   console.log('\n3b. Testing audit trail creation (FULL - with analysis content)...');
   try {
     // Import the actual audit module
-    const { createAuditTrail } = await import('../src/conversation/audit');
+    const { createAuditTrail } = await import('@atlas/agents/src/conversation/audit');
 
     const testEntry: AuditEntry = {
       entry: '[SPIKE TEST] Analysis Content Test',
@@ -223,7 +223,7 @@ async function main() {
   // Test 4: Test pattern suggestion query
   console.log('\n4. Testing pattern suggestion query...');
   try {
-    const { getPatternSuggestion } = await import('../src/conversation/content-patterns');
+    const { getPatternSuggestion } = await import('@atlas/agents/src/conversation/content-patterns');
 
     const pattern = await getPatternSuggestion({
       pillar: 'The Grove',

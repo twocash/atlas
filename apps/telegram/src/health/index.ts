@@ -306,7 +306,7 @@ async function checkNotionDatabases(): Promise<HealthCheckResult[]> {
   const results: HealthCheckResult[] = [];
 
   // First, verify raw database access using verifyDatabaseAccess
-  const { verifyDatabaseAccess } = await import('../conversation/audit');
+  const { verifyDatabaseAccess } = await import('@atlas/agents/src/conversation/audit');
   console.log('[HEALTH] Verifying raw database access (Feed 2.0 + Work Queue 2.0)...');
   const dbAccess = await verifyDatabaseAccess();
 
@@ -332,7 +332,7 @@ async function checkNotionDatabases(): Promise<HealthCheckResult[]> {
   });
 
   // Import and call the actual tool functions to test the real code paths
-  const { executeCoreTools } = await import('../conversation/tools/core');
+  const { executeCoreTools } = await import('@atlas/agents/src/conversation/tools/core');
 
   // Test get_status_summary - queries Work Queue (no Inbox per spec)
   console.log('[HEALTH] Testing get_status_summary (same route as tools)...');

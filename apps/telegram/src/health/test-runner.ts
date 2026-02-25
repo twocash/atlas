@@ -60,7 +60,7 @@ async function runTest(
  */
 async function testConversationContext(): Promise<TestResult[]> {
   const results: TestResult[] = [];
-  const { getConversation, updateConversation, clearConversation } = await import('../conversation/context');
+  const { getConversation, updateConversation, clearConversation } = await import('@atlas/agents/src/conversation/context');
 
   // Test get empty conversation
   results.push(await runTest('Get empty conversation', async () => {
@@ -96,7 +96,7 @@ async function testConversationContext(): Promise<TestResult[]> {
  */
 async function testPromptBuilder(): Promise<TestResult[]> {
   const results: TestResult[] = [];
-  const { buildSystemPrompt } = await import('../conversation/prompt');
+  const { buildSystemPrompt } = await import('@atlas/agents/src/conversation/prompt');
 
   results.push(await runTest('Build system prompt', async () => {
     const prompt = await buildSystemPrompt();
@@ -116,7 +116,7 @@ async function testPromptBuilder(): Promise<TestResult[]> {
  */
 async function testWorkspaceOperations(): Promise<TestResult[]> {
   const results: TestResult[] = [];
-  const { executeWorkspaceTools } = await import('../conversation/tools/workspace');
+  const { executeWorkspaceTools } = await import('@atlas/agents/src/conversation/tools/workspace');
 
   // Test write
   results.push(await runTest('Write temp file', async () => {
@@ -170,7 +170,7 @@ async function testWorkspaceOperations(): Promise<TestResult[]> {
  */
 async function testSelfModTools(): Promise<TestResult[]> {
   const results: TestResult[] = [];
-  const { executeSelfModTools } = await import('../conversation/tools/self-mod');
+  const { executeSelfModTools } = await import('@atlas/agents/src/conversation/tools/self-mod');
 
   // Test read soul
   results.push(await runTest('Read SOUL.md', async () => {
@@ -203,7 +203,7 @@ async function testNotionIntegration(): Promise<TestResult[]> {
     return results;
   }
 
-  const { executeCoreTools } = await import('../conversation/tools/core');
+  const { executeCoreTools } = await import('@atlas/agents/src/conversation/tools/core');
 
   // Test status summary
   results.push(await runTest('Get status summary', async () => {

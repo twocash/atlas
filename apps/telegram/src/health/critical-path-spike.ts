@@ -323,7 +323,7 @@ async function testDispatcherFlow(): Promise<SpikeTestResult[]> {
 
   // Test 3.1: Import dispatcher and verify it loads
   results.push(await runSpikeTest('Dispatcher: Module loads', async () => {
-    const { handleSubmitTicket, DISPATCHER_TOOL } = await import('../conversation/tools/dispatcher');
+    const { handleSubmitTicket, DISPATCHER_TOOL } = await import('@atlas/agents/src/conversation/tools/dispatcher');
 
     if (!handleSubmitTicket) {
       throw new Error('handleSubmitTicket not exported');
@@ -342,7 +342,7 @@ async function testDispatcherFlow(): Promise<SpikeTestResult[]> {
 
   // Test 3.2: Dispatch research ticket via dispatcher (Work Queue path)
   results.push(await runSpikeTest('Dispatcher: Research ticket creates Work Queue entry', async () => {
-    const { handleSubmitTicket } = await import('../conversation/tools/dispatcher');
+    const { handleSubmitTicket } = await import('@atlas/agents/src/conversation/tools/dispatcher');
 
     const result = await handleSubmitTicket({
       reasoning: 'SPIKE TEST: Verifying dispatcher creates valid Work Queue entries with URLs',
@@ -391,7 +391,7 @@ async function testDispatcherFlow(): Promise<SpikeTestResult[]> {
   // Test 3.3: Dispatch bug ticket via dispatcher (Pit Crew path - CRITICAL)
   // This is the EXACT path where URL hallucination was occurring
   results.push(await runSpikeTest('Dispatcher: Bug ticket routes to Pit Crew with URL', async () => {
-    const { handleSubmitTicket } = await import('../conversation/tools/dispatcher');
+    const { handleSubmitTicket } = await import('@atlas/agents/src/conversation/tools/dispatcher');
     const { getMcpStatus } = await import('../mcp');
 
     // Check if Pit Crew is available
@@ -574,7 +574,7 @@ async function testToolInfrastructure(): Promise<SpikeTestResult[]> {
 
   // Test 5.1: Core tools load
   results.push(await runSpikeTest('Tools: Core tools load', async () => {
-    const { executeCoreTools, CORE_TOOLS } = await import('../conversation/tools/core');
+    const { executeCoreTools, CORE_TOOLS } = await import('@atlas/agents/src/conversation/tools/core');
 
     if (!executeCoreTools) {
       throw new Error('executeCoreTools not exported');
@@ -593,7 +593,7 @@ async function testToolInfrastructure(): Promise<SpikeTestResult[]> {
 
   // Test 5.2: get_status_summary works
   results.push(await runSpikeTest('Tools: get_status_summary executes', async () => {
-    const { executeCoreTools } = await import('../conversation/tools/core');
+    const { executeCoreTools } = await import('@atlas/agents/src/conversation/tools/core');
 
     const result = await executeCoreTools('get_status_summary', {});
 
@@ -610,7 +610,7 @@ async function testToolInfrastructure(): Promise<SpikeTestResult[]> {
 
   // Test 5.3: work_queue_list works
   results.push(await runSpikeTest('Tools: work_queue_list executes', async () => {
-    const { executeCoreTools } = await import('../conversation/tools/core');
+    const { executeCoreTools } = await import('@atlas/agents/src/conversation/tools/core');
 
     const result = await executeCoreTools('work_queue_list', { limit: 1 });
 

@@ -15,7 +15,7 @@ import { describe, it, expect, mock } from 'bun:test';
 
 // ── Layer 1: toUrlContent preserves fullContent ─────────────────────────
 
-import { toUrlContent, type ExtractionResult } from '../src/conversation/content-extractor';
+import { toUrlContent, type ExtractionResult } from '@atlas/agents/src/conversation/content-extractor';
 
 describe('Chain Layer 1: toUrlContent preserves fullContent', () => {
   const longContent = 'A'.repeat(1000); // Longer than 500-char bodySnippet limit
@@ -84,7 +84,7 @@ describe('Chain Layer 1: toUrlContent preserves fullContent', () => {
 // actual call without mocking. These tests verify the interface contract
 // and edge cases that don't require API calls.
 
-import { preReadContent } from '../src/conversation/content-pre-reader';
+import { preReadContent } from '@atlas/agents/src/conversation/content-pre-reader';
 
 describe('Chain Layer 2: preReadContent edge cases (no API key)', () => {
   // These tests work without ANTHROPIC_API_KEY set — they test graceful degradation

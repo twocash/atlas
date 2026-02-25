@@ -249,19 +249,19 @@ mock.module('../../src/formatting', () => ({
 }));
 
 // Conversation context
-mock.module('../../src/conversation/context', () => ({
+mock.module('@atlas/agents/src/conversation/context', () => ({
   getConversation: async () => ({ userId: 12345, messages: [], toolContexts: [], metadata: {} }),
   updateConversation: async (...args: any[]) => { state.updateConversationCalls.push(args); },
   buildMessages: (_conv: any, userContent: string) => [{ role: 'user', content: userContent }],
 }));
 
 // Prompt builder
-mock.module('../../src/conversation/prompt', () => ({
+mock.module('@atlas/agents/src/conversation/prompt', () => ({
   buildSystemPrompt: async () => 'You are Atlas, a test system prompt.',
 }));
 
 // Attachments
-mock.module('../../src/conversation/attachments', () => ({
+mock.module('@atlas/agents/src/conversation/attachments', () => ({
   detectAttachment: () => ({ type: 'none' }),
   buildAttachmentPrompt: () => '',
 }));
@@ -274,7 +274,7 @@ mock.module('../../src/conversation/media', () => ({
 }));
 
 // Audit
-mock.module('../../src/conversation/audit', () => ({
+mock.module('@atlas/agents/src/conversation/audit', () => ({
   createAuditTrail: async (entry: any, trace: any) => {
     state.capturedAuditEntry = entry;
     return config.auditTrailResult;
@@ -282,7 +282,7 @@ mock.module('../../src/conversation/audit', () => ({
 }));
 
 // Tools
-mock.module('../../src/conversation/tools', () => ({
+mock.module('@atlas/agents/src/conversation/tools', () => ({
   getAllTools: () => [
     { name: 'submit_ticket', description: 'Submit a ticket', input_schema: { type: 'object', properties: {} } },
     { name: 'dispatch_research', description: 'Dispatch research', input_schema: { type: 'object', properties: {} } },
@@ -295,7 +295,7 @@ mock.module('../../src/conversation/tools', () => ({
 }));
 
 // Stats
-mock.module('../../src/conversation/stats', () => ({
+mock.module('@atlas/agents/src/conversation/stats', () => ({
   recordUsage: async () => {},
 }));
 
@@ -307,7 +307,7 @@ mock.module('../../src/conversation/content-flow', () => ({
 }));
 
 // Socratic session
-mock.module('../../src/conversation/socratic-session', () => ({
+mock.module('@atlas/agents/src/conversation/socratic-session', () => ({
   hasPendingSocraticSessionForUser: () => false,
 }));
 
@@ -345,7 +345,7 @@ mock.module('../../src/cognitive/triage-skill', () => ({
 }));
 
 // Context enrichment
-mock.module('../../src/conversation/context-enrichment', () => ({
+mock.module('@atlas/agents/src/conversation/context-enrichment', () => ({
   enrichWithContextSlots: async () => config.enrichmentResult,
 }));
 

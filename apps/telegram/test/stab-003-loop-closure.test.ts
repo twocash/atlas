@@ -24,7 +24,7 @@ import {
   isRejectionSignal,
   formatProposalMessage,
   type PendingApprovalSession,
-} from "../src/conversation/approval-session"
+} from "@atlas/agents/src/conversation/approval-session"
 
 import type { RequestAssessment } from "../../../packages/agents/src/assessment/types"
 import type { ApproachProposal } from "../../../packages/agents/src/assessment/types"

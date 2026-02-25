@@ -17,8 +17,8 @@ import {
   formatNotionPreview,
   type NotionPageInfo,
 } from '../conversation/notion-url';
-import { createAuditTrail, type AuditEntry } from '../conversation/audit';
-import { addToConversationContext } from '../conversation/context-manager';
+import { createAuditTrail, type AuditEntry } from '@atlas/agents/src/conversation/audit';
+import { addToConversationContext } from '@atlas/agents/src/conversation/context-manager';
 import { safeAnswerCallback, safeAcknowledgeCallback } from '../utils/telegram-helpers';
 import {
   runResearchAgentWithNotifications,

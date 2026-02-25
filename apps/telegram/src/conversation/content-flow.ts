@@ -15,20 +15,20 @@ import {
   detectContentSource,
   extractDomain,
   type ContentSource,
-} from './content-router';
+} from '@atlas/agents/src/conversation/content-router';
 import { isNotionUrl, handleNotionUrl } from './notion-url';
 import type { Pillar } from './types';
 import type { MediaContext } from './media';
-import type { AttachmentInfo } from './attachments';
+import type { AttachmentInfo } from '@atlas/agents/src/conversation/attachments';
 import { socraticInterview } from './socratic-adapter';
 import { getFeatureFlags } from '../config/features';
 import { checkUrl } from '../utils/url-dedup';
 import { triageMessage, type TriageResult } from '@atlas/agents/src/cognitive/triage-skill';
-import { extractContent, toUrlContent } from './content-extractor';
-import { preReadContent } from './content-pre-reader';
+import { extractContent, toUrlContent } from '@atlas/agents/src/conversation/content-extractor';
+import { preReadContent } from '@atlas/agents/src/conversation/content-pre-reader';
 import { reportExtractionFailure, type ExtractionChainTrace } from '../../../../packages/shared/src/extraction-failure-reporter';
 import { getSpaSourcesSync } from '../config/content-sources';
-import { storeContentContext, storeTriage } from './conversation-state';
+import { storeContentContext, storeTriage } from '@atlas/agents/src/conversation/conversation-state';
 
 // ==========================================
 // Bug #1 Fix: Duplicate Confirmation Guard

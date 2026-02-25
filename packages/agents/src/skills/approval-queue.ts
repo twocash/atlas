@@ -22,16 +22,31 @@ import {
   type SkillProposal,
   approveProposal as doApprove,
   rejectProposal as doReject,
-} from '@atlas/agents/src/skills/pattern-detector';
-import type { SkillDefinition } from '@atlas/agents/src/skills/schema';
+} from './pattern-detector';
+import type { SkillDefinition } from './schema';
 import {
   classifyZone,
   type PitCrewOperation,
   type PermissionZone,
   type ZoneClassification,
-} from '@atlas/agents/src/skills/zone-classifier';
-import { getFeatureFlags, getSafetyLimits } from '../config/features';
-import { getSkillRegistry } from '@atlas/agents/src/skills/registry';
+} from './zone-classifier';
+import { getSkillRegistry } from './registry';
+
+// ─── Injectable Hooks (surface-specific dependencies) ────
+
+export interface ApprovalQueueHooks {
+  getFeatureFlags: () => Record<string, boolean>
+  getSafetyLimits: () => { maxSwarmDispatchesPerHour: number; maxPendingProposals: number }
+}
+
+let _aqHooks: ApprovalQueueHooks = {
+  getFeatureFlags: () => ({}),
+  getSafetyLimits: () => ({ maxSwarmDispatchesPerHour: 5, maxPendingProposals: 20 }),
+}
+
+export function setApprovalQueueHooks(hooks: Partial<ApprovalQueueHooks>): void {
+  _aqHooks = { ..._aqHooks, ...hooks }
+}
 
 // =============================================================================
 // QUEUE STORAGE
@@ -368,7 +383,7 @@ export async function handlePitCrewOperation(
   operation: PitCrewOperation,
   proposal: SkillProposal
 ): Promise<ZoneOperationResult> {
-  const flags = getFeatureFlags();
+  const flags = _aqHooks.getFeatureFlags();
 
   // If zone classifier is disabled, use existing approval queue for everything
   if (!flags.zoneClassifier) {
@@ -492,7 +507,7 @@ function trackDeployment(
   });
 
   // Cleanup old deployments outside rollback window
-  const limits = getSafetyLimits();
+  const limits = _aqHooks.getSafetyLimits();
   const cutoff = new Date();
   cutoff.setHours(cutoff.getHours() - limits.rollbackWindowHours);
 
@@ -517,7 +532,7 @@ export async function rollbackDeployment(skillName: string): Promise<{
 
   if (!deployment) {
     // Check if it's outside rollback window
-    const limits = getSafetyLimits();
+    const limits = _aqHooks.getSafetyLimits();
     return {
       success: false,
       message: `Cannot rollback: ${skillName} not found in recent deployments (${limits.rollbackWindowHours}h window)`,
@@ -525,7 +540,7 @@ export async function rollbackDeployment(skillName: string): Promise<{
   }
 
   // Check rollback window
-  const limits = getSafetyLimits();
+  const limits = _aqHooks.getSafetyLimits();
   const deployedAt = new Date(deployment.deployedAt);
   const windowEnd = new Date(deployedAt);
   windowEnd.setHours(windowEnd.getHours() + limits.rollbackWindowHours);
@@ -568,7 +583,7 @@ export async function rollbackDeployment(skillName: string): Promise<{
  * Get recent deployments (for /rollback command listing)
  */
 export function getRecentDeployments(): DeploymentRecord[] {
-  const limits = getSafetyLimits();
+  const limits = _aqHooks.getSafetyLimits();
   const cutoff = new Date();
   cutoff.setHours(cutoff.getHours() - limits.rollbackWindowHours);
 
@@ -648,61 +663,5 @@ export async function getQueueStats(): Promise<{
   return stats;
 }
 
-// =============================================================================
-// FORMATTING FOR TELEGRAM
-// =============================================================================
-
-/**
- * Format a proposal for Telegram display
- */
-export function formatProposalForTelegram(proposal: SkillProposal): string {
-  const { skill, pattern } = proposal;
-
-  const tierEmoji = skill.tier === 0 ? '🟢' : skill.tier === 1 ? '🟡' : '🔴';
-  const tierLabel = skill.tier === 0 ? 'Read-only' : skill.tier === 1 ? 'Creates' : 'External';
-
-  const lines = [
-    `<b>${skill.name}</b>`,
-    `${tierEmoji} Tier ${skill.tier} (${tierLabel})`,
-    ``,
-    `Pattern: ${pattern.frequency}x in ${getDetectionConfig().windowDays} days`,
-    `Pillar: ${pattern.pillar || 'Mixed'}`,
-    `Tools: ${pattern.toolsUsed.slice(0, 3).join(', ')}${pattern.toolsUsed.length > 3 ? '...' : ''}`,
-    ``,
-    `Example: "${pattern.canonicalText.substring(0, 60)}${pattern.canonicalText.length > 60 ? '...' : ''}"`,
-  ];
-
-  return lines.join('\n');
-}
-
-/**
- * Format queue summary for briefing
- */
-export async function formatQueueSummary(): Promise<string | null> {
-  const stats = await getQueueStats();
-
-  if (stats.pending === 0) {
-    return null;
-  }
-
-  const lines = [
-    `🔧 <b>${stats.pending} Pending Skills</b>`,
-    ``,
-  ];
-
-  if (stats.byTier[0] > 0) lines.push(`🟢 ${stats.byTier[0]} Tier 0 (auto-deployable)`);
-  if (stats.byTier[1] > 0) lines.push(`🟡 ${stats.byTier[1]} Tier 1 (creates entries)`);
-  if (stats.byTier[2] > 0) lines.push(`🔴 ${stats.byTier[2]} Tier 2 (external actions)`);
-
-  lines.push('');
-  lines.push(`Use /skills pending to review`);
-
-  return lines.join('\n');
-}
-
-// Helper to get detection config
-function getDetectionConfig() {
-  // Import dynamically to avoid circular deps
-  const { getDetectionConfig: get } = require('../config/features');
-  return get();
-}
+// Telegram-specific formatting functions (formatProposalForTelegram, formatQueueSummary)
+// moved to apps/telegram/src/adapters/approval-formatter.ts during CPE Phase 3

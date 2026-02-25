@@ -11,14 +11,36 @@
  * Backward compatibility: toUrlContent() adapts ExtractionResult → UrlContent.
  */
 
-import type { UrlContent } from "../types"
+import type { UrlContent } from "./types"
 import type { ContentSource, ExtractionMethod } from "./content-router"
 import { detectContentSource, determineExtractionMethod } from "./content-router"
 import { logger } from "../logger"
-import { loadCookiesForUrl, requestCookieRefresh } from "../utils/chrome-cookies"
 import { isBridgeAvailable, extractWithBridge } from "./bridge-extractor"
-import { getFeatureFlags } from "../config/features"
-import { getSpaSourcesSync, getSourceDefaultsSync } from "../config/content-sources"
+
+// ─── Injectable Hooks (surface-specific dependencies) ────
+// Wired by surface layer (e.g., apps/telegram/src/index.ts) at startup.
+// Defaults are safe no-ops so the extractor works without surface wiring.
+
+export interface ContentExtractorHooks {
+  loadCookiesForUrl: (url: string) => { cookies: string } | null
+  requestCookieRefresh: () => Promise<boolean>
+  getSpaSourcesSync: () => string[]
+  getSourceDefaultsSync: (source: string) => Record<string, unknown> | null
+}
+
+let _extractorHooks: ContentExtractorHooks = {
+  loadCookiesForUrl: () => null,
+  requestCookieRefresh: async () => false,
+  getSpaSourcesSync: () => [],
+  getSourceDefaultsSync: () => null,
+}
+
+export function setContentExtractorHooks(hooks: Partial<ContentExtractorHooks>): void {
+  _extractorHooks = { ..._extractorHooks, ...hooks }
+}
+
+/** Inlined feature flag — opt-in (default OFF) */
+const isContentSourcesNotionEnabled = () => process.env.ATLAS_CONTENT_SOURCES_NOTION === "true"
 
 // ─── Types ────────────────────────────────────────────────
 
@@ -101,8 +123,8 @@ const FALLBACK_SPA_SOURCES: ContentSource[] = ["threads", "twitter", "linkedin"]
 
 /** Sources that require browser rendering — reads from Notion when flag enabled */
 function getSpaSources(): ContentSource[] {
-  if (getFeatureFlags().contentSourcesNotion) {
-    return getSpaSourcesSync();
+  if (isContentSourcesNotionEnabled()) {
+    return _extractorHooks.getSpaSourcesSync();
   }
   return FALLBACK_SPA_SOURCES;
 }
@@ -217,8 +239,8 @@ async function extractWithJina(
   const jinaUrl = `${JINA_BASE_URL}${url}`
 
   // Merge per-source defaults with caller overrides (caller wins)
-  const defaults = getFeatureFlags().contentSourcesNotion
-    ? getSourceDefaultsSync(source) as SourceDefaults
+  const defaults = isContentSourcesNotionEnabled()
+    ? _extractorHooks.getSourceDefaultsSync(source) as SourceDefaults
     : FALLBACK_SOURCE_DEFAULTS[source] || {}
   const effectiveOpts = { ...defaults, ...options }
 
@@ -613,7 +635,7 @@ export async function extractContent(
   // Auto-load cookies for SPA sources (if available and not already provided)
   const effectiveOptions = { ...options }
   if (!effectiveOptions.cookies && getSpaSources().includes(source)) {
-    const cookieResult = loadCookiesForUrl(cleanUrl)
+    const cookieResult = _extractorHooks.loadCookiesForUrl(cleanUrl)
     if (cookieResult) {
       effectiveOptions.cookies = cookieResult.cookieString
       logger.info("[ContentExtractor] Auto-loaded cookies", {
@@ -637,11 +659,11 @@ export async function extractContent(
       source,
     })
 
-    const refreshed = await requestCookieRefresh()
+    const refreshed = await _extractorHooks.requestCookieRefresh()
 
     if (refreshed) {
       // Reload cookies from disk
-      const freshCookies = loadCookiesForUrl(cleanUrl)
+      const freshCookies = _extractorHooks.loadCookiesForUrl(cleanUrl)
       if (freshCookies) {
         logger.info("[ContentExtractor] Retrying with fresh cookies", {
           source,

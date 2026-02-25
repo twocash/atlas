@@ -22,9 +22,14 @@ import { join } from 'path';
 import { parse as parseYaml } from 'yaml';
 
 const srcDir = join(import.meta.dir, '..', 'src');
+const agentsSrcDir = join(import.meta.dir, '..', '..', '..', 'packages', 'agents', 'src');
 const skillsDir = join(import.meta.dir, '..', 'data', 'skills');
 
 function readSrc(relativePath: string): string {
+  // Files moved to packages/agents/src/ during CPE Phase 3
+  if (relativePath.startsWith('conversation/')) {
+    return readFileSync(join(agentsSrcDir, relativePath), 'utf-8');
+  }
   return readFileSync(join(srcDir, relativePath), 'utf-8');
 }
 

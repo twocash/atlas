@@ -6,16 +6,33 @@
  */
 
 import type Anthropic from '@anthropic-ai/sdk';
-import {
-  createSupervisor,
-  getSupervisor,
-  setSupervisor,
-  resetSupervisor,
-  type Supervisor,
-  type SupervisorConfig,
-  type SupervisorStatus,
-} from '../../supervisor';
-import { executeMcpTool } from '../../mcp';
+import { getToolHooks } from './hooks';
+
+// ---- Injectable hooks for supervisor (injected by app layer, no-op defaults) ----
+
+export interface SupervisorHooks {
+  createSupervisor: (config: any) => any;
+  getSupervisor: () => any | null;
+  setSupervisor: (supervisor: any) => void;
+  resetSupervisor: () => void;
+}
+
+let _supervisorHooks: SupervisorHooks = {
+  createSupervisor: () => null,
+  getSupervisor: () => null,
+  setSupervisor: () => {},
+  resetSupervisor: () => {},
+};
+
+/**
+ * Inject app-layer supervisor hooks. Called once during app startup.
+ */
+export function setSupervisorHooks(hooks: Partial<SupervisorHooks>) {
+  if (hooks.createSupervisor) _supervisorHooks.createSupervisor = hooks.createSupervisor;
+  if (hooks.getSupervisor) _supervisorHooks.getSupervisor = hooks.getSupervisor;
+  if (hooks.setSupervisor) _supervisorHooks.setSupervisor = hooks.setSupervisor;
+  if (hooks.resetSupervisor) _supervisorHooks.resetSupervisor = hooks.resetSupervisor;
+}
 
 // ==========================================
 // Tool Definitions
@@ -128,7 +145,7 @@ async function handleSupervisorStart(
   input: Record<string, unknown>
 ): Promise<{ success: boolean; result: unknown; error?: string }> {
   // Check if already running
-  const existing = getSupervisor();
+  const existing = _supervisorHooks.getSupervisor();
   if (existing && existing.isRunning()) {
     return {
       success: false,
@@ -159,16 +176,16 @@ async function handleSupervisorStart(
   };
 
   try {
-    const supervisor = createSupervisor(config);
+    const supervisor = _supervisorHooks.createSupervisor(config);
 
     // Set MCP executor for Pit Crew integration
-    supervisor.setMcpExecutor(executeMcpTool);
+    supervisor.setMcpExecutor(getToolHooks().executeMcpTool);
 
     // Start the supervisor
     const result = await supervisor.start();
 
     if (result.success) {
-      setSupervisor(supervisor);
+      _supervisorHooks.setSupervisor(supervisor);
 
       return {
         success: true,
@@ -205,7 +222,7 @@ async function handleSupervisorStart(
 async function handleSupervisorStop(
   _input: Record<string, unknown>
 ): Promise<{ success: boolean; result: unknown; error?: string }> {
-  const supervisor = getSupervisor();
+  const supervisor = _supervisorHooks.getSupervisor();
 
   if (!supervisor) {
     return {
@@ -216,7 +233,7 @@ async function handleSupervisorStop(
 
   try {
     const result = await supervisor.stop();
-    resetSupervisor();
+    _supervisorHooks.resetSupervisor();
 
     return {
       success: result.success,
@@ -238,7 +255,7 @@ async function handleSupervisorStop(
 async function handleSupervisorStatus(
   input: Record<string, unknown>
 ): Promise<{ success: boolean; result: unknown; error?: string }> {
-  const supervisor = getSupervisor();
+  const supervisor = _supervisorHooks.getSupervisor();
 
   if (!supervisor) {
     return {
@@ -324,7 +341,7 @@ async function handleSupervisorStatus(
 async function handleSupervisorRestart(
   _input: Record<string, unknown>
 ): Promise<{ success: boolean; result: unknown; error?: string }> {
-  const supervisor = getSupervisor();
+  const supervisor = _supervisorHooks.getSupervisor();
 
   if (!supervisor) {
     return {
@@ -360,7 +377,7 @@ async function handleSupervisorRestart(
 async function handleSupervisorPattern(
   input: Record<string, unknown>
 ): Promise<{ success: boolean; result: unknown; error?: string }> {
-  const supervisor = getSupervisor();
+  const supervisor = _supervisorHooks.getSupervisor();
 
   if (!supervisor) {
     return {

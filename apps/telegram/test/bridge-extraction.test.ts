@@ -18,17 +18,20 @@ import { describe, it, expect, mock, beforeEach } from 'bun:test';
 
 // Mock logger — capture calls for assertion
 const logCalls: { level: string; msg: string; meta?: any }[] = [];
-mock.module('../src/logger', () => ({
+const loggerMock = () => ({
   logger: {
     info: (msg: string, meta?: any) => logCalls.push({ level: 'info', msg, meta }),
     warn: (msg: string, meta?: any) => logCalls.push({ level: 'warn', msg, meta }),
     error: (msg: string, meta?: any) => logCalls.push({ level: 'error', msg, meta }),
     debug: () => {},
   },
-}));
+});
+// Mock both loggers: telegram app logger + agents package logger
+mock.module('../src/logger', loggerMock);
+mock.module('@atlas/agents/src/logger', loggerMock);
 
 // Mock content-router
-mock.module('../src/conversation/content-router', () => ({
+mock.module('@atlas/agents/src/conversation/content-router', () => ({
   detectContentSource: (url: string) => {
     if (url.includes('threads.net')) return 'threads';
     if (url.includes('twitter.com') || url.includes('x.com')) return 'twitter';
@@ -56,7 +59,7 @@ mock.module('../src/utils/chrome-cookies', () => ({
 let bridgeAvailable = false;
 let bridgeExtractFn: ((url: string, source: string) => any) | null = null;
 
-mock.module('../src/conversation/bridge-extractor', () => ({
+mock.module('@atlas/agents/src/conversation/bridge-extractor', () => ({
   isBridgeAvailable: async () => bridgeAvailable,
   extractWithBridge: async (url: string, source: string) => {
     if (bridgeExtractFn) return bridgeExtractFn(url, source);
@@ -102,7 +105,7 @@ import {
   toUrlContent,
   type ExtractionResult,
   type ExtractionStatus,
-} from '../src/conversation/content-extractor';
+} from '@atlas/agents/src/conversation/content-extractor';
 
 // ─── Test Lifecycle ─────────────────────────────────────
 
@@ -271,14 +274,14 @@ describe('Bridge Content Extraction Pipeline', () => {
   describe('Extraction Cascade Wiring', () => {
     it('bridge-extractor import resolves without error', async () => {
       // If this import fails, the bridge isn't wired
-      const mod = await import('../src/conversation/bridge-extractor');
+      const mod = await import('@atlas/agents/src/conversation/bridge-extractor');
       expect(typeof mod.isBridgeAvailable).toBe('function');
       expect(typeof mod.extractWithBridge).toBe('function');
     });
 
     it('content-extractor imports bridge-extractor', async () => {
       // Verify the import wiring exists by checking the module loads
-      const mod = await import('../src/conversation/content-extractor');
+      const mod = await import('@atlas/agents/src/conversation/content-extractor');
       expect(typeof mod.extractContent).toBe('function');
       expect(typeof mod.toUrlContent).toBe('function');
     });
@@ -287,7 +290,7 @@ describe('Bridge Content Extraction Pipeline', () => {
       bridgeAvailable = true;
       bridgeExtractFn = (url, source) => makeBridgeSuccess(url, source);
 
-      const { extractContent } = await import('../src/conversation/content-extractor');
+      const { extractContent } = await import('@atlas/agents/src/conversation/content-extractor');
       await extractContent('https://www.threads.net/@test/post/logcheck');
 
       const bridgeLog = logCalls.find(
@@ -301,7 +304,7 @@ describe('Bridge Content Extraction Pipeline', () => {
       bridgeExtractFn = (url, source) =>
         makeBridgeFailure(url, source, 'Extension disconnected');
 
-      const { extractContent } = await import('../src/conversation/content-extractor');
+      const { extractContent } = await import('@atlas/agents/src/conversation/content-extractor');
       await extractContent('https://www.threads.net/@test/post/faillog');
 
       const fallbackLog = logCalls.find(
@@ -314,7 +317,7 @@ describe('Bridge Content Extraction Pipeline', () => {
       bridgeAvailable = true;
       bridgeExtractFn = (url, source) => makeBridgeSuccess(url, source);
 
-      const { extractContent } = await import('../src/conversation/content-extractor');
+      const { extractContent } = await import('@atlas/agents/src/conversation/content-extractor');
       const result = await extractContent('https://www.threads.net/@test/post/method');
 
       expect(result.method).toBe('Browser');
@@ -324,7 +327,7 @@ describe('Bridge Content Extraction Pipeline', () => {
     it('bridge unavailable → no bridge log (skips silently)', async () => {
       bridgeAvailable = false;
 
-      const { extractContent } = await import('../src/conversation/content-extractor');
+      const { extractContent } = await import('@atlas/agents/src/conversation/content-extractor');
       await extractContent('https://www.threads.net/@test/post/nobr');
 
       const bridgeLog = logCalls.find(
@@ -341,7 +344,7 @@ describe('Bridge Content Extraction Pipeline', () => {
         return makeBridgeSuccess(url, source);
       };
 
-      const { extractContent } = await import('../src/conversation/content-extractor');
+      const { extractContent } = await import('@atlas/agents/src/conversation/content-extractor');
       // Browser-first: articles go through Bridge → Jina → HTTP chain
       const result = await extractContent('https://techcrunch.com/2026/01/30/some-article');
 

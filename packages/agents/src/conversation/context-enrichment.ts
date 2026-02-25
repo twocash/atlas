@@ -13,9 +13,9 @@
  * On error: logs at error level with stack trace and re-throws.
  */
 
-import { assembleContext, type AssemblyResult } from "../../../../packages/bridge/src/context"
-import type { OrchestrationRequest, SlotId, ComplexityTier, ContextSlot } from "../../../../packages/bridge/src/types/orchestration"
-import type { TriageResult } from "@atlas/agents/src/cognitive/triage-skill"
+import { assembleContext, type AssemblyResult } from "../../../bridge/src/context"
+import type { OrchestrationRequest, SlotId, ComplexityTier, ContextSlot } from "../../../bridge/src/types/orchestration"
+import type { TriageResult } from "../cognitive/triage-skill"
 import { reportFailure } from "@atlas/shared/error-escalation"
 import { type SlotResult, type SlotName, wrapSlotResult } from "@atlas/shared/types/slot-result"
 import { buildDegradedContextNote } from "@atlas/shared/context-transparency"

@@ -17,7 +17,7 @@ const __dirname = dirname(__filename);
 config({ path: join(__dirname, '..', '.env'), override: true });
 
 // Now import the tools
-const { executeCoreTools } = await import('../src/conversation/tools/core');
+const { executeCoreTools } = await import('@atlas/agents/src/conversation/tools/core');
 
 async function main() {
   console.log('='.repeat(60));

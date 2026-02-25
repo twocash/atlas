@@ -5,25 +5,25 @@
  */
 
 export { handleConversation, handleConversationWithTools } from './handler';
-export { getConversation, clearConversation, updateConversation } from './context';
-export { buildSystemPrompt, getIdentity } from './prompt';
-export { detectAttachment, formatAttachmentInfo, buildAttachmentPrompt } from './attachments';
-export { createAuditTrail, updateWorkQueueStatus, logReclassification } from './audit';
+export { getConversation, clearConversation, updateConversation } from '@atlas/agents/src/conversation/context';
+export { buildSystemPrompt, getIdentity } from '@atlas/agents/src/conversation/prompt';
+export { detectAttachment, formatAttachmentInfo, buildAttachmentPrompt } from '@atlas/agents/src/conversation/attachments';
+export { createAuditTrail, updateWorkQueueStatus, logReclassification } from '@atlas/agents/src/conversation/audit';
 
 // Socratic Interview Engine (Gate 2)
 export { socraticInterview, handleSocraticAnswer } from './socratic-adapter';
-export { hasPendingSocraticSession, getSocraticSession, hasPendingSocraticSessionForUser } from './socratic-session';
-export { generateRequestId, storePendingContent, getPendingContent, updatePendingContent, removePendingContent } from './pending-content';
+export { hasPendingSocraticSession, getSocraticSession, hasPendingSocraticSessionForUser } from '@atlas/agents/src/conversation/socratic-session';
+export { generateRequestId, storePendingContent, getPendingContent, updatePendingContent, removePendingContent } from '@atlas/agents/src/conversation/pending-content';
 
 // Universal Content Analysis (Phase 5)
 export { maybeHandleAsContentShare, triggerContentConfirmation, detectContentShare } from './content-flow';
-export { routeForAnalysis, detectContentSource, extractDomain } from './content-router';
-export type { ContentAnalysis, ContentSource, ExtractionMethod, RouteResult } from './content-router';
+export { routeForAnalysis, detectContentSource, extractDomain } from '@atlas/agents/src/conversation/content-router';
+export type { ContentAnalysis, ContentSource, ExtractionMethod, RouteResult } from '@atlas/agents/src/conversation/content-router';
 export type { PendingContent } from './content-confirm';
-export { getAllTools, executeTool } from './tools';
-export { recordUsage, getStats, getWorkQueueStats, formatStatsMessage, detectPatterns } from './stats';
-export { planTask, determineDepth, selectModel, estimateTime, formatTaskPlan, getModelName } from './router';
-export type { TaskDepth, TaskPlan } from './router';
+export { getAllTools, executeTool } from '@atlas/agents/src/conversation/tools';
+export { recordUsage, getStats, getWorkQueueStats, formatStatsMessage, detectPatterns } from '@atlas/agents/src/conversation/stats';
+export { planTask, determineDepth, selectModel, estimateTime, formatTaskPlan, getModelName } from '@atlas/agents/src/conversation/router';
+export type { TaskDepth, TaskPlan } from '@atlas/agents/src/conversation/router';
 export type {
   Pillar,
   RequestType,
@@ -34,6 +34,6 @@ export type {
   ToolCall,
   ToolResult,
 } from './types';
-export type { AuditEntry, AuditResult } from './audit';
-export type { ConversationState, ConversationMessage } from './context';
-export type { AttachmentType, AttachmentInfo } from './attachments';
+export type { AuditEntry, AuditResult } from '@atlas/agents/src/conversation/audit';
+export type { ConversationState, ConversationMessage } from '@atlas/agents/src/conversation/context';
+export type { AttachmentType, AttachmentInfo } from '@atlas/agents/src/conversation/attachments';

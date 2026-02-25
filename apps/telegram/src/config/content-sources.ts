@@ -12,7 +12,7 @@
  */
 
 import { Client } from '@notionhq/client';
-import type { ContentSource, ExtractionMethod } from '../conversation/content-router';
+import type { ContentSource, ExtractionMethod } from '@atlas/agents/src/conversation/content-router';
 import { NOTION_DB } from '@atlas/shared/config';
 import { logger } from '../logger';
 

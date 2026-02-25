@@ -10,8 +10,30 @@ import { NOTION_DB } from '@atlas/shared/config';
 import { reportFailure } from '@atlas/shared/error-escalation';
 import type { TraceContext } from '@atlas/shared/trace';
 import { logger } from '../logger';
-import { checkUrl, registerUrl, normalizeUrl } from '../utils/url-dedup';
 import type { Pillar, RequestType, FeedStatus, WQStatus, StructuredContext } from './types';
+
+// ---- Injectable hooks for url-dedup (injected by app layer, no-op defaults) ----
+
+export interface AuditHooks {
+  normalizeUrl: (url: string) => string;
+  checkUrl: (url: string) => Promise<{ isDuplicate: boolean; existingFeedId?: string; source?: string; wasSkipped?: boolean }>;
+  registerUrl: (url: string, pageId: string) => void;
+}
+
+let _auditHooks: AuditHooks = {
+  normalizeUrl: (url: string) => url,
+  checkUrl: async () => ({ isDuplicate: false }),
+  registerUrl: () => {},
+};
+
+/**
+ * Inject app-layer url-dedup hooks. Called once during app startup.
+ */
+export function setAuditHooks(hooks: Partial<AuditHooks>) {
+  if (hooks.normalizeUrl) _auditHooks.normalizeUrl = hooks.normalizeUrl;
+  if (hooks.checkUrl) _auditHooks.checkUrl = hooks.checkUrl;
+  if (hooks.registerUrl) _auditHooks.registerUrl = hooks.registerUrl;
+}
 
 // Re-export Pillar for use by other modules
 export type { Pillar };
@@ -257,7 +279,7 @@ async function createFeedEntry(entry: AuditEntry, traceId?: string): Promise<{ i
     // URL & Content Analysis fields (Universal Content Analysis)
     // Store normalized URL for dedup matching
     if (entry.url) {
-      optionalProps['Source URL'] = { url: normalizeUrl(entry.url) };
+      optionalProps['Source URL'] = { url: _auditHooks.normalizeUrl(entry.url) };
     }
     if (entry.urlTitle) {
       optionalProps['URL Title'] = { rich_text: [{ text: { content: entry.urlTitle.substring(0, 2000) } }] };
@@ -630,7 +652,7 @@ async function createWorkQueueEntry(
         }),
         // Source Link for quick access to original URL (normalized, no tracking params)
         ...(entry.url && {
-          'Source Link': { url: normalizeUrl(entry.url) },
+          'Source Link': { url: _auditHooks.normalizeUrl(entry.url) },
         }),
         // Pipeline trace ID for end-to-end diagnostics
         ...(traceId && {
@@ -806,7 +828,7 @@ export async function createAuditTrail(entry: AuditEntry, trace?: TraceContext):
   try {
     // 0. URL dedup check — skip if this URL already has a Feed entry
     if (entry.url) {
-      const dedup = await checkUrl(entry.url);
+      const dedup = await _auditHooks.checkUrl(entry.url);
       if (dedup.isDuplicate) {
         logger.info('URL dedup: skipping duplicate Feed entry', {
           url: entry.url,
@@ -834,7 +856,7 @@ export async function createAuditTrail(entry: AuditEntry, trace?: TraceContext):
 
     // 4. Register URL in dedup cache (prevents duplicate on resend)
     if (entry.url) {
-      registerUrl(entry.url, feed.id);
+      _auditHooks.registerUrl(entry.url, feed.id);
     }
 
     logger.info('Audit trail created', {

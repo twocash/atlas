@@ -91,3 +91,66 @@ export interface ToolResult {
   data?: unknown;
   error?: string;
 }
+
+/**
+ * URL fetch result
+ */
+export interface UrlContent {
+  url: string;
+  title: string;
+  description: string;
+  bodySnippet: string;
+  /** Full extracted content for research pipeline (not truncated) */
+  fullContent?: string;
+  /** Haiku's 2-3 sentence summary of what the content is about */
+  preReadSummary?: string;
+  /** Content type from Haiku pre-read (article, social_post, discussion, profile, unknown) */
+  preReadContentType?: string;
+  fetchedAt: Date;
+  success: boolean;
+  error?: string;
+}
+
+/**
+ * Two-step flow state (legacy classify-first)
+ */
+export type ContentFlowState = 'classify' | 'intent' | 'depth' | 'audience' | 'confirm';
+
+/**
+ * Pending content awaiting confirmation.
+ * Copied from apps/telegram/src/conversation/content-confirm.ts for
+ * cross-package type compatibility. Telegram-specific fields use
+ * permissive types to avoid pulling in surface-layer dependencies.
+ */
+export interface PendingContent {
+  requestId: string;
+  chatId: number;
+  userId: number;
+  messageId?: number;
+  confirmMessageId?: number;
+
+  flowState: ContentFlowState;
+
+  /** Content analysis (Telegram surface-specific shape) */
+  analysis: Record<string, unknown>;
+  originalText: string;
+
+  pillar: Pillar;
+  requestType: RequestType;
+
+  originalSuggestion?: RequestType;
+  classificationAdjusted?: boolean;
+
+  intent?: IntentType;
+  depth?: DepthLevel;
+  audience?: AudienceType;
+  structuredContext?: StructuredContext;
+
+  timestamp: number;
+  url?: string;
+
+  mediaBuffer?: Buffer;
+  attachmentInfo?: Record<string, unknown>;
+
+  fullAnalysisText?: string;
+}

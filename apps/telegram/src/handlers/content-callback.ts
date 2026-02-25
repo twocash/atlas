@@ -20,14 +20,14 @@ import {
   getPendingContent,
   updatePendingContent,
   removePendingContent,
-} from '../conversation/pending-content';
-import { createAuditTrail, type AuditEntry } from '../conversation/audit';
-import { buildContentPayload } from '../conversation/content-router';
+} from '@atlas/agents/src/conversation/pending-content';
+import { createAuditTrail, type AuditEntry } from '@atlas/agents/src/conversation/audit';
+import { buildContentPayload } from '@atlas/agents/src/conversation/content-router';
 import { type Pillar as MediaPillar } from '../conversation/media';
-import { getPatternSuggestion, recordClassificationFeedback } from '../conversation/content-patterns';
+import { getPatternSuggestion, recordClassificationFeedback } from '@atlas/agents/src/conversation/content-patterns';
 import type { Pillar, RequestType } from '@atlas/agents/src/conversation/types';
 import { logAction, getIntentHash, isFeatureEnabled, triggerContextualExtraction } from '../skills';
-import { getState } from '../conversation/conversation-state';
+import { getState } from '@atlas/agents/src/conversation/conversation-state';
 import { safeAnswerCallback } from '../utils/telegram-helpers';
 import {
   runResearchAgentWithNotifications,
@@ -399,7 +399,7 @@ async function handleAnalyzeFirst(
  */
 async function runPillarAwareAnalysis(
   ctx: Context,
-  attachment: import('../conversation/attachments').AttachmentInfo,
+  attachment: import('@atlas/agents/src/conversation/attachments').AttachmentInfo,
   pillar?: Pillar
 ): Promise<{ description: string; type: string } | null> {
   try {

@@ -4,7 +4,7 @@
  * These tests prevent cognitive logic from drifting back into surface apps.
  * They scan actual file contents for import violations.
  *
- * Sprint: ARCH-CPE-001 Phase 1 + Phase 2
+ * Sprint: ARCH-CPE-001 Phase 1 + Phase 2 + Phase 3
  */
 
 import { describe, it, expect } from 'bun:test';
@@ -46,7 +46,7 @@ function getImportLines(filePath: string): { line: number; text: string }[] {
 
 describe('Moved files deleted from apps/telegram/', () => {
   const movedFiles = [
-    // Phase 1
+    // Phase 1 — Foundation types + skills
     'apps/telegram/src/skills/schema.ts',
     'apps/telegram/src/skills/frontmatter.ts',
     'apps/telegram/src/skills/zone-classifier.ts',
@@ -55,7 +55,7 @@ describe('Moved files deleted from apps/telegram/', () => {
     'apps/telegram/src/cognitive/types.ts',
     'apps/telegram/src/cognitive/models.ts',
     'apps/telegram/src/conversation/types.ts',
-    // Phase 2
+    // Phase 2 — Cognitive Engine
     'apps/telegram/src/cognitive/profiler.ts',
     'apps/telegram/src/cognitive/selector.ts',
     'apps/telegram/src/cognitive/ledger.ts',
@@ -70,6 +70,37 @@ describe('Moved files deleted from apps/telegram/', () => {
     'apps/telegram/src/skills/registry.ts',
     'apps/telegram/src/skills/pattern-detector.ts',
     'apps/telegram/src/skills/executor.ts',
+    // Phase 3 — Session stores + conversation pipeline
+    'apps/telegram/src/conversation/socratic-session.ts',
+    'apps/telegram/src/conversation/approval-session.ts',
+    'apps/telegram/src/conversation/conversation-state.ts',
+    'apps/telegram/src/conversation/pending-content.ts',
+    'apps/telegram/src/conversation/context.ts',
+    'apps/telegram/src/conversation/context-manager.ts',
+    'apps/telegram/src/conversation/context-enrichment.ts',
+    'apps/telegram/src/conversation/content-extractor.ts',
+    'apps/telegram/src/conversation/content-pre-reader.ts',
+    'apps/telegram/src/conversation/content-patterns.ts',
+    'apps/telegram/src/conversation/content-router.ts',
+    'apps/telegram/src/conversation/bridge-extractor.ts',
+    'apps/telegram/src/conversation/prompt.ts',
+    'apps/telegram/src/conversation/router.ts',
+    'apps/telegram/src/conversation/self-model-provider.ts',
+    'apps/telegram/src/conversation/stats.ts',
+    'apps/telegram/src/conversation/attachments.ts',
+    'apps/telegram/src/conversation/audit.ts',
+    // Phase 3 — Tools directory
+    'apps/telegram/src/conversation/tools/agents.ts',
+    'apps/telegram/src/conversation/tools/browser.ts',
+    'apps/telegram/src/conversation/tools/core.ts',
+    'apps/telegram/src/conversation/tools/dispatcher.ts',
+    'apps/telegram/src/conversation/tools/index.ts',
+    'apps/telegram/src/conversation/tools/operator.ts',
+    'apps/telegram/src/conversation/tools/self-mod.ts',
+    'apps/telegram/src/conversation/tools/supervisor.ts',
+    'apps/telegram/src/conversation/tools/workspace.ts',
+    // Phase 3 — Skills
+    'apps/telegram/src/skills/approval-queue.ts',
   ];
 
   for (const file of movedFiles) {
@@ -85,7 +116,7 @@ describe('Moved files deleted from apps/telegram/', () => {
 
 describe('Moved files exist in packages/agents/', () => {
   const destinations = [
-    // Phase 1
+    // Phase 1 — Foundation types + skills
     'packages/agents/src/skills/schema.ts',
     'packages/agents/src/skills/frontmatter.ts',
     'packages/agents/src/skills/zone-classifier.ts',
@@ -94,7 +125,7 @@ describe('Moved files exist in packages/agents/', () => {
     'packages/agents/src/cognitive/types.ts',
     'packages/agents/src/cognitive/models.ts',
     'packages/agents/src/conversation/types.ts',
-    // Phase 2
+    // Phase 2 — Cognitive Engine
     'packages/agents/src/cognitive/profiler.ts',
     'packages/agents/src/cognitive/selector.ts',
     'packages/agents/src/cognitive/ledger.ts',
@@ -109,6 +140,38 @@ describe('Moved files exist in packages/agents/', () => {
     'packages/agents/src/skills/registry.ts',
     'packages/agents/src/skills/pattern-detector.ts',
     'packages/agents/src/skills/executor.ts',
+    // Phase 3 — Session stores + conversation pipeline
+    'packages/agents/src/conversation/socratic-session.ts',
+    'packages/agents/src/conversation/approval-session.ts',
+    'packages/agents/src/conversation/conversation-state.ts',
+    'packages/agents/src/conversation/pending-content.ts',
+    'packages/agents/src/conversation/context.ts',
+    'packages/agents/src/conversation/context-manager.ts',
+    'packages/agents/src/conversation/context-enrichment.ts',
+    'packages/agents/src/conversation/content-extractor.ts',
+    'packages/agents/src/conversation/content-pre-reader.ts',
+    'packages/agents/src/conversation/content-patterns.ts',
+    'packages/agents/src/conversation/content-router.ts',
+    'packages/agents/src/conversation/bridge-extractor.ts',
+    'packages/agents/src/conversation/prompt.ts',
+    'packages/agents/src/conversation/router.ts',
+    'packages/agents/src/conversation/self-model-provider.ts',
+    'packages/agents/src/conversation/stats.ts',
+    'packages/agents/src/conversation/attachments.ts',
+    'packages/agents/src/conversation/audit.ts',
+    // Phase 3 — Tools directory
+    'packages/agents/src/conversation/tools/hooks.ts',
+    'packages/agents/src/conversation/tools/agents.ts',
+    'packages/agents/src/conversation/tools/browser.ts',
+    'packages/agents/src/conversation/tools/core.ts',
+    'packages/agents/src/conversation/tools/dispatcher.ts',
+    'packages/agents/src/conversation/tools/index.ts',
+    'packages/agents/src/conversation/tools/operator.ts',
+    'packages/agents/src/conversation/tools/self-mod.ts',
+    'packages/agents/src/conversation/tools/supervisor.ts',
+    'packages/agents/src/conversation/tools/workspace.ts',
+    // Phase 3 — Skills
+    'packages/agents/src/skills/approval-queue.ts',
   ];
 
   for (const file of destinations) {
@@ -168,6 +231,21 @@ describe('No dangling relative imports to moved files', () => {
     /from\s+['"]\.\.\/src\/config\/cognitive['"]/,
     // Phase 2: Barrel import to cognitive/ directory (the index.ts that moved)
     /from\s+['"]\.\.?\/cognitive['"]/,
+
+    // Phase 3: Relative imports to conversation pipeline files that moved
+    /from\s+['"]\.\.?\/conversation\/(socratic-session|approval-session|conversation-state|pending-content|context|context-manager|context-enrichment|content-extractor|content-pre-reader|content-patterns|content-router|bridge-extractor|prompt|router|self-model-provider|stats|attachments|audit)['"]/,
+    // Phase 3: Relative imports to conversation/tools/ that moved
+    /from\s+['"]\.\.?\/conversation\/tools\/(agents|browser|core|dispatcher|index|operator|self-mod|supervisor|workspace)['"]/,
+    // Phase 3: Relative imports to skills/approval-queue that moved
+    /from\s+['"]\.\.?\/skills\/approval-queue['"]/,
+    // Phase 3: Parent-relative imports from test/scripts
+    /from\s+['"]\.\.\/src\/conversation\/(socratic-session|approval-session|conversation-state|pending-content|context|context-manager|context-enrichment|content-extractor|content-pre-reader|content-patterns|content-router|bridge-extractor|prompt|router|self-model-provider|stats|attachments|audit)['"]/,
+    /from\s+['"]\.\.\/src\/conversation\/tools\/(agents|browser|core|dispatcher|index|operator|self-mod|supervisor|workspace)['"]/,
+    /from\s+['"]\.\.\/src\/skills\/approval-queue['"]/,
+    // Phase 3: Dynamic imports to moved files
+    /import\(['"]\.\.?\/conversation\/(socratic-session|approval-session|conversation-state|pending-content|context|context-manager|context-enrichment|content-extractor|content-pre-reader|content-patterns|content-router|bridge-extractor|prompt|router|self-model-provider|stats|attachments|audit)['"]\)/,
+    /import\(['"]\.\.?\/skills\/approval-queue['"]\)/,
+    /import\(['"]\.\.\/src\/conversation\/(socratic-session|approval-session|conversation-state|pending-content|context|context-manager|context-enrichment|content-extractor|content-pre-reader|content-patterns|content-router|bridge-extractor|prompt|router|self-model-provider|stats|attachments|audit)['"]\)/,
   ];
 
   it('zero dangling relative imports across apps/telegram/', () => {
@@ -264,7 +342,7 @@ describe('Package boundary: packages/agents/ does not import from apps/', () => 
 
 describe('No re-export stubs for moved files', () => {
   const movedSources = [
-    // Phase 1
+    // Phase 1 — Foundation types + skills
     'apps/telegram/src/skills/schema.ts',
     'apps/telegram/src/skills/frontmatter.ts',
     'apps/telegram/src/skills/zone-classifier.ts',
@@ -273,7 +351,7 @@ describe('No re-export stubs for moved files', () => {
     'apps/telegram/src/cognitive/types.ts',
     'apps/telegram/src/cognitive/models.ts',
     'apps/telegram/src/conversation/types.ts',
-    // Phase 2
+    // Phase 2 — Cognitive Engine
     'apps/telegram/src/cognitive/profiler.ts',
     'apps/telegram/src/cognitive/selector.ts',
     'apps/telegram/src/cognitive/ledger.ts',
@@ -288,6 +366,37 @@ describe('No re-export stubs for moved files', () => {
     'apps/telegram/src/skills/registry.ts',
     'apps/telegram/src/skills/pattern-detector.ts',
     'apps/telegram/src/skills/executor.ts',
+    // Phase 3 — Session stores + conversation pipeline
+    'apps/telegram/src/conversation/socratic-session.ts',
+    'apps/telegram/src/conversation/approval-session.ts',
+    'apps/telegram/src/conversation/conversation-state.ts',
+    'apps/telegram/src/conversation/pending-content.ts',
+    'apps/telegram/src/conversation/context.ts',
+    'apps/telegram/src/conversation/context-manager.ts',
+    'apps/telegram/src/conversation/context-enrichment.ts',
+    'apps/telegram/src/conversation/content-extractor.ts',
+    'apps/telegram/src/conversation/content-pre-reader.ts',
+    'apps/telegram/src/conversation/content-patterns.ts',
+    'apps/telegram/src/conversation/content-router.ts',
+    'apps/telegram/src/conversation/bridge-extractor.ts',
+    'apps/telegram/src/conversation/prompt.ts',
+    'apps/telegram/src/conversation/router.ts',
+    'apps/telegram/src/conversation/self-model-provider.ts',
+    'apps/telegram/src/conversation/stats.ts',
+    'apps/telegram/src/conversation/attachments.ts',
+    'apps/telegram/src/conversation/audit.ts',
+    // Phase 3 — Tools directory
+    'apps/telegram/src/conversation/tools/agents.ts',
+    'apps/telegram/src/conversation/tools/browser.ts',
+    'apps/telegram/src/conversation/tools/core.ts',
+    'apps/telegram/src/conversation/tools/dispatcher.ts',
+    'apps/telegram/src/conversation/tools/index.ts',
+    'apps/telegram/src/conversation/tools/operator.ts',
+    'apps/telegram/src/conversation/tools/self-mod.ts',
+    'apps/telegram/src/conversation/tools/supervisor.ts',
+    'apps/telegram/src/conversation/tools/workspace.ts',
+    // Phase 3 — Skills
+    'apps/telegram/src/skills/approval-queue.ts',
   ];
 
   it('no re-export files exist at old locations', () => {

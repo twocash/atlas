@@ -48,7 +48,7 @@ async function main() {
 
     // Step 2: Import and use the actual notion_append function
     console.log('📋 Step 2: Appending analysis content...');
-    const { executeTool } = await import('../src/conversation/tools');
+    const { executeTool } = await import('@atlas/agents/src/conversation/tools');
 
     const analysisContent = `# Threads Post Analysis
 

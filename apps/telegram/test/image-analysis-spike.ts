@@ -11,7 +11,7 @@
  */
 
 import { buildAnalysisContent, type MediaContext, type Pillar } from '../src/conversation/media';
-import type { AttachmentInfo } from '../src/conversation/attachments';
+import type { AttachmentInfo } from '@atlas/agents/src/conversation/attachments';
 
 // Verify environment
 if (!process.env.NOTION_API_KEY) {

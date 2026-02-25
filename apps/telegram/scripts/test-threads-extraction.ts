@@ -38,7 +38,7 @@ async function testExtraction(url: string): Promise<{
   console.log('='.repeat(60));
 
   try {
-    const { executeTool } = await import('../src/conversation/tools');
+    const { executeTool } = await import('@atlas/agents/src/conversation/tools');
 
     // Step 1: Open page with browser
     console.log('\n📋 Step 1: Opening page with Puppeteer...');
@@ -202,7 +202,7 @@ async function main() {
   console.log('═'.repeat(60));
 
   // Cleanup browser
-  const { closeBrowser } = await import('../src/conversation/tools/browser');
+  const { closeBrowser } = await import('@atlas/agents/src/conversation/tools/browser');
   await closeBrowser();
 
   process.exit(passed === total ? 0 : 1);

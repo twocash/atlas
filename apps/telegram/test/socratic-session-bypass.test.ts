@@ -24,7 +24,7 @@ import {
   removeSocraticSession,
   clearAllSocraticSessions,
   type PendingSocraticSession,
-} from '../src/conversation/socratic-session';
+} from '@atlas/agents/src/conversation/socratic-session';
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 

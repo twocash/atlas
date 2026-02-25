@@ -269,7 +269,7 @@ async function testPromptComposition() {
 async function testClaudeAnalyzeTool() {
   startSection('CLAUDE_ANALYZE TOOL - V3REQUESTED BEHAVIOR', '🧠');
 
-  const { executeTool } = await import('../src/conversation/tools');
+  const { executeTool } = await import('@atlas/agents/src/conversation/tools');
 
   const testContent = `
     This is a test article about AI and technology.

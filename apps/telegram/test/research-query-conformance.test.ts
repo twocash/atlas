@@ -118,7 +118,7 @@ describe('Suite 2 — Anti-Pattern Guards', () => {
 describe('Suite 3 — Content Router Integration', () => {
   it('imports routeForAnalysis from content-router', async () => {
     const s = await getSource();
-    expect(s).toContain("import { routeForAnalysis } from './content-router'");
+    expect(s).toContain("import { routeForAnalysis } from '@atlas/agents/src/conversation/content-router'");
   });
 
   it('gates routing check on contentType === url', async () => {

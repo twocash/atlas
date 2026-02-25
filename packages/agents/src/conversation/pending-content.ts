@@ -11,7 +11,7 @@
  */
 
 import { logger } from '../logger';
-import type { PendingContent } from './content-confirm';
+import type { PendingContent } from './types';
 
 /**
  * In-memory store for pending confirmations

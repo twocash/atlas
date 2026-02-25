@@ -19,8 +19,8 @@
  */
 
 import { logger } from '../logger';
-import type { RequestAssessment, AssessmentContext } from '../../../../packages/agents/src/assessment/types';
-import type { ApproachProposal } from '../../../../packages/agents/src/assessment/types';
+import type { RequestAssessment, AssessmentContext } from '../assessment/types';
+import type { ApproachProposal } from '../assessment/types';
 
 // ─── Types ──────────────────────────────────────────────
 

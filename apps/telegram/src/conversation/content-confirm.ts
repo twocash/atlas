@@ -14,7 +14,7 @@
 
 import { InlineKeyboard } from 'grammy';
 import type { Pillar, RequestType, IntentType, DepthLevel, AudienceType, StructuredContext } from './types';
-import type { ContentAnalysis, ContentSource } from './content-router';
+import type { ContentAnalysis, ContentSource } from '@atlas/agents/src/conversation/content-router';
 
 /**
  * Two-step flow state (legacy classify-first)

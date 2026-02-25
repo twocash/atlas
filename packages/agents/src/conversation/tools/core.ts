@@ -9,7 +9,26 @@ import { Client } from '@notionhq/client';
 import { NOTION_DB } from '@atlas/shared/config';
 import { logger } from '../../logger';
 import { logWQActivity, type Pillar } from '../audit';
-import { searchNotion as globalNotionSearch } from '../../notion';
+// ---- Injectable hooks for Notion global search (injected by app layer, no-op default) ----
+
+export interface ToolCoreHooks {
+  searchNotion: (query: string) => Promise<Array<{ title: string; url: string; type: string }>>;
+  createAnalysisSection: (opts: { heading?: string; content: string; bullets?: string[]; callout?: string; calloutEmoji?: string }) => any[];
+  appendBlocksToPage: (pageId: string, blocks: any[]) => Promise<void>;
+}
+
+let _coreHooks: ToolCoreHooks = {
+  searchNotion: async () => [],
+  createAnalysisSection: () => [],
+  appendBlocksToPage: async () => {},
+};
+
+/**
+ * Inject app-layer Notion search + formatting hooks. Called once during app startup.
+ */
+export function setToolCoreHooks(hooks: Partial<ToolCoreHooks>) {
+  Object.assign(_coreHooks, hooks);
+}
 
 // Create Notion client - log the key prefix for debugging
 const notionApiKey = process.env.NOTION_API_KEY;
@@ -654,7 +673,7 @@ async function executeNotionSearch(
   // ALWAYS search globally (this is the most important for finding docs/drafts)
   if (database === 'all' || database === 'global') {
     try {
-      const globalResults = await globalNotionSearch(query);
+      const globalResults = await _coreHooks.searchNotion(query);
       for (const item of globalResults) {
         // Avoid duplicates from WQ/Feed
         const alreadyFound = results.some(r => r.url === item.url);
@@ -2385,8 +2404,8 @@ async function executeNotionUpdate(
 async function executeNotionAppend(
   input: Record<string, unknown>
 ): Promise<{ success: boolean; result: unknown; error?: string }> {
-  // Import shared utilities
-  const { createAnalysisSection, appendBlocksToPage } = await import('../../formatting/notion');
+  // Use injected formatting hooks (wired from app layer)
+  const { createAnalysisSection, appendBlocksToPage } = _coreHooks;
 
   const pageId = input.pageId as string;
   const heading = input.heading as string | undefined;

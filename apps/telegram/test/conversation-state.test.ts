@@ -33,7 +33,7 @@ import {
   type SocraticSessionState,
   type DialogueSessionState,
   type ApprovalState,
-} from '../src/conversation/conversation-state';
+} from '@atlas/agents/src/conversation/conversation-state';
 
 import type { RequestAssessment, AssessmentContext } from '../../../packages/agents/src/assessment/types';
 import type { TriageResult } from '@atlas/agents/src/cognitive/triage-skill';

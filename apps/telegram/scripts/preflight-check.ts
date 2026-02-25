@@ -115,7 +115,7 @@ console.log("\n📋 STEP 3: Module Import Validation\n");
 
 // Test dispatcher module
 try {
-  const dispatcher = await import("../src/conversation/tools/dispatcher");
+  const dispatcher = await import("@atlas/agents/src/conversation/tools/dispatcher");
   if (dispatcher.DISPATCHER_TOOL && dispatcher.handleSubmitTicket) {
     console.log("   ✅ Dispatcher module loads correctly");
     console.log(`      - submit_ticket tool defined: ${!!dispatcher.DISPATCHER_TOOL}`);
@@ -129,7 +129,7 @@ try {
 
 // Test tools index
 try {
-  const tools = await import("../src/conversation/tools/index");
+  const tools = await import("@atlas/agents/src/conversation/tools");
   const allTools = tools.getAllTools();
   const hasSubmitTicket = allTools.some((t: any) => t.name === "submit_ticket");
 
@@ -151,7 +151,7 @@ try {
 console.log("\n📋 STEP 4: Tool Definition Validation\n");
 
 try {
-  const { DISPATCHER_TOOL } = await import("../src/conversation/tools/dispatcher");
+  const { DISPATCHER_TOOL } = await import("@atlas/agents/src/conversation/tools/dispatcher");
 
   // Check required properties
   const schema = DISPATCHER_TOOL.input_schema as any;
@@ -198,7 +198,7 @@ try {
 console.log("\n📋 STEP 5: Routing Logic Smoke Test\n");
 
 try {
-  const { handleSubmitTicket } = await import("../src/conversation/tools/dispatcher");
+  const { handleSubmitTicket } = await import("@atlas/agents/src/conversation/tools/dispatcher");
 
   // We can't actually call it without real Notion, but we can check it's a function
   if (typeof handleSubmitTicket === "function") {

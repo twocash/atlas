@@ -4,8 +4,6 @@
  * Handles file/image/voice attachments from Telegram messages.
  */
 
-import type { Context } from 'grammy';
-
 export type AttachmentType =
   | 'photo'
   | 'document'
@@ -29,10 +27,9 @@ export interface AttachmentInfo {
 }
 
 /**
- * Detect attachment from Telegram message
+ * Detect attachment from a message object
  */
-export function detectAttachment(ctx: Context): AttachmentInfo {
-  const message = ctx.message;
+export function detectAttachment(message: any): AttachmentInfo {
   if (!message) {
     return { type: 'none' };
   }

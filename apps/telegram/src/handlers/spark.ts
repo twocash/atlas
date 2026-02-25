@@ -17,7 +17,7 @@ import type {
   IntentDetectionResult,
 } from "../types";
 import { extractFirstUrl, getUrlDomain } from "../url";
-import { extractContent, toUrlContent } from "../conversation/content-extractor";
+import { extractContent, toUrlContent } from "@atlas/agents/src/conversation/content-extractor";
 import { classifyWithClaude } from "../claude";
 import { logger } from "../logger";
 import { audit } from "../audit";

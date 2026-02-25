@@ -120,6 +120,8 @@ export {
   deferAllPending,
   cleanupOldProposals,
   getQueueStats,
+} from '@atlas/agents/src/skills/approval-queue';
+export {
   formatProposalForTelegram,
   formatQueueSummary,
-} from './approval-queue';
+} from '../adapters/approval-formatter';

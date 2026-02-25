@@ -29,6 +29,12 @@ export { BROWSER_TOOLS, executeBrowserTools, closeBrowser } from './browser';
 // Supervisor tools (process management)
 export { SUPERVISOR_TOOLS, executeSupervisorTools } from './supervisor';
 
+// Per-file hooks setters (re-exported for app-layer wiring)
+export { setToolCoreHooks, type ToolCoreHooks } from './core';
+export { setOperatorHooks, type OperatorHooks } from './operator';
+export { setSupervisorHooks, type SupervisorHooks } from './supervisor';
+export { setWorkspaceHooks, type WorkspaceHooks } from './workspace';
+
 import type Anthropic from '@anthropic-ai/sdk';
 import { CORE_TOOLS, executeCoreTools } from './core';
 import { DISPATCHER_TOOLS, executeDispatcherTools } from './dispatcher';
@@ -38,7 +44,10 @@ import { SELF_MOD_TOOLS, executeSelfModTools } from './self-mod';
 import { OPERATOR_TOOLS, executeOperatorTools } from './operator';
 import { BROWSER_TOOLS, executeBrowserTools } from './browser';
 import { SUPERVISOR_TOOLS, executeSupervisorTools } from './supervisor';
-import { getMcpTools, isMcpTool, executeMcpTool } from '../../mcp';
+import { getToolHooks } from './hooks';
+
+// Re-export hooks API so app layer can import from tools/index
+export { setToolHooks, getToolHooks, type ToolHooks } from './hooks';
 
 /**
  * Native Atlas tools (static)
@@ -68,10 +77,10 @@ const NATIVE_TOOLS: Anthropic.Tool[] = [
  * MCP tools are fetched dynamically from connected servers
  */
 export function getAllTools(): Anthropic.Tool[] {
-  const mcpTools = getMcpTools();
+  const mcpTools = getToolHooks().getMcpTools();
   console.error(`[Tools] Native: ${NATIVE_TOOLS.length}, MCP: ${mcpTools.length}`);
   if (mcpTools.length > 0) {
-    console.error(`[Tools] MCP tools available: ${mcpTools.map(t => t.name).join(', ')}`);
+    console.error(`[Tools] MCP tools available: ${mcpTools.map((t: any) => t.name).join(', ')}`);
   }
   return [...NATIVE_TOOLS, ...mcpTools];
 }
@@ -95,8 +104,8 @@ export async function executeTool(
   input: Record<string, unknown>
 ): Promise<{ success: boolean; result: unknown; error?: string; needsChoice?: boolean }> {
   // Check if this is an MCP tool (format: mcp__{serverId}__{toolName})
-  if (isMcpTool(toolName)) {
-    return await executeMcpTool(toolName, input);
+  if (getToolHooks().isMcpTool(toolName)) {
+    return await getToolHooks().executeMcpTool(toolName, input);
   }
 
   // Try dispatcher tools FIRST (submit_ticket is primary)

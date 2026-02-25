@@ -9,11 +9,25 @@
  */
 
 import { logger } from '../logger';
-import { getFeatureFlags } from '../config/features';
-import {
-  getContentSourcesSync,
-  detectContentSourceFromEntries,
-} from '../config/content-sources';
+
+// ─── Injectable Hooks (surface-specific config dependencies) ────
+
+export interface ContentRouterHooks {
+  getContentSourcesSync: () => any[]
+  detectContentSourceFromEntries: (url: string, entries: any[]) => any | null
+}
+
+let _routerHooks: ContentRouterHooks = {
+  getContentSourcesSync: () => [],
+  detectContentSourceFromEntries: () => null,
+}
+
+export function setContentRouterHooks(hooks: Partial<ContentRouterHooks>): void {
+  _routerHooks = { ..._routerHooks, ...hooks }
+}
+
+/** Inlined feature flag — opt-in (default OFF) */
+const isContentSourcesNotionEnabled = () => process.env.ATLAS_CONTENT_SOURCES_NOTION === 'true';
 
 /**
  * Content source types - determines extraction strategy
@@ -104,12 +118,12 @@ function detectContentSourceFallback(url: string): ContentSource {
  * Notion-backed domain patterns. Falls back to hardcoded constants.
  */
 export function detectContentSource(url: string): ContentSource {
-  if (!getFeatureFlags().contentSourcesNotion) {
+  if (!isContentSourcesNotionEnabled()) {
     return detectContentSourceFallback(url);
   }
 
-  const entries = getContentSourcesSync();
-  const match = detectContentSourceFromEntries(url, entries);
+  const entries = _routerHooks.getContentSourcesSync();
+  const match = _routerHooks.detectContentSourceFromEntries(url, entries);
   if (match) return match.sourceType;
 
   // No match in Notion entries — use fallback
@@ -137,8 +151,8 @@ export function extractDomain(url: string): string {
  * method from Notion Content Sources DB for granular routing.
  */
 export function determineExtractionMethod(source: ContentSource): ExtractionMethod {
-  if (getFeatureFlags().contentSourcesNotion) {
-    const entries = getContentSourcesSync();
+  if (isContentSourcesNotionEnabled()) {
+    const entries = _routerHooks.getContentSourcesSync();
     const entry = entries.find(e => e.sourceType === source && e.active);
     if (entry) return entry.extractionMethod;
   }

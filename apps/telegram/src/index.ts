@@ -28,7 +28,7 @@ import { startHealthAlertProducer, stopHealthAlertProducer } from "./feed/alert-
 import { startApprovalListener, stopApprovalListener } from "./feed/approval-listener";
 import { startReviewListener, stopReviewListener } from "./feed/review-listener";
 import { registerSelfModelProvider } from "../../../packages/bridge/src/context";
-import { createSelfModelProvider } from "./conversation/self-model-provider";
+import { createSelfModelProvider } from "@atlas/agents/src/conversation/self-model-provider";
 import { existsSync, writeFileSync, unlinkSync, readFileSync } from "fs";
 import { join } from "path";
 

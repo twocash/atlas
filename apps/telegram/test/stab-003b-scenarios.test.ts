@@ -37,7 +37,7 @@ import {
   type ContentContext,
   type ApprovalState,
   type SocraticSessionState,
-} from '../src/conversation/conversation-state';
+} from '@atlas/agents/src/conversation/conversation-state';
 
 import type { RequestAssessment, AssessmentContext } from '../../../packages/agents/src/assessment/types';
 import type { ApproachProposal } from '../../../packages/agents/src/assessment/types';
@@ -46,7 +46,7 @@ import type { TriageResult } from '@atlas/agents/src/cognitive/triage-skill';
 import {
   isApprovalSignal,
   isRejectionSignal,
-} from '../src/conversation/approval-session';
+} from '@atlas/agents/src/conversation/approval-session';
 
 // ─── Fixtures ───────────────────────────────────────────
 

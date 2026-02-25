@@ -76,12 +76,12 @@ mock.module("../../logger", () => ({
 
 // Dynamic import to ensure mocks are set up first
 // (static imports are hoisted above mock.module calls)
-let handleSubmitTicket: typeof import("../src/conversation/tools/dispatcher").handleSubmitTicket;
+let handleSubmitTicket: typeof import("@atlas/agents/src/conversation/tools/dispatcher").handleSubmitTicket;
 
 describe("Dispatcher Routing Logic", () => {
   beforeEach(async () => {
     // Dynamic import after mocks are registered
-    const dispatcher = await import("../src/conversation/tools/dispatcher");
+    const dispatcher = await import("@atlas/agents/src/conversation/tools/dispatcher");
     handleSubmitTicket = dispatcher.handleSubmitTicket;
     // Reset tracking variables
     mcpCalled = false;
@@ -258,7 +258,7 @@ describe("Dispatcher Routing Logic", () => {
 describe("URL Requirement (No Ticket, No Work)", () => {
   beforeEach(async () => {
     // Dynamic import after mocks are registered
-    const dispatcher = await import("../src/conversation/tools/dispatcher");
+    const dispatcher = await import("@atlas/agents/src/conversation/tools/dispatcher");
     handleSubmitTicket = dispatcher.handleSubmitTicket;
 
     mcpCalled = false;

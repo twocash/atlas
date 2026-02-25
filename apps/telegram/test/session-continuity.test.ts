@@ -12,7 +12,7 @@ import {
   stashAgentResult,
   getLastAgentResult,
   clearLastAgentResult,
-} from '../src/conversation/context-manager';
+} from '@atlas/agents/src/conversation/context-manager';
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 

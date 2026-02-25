@@ -21,9 +21,9 @@ import {
 } from '../../../../packages/agents/src/socratic';
 import type { IntentType } from '../../../../packages/agents/src/services/prompt-composition/types';
 import type { TriageResult } from '@atlas/agents/src/cognitive/triage-skill';
-import { storeSocraticSession, removeSocraticSession, getSocraticSession } from './socratic-session';
-import { enterSocraticPhase, enterGoalClarificationPhase, returnToIdle } from './conversation-state';
-import { createAuditTrail } from './audit';
+import { storeSocraticSession, removeSocraticSession, getSocraticSession } from '@atlas/agents/src/conversation/socratic-session';
+import { enterSocraticPhase, enterGoalClarificationPhase, returnToIdle } from '@atlas/agents/src/conversation/conversation-state';
+import { createAuditTrail } from '@atlas/agents/src/conversation/audit';
 import {
   parseGoalFromResponse,
   startGoalTracker,
@@ -37,8 +37,8 @@ import {
   type ContentAnalysis as GoalContentAnalysis,
 } from '../../../../packages/agents/src/goal';
 import { runResearchAgentWithNotifications, sendCompletionNotification } from '../services/research-executor';
-import { routeForAnalysis } from './content-router';
-import { stripNonTextContent } from './content-extractor';
+import { routeForAnalysis } from '@atlas/agents/src/conversation/content-router';
+import { stripNonTextContent } from '@atlas/agents/src/conversation/content-extractor';
 import { buildResearchQuery, type ResearchDepth, type ResearchConfig } from '../../../../packages/agents/src/agents/research';
 import {
   parseAnswerToRouting,

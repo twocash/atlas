@@ -16,11 +16,27 @@ import type {
   KnowledgeSourceInfo,
   IntegrationHealthInfo,
   SurfaceInfo,
-} from "../../../../packages/agents/src/self-model"
+} from "../self-model"
 
-import { getSkillRegistry } from "@atlas/agents/src/skills/registry"
-import { getMcpStatus, listMcpTools } from "../mcp"
-import { healthCheck as anythingLlmHealthCheck } from "../../../../packages/bridge/src/context/anythingllm-client"
+import { getSkillRegistry } from "../skills/registry"
+
+// ─── Injectable Hooks (surface-specific runtime queries) ────
+
+export interface SelfModelProviderHooks {
+  getMcpStatus: () => { connected: boolean; serverCount: number }
+  listMcpTools: () => Array<{ name: string; description?: string }>
+  anythingLlmHealthCheck: () => Promise<{ ok: boolean; error?: string }>
+}
+
+let _smHooks: SelfModelProviderHooks = {
+  getMcpStatus: () => ({ connected: false, serverCount: 0 }),
+  listMcpTools: () => [],
+  anythingLlmHealthCheck: async () => ({ ok: false, error: "not wired" }),
+}
+
+export function setSelfModelProviderHooks(hooks: Partial<SelfModelProviderHooks>): void {
+  _smHooks = { ..._smHooks, ...hooks }
+}
 
 // ─── Feature Flag Enumeration ───────────────────────────
 
@@ -66,8 +82,8 @@ class TelegramSelfModelProvider implements CapabilityDataProvider {
 
   async getMCPServers(): Promise<MCPServerInfo[]> {
     try {
-      const status = getMcpStatus()
-      const toolList = listMcpTools()
+      const status = _smHooks.getMcpStatus()
+      const toolList = _smHooks.listMcpTools()
 
       return Object.entries(status).map(([serverId, info]) => ({
         serverId,
@@ -86,7 +102,7 @@ class TelegramSelfModelProvider implements CapabilityDataProvider {
 
   async getKnowledgeSources(): Promise<KnowledgeSourceInfo[]> {
     try {
-      const isUp = await anythingLlmHealthCheck()
+      const isUp = await _smHooks.anythingLlmHealthCheck()
       if (!isUp) {
         return [
           {

@@ -23,7 +23,7 @@ import {
   toUrlContent,
   resetCircuitBreaker,
   type ExtractionResult,
-} from "../src/conversation/content-extractor"
+} from "@atlas/agents/src/conversation/content-extractor"
 
 beforeEach(() => {
   mockFetch.mockClear()
