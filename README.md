@@ -2,7 +2,7 @@
 
 **The structural case for distributed cognition — grounded in working software, philosophical roots, and the grassroots adoption model that has always beaten capital concentration**
 
-*Jim Calhoun | The Grove Foundation | February 2026*
+*Jim Calhoun | December 2025*
 
 ---
 
