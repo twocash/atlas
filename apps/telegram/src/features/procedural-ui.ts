@@ -15,7 +15,7 @@
 
 import { Context, InlineKeyboard } from "grammy";
 import { logger } from "../logger";
-import type { Pillar } from "../conversation/types";
+import type { Pillar } from '@atlas/agents/src/conversation/types';
 
 // Lazy import to avoid circular dependencies
 let _promptManagerLoaded = false;

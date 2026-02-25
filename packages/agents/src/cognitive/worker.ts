@@ -14,8 +14,10 @@ import type {
 } from "./types";
 import { MODEL_CATALOG, estimateCost } from "./models";
 import { getCognitiveConfig } from "../config/cognitive";
-import { getFeatureFlags } from "../config/features";
 import { logger } from "../logger";
+
+// Feature flag: research error sanitization (default ON, kill switch)
+const isResearchErrorSanitizationEnabled = () => process.env.ATLAS_RESEARCH_ERROR_SANITIZATION !== 'false';
 
 // ==========================================
 // Bug #5 Fix: Research Error Sanitization
@@ -48,8 +50,7 @@ const DEFAULT_SANITIZED_ERROR = "Couldn't complete research right now, but I've 
  * Returns user-friendly message instead of raw API error.
  */
 function sanitizeErrorForUser(rawError: string): string {
-  const flags = getFeatureFlags();
-  if (!flags.researchErrorSanitization) {
+  if (!isResearchErrorSanitizationEnabled()) {
     return rawError; // Feature disabled, return raw error
   }
 

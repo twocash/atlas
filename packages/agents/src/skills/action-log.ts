@@ -10,7 +10,8 @@
 import { Client } from '@notionhq/client';
 import { NOTION_DB } from '@atlas/shared/config';
 import { logger } from '../logger';
-import { isFeatureEnabled } from '../config/features';
+// Feature check inlined to avoid surface-layer dependency on config/features.ts
+const isSkillLoggingEnabled = () => process.env.ATLAS_SKILL_LOGGING !== 'false';
 import { generateIntentHash, type IntentHashResult } from './intent-hash';
 import type { Pillar, RequestType, StructuredContext } from '../conversation/types';
 
@@ -161,7 +162,7 @@ export interface ActionLogResult {
  */
 export async function logAction(input: ActionLogInput): Promise<ActionLogResult> {
   // Check feature flag
-  if (!isFeatureEnabled('skillLogging')) {
+  if (!isSkillLoggingEnabled()) {
     logger.debug('Skill logging disabled, skipping action log');
     return {
       attempted: false,

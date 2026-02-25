@@ -18,8 +18,8 @@ import { readFile } from 'fs/promises';
 import { join } from 'path';
 import { logger } from '../logger';
 import { getFeatureFlags, getSafetyLimits } from '../config/features';
-import { SKILL_SCHEMA_PROMPT, validateSkillFrontmatter } from '../skills/frontmatter';
-import type { PitCrewOperation, PermissionZone } from '../skills/zone-classifier';
+import { SKILL_SCHEMA_PROMPT, validateSkillFrontmatter } from '@atlas/agents/src/skills/frontmatter';
+import type { PitCrewOperation, PermissionZone } from '@atlas/agents/src/skills/zone-classifier';
 
 // ==========================================
 // Types

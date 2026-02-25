@@ -25,7 +25,7 @@ export {
   compareIntentHashes,
   hasSameIntent,
   type IntentHashResult,
-} from './intent-hash';
+} from '@atlas/agents/src/skills/intent-hash';
 
 // Action logging
 export {
@@ -37,7 +37,7 @@ export {
   type ActionType,
   type ActionLogInput,
   type ActionLogResult,
-} from './action-log';
+} from '@atlas/agents/src/skills/action-log';
 
 // Schema definitions (Phase 2)
 export {
@@ -64,7 +64,7 @@ export {
   SkillDefinitionSchema,
   TriggerSchema,
   ProcessSchema,
-} from './schema';
+} from '@atlas/agents/src/skills/schema';
 
 // Registry (Phase 2)
 export {
@@ -73,7 +73,7 @@ export {
   initializeSkillRegistry,
   type TriggerMatchResult,
   type MatchContext,
-} from './registry';
+} from '@atlas/agents/src/skills/registry';
 
 // Executor (Phase 2)
 export {
@@ -92,7 +92,7 @@ export {
   type ExecutionContext,
   type StepResult,
   type SkillExecutionResult,
-} from './executor';
+} from '@atlas/agents/src/skills/executor';
 
 // Pattern Detection (Phase 3)
 export {
@@ -105,7 +105,7 @@ export {
   type DetectedPattern,
   type SkillProposal,
   type PatternDetectionResult,
-} from './pattern-detector';
+} from '@atlas/agents/src/skills/pattern-detector';
 
 // Approval Queue (Phase 3)
 export {

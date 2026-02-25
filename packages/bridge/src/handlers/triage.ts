@@ -17,7 +17,7 @@ import type { HandlerFn, BridgeEnvelope, HandlerContext } from "../types/bridge"
 import type { OrchestrationRequest, BrowserContext } from "../types/orchestration"
 import { assembleContext } from "../context/assembler"
 import { constructPrompt, buildClaudeMessage } from "../context/prompt-constructor"
-import { profileTask, getQuickResponse, canSkipLLM } from "../../../../apps/telegram/src/cognitive/profiler"
+import { profileTask, getQuickResponse, canSkipLLM } from "@atlas/agents/src/cognitive/profiler"
 
 // ─── Feature Gate ─────────────────────────────────────────
 

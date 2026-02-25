@@ -9,7 +9,7 @@ import { readFile, writeFile, mkdir } from 'fs/promises';
 import { join, dirname } from 'path';
 import { fileURLToPath } from 'url';
 import { logger } from '../../logger';
-import { parseSkillFrontmatter, validateSkillFrontmatter, generateFrontmatter } from '../../skills/frontmatter';
+import { parseSkillFrontmatter, validateSkillFrontmatter, generateFrontmatter } from '@atlas/agents/src/skills/frontmatter';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);

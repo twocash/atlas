@@ -10,8 +10,10 @@ import { watch } from 'fs';
 import { join, basename, extname } from 'path';
 import { parse as parseYaml } from 'yaml';
 import { logger } from '../logger';
-import { isFeatureEnabled } from '../config/features';
 import { generateIntentHash, type IntentHashResult } from './intent-hash';
+
+// Feature flag: skill hot reload (default OFF, opt-in)
+const isSkillHotReloadEnabled = () => process.env.ATLAS_SKILL_HOT_RELOAD === 'true';
 import {
   type SkillDefinition,
   type SkillTrigger,
@@ -275,13 +277,13 @@ export class SkillRegistry {
       this.initialized = true;
 
       // Enable hot-reload if configured
-      if (isFeatureEnabled('skillHotReload')) {
+      if (isSkillHotReloadEnabled()) {
         await this.enableHotReload();
       }
 
       logger.info('SkillRegistry initialized', {
         skillCount: this.skills.size,
-        hotReload: isFeatureEnabled('skillHotReload'),
+        hotReload: isSkillHotReloadEnabled(),
       });
     } catch (error) {
       logger.error('Failed to initialize SkillRegistry', { error });

@@ -7,9 +7,9 @@
 
 import type { Context } from "grammy";
 import type { IntentDetectionResult } from "../types";
-import type { ModelId } from "../cognitive/models";
+import type { ModelId } from '@atlas/agents/src/cognitive/models';
 import { generateResponse, generateResponseWithTools } from "../claude";
-import { supervise, getQuickResponse as cognitiveQuickResponse } from "../cognitive";
+import { supervise, getQuickResponse as cognitiveQuickResponse } from "@atlas/agents/src/cognitive";
 import { getModelOverride } from "../session";
 import { logger } from "../logger";
 import { audit } from "../audit";

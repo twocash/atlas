@@ -20,7 +20,7 @@ import {
   type SocraticQuestion,
 } from '../../../../packages/agents/src/socratic';
 import type { IntentType } from '../../../../packages/agents/src/services/prompt-composition/types';
-import type { TriageResult } from '../cognitive/triage-skill';
+import type { TriageResult } from '@atlas/agents/src/cognitive/triage-skill';
 import { storeSocraticSession, removeSocraticSession, getSocraticSession } from './socratic-session';
 import { enterSocraticPhase, enterGoalClarificationPhase, returnToIdle } from './conversation-state';
 import { createAuditTrail } from './audit';

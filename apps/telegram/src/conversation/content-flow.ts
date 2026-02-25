@@ -23,7 +23,7 @@ import type { AttachmentInfo } from './attachments';
 import { socraticInterview } from './socratic-adapter';
 import { getFeatureFlags } from '../config/features';
 import { checkUrl } from '../utils/url-dedup';
-import { triageMessage, type TriageResult } from '../cognitive/triage-skill';
+import { triageMessage, type TriageResult } from '@atlas/agents/src/cognitive/triage-skill';
 import { extractContent, toUrlContent } from './content-extractor';
 import { preReadContent } from './content-pre-reader';
 import { reportExtractionFailure, type ExtractionChainTrace } from '../../../../packages/shared/src/extraction-failure-reporter';

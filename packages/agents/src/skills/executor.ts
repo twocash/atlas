@@ -8,12 +8,8 @@
  */
 
 import { logger } from '../logger';
-import { isFeatureEnabled } from '../config/features';
 import { getSkillRegistry } from './registry';
 import { logAction } from './action-log';
-import { pushActivity } from '../health/status-server';
-import { createActionFeedEntry } from '../notion';
-import type { ActionDataApproval } from '../types';
 import {
   type SkillDefinition,
   type ProcessStep,
@@ -25,6 +21,42 @@ import {
   getTierEmoji,
 } from './schema';
 import type { Pillar } from '../conversation/types';
+
+// ---- Feature flags (inline to avoid circular dependency with @atlas/telegram) ----
+const isSkillExecutionEnabled = () => process.env.ATLAS_SKILL_EXECUTION !== 'false';
+const isSkillCompositionEnabled = () => process.env.ATLAS_SKILL_COMPOSITION === 'true';
+const isApprovalProducerEnabled = () => process.env.ATLAS_APPROVAL_PRODUCER !== 'false';
+const isSkillLoggingEnabled = () => process.env.ATLAS_SKILL_LOGGING !== 'false';
+
+// ---- Inline type (moved from apps/telegram/src/types.ts to avoid cross-package import) ----
+interface ActionDataApproval {
+  skill_id: string;
+  skill_name: string;
+  description: string;
+  wq_item_id?: string;
+}
+
+// ---- Surface-specific hooks (injected by app layer, no-op defaults) ----
+let _pushActivity: (skill: string, step: string, status: string, logs: string[]) => void = () => {};
+let _createActionFeedEntry: (
+  actionType: string,
+  actionData: any,
+  source: string,
+  title?: string,
+  keywords?: string[],
+) => Promise<string> = async () => '';
+
+/**
+ * Inject app-layer hooks for status server and Notion feed entries.
+ * Called once during app startup (e.g., from apps/telegram/src/index.ts).
+ */
+export function setExecutorHooks(hooks: {
+  pushActivity?: typeof _pushActivity;
+  createActionFeedEntry?: typeof _createActionFeedEntry;
+}) {
+  if (hooks.pushActivity) _pushActivity = hooks.pushActivity;
+  if (hooks.createActionFeedEntry) _createActionFeedEntry = hooks.createActionFeedEntry;
+}
 
 // =============================================================================
 // PENDING APPROVALS (P2 Approval Cards)
@@ -139,7 +171,7 @@ function logHudUpdate(
   logs?: string[]
 ): void {
   logger.info('Skill step', { skill, step, status, logs });
-  pushActivity(skill, step, status, logs || []);
+  _pushActivity(skill, step, status, logs || []);
 }
 
 /**
@@ -492,7 +524,7 @@ async function executeSkillStep(
   const startTime = Date.now();
 
   // Phase 4: Check if skill composition is enabled
-  if (!isFeatureEnabled('skillComposition')) {
+  if (!isSkillCompositionEnabled()) {
     return {
       success: false,
       error: 'Skill composition is disabled (ATLAS_SKILL_COMPOSITION=false)',
@@ -759,7 +791,7 @@ export async function executeSkill(
   const toolsUsed: string[] = [];
 
   // Check if skill execution is enabled
-  if (!isFeatureEnabled('skillExecution')) {
+  if (!isSkillExecutionEnabled()) {
     logger.debug('Skill execution disabled', { skill: skill.name });
     return {
       success: false,
@@ -775,7 +807,7 @@ export async function executeSkill(
   // Tier 2 safety latch: Require explicit approval for external actions
   // P2 Approval Cards: create a Feed 2.0 Approval entry instead of just blocking
   if (skill.tier >= 2 && !context.approvalLatch) {
-    if (isFeatureEnabled('approvalProducer')) {
+    if (isApprovalProducerEnabled()) {
       // FAIL-CLOSED: If card creation fails, skill does NOT execute
       const approvalData: ActionDataApproval = {
         skill_id: skill.name,
@@ -784,7 +816,7 @@ export async function executeSkill(
       };
 
       try {
-        const feedPageId = await createActionFeedEntry(
+        const feedPageId = await _createActionFeedEntry(
           'Approval',
           approvalData,
           'Atlas [telegram]',
@@ -898,7 +930,7 @@ export async function executeSkill(
             getSkillRegistry().updateMetrics(skill.name, false, executionTime);
 
             // Log action
-            if (isFeatureEnabled('skillLogging')) {
+            if (isSkillLoggingEnabled()) {
               logAction({
                 messageText: context.messageText,
                 pillar: context.pillar,
@@ -960,7 +992,7 @@ export async function executeSkill(
     getSkillRegistry().updateMetrics(skill.name, true, executionTime);
 
     // Log action
-    if (isFeatureEnabled('skillLogging')) {
+    if (isSkillLoggingEnabled()) {
       logAction({
         messageText: context.messageText,
         pillar: context.pillar,
@@ -1161,7 +1193,7 @@ export async function triggerContextualExtraction(
   const { url, pillar, feedId, workQueueId, userId, chatId, requestType } = params;
 
   // Check if skill execution is enabled
-  if (!isFeatureEnabled('skillExecution')) {
+  if (!isSkillExecutionEnabled()) {
     logger.debug('Contextual extraction skipped: skillExecution feature disabled');
     return null;
   }

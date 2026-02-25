@@ -5,7 +5,7 @@
  */
 
 import { describe, it, expect, beforeAll } from 'bun:test';
-import { SkillRegistry } from './registry';
+import { SkillRegistry } from '@atlas/agents/src/skills/registry';
 import { join } from 'path';
 
 describe('SkillRegistry', () => {

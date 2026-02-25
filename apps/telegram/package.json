@@ -48,6 +48,7 @@
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.39.0",
+    "@atlas/agents": "workspace:*",
     "@atlas/shared": "workspace:*",
     "@google/genai": "^1.0.0",
     "@google/generative-ai": "^0.21.0",

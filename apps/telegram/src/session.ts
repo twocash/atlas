@@ -4,7 +4,7 @@
  * Per-user session settings including model override
  */
 
-import type { ModelId } from "./cognitive/models";
+import type { ModelId } from '@atlas/agents/src/cognitive/models';
 
 export interface UserSession {
   modelOverride: ModelId | "auto";

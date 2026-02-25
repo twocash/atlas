@@ -18,7 +18,7 @@ import type {
   SurfaceInfo,
 } from "../../../../packages/agents/src/self-model"
 
-import { getSkillRegistry } from "../skills/registry"
+import { getSkillRegistry } from "@atlas/agents/src/skills/registry"
 import { getMcpStatus, listMcpTools } from "../mcp"
 import { healthCheck as anythingLlmHealthCheck } from "../../../../packages/bridge/src/context/anythingllm-client"
 

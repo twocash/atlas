@@ -12,7 +12,7 @@ import { Hono } from 'hono';
 import { cors } from 'hono/cors';
 import { NOTION_DB } from '@atlas/shared/config';
 import { logger } from '../logger';
-import type { Pillar } from '../conversation/types';
+import type { Pillar } from '@atlas/agents/src/conversation/types';
 
 const app = new Hono();
 

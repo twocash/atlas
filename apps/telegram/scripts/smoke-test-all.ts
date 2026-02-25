@@ -310,7 +310,7 @@ async function testSkillSystem() {
   startSection('SKILL SYSTEM', '⚡');
 
   await runTest('Intent hash generation works', async () => {
-    const { generateIntentHash } = await import('../src/skills/intent-hash');
+    const { generateIntentHash } = await import('@atlas/agents/src/skills/intent-hash');
     const hash = generateIntentHash('test message');
     if (!hash.hash || hash.hash.length < 8) throw new Error('Invalid hash');
   });

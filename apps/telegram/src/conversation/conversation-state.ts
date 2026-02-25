@@ -23,7 +23,7 @@ import type { DialogueState } from '../../../../packages/agents/src/dialogue/typ
 import type { SocraticQuestion, ContextSignals } from '../../../../packages/agents/src/socratic';
 import type { GoalContext, ContentAnalysis as GoalContentAnalysis, GoalTracker } from '../../../../packages/agents/src/goal';
 import type { ResolvedContext } from '../../../../packages/agents/src/socratic';
-import type { TriageResult } from '../cognitive/triage-skill';
+import type { TriageResult } from '@atlas/agents/src/cognitive/triage-skill';
 import type { UrlContent } from '../types';
 
 /**

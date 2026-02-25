@@ -14,7 +14,7 @@ import {
   getSwarmStats,
   type SwarmTask,
 } from './swarm-dispatch';
-import { createOperation } from '../skills/zone-classifier';
+import { createOperation } from '@atlas/agents/src/skills/zone-classifier';
 
 // ==========================================
 // Test Fixtures

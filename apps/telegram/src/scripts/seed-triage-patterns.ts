@@ -17,8 +17,8 @@
 
 import { Client } from '@notionhq/client';
 import { NOTION_DB } from '@atlas/shared/config';
-import { seedPatterns, type TriagePattern } from '../cognitive/triage-patterns';
-import { generatePatternKey } from '../cognitive/triage-patterns';
+import { seedPatterns, type TriagePattern } from '@atlas/agents/src/cognitive/triage-patterns';
+import { generatePatternKey } from '@atlas/agents/src/cognitive/triage-patterns';
 
 // Feed 2.0 database ID (from @atlas/shared/config)
 const FEED_DATABASE_ID = NOTION_DB.FEED;

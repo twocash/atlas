@@ -319,7 +319,7 @@ async function runAutonomousRepairTests(cwd: string): Promise<SuiteResult> {
 
   // Test 1: Zone classifier loads and exports functions
   try {
-    const zoneClassifier = await import('../src/skills/zone-classifier.js');
+    const zoneClassifier = await import('@atlas/agents/src/skills/zone-classifier');
     if (
       typeof zoneClassifier.classifyZone === 'function' &&
       typeof zoneClassifier.createOperation === 'function'
@@ -339,7 +339,7 @@ async function runAutonomousRepairTests(cwd: string): Promise<SuiteResult> {
 
   // Test 2: Zone classification works correctly
   try {
-    const { classifyZone, createOperation } = await import('../src/skills/zone-classifier.js');
+    const { classifyZone, createOperation } = await import('@atlas/agents/src/skills/zone-classifier');
 
     // Test Zone 1: Tier 0 in data/skills/
     const op1 = createOperation({
@@ -1058,6 +1058,44 @@ async function runSharedUnitTests(cwd: string): Promise<SuiteResult> {
   };
 }
 
+/**
+ * Run Architecture Boundary Tests
+ *
+ * Enforces ADR-005: cognitive logic lives in packages/agents/, not apps/.
+ * Checks: no dangling imports, Grammy isolation, no re-export stubs.
+ * Sprint: ARCH-CPE-001 Phase 1
+ */
+async function runArchitectureBoundaryTests(cwd: string): Promise<SuiteResult> {
+  console.log('\n[ARCHITECTURE] Running Architecture Boundary Tests...');
+  console.log('─'.repeat(50));
+
+  const repoRoot = join(cwd, '..', '..');
+  const result = await runCommand(
+    BUN_PATH,
+    ['test', 'test/architecture/boundary.test.ts'],
+    repoRoot,
+    30000
+  );
+  const counts = parseBunTestOutput(result.output);
+
+  if (!result.success) {
+    console.log('  \x1b[31m[FAIL]\x1b[0m Architecture boundary violations detected');
+    console.log(result.output);
+  }
+
+  const status = result.success ? '\x1b[32m[PASS]\x1b[0m' : '\x1b[31m[FAIL]\x1b[0m';
+  console.log(`  ${status} ${counts.passed} passed, ${counts.failed} failed (${result.duration}ms)`);
+
+  return {
+    name: 'Architecture Boundary Tests',
+    passed: counts.passed,
+    failed: counts.failed,
+    skipped: counts.skipped,
+    duration: result.duration,
+    errors: result.success ? [] : [result.output],
+  };
+}
+
 // =============================================================================
 // AUTO-BUG LOGGING
 // =============================================================================
@@ -1079,6 +1117,7 @@ const SUITE_SUBSYSTEM: Record<string, string> = {
   'Bridge Unit Tests': 'Bridge',
   'Bridge Stability (Playwright)': 'Bridge',
   'Agents Unit Tests': 'Agents',
+  'Architecture Boundary Tests': 'Architecture',
   'Shared Package Unit Tests': 'Shared',
 };
 
@@ -1159,6 +1198,7 @@ async function main() {
     suites.push(await runChromeExtUnitTests(cwd));
     suites.push(await runAgentsUnitTests(cwd));
     suites.push(await runSharedUnitTests(cwd));
+    suites.push(await runArchitectureBoundaryTests(cwd));
   }
   // Strict mode: Canaries FIRST — failure stops all subsequent suites
   else if (strict) {
@@ -1180,6 +1220,7 @@ async function main() {
       suites.push(await runChromeExtBuild(cwd));  // Chrome Extension build verification
       suites.push(await runAgentsUnitTests(cwd));
     suites.push(await runSharedUnitTests(cwd));  // Agents package unit tests
+      suites.push(await runArchitectureBoundaryTests(cwd));  // ADR-005 enforcement
       suites.push(await runBridgeStabilityTests(cwd));
       suites.push(await runSmokeTests(cwd));
       suites.push(await runE2ETests(cwd));
@@ -1201,6 +1242,7 @@ async function main() {
     suites.push(await runReplyStrategyTests(cwd));  // Reply Strategy integration
     suites.push(await runAgentsUnitTests(cwd));
     suites.push(await runSharedUnitTests(cwd));  // Agents package unit tests
+    suites.push(await runArchitectureBoundaryTests(cwd));  // ADR-005 enforcement
     suites.push(await runBridgeStabilityTests(cwd));  // Bridge Playwright tests
     suites.push(await runSmokeTests(cwd));
     suites.push(await runE2ETests(cwd));
@@ -1226,6 +1268,7 @@ async function main() {
       suites.push(await runChromeExtBuild(cwd));  // Chrome Extension build verification
       suites.push(await runAgentsUnitTests(cwd));
     suites.push(await runSharedUnitTests(cwd));  // Agents package unit tests
+      suites.push(await runArchitectureBoundaryTests(cwd));  // ADR-005 enforcement
       suites.push(await runSmokeTests(cwd));
       suites.push(await runIntegrationTests(cwd));
     }
@@ -1248,6 +1291,7 @@ async function main() {
     'Chrome': ['Chrome Extension Unit Tests', 'Chrome Extension Build', 'Reply Strategy Integration'],
     'Bridge': ['Bridge Unit Tests', 'Bridge Stability'],
     'Agents': ['Agents Unit Tests'],
+    'Architecture': ['Architecture Boundary Tests'],
   };
 
   console.log('\n');
