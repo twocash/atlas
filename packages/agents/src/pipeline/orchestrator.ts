@@ -1,0 +1,1349 @@
+/**
+ * Pipeline Orchestrator — Cognitive Message Processing Engine
+ *
+ * Contains ALL decision logic for message handling: gate routing,
+ * triage, enrichment, assessment, Claude API calls, tool execution,
+ * audit trail creation, and response processing.
+ *
+ * Surface-agnostic: zero Grammy imports. All I/O goes through
+ * PipelineSurfaceHooks injected by the adapter.
+ *
+ * Sprint: ARCH-CPE-001 Phase 5 — extracted from apps/telegram/src/conversation/handler.ts
+ */
+
+import Anthropic from '@anthropic-ai/sdk';
+import { logger } from '../logger';
+import { getConversation, updateConversation, buildMessages, type ToolContext } from '../conversation/context';
+import { buildSystemPrompt } from '../conversation/prompt';
+import { detectAttachment, buildAttachmentPrompt } from '../conversation/attachments';
+import { buildMediaContext, buildAnalysisContent, type Pillar } from '../media/processor';
+import { createAuditTrail, type AuditEntry, type AuditResult } from '../conversation/audit';
+import { getAllTools, executeTool } from '../conversation/tools';
+import { recordUsage } from '../conversation/stats';
+import { hasPendingSocraticSessionForUser, getSocraticSessionByUserId, removeSocraticSession } from '../conversation/socratic-session';
+import { getIntentHash } from '../skills/intent-hash';
+import { logAction } from '../skills/action-log';
+import { reportFailure } from '@atlas/shared/error-escalation';
+import { createTrace, addStep, completeStep, completeTrace, failTrace } from '@atlas/shared/trace';
+import { classifyWithFallback, triageForAudit, triageMessage } from '../cognitive/triage-skill';
+import type { TriageResult } from '../cognitive/triage-skill';
+import { enrichWithContextSlots, type EnrichmentResult } from '../conversation/context-enrichment';
+import { getLastAgentResult, clearLastAgentResult } from '../conversation/context-manager';
+import {
+  assessRequest,
+  type RequestAssessment,
+  type AssessmentContext,
+  getCachedModel,
+  assessmentNeedsDialogue,
+  enterDialogue,
+  continueDialogue,
+  derivePillar,
+  detectDomainCorrection,
+  logDomainCorrection,
+  extractKeywords,
+  type DomainType,
+} from '..';
+import {
+  hasApprovalSessionForUser,
+  getApprovalSessionByUserId,
+  storeApprovalSession,
+  removeApprovalSession,
+  isApprovalSignal,
+  isRejectionSignal,
+  formatProposalMessage,
+} from '../conversation/approval-session';
+import {
+  getStateByUserId,
+  getContentContext,
+  storeAssessment,
+  storeTriage as storeTriageInState,
+  enterDialoguePhase,
+  enterApprovalPhase,
+  enterGoalClarificationPhase,
+  returnToIdle,
+  recordTurn,
+  isInPhase,
+} from '../conversation/conversation-state';
+import {
+  incorporateClarification,
+  resolveAfterClarification,
+  recordClarification,
+} from '../goal';
+
+import type {
+  MessageInput,
+  PipelineSurfaceHooks,
+  PipelineConfig,
+  LowConfidenceRoutingData,
+} from './types';
+import { REACTIONS } from './types';
+
+// ─── Anthropic Client ───────────────────────────────────
+
+const anthropic = new Anthropic({
+  apiKey: process.env.ANTHROPIC_API_KEY,
+});
+
+const MAX_TOOL_ITERATIONS = 5;
+
+// Per-user last-domain cache for correction detection (STAB-002c)
+const lastDomainByUser = new Map<number, DomainType>();
+
+// ─── Pure Helper Functions ──────────────────────────────
+
+/**
+ * Format tool context for conversation history.
+ * Extracts key information (IDs, URLs, success/failure) from tool results
+ * so Claude can maintain context across conversation turns.
+ */
+export function formatToolContextForHistory(toolContexts: ToolContext[]): string {
+  if (toolContexts.length === 0) return '';
+
+  const summaries: string[] = [];
+
+  for (const ctx of toolContexts) {
+    const toolResult = ctx.result as { success?: boolean; result?: unknown; error?: string } | undefined;
+    const success = toolResult?.success ?? false;
+    const result = toolResult?.result as Record<string, unknown> | undefined;
+
+    const keyInfo: string[] = [];
+
+    if (result) {
+      if (result.id) keyInfo.push(`id: ${result.id}`);
+      if (result.pageId) keyInfo.push(`pageId: ${result.pageId}`);
+      if (result.taskId) keyInfo.push(`taskId: ${result.taskId}`);
+      if (result.feedId) keyInfo.push(`feedId: ${result.feedId}`);
+      if (result.workQueueId) keyInfo.push(`workQueueId: ${result.workQueueId}`);
+      if (result.discussionId) keyInfo.push(`discussionId: ${result.discussionId}`);
+      if (result.url) keyInfo.push(`url: ${result.url}`);
+      if (result.notionUrl) keyInfo.push(`url: ${result.notionUrl}`);
+      if (result.title) keyInfo.push(`title: "${String(result.title).substring(0, 50)}"`);
+      if (result.status) keyInfo.push(`status: ${result.status}`);
+    }
+
+    const status = success ? '✓' : '✗';
+    const info = keyInfo.length > 0 ? ` (${keyInfo.join(', ')})` : '';
+    summaries.push(`${status} ${ctx.toolName}${info}`);
+  }
+
+  return `[Tool context for follow-up:\n${summaries.join('\n')}]`;
+}
+
+/**
+ * Fix fabricated Notion URLs in Claude's response.
+ * Claude often ignores EXACT_URL_FOR_USER markers and fabricates similar-looking URLs.
+ */
+export function fixHallucinatedUrls(responseText: string, toolContexts: ToolContext[]): string {
+  const dispatchToolNames = ['submit_ticket', 'work_queue_create', 'mcp__pit_crew__dispatch_work'];
+  let dispatchFailed = false;
+  let failureError = '';
+
+  const actualUrls: string[] = [];
+  for (let i = toolContexts.length - 1; i >= 0; i--) {
+    const tc = toolContexts[i];
+    const toolResult = tc.result as { success?: boolean; result?: unknown; error?: string } | undefined;
+
+    if (dispatchToolNames.includes(tc.name)) {
+      if (!toolResult?.success) {
+        dispatchFailed = true;
+        failureError = toolResult?.error || 'Dispatch failed';
+        logger.error('DISPATCH TOOL FAILED', { tool: tc.name, error: failureError });
+      }
+    }
+
+    if (toolResult?.success) {
+      const result = toolResult.result as Record<string, unknown> | undefined;
+      if (result?.url && typeof result.url === 'string') {
+        actualUrls.push(result.url);
+      }
+      if (result?.feedUrl && typeof result.feedUrl === 'string') {
+        actualUrls.push(result.feedUrl);
+      }
+    }
+  }
+
+  // CRITICAL: Dispatch failed but Claude may have fabricated a success URL
+  if (dispatchFailed && actualUrls.length === 0) {
+    const notionUrlPattern = /https?:\/\/(?:www\.)?notion\.so\/[^\s\)\]>]+/gi;
+    const matches = responseText.match(notionUrlPattern);
+
+    if (matches && matches.length > 0) {
+      logger.error('HALLUCINATION ON FAILURE: Claude fabricated URL despite tool failure', {
+        fabricatedUrls: matches,
+        error: failureError,
+      });
+
+      let fixedText = responseText;
+      for (const match of matches) {
+        fixedText = fixedText.split(match).join('[DISPATCH FAILED]');
+      }
+      return `${fixedText}\n\n⚠️ **Dispatch failed:** ${failureError}`;
+    }
+  }
+
+  if (actualUrls.length === 0) {
+    return responseText;
+  }
+
+  const notionUrlPattern = /https?:\/\/(?:www\.)?notion\.so\/[^\s\)\]>]+/gi;
+  const matches = responseText.match(notionUrlPattern);
+
+  if (!matches || matches.length === 0) {
+    logger.info('URL MISSING: Claude omitted URL, appending actual', { actualUrls });
+    return `${responseText}\n\n📎 ${actualUrls[0]}`;
+  }
+
+  const uniqueMatches = [...new Set(matches)];
+  const isHallucinated = uniqueMatches.some(m => !actualUrls.includes(m));
+
+  if (isHallucinated) {
+    logger.warn('HALLUCINATION DETECTED: Fixing fabricated Notion URLs', {
+      claudeSaid: uniqueMatches,
+      actualUrls,
+    });
+
+    let fixedText = responseText;
+    for (const match of uniqueMatches) {
+      if (!actualUrls.includes(match)) {
+        fixedText = fixedText.split(match).join(actualUrls[0]);
+      }
+    }
+    return fixedText;
+  }
+
+  return responseText;
+}
+
+/**
+ * Detect if user is asking to convert/draft from a recent research result.
+ */
+export function detectFollowOnConversionIntent(text: string): boolean {
+  const FOLLOW_ON_PATTERN = /^(can you |please )?(turn|draft|write|make|convert|transform)\b.*(into|as|up|a)\b/i;
+  const PRONOUN_SIGNAL = /\b(that|this|it)\b/i;
+
+  if (FOLLOW_ON_PATTERN.test(text)) return true;
+
+  const SECONDARY_PATTERN = /\b(summarize|post|article|blog|linkedin|thread|email|report)\b.*\b(that|this|it)\b/i;
+  if (SECONDARY_PATTERN.test(text)) return true;
+
+  const TERTIARY_PATTERN = /\b(linkedin|blog|article|thread|report|post|email)\b/i;
+  if (TERTIARY_PATTERN.test(text) && PRONOUN_SIGNAL.test(text)) return true;
+
+  return false;
+}
+
+/**
+ * Split a long message into chunks.
+ */
+export function splitMessage(text: string, maxLength: number): string[] {
+  const chunks: string[] = [];
+  let remaining = text;
+
+  while (remaining.length > 0) {
+    if (remaining.length <= maxLength) {
+      chunks.push(remaining);
+      break;
+    }
+
+    let splitPoint = remaining.lastIndexOf('\n\n', maxLength);
+    if (splitPoint === -1 || splitPoint < maxLength / 2) {
+      splitPoint = remaining.lastIndexOf('\n', maxLength);
+    }
+    if (splitPoint === -1 || splitPoint < maxLength / 2) {
+      splitPoint = remaining.lastIndexOf('. ', maxLength);
+    }
+    if (splitPoint === -1 || splitPoint < maxLength / 2) {
+      splitPoint = maxLength;
+    }
+
+    chunks.push(remaining.slice(0, splitPoint + 1).trim());
+    remaining = remaining.slice(splitPoint + 1).trim();
+  }
+
+  return chunks;
+}
+
+// ─── Main Orchestrator ──────────────────────────────────
+
+/**
+ * Orchestrate a message through the full cognitive pipeline.
+ *
+ * All decisions happen here. Surface I/O goes through hooks.
+ * The adapter (handler.ts) creates hooks from Grammy context.
+ */
+export async function orchestrateMessage(
+  input: MessageInput,
+  hooks: PipelineSurfaceHooks,
+  config: PipelineConfig,
+): Promise<void> {
+  const { text: initialText, userId, chatId, username, messageId } = input;
+  let messageText = initialText;
+
+  // Pipeline trace: tracks every step with timing and metadata
+  const trace = createTrace();
+  const msgStep = addStep(trace, 'message-received', {
+    userId,
+    messageLength: messageText.length,
+    hasMedia: !!(input.rawMessage && detectAttachment(input.rawMessage).type !== 'none'),
+  });
+  completeStep(msgStep);
+
+  logger.info('Conversation message received', {
+    userId,
+    username,
+    textLength: messageText.length,
+    traceId: trace.traceId,
+  });
+
+  // Session telemetry
+  const currentIntentHash = messageText ? getIntentHash(messageText).hash : undefined;
+  const sessionTelemetry = recordTurn(chatId, userId, currentIntentHash);
+
+  // React to indicate message received
+  await hooks.setReaction(REACTIONS.READING);
+  await hooks.sendTyping();
+
+  // Detect attachments
+  const attachment = detectAttachment(input.rawMessage);
+  const hasAttachment = attachment.type !== 'none';
+
+  // ── Gate 1: Content Share (URL) ──
+  if (config.contentConfirmEnabled && !hasAttachment && messageText) {
+    const handled = await hooks.checkContentShare();
+    if (handled) {
+      await hooks.setReaction(REACTIONS.DONE);
+      logger.info('Content share detected, Socratic question sent', { userId });
+      return;
+    }
+  }
+
+  // ── Gate 2: Domain Correction (STAB-002c) ──
+  if (config.domainAudienceEnabled && messageText && lastDomainByUser.has(userId)) {
+    const currentDomain = lastDomainByUser.get(userId)!;
+    const correction = detectDomainCorrection(messageText, currentDomain);
+    if (correction) {
+      const keywords = extractKeywords(messageText);
+      logDomainCorrection(currentDomain, correction.corrected, keywords, messageText).catch(err => {
+        logger.warn('Domain correction logging failed', { error: err });
+      });
+      lastDomainByUser.set(userId, correction.corrected);
+      logger.info('Domain correction detected', {
+        userId,
+        original: currentDomain,
+        corrected: correction.corrected,
+      });
+    }
+  }
+
+  // ── Gate 3: Socratic Session ──
+  if (!hasAttachment && messageText && hasPendingSocraticSessionForUser(userId)) {
+    const containsUrl = /https?:\/\/\S+/i.test(messageText);
+    if (containsUrl) {
+      const staleSocSession = getSocraticSessionByUserId(userId);
+      if (staleSocSession) {
+        removeSocraticSession(staleSocSession.chatId);
+        returnToIdle(staleSocSession.chatId);
+        logger.info('Socratic session bypassed: message contains URL (new content)', {
+          userId,
+          cancelledSessionId: staleSocSession.sessionId,
+        });
+      }
+    } else {
+      const handled = await hooks.handleSocraticAnswer(messageText);
+      if (handled) {
+        await hooks.setReaction(REACTIONS.DONE);
+        logger.info('Socratic answer processed', { userId });
+        return;
+      }
+    }
+  }
+
+  // ── Gate 4: Goal Clarification (ATLAS-GOAL-FIRST-001) ──
+  if (!hasAttachment && messageText) {
+    const userState = getStateByUserId(userId);
+    if (userState?.phase === 'goal-clarification' && userState.pendingGoal && userState.goalTargetField) {
+      const containsUrl = /https?:\/\/\S+/i.test(messageText);
+      if (containsUrl) {
+        returnToIdle(userState.chatId);
+        logger.info('Goal-clarification bypassed: new URL content', { userId });
+      } else {
+        try {
+          const updatedGoal = await incorporateClarification(
+            userState.pendingGoal,
+            messageText,
+            userState.goalTargetField,
+          );
+
+          const tracker = userState.goalTracker;
+          if (tracker) {
+            recordClarification(tracker, userState.goalTargetField || 'unknown');
+          }
+
+          const round = userState.goalClarificationRound || 1;
+          const contentAnalysis = userState.goalContentAnalysis || { content: '' };
+          const goalResult = resolveAfterClarification(updatedGoal, round, contentAnalysis);
+
+          if (goalResult.immediateExecution) {
+            const trackerSnapshot = userState.goalTracker;
+            const deferred = userState.goalDeferredExecution;
+            const lastTriage = userState.lastTriage;
+            returnToIdle(userState.chatId);
+            if (deferred) {
+              const cc = getContentContext(userState.chatId);
+              await hooks.executeResolvedGoal(
+                deferred.resolved,
+                deferred.content,
+                deferred.contentType,
+                deferred.title,
+                deferred.answerContext,
+                cc?.prefetchedUrlContent,
+                lastTriage || undefined,
+                updatedGoal,
+                trackerSnapshot,
+              );
+            }
+            await hooks.setReaction(REACTIONS.DONE);
+            logger.info('Goal clarification resolved, executing', {
+              userId,
+              completeness: updatedGoal.completeness,
+              round,
+            });
+            return;
+          }
+
+          if (goalResult.clarificationNeeded && goalResult.nextQuestion) {
+            const nextField = updatedGoal.missingFor[0]?.field || 'endStateRaw';
+            enterGoalClarificationPhase(
+              userState.chatId, userId, updatedGoal, contentAnalysis,
+              nextField, round + 1, userState.goalDeferredExecution,
+              tracker);
+            await hooks.reply(goalResult.nextQuestion);
+            logger.info('Goal clarification round', {
+              userId,
+              round: round + 1,
+              targetField: nextField,
+              completeness: updatedGoal.completeness,
+            });
+            return;
+          }
+        } catch (goalErr) {
+          logger.error('Goal clarification failed', {
+            error: goalErr instanceof Error ? goalErr.message : String(goalErr),
+            userId,
+          });
+          returnToIdle(userState.chatId);
+        }
+      }
+    }
+  }
+
+  // ── Gate 5: Approval Session (STAB-003) ──
+  let approvalGranted = false;
+  if (!hasAttachment && messageText && hasApprovalSessionForUser(userId)) {
+    const containsUrl = /https?:\/\/\S+/i.test(messageText);
+    if (containsUrl) {
+      const staleSession = getApprovalSessionByUserId(userId);
+      if (staleSession) {
+        removeApprovalSession(staleSession.chatId);
+        returnToIdle(staleSession.chatId);
+        logger.info('Approval session bypassed: new URL content', { userId });
+      }
+    } else {
+      const approvalSession = getApprovalSessionByUserId(userId);
+      if (approvalSession) {
+        const approvalStep = addStep(trace, 'approval-check');
+        if (isApprovalSignal(messageText)) {
+          removeApprovalSession(approvalSession.chatId);
+          if (approvalSession.refinedRequest) {
+            messageText = approvalSession.refinedRequest;
+          } else {
+            messageText = approvalSession.originalMessage;
+          }
+          approvalGranted = true;
+          returnToIdle(approvalSession.chatId);
+          approvalStep.metadata = { status: 'approved', hasRefinedRequest: !!approvalSession.refinedRequest };
+          completeStep(approvalStep);
+          logger.info('Proposal approved, proceeding with execution', { userId });
+        } else if (isRejectionSignal(messageText)) {
+          removeApprovalSession(approvalSession.chatId);
+          returnToIdle(approvalSession.chatId);
+          await hooks.reply(
+            "Got it — what would you adjust? I can rethink the approach.",
+            { parseMode: 'HTML' },
+          );
+          approvalStep.metadata = { status: 'rejected' };
+          completeStep(approvalStep);
+          completeTrace(trace);
+          logger.info('Proposal rejected', { userId });
+          return;
+        } else {
+          removeApprovalSession(approvalSession.chatId);
+          returnToIdle(approvalSession.chatId);
+          approvalStep.metadata = { status: 'ambiguous', treatedAsNewMessage: true };
+          completeStep(approvalStep);
+          logger.info('Ambiguous approval reply, treating as new message', { userId });
+        }
+      }
+    }
+  }
+
+  // ── Gate 6: Dialogue Session ──
+  if (!hasAttachment && messageText && isInPhase(userId, 'dialogue')) {
+    const containsUrl = /https?:\/\/\S+/i.test(messageText);
+    const dialogueConvState = getStateByUserId(userId);
+    const dialogueData = dialogueConvState?.dialogue;
+    if (containsUrl) {
+      if (dialogueConvState) {
+        returnToIdle(dialogueConvState.chatId);
+        logger.info('Dialogue session bypassed: new URL content', { userId });
+      }
+    } else if (dialogueConvState && dialogueData) {
+      const dialogueChatId = dialogueConvState.chatId;
+      const dialogueStep = addStep(trace, 'dialogue-continue');
+      try {
+        const model = getCachedModel();
+        if (!model) {
+          returnToIdle(dialogueChatId);
+          dialogueStep.metadata = { status: 'cancelled', reason: 'no-cached-model' };
+          completeStep(dialogueStep);
+        } else {
+          const result = continueDialogue(messageText, dialogueData.dialogueState, model);
+          if (result.needsResponse) {
+            const dialogueMsg = result.message.length > 4000
+              ? result.message.substring(0, 3997) + '...'
+              : result.message;
+            const nextMsgId = await hooks.reply(dialogueMsg, { parseMode: 'HTML' });
+            enterDialoguePhase(dialogueChatId, userId, {
+              questionMessageId: nextMsgId,
+              dialogueState: result.state,
+              assessment: dialogueData.assessment,
+              assessmentContext: dialogueData.assessmentContext,
+              originalMessage: dialogueData.originalMessage,
+            });
+            dialogueStep.metadata = {
+              status: 'continued',
+              turn: result.state.turnCount,
+              openQuestions: result.state.openQuestions.length,
+            };
+            completeStep(dialogueStep);
+            completeTrace(trace);
+            return;
+          } else {
+            returnToIdle(dialogueChatId);
+
+            if (result.refinedRequest) {
+              const original = messageText;
+              messageText = result.refinedRequest;
+              logger.info('Refined request substituted (STAB-003)', {
+                original: original.substring(0, 50),
+                refined: messageText.substring(0, 50),
+              });
+            }
+
+            if (result.proposal) {
+              const proposalMsg = formatProposalMessage(result.proposal, 'complex');
+              const sentMsgId = await hooks.reply(
+                proposalMsg.length > 4000 ? proposalMsg.substring(0, 3997) + '...' : proposalMsg,
+                { parseMode: 'HTML' },
+              );
+              storeApprovalSession({
+                chatId,
+                userId,
+                proposalMessageId: sentMsgId,
+                proposal: result.proposal,
+                refinedRequest: result.refinedRequest,
+                originalMessage: dialogueData.originalMessage,
+                assessment: dialogueData.assessment,
+                assessmentContext: dialogueData.assessmentContext,
+                createdAt: Date.now(),
+              });
+              enterApprovalPhase(chatId, userId, {
+                proposalMessageId: sentMsgId,
+                proposal: result.proposal,
+                refinedRequest: result.refinedRequest,
+                originalMessage: dialogueData.originalMessage,
+                assessment: dialogueData.assessment,
+                assessmentContext: dialogueData.assessmentContext,
+              });
+              dialogueStep.metadata = {
+                status: 'resolved-awaiting-approval',
+                turns: result.state.turnCount,
+                hasProposal: true,
+                hasRefinedRequest: !!result.refinedRequest,
+              };
+              completeStep(dialogueStep);
+              completeTrace(trace);
+              logger.info('Dialogue resolved, approval pending', {
+                turns: result.state.turnCount,
+                hasRefinedRequest: !!result.refinedRequest,
+              });
+              return;
+            }
+
+            dialogueStep.metadata = {
+              status: 'resolved',
+              turns: result.state.turnCount,
+              hasProposal: false,
+              hasRefinedRequest: !!result.refinedRequest,
+            };
+            completeStep(dialogueStep);
+          }
+        }
+      } catch (err) {
+        returnToIdle(dialogueChatId);
+        dialogueStep.metadata = {
+          status: 'failed',
+          error: err instanceof Error ? err.message : String(err),
+        };
+        completeStep(dialogueStep);
+        logger.warn('Dialogue continuation failed, falling through to normal flow', { error: err });
+      }
+    }
+  }
+
+  // ── Build user content ──
+  let userContent = messageText;
+
+  // Process media with Gemini if attachment present
+  let mediaContext = null;
+  if (hasAttachment) {
+    logger.info('Media attachment detected', { type: attachment.type });
+
+    // CLASSIFY-FIRST: Show instant keyboard BEFORE running Gemini
+    if (config.contentConfirmEnabled) {
+      const handled = await hooks.handleInstantClassification(attachment);
+      if (handled) {
+        await hooks.setReaction(REACTIONS.DONE);
+        logger.info('Media detected, instant classification keyboard shown (classify-first)', {
+          userId,
+          type: attachment.type,
+        });
+        return;
+      }
+    }
+
+    // FALLBACK: If classify-first disabled or failed, use legacy flow
+    await hooks.sendTyping();
+
+    const quickPillar = await classifyWithFallback(messageText || attachment.caption || 'media')
+      .then(c => c.pillar as Pillar);
+
+    mediaContext = await hooks.processMedia(attachment, quickPillar);
+
+    if (mediaContext) {
+      if (config.contentConfirmEnabled) {
+        const handled = await hooks.handleMediaConfirmation(attachment, mediaContext, quickPillar);
+        if (handled) {
+          await hooks.setReaction(REACTIONS.DONE);
+          logger.info('Media processed, confirmation keyboard shown (legacy)', {
+            userId,
+            type: mediaContext.type,
+          });
+          return;
+        }
+      }
+
+      userContent += buildMediaContext(mediaContext, attachment);
+      logger.info('Media processed', {
+        type: mediaContext.type,
+        processingTime: mediaContext.processingTime,
+        archived: !!mediaContext.archivedPath,
+      });
+    } else {
+      userContent += buildAttachmentPrompt(attachment);
+    }
+  }
+
+  // FOLLOW-ON CONVERSION: Detect "turn that into a post" patterns
+  const followOnIntent = detectFollowOnConversionIntent(messageText);
+  if (followOnIntent) {
+    const recentResult = getLastAgentResult(userId);
+    if (recentResult) {
+      userContent = [
+        `[FOLLOW-ON CONVERSION REQUEST]`,
+        `User says: "${messageText}"`,
+        ``,
+        `Recent research topic: "${recentResult.topic}"`,
+        `Research summary: ${recentResult.resultSummary.substring(0, 300)}`,
+        ``,
+        `Please draft the requested content based on the research above.`,
+      ].join('\n');
+      clearLastAgentResult(userId);
+      logger.info('Follow-on conversion intent detected, enriching context', {
+        userId,
+        topic: recentResult.topic.substring(0, 60),
+        intent: messageText.substring(0, 60),
+      });
+    }
+  }
+
+  // ── Pipeline: Triage → Enrichment → Assessment ──
+
+  let preflightTriage: TriageResult | null = null;
+  let contextEnrichment: EnrichmentResult | null = null;
+  let assessment: RequestAssessment | null = null;
+
+  if (approvalGranted) {
+    // Restore cached triage + assessment from unified state
+    const cachedState = getStateByUserId(userId);
+    if (cachedState?.lastTriage) {
+      preflightTriage = cachedState.lastTriage;
+      logger.info('Pipeline skip: reusing cached triage (post-approval)', {
+        userId,
+        pillar: preflightTriage.pillar,
+        intent: preflightTriage.intent,
+      });
+    }
+    if (cachedState?.lastAssessment) {
+      assessment = cachedState.lastAssessment;
+      logger.info('Pipeline skip: reusing cached assessment (post-approval)', {
+        userId,
+        complexity: assessment.complexity,
+      });
+    }
+    const triageStep = addStep(trace, 'triage');
+    triageStep.metadata = { status: 'skipped-reused', reason: 'approval-granted' };
+    completeStep(triageStep);
+  } else {
+    // Normal path: full triage → enrichment → assessment
+
+    // PRE-FLIGHT TRIAGE
+    const triageStep = addStep(trace, 'triage');
+    try {
+      let triageInput = messageText;
+      const contentCtx = getContentContext(chatId);
+      if (contentCtx && !messageText.includes('http')) {
+        const contextParts = [`[URL context: ${contentCtx.url}]`];
+        if (contentCtx.title) contextParts.push(`[Title: ${contentCtx.title}]`);
+        if (contentCtx.preReadSummary) contextParts.push(`[Summary: ${contentCtx.preReadSummary}]`);
+        triageInput = `${contextParts.join(' ')}\n\n${messageText}`;
+        triageStep.metadata = { urlContextPrepended: true, url: contentCtx.url };
+      }
+      preflightTriage = await triageMessage(triageInput);
+      completeStep(triageStep);
+      triageStep.metadata = {
+        ...triageStep.metadata,
+        intent: preflightTriage.intent,
+        confidence: preflightTriage.confidence,
+        pillar: preflightTriage.pillar,
+        source: preflightTriage.source,
+      };
+      storeTriageInState(chatId, preflightTriage);
+
+      // Command intent: rewrite userContent
+      if (preflightTriage.intent === 'command' && preflightTriage.command) {
+        const cmd = preflightTriage.command;
+        userContent = [
+          `[USER COMMAND: ${cmd.verb} ${cmd.target}${cmd.priority ? ` priority=${cmd.priority}` : ''}]`,
+          `Pillar: ${preflightTriage.pillar}`,
+          ``,
+          cmd.description,
+        ].join('\n');
+
+        logger.info('Pre-flight triage: command intent detected', {
+          verb: cmd.verb,
+          target: cmd.target,
+          priority: cmd.priority,
+          descriptionLength: cmd.description.length,
+        });
+      }
+    } catch (err) {
+      completeStep(triageStep);
+      triageStep.metadata = { error: err instanceof Error ? err.message : String(err) };
+      logger.warn('Pre-flight triage failed (non-fatal, continuing with raw text)', { error: err });
+    }
+
+    // CONTEXT ENRICHMENT
+    if (config.contextEnrichmentEnabled) {
+      const enrichStep = addStep(trace, 'context-enrichment');
+      contextEnrichment = await enrichWithContextSlots(messageText, userId);
+      completeStep(enrichStep);
+      enrichStep.metadata = {
+        slotsUsed: contextEnrichment?.slotsUsed,
+        tier: contextEnrichment?.tier,
+        totalTokens: contextEnrichment?.totalTokens,
+        slotStatuses: contextEnrichment?.slotResults
+          ? Object.fromEntries(contextEnrichment.slotResults.map((s) => [s.slotName, s.status]))
+          : undefined,
+        degraded: contextEnrichment?.degradedContextNote != null,
+      };
+    }
+  }
+
+  // REQUEST ASSESSMENT
+  if (!approvalGranted && config.selfModelEnabled && preflightTriage) {
+    const assessStep = addStep(trace, 'request-assessment');
+    try {
+      const model = getCachedModel();
+      if (!model) {
+        assessStep.metadata = { status: 'skipped', reason: 'no-cached-model' };
+        completeStep(assessStep);
+        logger.info('Assessment skipped: no cached capability model');
+      } else {
+        const assessmentContext: AssessmentContext = {
+          intent: preflightTriage.intent,
+          pillar: preflightTriage.pillar,
+          keywords: preflightTriage.keywords,
+          hasUrl: /https?:\/\//.test(messageText),
+          hasContact: false,
+          hasDeadline: false,
+        };
+        assessment = await assessRequest(messageText, assessmentContext, model);
+        assessStep.metadata = {
+          status: 'ok',
+          complexity: assessment.complexity,
+          signalCount: assessment.signals ? Object.values(assessment.signals).filter(Boolean).length : 0,
+          hasProposal: !!assessment.approach,
+        };
+        completeStep(assessStep);
+        logger.info('Assessment complete', {
+          complexity: assessment.complexity,
+          signalCount: assessment.signals ? Object.values(assessment.signals).filter(Boolean).length : 0,
+          hasProposal: !!assessment.approach,
+        });
+
+        if (config.domainAudienceEnabled && assessment.domain) {
+          lastDomainByUser.set(userId, assessment.domain);
+        }
+
+        storeAssessment(chatId, assessment, assessmentContext);
+      }
+    } catch (err) {
+      assessStep.metadata = {
+        status: 'failed',
+        error: err instanceof Error ? err.message : String(err),
+      };
+      completeStep(assessStep);
+      logger.warn('Assessment failed', { error: err });
+    }
+  }
+
+  // DIALOGUE ROUTING: If rough terrain, enter collaborative exploration
+  if (assessment && assessmentNeedsDialogue(assessment)) {
+    const dialogueStep = addStep(trace, 'dialogue-entry');
+    try {
+      const model = getCachedModel();
+      if (!model) {
+        dialogueStep.metadata = { status: 'skipped', reason: 'no-cached-model' };
+        completeStep(dialogueStep);
+      } else {
+        const assessCtx: AssessmentContext = {
+          intent: preflightTriage?.intent,
+          pillar: preflightTriage?.pillar,
+          keywords: preflightTriage?.keywords,
+          hasUrl: /https?:\/\//.test(messageText),
+          hasContact: false,
+          hasDeadline: false,
+        };
+        const result = enterDialogue(messageText, assessment, assessCtx, model);
+
+        const dialogueMsg = result.message.length > 4000
+          ? result.message.substring(0, 3997) + '...'
+          : result.message;
+        const sentMsgId = await hooks.reply(dialogueMsg, { parseMode: 'HTML' });
+        enterDialoguePhase(chatId, userId, {
+          questionMessageId: sentMsgId,
+          dialogueState: result.state,
+          assessment,
+          assessmentContext: assessCtx,
+          originalMessage: messageText,
+        });
+
+        dialogueStep.metadata = {
+          status: 'entered',
+          terrain: 'rough',
+          threadCount: result.state.threads.length,
+          openQuestions: result.state.openQuestions.length,
+        };
+        completeStep(dialogueStep);
+        completeTrace(trace);
+        logger.info('Entered dialogue: rough terrain', {
+          terrain: 'rough',
+          threads: result.state.threads.length,
+        });
+        return;
+      }
+    } catch (err) {
+      dialogueStep.metadata = {
+        status: 'failed',
+        error: err instanceof Error ? err.message : String(err),
+      };
+      completeStep(dialogueStep);
+      logger.warn('Dialogue entry failed, falling through to normal flow', { error: err });
+    }
+  }
+
+  // APPROVAL GATE: Moderate+ terrain with multi-step proposal
+  if (assessment && assessment.approach && assessment.approach.steps.length >= 2 && assessment.complexity !== 'simple' && !approvalGranted) {
+    const approvalStep = addStep(trace, 'approval-gate');
+    const proposalMsg = formatProposalMessage(assessment.approach, assessment.complexity);
+    const sentMsgId = await hooks.reply(
+      proposalMsg.length > 4000 ? proposalMsg.substring(0, 3997) + '...' : proposalMsg,
+      { parseMode: 'HTML' },
+    );
+    const assessCtx: AssessmentContext = {
+      intent: preflightTriage?.intent,
+      pillar: preflightTriage?.pillar,
+      keywords: preflightTriage?.keywords,
+      hasUrl: /https?:\/\//.test(messageText),
+      hasContact: false,
+      hasDeadline: false,
+    };
+    storeApprovalSession({
+      chatId,
+      userId,
+      proposalMessageId: sentMsgId,
+      proposal: assessment.approach,
+      originalMessage: messageText,
+      assessment,
+      assessmentContext: assessCtx,
+      createdAt: Date.now(),
+    });
+    enterApprovalPhase(chatId, userId, {
+      proposalMessageId: sentMsgId,
+      proposal: assessment.approach,
+      originalMessage: messageText,
+      assessment,
+      assessmentContext: assessCtx,
+    });
+    approvalStep.metadata = {
+      status: 'proposal-surfaced',
+      complexity: assessment.complexity,
+      stepsCount: assessment.approach.steps.length,
+    };
+    completeStep(approvalStep);
+    completeTrace(trace);
+    logger.info('Proposal surfaced, awaiting approval', {
+      complexity: assessment.complexity,
+      steps: assessment.approach.steps.length,
+    });
+    return;
+  }
+
+  // ── Claude API Pipeline ──
+
+  const conversation = await getConversation(userId);
+
+  // Build system prompt
+  const promptStep = addStep(trace, 'prompt-build');
+  const baseSystemPrompt = await buildSystemPrompt(conversation);
+
+  let systemPrompt = baseSystemPrompt;
+  if (contextEnrichment) {
+    systemPrompt += `\n\n---\n\n## Cognitive Context\n\n${contextEnrichment.enrichedContext}`;
+    if (contextEnrichment.degradedContextNote) {
+      systemPrompt += `\n\n${contextEnrichment.degradedContextNote}`;
+    }
+  }
+
+  if (assessment) {
+    const assessmentLines = [
+      `\n\n---\n\n## Request Assessment`,
+      ``,
+      `**Complexity:** ${assessment.complexity}`,
+      `**Reasoning:** ${assessment.reasoning}`,
+    ];
+
+    if (assessment.approach) {
+      assessmentLines.push(
+        ``,
+        `**Proposed Approach:**`,
+        ...assessment.approach.steps.map((s, i) => `${i + 1}. ${s.description}`),
+      );
+      if (assessment.approach.timeEstimate) {
+        assessmentLines.push(`**Estimated Time:** ${assessment.approach.timeEstimate}`);
+      }
+      if (assessment.approach.questionForJim) {
+        assessmentLines.push(``, `**Before proceeding, ask Jim:** ${assessment.approach.questionForJim}`);
+      }
+    }
+
+    if (assessment.capabilities.length > 0) {
+      assessmentLines.push(
+        ``,
+        `**Relevant Capabilities:** ${assessment.capabilities.map(c => c.capabilityId).join(', ')}`,
+      );
+    }
+
+    systemPrompt += assessmentLines.join('\n');
+  }
+
+  const lastAgentResult = getLastAgentResult(userId);
+  if (lastAgentResult) {
+    systemPrompt += [
+      `\n\n---\n\n## Recent Research Result (available for follow-on)`,
+      ``,
+      `The user recently completed a research task. If they ask you to draft, convert,`,
+      `or transform content, this is what they are most likely referring to.`,
+      ``,
+      `Topic: ${lastAgentResult.topic}`,
+      `Summary: ${lastAgentResult.resultSummary}`,
+      `Source: ${lastAgentResult.source}`,
+    ].join('\n');
+  }
+
+  const messages: Anthropic.MessageParam[] = buildMessages(conversation, userContent);
+  completeStep(promptStep);
+
+  let totalTokens = 0;
+  const toolsUsed: string[] = [];
+  const toolContexts: ToolContext[] = [];
+
+  try {
+    const tools = getAllTools();
+
+    const isCommandIntent = preflightTriage?.intent === 'command' && !!preflightTriage.command;
+    const requiresToolUse = isCommandIntent ||
+                           /\b(create|add|log|make|put|track|file|submit)\b.*\b(bug|feature|task|item|pipeline|queue|notion)\b/i.test(messageText) ||
+                           /\b(dev.?pipeline|work.?queue)\b/i.test(messageText);
+
+    const claudeStep = addStep(trace, 'claude-api', { model: 'claude-sonnet-4-20250514' });
+    let response = await anthropic.messages.create({
+      model: 'claude-sonnet-4-20250514',
+      max_tokens: 4096,
+      temperature: 0.4,
+      system: systemPrompt,
+      messages,
+      tools,
+      ...(requiresToolUse && { tool_choice: { type: 'any' as const } }),
+    });
+
+    totalTokens += response.usage.input_tokens + response.usage.output_tokens;
+    completeStep(claudeStep);
+    claudeStep.metadata = {
+      ...claudeStep.metadata,
+      inputTokens: response.usage.input_tokens,
+      outputTokens: response.usage.output_tokens,
+      stopReason: response.stop_reason,
+    };
+
+    // Tool use loop
+    let iterations = 0;
+    let reactedWorking = false;
+    while (response.stop_reason === 'tool_use' && iterations < MAX_TOOL_ITERATIONS) {
+      iterations++;
+
+      if (!reactedWorking) {
+        await hooks.setReaction(REACTIONS.WORKING);
+        reactedWorking = true;
+      }
+
+      const toolUseBlocks = response.content.filter(
+        (block): block is Anthropic.ToolUseBlock => block.type === 'tool_use'
+      );
+
+      if (toolUseBlocks.length === 0) break;
+
+      const toolResults: Anthropic.ToolResultBlockParam[] = [];
+
+      for (const toolUse of toolUseBlocks) {
+        logger.info('Executing tool', { tool: toolUse.name, input: toolUse.input });
+
+        if (!toolsUsed.includes(toolUse.name)) {
+          toolsUsed.push(toolUse.name);
+        }
+
+        await hooks.sendTyping();
+
+        const toolStep = addStep(trace, 'tool-execution', { toolName: toolUse.name });
+        const result = await executeTool(
+          toolUse.name,
+          toolUse.input as Record<string, unknown>
+        );
+        completeStep(toolStep);
+        toolStep.metadata = { ...toolStep.metadata, success: result.success };
+
+        // LOW-CONFIDENCE ROUTING: Intercept needsChoice response
+        if (toolUse.name === 'submit_ticket' && result.needsChoice) {
+          const choiceData = result.result as {
+            routingConfidence: number;
+            suggestedCategory: string;
+            alternativeCategory: string;
+            title: string;
+            description: string;
+            priority: 'P0' | 'P1' | 'P2';
+            requireReview: boolean;
+            pillar: string;
+            reasoning: string;
+          };
+
+          const routingData: LowConfidenceRoutingData = {
+            requestId: `dispatch_${Date.now()}_${Math.random().toString(36).substring(2, 8)}`,
+            chatId,
+            userId,
+            messageId,
+            reasoning: choiceData.reasoning,
+            title: choiceData.title,
+            description: choiceData.description,
+            priority: choiceData.priority,
+            requireReview: choiceData.requireReview,
+            pillar: choiceData.pillar,
+            routingConfidence: choiceData.routingConfidence,
+            suggestedCategory: choiceData.suggestedCategory,
+            alternativeCategory: choiceData.alternativeCategory,
+            timestamp: Date.now(),
+          };
+
+          await hooks.handleLowConfidenceRouting(routingData);
+
+          await hooks.setReaction(REACTIONS.CHAT);
+
+          logger.info('Low-confidence routing - presenting choice keyboard', {
+            requestId: routingData.requestId,
+            confidence: choiceData.routingConfidence,
+            suggested: choiceData.suggestedCategory,
+            alternative: choiceData.alternativeCategory,
+          });
+
+          await updateConversation(
+            userId,
+            messageText,
+            `[Routing choice requested: ${choiceData.title} - ${choiceData.routingConfidence}% confidence]`,
+            { toolsUsed: ['submit_ticket'] }
+          );
+
+          return;
+        }
+
+        // Capture tool context for conversation continuity
+        toolContexts.push({
+          toolName: toolUse.name,
+          input: toolUse.input as Record<string, unknown>,
+          result: result,
+          timestamp: new Date().toISOString(),
+        });
+
+        // Format result to make errors EXPLICIT
+        let toolResultContent: string;
+        if (result.success) {
+          const resultObj = result.result as Record<string, unknown> | undefined;
+          const url = resultObj?.url as string | undefined;
+          const feedUrl = resultObj?.feedUrl as string | undefined;
+
+          if (url || feedUrl) {
+            const jsonResult = JSON.stringify(result, null, 2);
+            let urlBlock = '\n\n════════════════════════════════════════\n';
+            urlBlock += '⚠️ MANDATORY - COPY EXACTLY - NO FABRICATION ⚠️\n';
+            urlBlock += '════════════════════════════════════════\n';
+            if (url) urlBlock += `EXACT_URL_FOR_USER: ${url}\n`;
+            if (feedUrl) urlBlock += `EXACT_FEED_URL: ${feedUrl}\n`;
+            urlBlock += '════════════════════════════════════════\n';
+            urlBlock += 'If you display ANY Notion URL other than EXACT_URL_FOR_USER,\n';
+            urlBlock += 'you are LYING to the user. Use ONLY the URL above.\n';
+            urlBlock += '════════════════════════════════════════';
+            toolResultContent = `✅ SUCCESS\n\nResult data:\n${jsonResult}${urlBlock}`;
+          } else {
+            toolResultContent = JSON.stringify(result);
+          }
+        } else {
+          toolResultContent = `⚠️ TOOL FAILED - DO NOT CLAIM SUCCESS ⚠️\n\nError: ${result.error || 'Unknown error'}\n\nRaw result: ${JSON.stringify(result)}\n\n⚠️ You MUST acknowledge this failure to the user. Do NOT pretend this operation succeeded.`;
+          logger.warn('Tool execution failed', {
+            tool: toolUse.name,
+            error: result.error,
+          });
+        }
+
+        toolResults.push({
+          type: 'tool_result',
+          tool_use_id: toolUse.id,
+          content: toolResultContent,
+        });
+
+        logger.info('Tool executed', {
+          tool: toolUse.name,
+          success: result.success,
+        });
+      }
+
+      messages.push({ role: 'assistant', content: response.content });
+      messages.push({ role: 'user', content: toolResults });
+
+      response = await anthropic.messages.create({
+        model: 'claude-sonnet-4-20250514',
+        max_tokens: 4096,
+        temperature: 0.4,
+        system: systemPrompt,
+        messages,
+        tools,
+      });
+
+      totalTokens += response.usage.input_tokens + response.usage.output_tokens;
+    }
+
+    // Extract final text response
+    const textContent = response.content.find(
+      (block): block is Anthropic.TextBlock => block.type === 'text'
+    );
+    let responseText = textContent?.text.trim() || "Done.";
+
+    // Fix fabricated URLs
+    responseText = fixHallucinatedUrls(responseText, toolContexts);
+
+    // Build history response with tool context
+    const historyResponse = toolContexts.length > 0
+      ? `${responseText}\n\n${formatToolContextForHistory(toolContexts)}`
+      : responseText;
+
+    // Classify for audit — reuse pre-flight triage if available
+    let classification: { pillar: Pillar; requestType: string; confidence: number; workType: string; keywords: string[]; reasoning: string; };
+    let smartTitle: string;
+
+    if (preflightTriage) {
+      classification = {
+        pillar: preflightTriage.pillar as Pillar,
+        requestType: preflightTriage.requestType,
+        confidence: preflightTriage.confidence,
+        workType: preflightTriage.requestType.toLowerCase(),
+        keywords: preflightTriage.keywords,
+        reasoning: preflightTriage.titleRationale || `Triage: ${preflightTriage.intent} (${preflightTriage.source})`,
+      };
+      smartTitle = preflightTriage.intent === 'command' && preflightTriage.command
+        ? preflightTriage.command.description.substring(0, 100)
+        : (preflightTriage.title || messageText.substring(0, 100) || 'Message');
+    } else {
+      const auditTriage = await triageForAudit(messageText);
+      classification = auditTriage.classification;
+      smartTitle = auditTriage.smartTitle;
+    }
+
+    // Create audit trail
+    const auditPillar = (assessment?.domain
+      ? derivePillar(assessment.domain, assessment.audience)
+      : (assessment?.pillar ?? classification.pillar)) as Pillar;
+    const auditEntry: AuditEntry = {
+      entry: smartTitle,
+      pillar: auditPillar,
+      requestType: classification.requestType,
+      source: 'Telegram',
+      author: 'Jim',
+      confidence: classification.confidence,
+      keywords: classification.keywords,
+      workType: classification.workType,
+      userId,
+      messageText,
+      hasAttachment,
+      attachmentType: hasAttachment ? attachment.type : undefined,
+      tokenCount: totalTokens,
+      ...(mediaContext && {
+        contentType: mediaContext.type as 'image' | 'document' | 'video' | 'audio',
+        analysisContent: buildAnalysisContent(
+          mediaContext,
+          attachment,
+          auditPillar
+        ),
+      }),
+    };
+
+    const AUDIT_CONFIDENCE_THRESHOLD = 0.7;
+    const skipAudit = assessment?.complexity === 'simple' &&
+      (toolsUsed.length > 0 || classification.confidence < AUDIT_CONFIDENCE_THRESHOLD);
+
+    const auditStep = addStep(trace, 'audit-trail');
+    let auditResult: AuditResult | null = null;
+    if (skipAudit) {
+      const reason = toolsUsed.length > 0
+        ? 'assessment-simple-tools-handled'
+        : `assessment-simple-low-confidence:${classification.confidence}`;
+      auditStep.metadata = { status: 'skipped', reason };
+    } else {
+      auditResult = await createAuditTrail(auditEntry, trace);
+      auditStep.metadata = {
+        feedId: auditResult?.feedId,
+        workQueueId: auditResult?.workQueueId,
+      };
+    }
+    completeStep(auditStep);
+
+    // Update conversation history
+    await updateConversation(
+      userId,
+      messageText,
+      historyResponse,
+      auditResult ? {
+        pillar: auditPillar,
+        requestType: classification.requestType,
+        feedId: auditResult.feedId,
+        workQueueId: auditResult.workQueueId,
+        toolsUsed: toolsUsed.length > 0 ? toolsUsed : undefined,
+      } : (toolsUsed.length > 0 ? { toolsUsed } : undefined),
+      toolContexts.length > 0 ? toolContexts : undefined
+    );
+
+    // Send response (handle long messages)
+    const formattedResponse = hooks.formatResponse(responseText);
+    const sendStep = addStep(trace, 'response-sent');
+
+    if (formattedResponse.length > 4000) {
+      const chunks = splitMessage(formattedResponse, 4000);
+      for (const chunk of chunks) {
+        await hooks.reply(chunk, { parseMode: 'HTML' });
+      }
+    } else {
+      await hooks.reply(formattedResponse, { parseMode: 'HTML' });
+    }
+    completeStep(sendStep);
+
+    // Record usage for stats
+    await recordUsage({
+      inputTokens: Math.floor(totalTokens * 0.7),
+      outputTokens: Math.floor(totalTokens * 0.3),
+      pillar: auditPillar,
+      requestType: classification.requestType,
+      model: 'claude-sonnet-4',
+    });
+
+    // Final reaction
+    const actionTaken = !!auditResult || toolsUsed.length > 0 || !!mediaContext;
+    await hooks.setReaction(actionTaken ? REACTIONS.DONE : REACTIONS.CHAT);
+
+    // Skill logging
+    if (config.skillLoggingEnabled && !skipAudit) {
+      logAction({
+        messageText,
+        pillar: auditPillar,
+        requestType: classification.requestType,
+        actionType: toolsUsed.length > 0 ? 'tool' : (mediaContext ? 'media' : 'chat'),
+        toolsUsed,
+        userId,
+        confidence: classification.confidence,
+        keywords: classification.keywords,
+        workType: classification.workType,
+        contentType: mediaContext ? mediaContext.type as 'image' | 'document' | 'video' | 'audio' : undefined,
+        existingFeedId: auditResult?.feedId,
+        sessionId: sessionTelemetry.sessionId,
+        turnNumber: sessionTelemetry.turnNumber,
+        priorIntentHash: sessionTelemetry.priorIntentHash,
+      }).catch(err => {
+        logger.warn('Skill action logging failed (non-fatal)', { error: err });
+      });
+    }
+
+    completeTrace(trace);
+
+    logger.info('Conversation response sent', {
+      userId,
+      pillar: auditPillar,
+      requestType: classification.requestType,
+      tokens: totalTokens,
+      toolIterations: iterations,
+      auditCreated: !!auditResult,
+      actionTaken,
+      skillLogging: config.skillLoggingEnabled,
+      contextEnrichment: !!contextEnrichment,
+      slotsUsed: contextEnrichment?.slotsUsed ?? [],
+      contextTokens: contextEnrichment?.totalTokens ?? 0,
+      enrichmentLatencyMs: contextEnrichment?.assemblyLatencyMs ?? 0,
+      enrichmentTier: contextEnrichment?.tier ?? null,
+      traceId: trace.traceId,
+      traceDurationMs: trace.totalDurationMs,
+      traceSteps: trace.steps.length,
+    });
+
+  } catch (error) {
+    failTrace(trace, error instanceof Error ? error : String(error));
+    logger.error('Conversation handler error', { error, userId, traceId: trace.traceId });
+    reportFailure('conversation-handler', error, { userId, traceId: trace.traceId });
+    await hooks.setReaction(REACTIONS.ERROR);
+    await hooks.reply("Something went wrong. Please try again.");
+  }
+}

@@ -4,7 +4,7 @@
  * These tests prevent cognitive logic from drifting back into surface apps.
  * They scan actual file contents for import violations.
  *
- * Sprint: ARCH-CPE-001 Phase 1 + Phase 2 + Phase 3 + Phase 4
+ * Sprint: ARCH-CPE-001 Phase 1 + Phase 2 + Phase 3 + Phase 4 + Phase 5
  */
 
 import { describe, it, expect } from 'bun:test';
@@ -184,6 +184,9 @@ describe('Moved files exist in packages/agents/', () => {
     'packages/agents/src/media/processor.ts',
     'packages/agents/src/conversation/notion-lookup.ts',
     'packages/agents/src/conversation/content-detection.ts',
+    // Phase 5 — Pipeline orchestrator
+    'packages/agents/src/pipeline/orchestrator.ts',
+    'packages/agents/src/pipeline/types.ts',
   ];
 
   for (const file of destinations) {
@@ -424,6 +427,55 @@ describe('No re-export stubs for moved files', () => {
 
 // ============================================================================
 // 7. Bridge ADR-005: packages/bridge/ must not import from apps/
+// ============================================================================
+
+// ============================================================================
+// 7b. Phase 5: handler.ts is a thin adapter delegating to orchestrator
+// ============================================================================
+
+describe('Phase 5: handler.ts thin adapter contract', () => {
+  const handlerPath = join(PROJECT_ROOT, 'apps', 'telegram', 'src', 'conversation', 'handler.ts');
+  const orchestratorPath = join(PROJECT_ROOT, 'packages', 'agents', 'src', 'pipeline', 'orchestrator.ts');
+
+  it('handler.ts imports from orchestrator', () => {
+    const content = readFileSync(handlerPath, 'utf-8');
+    expect(content).toMatch(/from\s+['"]@atlas\/agents\/src\/pipeline\/orchestrator['"]/);
+  });
+
+  it('handler.ts imports pipeline types', () => {
+    const content = readFileSync(handlerPath, 'utf-8');
+    expect(content).toMatch(/from\s+['"]@atlas\/agents\/src\/pipeline\/types['"]/);
+  });
+
+  it('handler.ts does not instantiate Anthropic client', () => {
+    const content = readFileSync(handlerPath, 'utf-8');
+    expect(content).not.toMatch(/new Anthropic\(/);
+  });
+
+  it('handler.ts does not import Anthropic SDK', () => {
+    const content = readFileSync(handlerPath, 'utf-8');
+    expect(content).not.toMatch(/from\s+['"]@anthropic-ai\/sdk['"]/);
+  });
+
+  it('handler.ts is under 250 lines (thin adapter)', () => {
+    const content = readFileSync(handlerPath, 'utf-8');
+    const lineCount = content.split('\n').length;
+    expect(lineCount).toBeLessThan(250);
+  });
+
+  it('orchestrator.ts has zero Grammy imports', () => {
+    const content = readFileSync(orchestratorPath, 'utf-8');
+    expect(content).not.toMatch(/from\s+['"]grammy['"]/);
+  });
+
+  it('orchestrator.ts exports orchestrateMessage', () => {
+    const content = readFileSync(orchestratorPath, 'utf-8');
+    expect(content).toMatch(/export\s+async\s+function\s+orchestrateMessage/);
+  });
+});
+
+// ============================================================================
+// 8. Bridge ADR-005: packages/bridge/ must not import from apps/
 // ============================================================================
 
 describe('Bridge boundary: packages/bridge/ does not import from apps/', () => {

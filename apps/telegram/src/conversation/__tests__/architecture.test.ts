@@ -21,8 +21,11 @@ import { file as bunFile } from 'bun';
 const ROOT = process.cwd();
 const SRC = join(ROOT, 'src');
 const CONVERSATION = join(SRC, 'conversation');
-const SOCRATIC = resolve(ROOT, '..', '..', 'packages', 'agents', 'src', 'socratic');
-const COMPOSITION = resolve(ROOT, '..', '..', 'packages', 'agents', 'src', 'services', 'prompt-composition');
+const AGENTS_SRC = resolve(ROOT, '..', '..', 'packages', 'agents', 'src');
+const AGENTS_CONVERSATION = join(AGENTS_SRC, 'conversation');
+const SOCRATIC = join(AGENTS_SRC, 'socratic');
+const COMPOSITION = join(AGENTS_SRC, 'services', 'prompt-composition');
+const ORCHESTRATOR = join(AGENTS_SRC, 'pipeline', 'orchestrator.ts');
 
 function fileExists(filePath: string): boolean {
   return bunFile(filePath).size > 0;
@@ -39,36 +42,50 @@ async function readFileContent(filePath: string): Promise<string> {
 describe('Content Pipeline Architecture', () => {
 
   describe('Critical files exist', () => {
-    const conversationFiles = [
-      'handler.ts',
-      'content-flow.ts',
-      'content-router.ts',
-      'content-confirm.ts',
-      'socratic-adapter.ts',
-      'socratic-session.ts',
-      'pending-content.ts',
-      // types.ts moved to packages/agents/src/conversation/types.ts (ARCH-CPE-001 Phase 1)
-      'index.ts',
+    // Surface adapters that remain in apps/telegram/
+    const telegramConversationFiles = [
+      'handler.ts',          // Thin Grammy adapter (Phase 5)
+      'content-flow.ts',     // Grammy-dependent content flow
+      'content-confirm.ts',  // Legacy UCA confirmation
+      'socratic-adapter.ts', // Grammy-dependent Socratic adapter
+      'index.ts',            // Barrel export
     ];
 
-    for (const f of conversationFiles) {
+    for (const f of telegramConversationFiles) {
       it(`conversation/${f} exists`, () => {
         expect(fileExists(join(CONVERSATION, f))).toBe(true);
       });
     }
 
-    it('cognitive/triage-skill.ts exists', () => {
-      expect(fileExists(join(SRC, 'cognitive', 'triage-skill.ts'))).toBe(true);
+    // Files moved to packages/agents/ in Phase 2-3
+    const agentsConversationFiles = [
+      'content-router.ts',   // Moved Phase 3
+      'socratic-session.ts', // Moved Phase 3
+      'pending-content.ts',  // Moved Phase 3
+      'types.ts',            // Moved Phase 1
+    ];
+
+    for (const f of agentsConversationFiles) {
+      it(`packages/agents/conversation/${f} exists`, () => {
+        expect(fileExists(join(AGENTS_CONVERSATION, f))).toBe(true);
+      });
+    }
+
+    it('cognitive/triage-skill.ts exists in packages/agents/', () => {
+      expect(fileExists(join(AGENTS_SRC, 'cognitive', 'triage-skill.ts'))).toBe(true);
     });
 
     it('classifier.ts exists', () => {
       expect(fileExists(join(SRC, 'classifier.ts'))).toBe(true);
     });
 
-    // ARCH-CPE-001 Phase 1: conversation/types.ts moved to packages/agents/
-    const AGENTS_SRC = resolve(ROOT, '..', '..', 'packages', 'agents', 'src');
-    it('conversation/types.ts exists in packages/agents/', () => {
-      expect(fileExists(join(AGENTS_SRC, 'conversation', 'types.ts'))).toBe(true);
+    // Phase 5: Pipeline orchestrator
+    it('pipeline/orchestrator.ts exists in packages/agents/', () => {
+      expect(fileExists(ORCHESTRATOR)).toBe(true);
+    });
+
+    it('pipeline/types.ts exists in packages/agents/', () => {
+      expect(fileExists(join(AGENTS_SRC, 'pipeline', 'types.ts'))).toBe(true);
     });
   });
 
@@ -116,26 +133,27 @@ describe('Content Pipeline Architecture', () => {
 
   describe('content-router.ts detects social media URLs (P0 regression)', () => {
     it('detects threads.com as social media', async () => {
-      const content = await readFileContent(join(CONVERSATION, 'content-router.ts'));
+      // Phase 3: content-router.ts moved to packages/agents/
+      const content = await readFileContent(join(AGENTS_CONVERSATION, 'content-router.ts'));
       // Must match threads.com (not just threads.net)
       expect(content).toMatch(/threads\.com/);
     });
 
     it('detectContentSource handles threads.com URLs', async () => {
-      // Dynamic import to test the actual function
-      const { detectContentSource } = await import('../content-router');
+      // Phase 3: content-router.ts moved to packages/agents/
+      const { detectContentSource } = await import('../../../../../packages/agents/src/conversation/content-router');
       expect(detectContentSource('https://www.threads.com/@omarsar0/post/DUgDaW0EXaP')).toBe('threads');
       expect(detectContentSource('https://threads.com/@test/post/ABC123')).toBe('threads');
     });
 
     it('detectContentSource handles twitter/x URLs', async () => {
-      const { detectContentSource } = await import('../content-router');
+      const { detectContentSource } = await import('../../../../../packages/agents/src/conversation/content-router');
       expect(detectContentSource('https://twitter.com/karpathy/status/123')).toBe('twitter');
       expect(detectContentSource('https://x.com/elonmusk/status/456')).toBe('twitter');
     });
   });
 
-  describe('handler.ts does NOT contain inline prompt logic', () => {
+  describe('handler.ts thin adapter contract (Phase 5)', () => {
     it('does not contain system prompt strings', async () => {
       const content = await readFileContent(join(CONVERSATION, 'handler.ts'));
       expect(content.length).toBeGreaterThan(0);
@@ -154,9 +172,14 @@ describe('Content Pipeline Architecture', () => {
       expect(content).toMatch(/maybeHandleAsContentShare/);
     });
 
-    it('imports Socratic session check (Gate 2)', async () => {
+    it('delegates to orchestrator (Phase 5)', async () => {
       const content = await readFileContent(join(CONVERSATION, 'handler.ts'));
-      expect(content).toMatch(/from\s+['"]\.\/socratic-session['"]/);
+      expect(content).toMatch(/orchestrateMessage/);
+      expect(content).toMatch(/from\s+['"]@atlas\/agents\/src\/pipeline\/orchestrator['"]/);
+    });
+
+    it('orchestrator imports Socratic session check', async () => {
+      const content = await readFileContent(ORCHESTRATOR);
       expect(content).toMatch(/hasPendingSocraticSessionForUser/);
     });
 
@@ -166,9 +189,9 @@ describe('Content Pipeline Architecture', () => {
       expect(content).not.toMatch(/hasPendingSelectionForUser/);
     });
 
-    it('contains the guardrail comment block', async () => {
+    it('does not instantiate Anthropic client', async () => {
       const content = await readFileContent(join(CONVERSATION, 'handler.ts'));
-      expect(content).toMatch(/CONTENT PIPELINE GUARDRAIL/);
+      expect(content).not.toMatch(/new Anthropic\(/);
     });
   });
 
@@ -176,7 +199,8 @@ describe('Content Pipeline Architecture', () => {
     it('imports triageMessage from cognitive/triage-skill', async () => {
       const content = await readFileContent(join(CONVERSATION, 'content-flow.ts'));
       expect(content.length).toBeGreaterThan(0);
-      expect(content).toMatch(/from\s+['"]\.\.\/cognitive\/triage-skill['"]/);
+      // Phase 2+: triage-skill lives in packages/agents/
+      expect(content).toMatch(/triage-skill/);
       expect(content).toMatch(/triageMessage/);
     });
 
