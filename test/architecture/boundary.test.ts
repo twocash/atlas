@@ -4,7 +4,7 @@
  * These tests prevent cognitive logic from drifting back into surface apps.
  * They scan actual file contents for import violations.
  *
- * Sprint: ARCH-CPE-001 Phase 1 + Phase 2 + Phase 3
+ * Sprint: ARCH-CPE-001 Phase 1 + Phase 2 + Phase 3 + Phase 4
  */
 
 import { describe, it, expect } from 'bun:test';
@@ -101,6 +101,14 @@ describe('Moved files deleted from apps/telegram/', () => {
     'apps/telegram/src/conversation/tools/workspace.ts',
     // Phase 3 — Skills
     'apps/telegram/src/skills/approval-queue.ts',
+    // Phase 4 — Interface splits + cleanup
+    'apps/telegram/src/conversation/dialogue-session.ts',
+    'apps/telegram/src/cognitive/__tests__/triage-patterns.test.ts',
+    'apps/telegram/src/cognitive/__tests__/triage-skill.test.ts',
+    'apps/telegram/src/skills/executor.test.ts',
+    'apps/telegram/src/skills/intent-hash.test.ts',
+    'apps/telegram/src/skills/registry.test.ts',
+    'apps/telegram/src/skills/zone-classifier.test.ts',
   ];
 
   for (const file of movedFiles) {
@@ -172,6 +180,10 @@ describe('Moved files exist in packages/agents/', () => {
     'packages/agents/src/conversation/tools/workspace.ts',
     // Phase 3 — Skills
     'packages/agents/src/skills/approval-queue.ts',
+    // Phase 4 — Interface splits
+    'packages/agents/src/media/processor.ts',
+    'packages/agents/src/conversation/notion-lookup.ts',
+    'packages/agents/src/conversation/content-detection.ts',
   ];
 
   for (const file of destinations) {

@@ -1,7 +1,7 @@
 /**
  * Skill Registry Tests
  *
- * Run with: bun test src/skills/registry.test.ts
+ * Run with: bun test test/registry.test.ts
  */
 
 import { describe, it, expect, beforeAll } from 'bun:test';

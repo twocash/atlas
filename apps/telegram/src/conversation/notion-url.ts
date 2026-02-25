@@ -1,59 +1,50 @@
 /**
- * Notion URL Intelligence
+ * Notion URL Intelligence - Telegram Surface Adapter
  *
- * Detects Notion URLs and provides object-aware handling:
- * - Work Queue items → Process, Mark Done, Update options
- * - Feed items → Create Task, Add Context options
- * - Unknown pages → Track, Log, Read options
+ * Grammy-dependent presentation layer for Notion URL interactions.
+ * Handles inline keyboards, HTML formatting, and Telegram ctx.reply() calls.
  *
- * Auto-injects page content into conversation context.
+ * Cognitive logic (URL parsing, Notion API, page fetching) lives in:
+ *   @atlas/agents/src/conversation/notion-lookup.ts
+ *
+ * Extracted as part of Phase 4 CPE (Cognitive Pipeline Extraction).
  */
 
-import { Client } from '@notionhq/client';
 import { InlineKeyboard } from 'grammy';
 import type { Context } from 'grammy';
 import { logger } from '../logger';
-import type { Pillar, RequestType } from './types';
 
-import { NOTION_DB } from '@atlas/shared/config';
+// ---------------------------------------------------------------------------
+// Re-export cognitive layer for consumers that import from this file
+// ---------------------------------------------------------------------------
 
-// Initialize Notion client
-const notion = new Client({ auth: process.env.NOTION_API_KEY });
+export {
+  isNotionUrl,
+  extractPageId,
+  extractRichText,
+  isPageInDatabase,
+  fetchWorkQueueItem,
+  fetchFeedItem,
+  fetchUnknownPage,
+  lookupNotionPage,
+  updateWorkQueueStatus,
+  getPageContentForContext,
+} from '@atlas/agents/src/conversation/notion-lookup';
 
-// Canonical IDs from @atlas/shared/config
-const FEED_DATABASE_ID = NOTION_DB.FEED;
-const WORK_QUEUE_DATABASE_ID = NOTION_DB.WORK_QUEUE;
+export type {
+  NotionPageType,
+  NotionPageInfo,
+} from '@atlas/agents/src/conversation/notion-lookup';
 
-/**
- * Types of Notion pages we recognize
- */
-export type NotionPageType = 'work_queue' | 'feed' | 'unknown';
+// Import for local use
+import {
+  lookupNotionPage,
+  type NotionPageInfo,
+} from '@atlas/agents/src/conversation/notion-lookup';
 
-/**
- * Structured info about a Notion page
- */
-export interface NotionPageInfo {
-  pageId: string;
-  type: NotionPageType;
-  title: string;
-  url: string;
-
-  // Work Queue specific
-  status?: string;
-  pillar?: Pillar;
-  requestType?: RequestType;
-  priority?: string;
-  assignee?: string;
-  notes?: string;
-
-  // Feed specific
-  author?: string;
-  confidence?: number;
-  keywords?: string[];
-
-  // Raw content for context injection
-  content?: string;
-}
+// ---------------------------------------------------------------------------
+// Pending Notion Action (surface-specific state)
+// ---------------------------------------------------------------------------
 
 /**
  * Pending Notion URL interaction
@@ -107,6 +98,10 @@ export function removePendingNotionAction(requestId: string): void {
   pendingNotionActions.delete(requestId);
 }
 
+// ---------------------------------------------------------------------------
+// Callback Detection
+// ---------------------------------------------------------------------------
+
 /**
  * Check if a string is a Notion callback
  */
@@ -114,260 +109,9 @@ export function isNotionCallback(data: string | undefined): boolean {
   return data?.startsWith('notion:') ?? false;
 }
 
-/**
- * Detect if a URL is a Notion URL
- */
-export function isNotionUrl(url: string): boolean {
-  try {
-    const parsed = new URL(url);
-    return parsed.hostname.includes('notion.so') || parsed.hostname.includes('notion.site');
-  } catch {
-    return false;
-  }
-}
-
-/**
- * Extract page ID from a Notion URL
- *
- * Handles formats:
- * - notion.so/Page-Title-abc123def456
- * - notion.so/abc123def456
- * - notion.so/workspace/Page-Title-abc123def456
- */
-export function extractPageId(url: string): string | null {
-  try {
-    const parsed = new URL(url);
-    const path = parsed.pathname;
-
-    // Extract the last segment which contains the page ID
-    const segments = path.split('/').filter(Boolean);
-    if (segments.length === 0) return null;
-
-    const lastSegment = segments[segments.length - 1];
-
-    // Page ID is the last 32 characters (without dashes) or after the last dash
-    // Format: "Page-Title-abc123def456789012345678901234"
-    const match = lastSegment.match(/([a-f0-9]{32})$/i);
-    if (match) {
-      // Format as UUID with dashes
-      const id = match[1];
-      return `${id.slice(0, 8)}-${id.slice(8, 12)}-${id.slice(12, 16)}-${id.slice(16, 20)}-${id.slice(20)}`;
-    }
-
-    // Try to find UUID format directly
-    const uuidMatch = lastSegment.match(/([a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12})/i);
-    if (uuidMatch) {
-      return uuidMatch[1];
-    }
-
-    return null;
-  } catch {
-    return null;
-  }
-}
-
-/**
- * Check if a page belongs to a specific database
- */
-async function isPageInDatabase(pageId: string, databaseId: string): Promise<boolean> {
-  try {
-    const page = await notion.pages.retrieve({ page_id: pageId });
-    const parent = (page as any).parent;
-    if (parent?.type === 'database_id') {
-      // Normalize both IDs (remove dashes) for comparison
-      const pageDbId = parent.database_id.replace(/-/g, '');
-      const targetDbId = databaseId.replace(/-/g, '');
-      return pageDbId === targetDbId;
-    }
-    return false;
-  } catch {
-    return false;
-  }
-}
-
-/**
- * Extract text content from Notion rich text
- */
-function extractRichText(richText: any[]): string {
-  if (!Array.isArray(richText)) return '';
-  return richText.map((t: any) => t.plain_text || '').join('');
-}
-
-/**
- * Fetch Work Queue item details
- */
-async function fetchWorkQueueItem(pageId: string): Promise<NotionPageInfo | null> {
-  try {
-    const page = await notion.pages.retrieve({ page_id: pageId });
-    const props = (page as any).properties;
-
-    const title = extractRichText(props['Task']?.title || []) || 'Untitled Task';
-    const status = props['Status']?.status?.name || props['Status']?.select?.name || 'Unknown';
-    const pillar = props['Pillar']?.select?.name as Pillar | undefined;
-    const requestType = props['Type']?.select?.name as RequestType | undefined;
-    const priority = props['Priority']?.select?.name;
-    const assignee = props['Assignee']?.select?.name;
-    const notes = extractRichText(props['Notes']?.rich_text || []);
-
-    // Fetch page content for context
-    const blocks = await notion.blocks.children.list({ block_id: pageId, page_size: 50 });
-    const content = blocks.results
-      .map((block: any) => {
-        if (block.type === 'paragraph') {
-          return extractRichText(block.paragraph?.rich_text || []);
-        }
-        if (block.type === 'bulleted_list_item') {
-          return '• ' + extractRichText(block.bulleted_list_item?.rich_text || []);
-        }
-        if (block.type === 'numbered_list_item') {
-          return '- ' + extractRichText(block.numbered_list_item?.rich_text || []);
-        }
-        return '';
-      })
-      .filter(Boolean)
-      .join('\n');
-
-    return {
-      pageId,
-      type: 'work_queue',
-      title,
-      url: (page as any).url,
-      status,
-      pillar,
-      requestType,
-      priority,
-      assignee,
-      notes,
-      content: content || notes,
-    };
-  } catch (error) {
-    logger.error('Failed to fetch Work Queue item', { error, pageId });
-    return null;
-  }
-}
-
-/**
- * Fetch Feed item details
- */
-async function fetchFeedItem(pageId: string): Promise<NotionPageInfo | null> {
-  try {
-    const page = await notion.pages.retrieve({ page_id: pageId });
-    const props = (page as any).properties;
-
-    const title = extractRichText(props['Entry']?.title || []) || 'Untitled Entry';
-    const pillar = props['Pillar']?.select?.name as Pillar | undefined;
-    const requestType = props['Request Type']?.select?.name as RequestType | undefined;
-    const author = props['Author']?.select?.name;
-    const confidence = props['Confidence']?.number;
-    const keywords = props['Keywords']?.multi_select?.map((k: any) => k.name) || [];
-
-    // Fetch page content for context
-    const blocks = await notion.blocks.children.list({ block_id: pageId, page_size: 50 });
-    const content = blocks.results
-      .map((block: any) => {
-        if (block.type === 'paragraph') {
-          return extractRichText(block.paragraph?.rich_text || []);
-        }
-        return '';
-      })
-      .filter(Boolean)
-      .join('\n');
-
-    return {
-      pageId,
-      type: 'feed',
-      title,
-      url: (page as any).url,
-      pillar,
-      requestType,
-      author,
-      confidence,
-      keywords,
-      content,
-    };
-  } catch (error) {
-    logger.error('Failed to fetch Feed item', { error, pageId });
-    return null;
-  }
-}
-
-/**
- * Fetch unknown Notion page details
- */
-async function fetchUnknownPage(pageId: string): Promise<NotionPageInfo | null> {
-  try {
-    const page = await notion.pages.retrieve({ page_id: pageId });
-    const props = (page as any).properties;
-
-    // Try to find a title property
-    let title = 'Untitled';
-    for (const [, value] of Object.entries(props)) {
-      if ((value as any).type === 'title') {
-        title = extractRichText((value as any).title || []) || 'Untitled';
-        break;
-      }
-    }
-
-    // Fetch page content
-    const blocks = await notion.blocks.children.list({ block_id: pageId, page_size: 50 });
-    const content = blocks.results
-      .map((block: any) => {
-        if (block.type === 'paragraph') {
-          return extractRichText(block.paragraph?.rich_text || []);
-        }
-        if (block.type === 'heading_1' || block.type === 'heading_2' || block.type === 'heading_3') {
-          const headingType = block.type as 'heading_1' | 'heading_2' | 'heading_3';
-          return '## ' + extractRichText(block[headingType]?.rich_text || []);
-        }
-        if (block.type === 'bulleted_list_item') {
-          return '• ' + extractRichText(block.bulleted_list_item?.rich_text || []);
-        }
-        return '';
-      })
-      .filter(Boolean)
-      .join('\n');
-
-    return {
-      pageId,
-      type: 'unknown',
-      title,
-      url: (page as any).url,
-      content,
-    };
-  } catch (error) {
-    logger.error('Failed to fetch Notion page', { error, pageId });
-    return null;
-  }
-}
-
-/**
- * Look up a Notion page and determine its type
- */
-export async function lookupNotionPage(url: string): Promise<NotionPageInfo | null> {
-  const pageId = extractPageId(url);
-  if (!pageId) {
-    logger.warn('Could not extract page ID from Notion URL', { url });
-    return null;
-  }
-
-  logger.debug('Looking up Notion page', { pageId, url });
-
-  // Check Work Queue first (most common use case)
-  if (await isPageInDatabase(pageId, WORK_QUEUE_DATABASE_ID)) {
-    logger.info('Notion URL is a Work Queue item', { pageId });
-    return fetchWorkQueueItem(pageId);
-  }
-
-  // Check Feed
-  if (await isPageInDatabase(pageId, FEED_DATABASE_ID)) {
-    logger.info('Notion URL is a Feed item', { pageId });
-    return fetchFeedItem(pageId);
-  }
-
-  // Unknown page - still fetch it
-  logger.info('Notion URL is an unknown page', { pageId });
-  return fetchUnknownPage(pageId);
-}
+// ---------------------------------------------------------------------------
+// Telegram Presentation (Grammy-dependent)
+// ---------------------------------------------------------------------------
 
 /**
  * Build object-aware keyboard for a Notion page
@@ -378,36 +122,36 @@ export function buildNotionKeyboard(requestId: string, pageInfo: NotionPageInfo)
   switch (pageInfo.type) {
     case 'work_queue':
       // Work Queue actions
-      keyboard.text('▶️ Process', `notion:${requestId}:process`);
-      keyboard.text('✅ Mark Done', `notion:${requestId}:done`);
+      keyboard.text('\u25b6\ufe0f Process', `notion:${requestId}:process`);
+      keyboard.text('\u2705 Mark Done', `notion:${requestId}:done`);
       keyboard.row();
-      keyboard.text('📝 Update', `notion:${requestId}:update`);
-      keyboard.text('🔍 Details', `notion:${requestId}:details`);
+      keyboard.text('\ud83d\udcdd Update', `notion:${requestId}:update`);
+      keyboard.text('\ud83d\udd0d Details', `notion:${requestId}:details`);
       break;
 
     case 'feed':
       // Feed actions
-      keyboard.text('📋 Create Task', `notion:${requestId}:create_task`);
-      keyboard.text('🔍 Details', `notion:${requestId}:details`);
+      keyboard.text('\ud83d\udccb Create Task', `notion:${requestId}:create_task`);
+      keyboard.text('\ud83d\udd0d Details', `notion:${requestId}:details`);
       break;
 
     case 'unknown':
       // Unknown page actions
-      keyboard.text('📋 Track in WQ', `notion:${requestId}:track`);
-      keyboard.text('📝 Log to Feed', `notion:${requestId}:log`);
+      keyboard.text('\ud83d\udccb Track in WQ', `notion:${requestId}:track`);
+      keyboard.text('\ud83d\udcdd Log to Feed', `notion:${requestId}:log`);
       keyboard.row();
-      keyboard.text('🔍 Just Read It', `notion:${requestId}:read`);
+      keyboard.text('\ud83d\udd0d Just Read It', `notion:${requestId}:read`);
       break;
   }
 
   keyboard.row();
-  keyboard.text('❌ Dismiss', `notion:${requestId}:dismiss`);
+  keyboard.text('\u274c Dismiss', `notion:${requestId}:dismiss`);
 
   return keyboard;
 }
 
 /**
- * Format page info as a preview message
+ * Format page info as a preview message (HTML for Telegram)
  */
 export function formatNotionPreview(pageInfo: NotionPageInfo): string {
   let preview = '';
@@ -415,41 +159,41 @@ export function formatNotionPreview(pageInfo: NotionPageInfo): string {
   switch (pageInfo.type) {
     case 'work_queue':
       const statusIcon = {
-        'Done': '✅',
-        'Shipped': '🚀',
-        'Active': '🔄',
-        'Captured': '📥',
-        'Triaged': '📋',
-        'Blocked': '🚫',
-        'Paused': '⏸️',
-      }[pageInfo.status || ''] || '📋';
+        'Done': '\u2705',
+        'Shipped': '\ud83d\ude80',
+        'Active': '\ud83d\udd04',
+        'Captured': '\ud83d\udce5',
+        'Triaged': '\ud83d\udccb',
+        'Blocked': '\ud83d\udeab',
+        'Paused': '\u23f8\ufe0f',
+      }[pageInfo.status || ''] || '\ud83d\udccb';
 
-      preview = `📋 <b>Work Queue Item</b>\n\n`;
+      preview = `\ud83d\udccb <b>Work Queue Item</b>\n\n`;
       preview += `<b>${pageInfo.title}</b>\n`;
       preview += `${statusIcon} Status: ${pageInfo.status || 'Unknown'}\n`;
-      if (pageInfo.pillar) preview += `🏛️ Pillar: ${pageInfo.pillar}\n`;
-      if (pageInfo.requestType) preview += `📁 Type: ${pageInfo.requestType}\n`;
-      if (pageInfo.priority) preview += `⚡ Priority: ${pageInfo.priority}\n`;
-      if (pageInfo.assignee) preview += `👤 Assignee: ${pageInfo.assignee}\n`;
+      if (pageInfo.pillar) preview += `\ud83c\udfdb\ufe0f Pillar: ${pageInfo.pillar}\n`;
+      if (pageInfo.requestType) preview += `\ud83d\udcc1 Type: ${pageInfo.requestType}\n`;
+      if (pageInfo.priority) preview += `\u26a1 Priority: ${pageInfo.priority}\n`;
+      if (pageInfo.assignee) preview += `\ud83d\udc64 Assignee: ${pageInfo.assignee}\n`;
       if (pageInfo.notes) {
         const truncNotes = pageInfo.notes.length > 150 ? pageInfo.notes.substring(0, 147) + '...' : pageInfo.notes;
-        preview += `\n📝 ${truncNotes}`;
+        preview += `\n\ud83d\udcdd ${truncNotes}`;
       }
       break;
 
     case 'feed':
-      preview = `📰 <b>Feed Entry</b>\n\n`;
+      preview = `\ud83d\udcf0 <b>Feed Entry</b>\n\n`;
       preview += `<b>${pageInfo.title}</b>\n`;
-      if (pageInfo.pillar) preview += `🏛️ Pillar: ${pageInfo.pillar}\n`;
-      if (pageInfo.requestType) preview += `📁 Type: ${pageInfo.requestType}\n`;
-      if (pageInfo.author) preview += `👤 Author: ${pageInfo.author}\n`;
+      if (pageInfo.pillar) preview += `\ud83c\udfdb\ufe0f Pillar: ${pageInfo.pillar}\n`;
+      if (pageInfo.requestType) preview += `\ud83d\udcc1 Type: ${pageInfo.requestType}\n`;
+      if (pageInfo.author) preview += `\ud83d\udc64 Author: ${pageInfo.author}\n`;
       if (pageInfo.keywords && pageInfo.keywords.length > 0) {
-        preview += `🏷️ ${pageInfo.keywords.join(', ')}\n`;
+        preview += `\ud83c\udff7\ufe0f ${pageInfo.keywords.join(', ')}\n`;
       }
       break;
 
     case 'unknown':
-      preview = `📄 <b>Notion Page</b>\n\n`;
+      preview = `\ud83d\udcc4 <b>Notion Page</b>\n\n`;
       preview += `<b>${pageInfo.title}</b>\n`;
       if (pageInfo.content) {
         const truncContent = pageInfo.content.length > 200 ? pageInfo.content.substring(0, 197) + '...' : pageInfo.content;
@@ -460,6 +204,10 @@ export function formatNotionPreview(pageInfo: NotionPageInfo): string {
 
   return preview;
 }
+
+// ---------------------------------------------------------------------------
+// Main Telegram Handler
+// ---------------------------------------------------------------------------
 
 /**
  * Handle a Notion URL - show object-aware options
@@ -520,49 +268,4 @@ export async function handleNotionUrl(ctx: Context, url: string): Promise<boolea
     logger.error('Failed to handle Notion URL', { error, url });
     return false;
   }
-}
-
-/**
- * Update Work Queue item status
- */
-export async function updateWorkQueueStatus(
-  pageId: string,
-  status: 'Done' | 'Shipped' | 'Active' | 'Captured' | 'Blocked' | 'Paused'
-): Promise<boolean> {
-  try {
-    await notion.pages.update({
-      page_id: pageId,
-      properties: {
-        'Status': {
-          select: { name: status },
-        },
-      },
-    });
-    logger.info('Updated Work Queue status', { pageId, status });
-    return true;
-  } catch (error) {
-    logger.error('Failed to update Work Queue status', { error, pageId, status });
-    return false;
-  }
-}
-
-/**
- * Get page content for context injection
- */
-export function getPageContentForContext(pageInfo: NotionPageInfo): string {
-  let context = `[Notion ${pageInfo.type === 'work_queue' ? 'Work Queue Item' : pageInfo.type === 'feed' ? 'Feed Entry' : 'Page'}]\n`;
-  context += `Title: ${pageInfo.title}\n`;
-
-  if (pageInfo.type === 'work_queue') {
-    context += `Status: ${pageInfo.status || 'Unknown'}\n`;
-    if (pageInfo.pillar) context += `Pillar: ${pageInfo.pillar}\n`;
-    if (pageInfo.requestType) context += `Type: ${pageInfo.requestType}\n`;
-    if (pageInfo.priority) context += `Priority: ${pageInfo.priority}\n`;
-  }
-
-  if (pageInfo.content) {
-    context += `\nContent:\n${pageInfo.content}`;
-  }
-
-  return context;
 }

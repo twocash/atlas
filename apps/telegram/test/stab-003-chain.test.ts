@@ -43,10 +43,10 @@ import {
   type PendingApprovalSession,
 } from "@atlas/agents/src/conversation/approval-session"
 
-// Dialogue session store
+// Unified conversation state (supersedes dialogue-session.ts)
 import {
-  clearAllDialogueSessions,
-} from "../src/conversation/dialogue-session"
+  clearAllStates as clearAllDialogueSessions,
+} from "../../../packages/agents/src/conversation/conversation-state"
 
 // Trace infrastructure
 import {

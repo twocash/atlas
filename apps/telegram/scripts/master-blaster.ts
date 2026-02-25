@@ -497,7 +497,7 @@ async function runAutonomousRepairTests(cwd: string): Promise<SuiteResult> {
 
   // Test 7: Approval queue zone handling
   try {
-    const approvalQueue = await import('../src/skills/approval-queue.js');
+    const approvalQueue = await import('@atlas/agents/src/skills/approval-queue');
     if (
       typeof approvalQueue.handlePitCrewOperation === 'function' &&
       typeof approvalQueue.rollbackDeployment === 'function'
@@ -694,7 +694,7 @@ async function runIntegrationTests(cwd: string): Promise<SuiteResult> {
 
   // Test 4: Skill registry loads
   try {
-    const { initializeSkillRegistry, getSkillRegistry } = await import('../src/skills/registry.js');
+    const { initializeSkillRegistry, getSkillRegistry } = await import('@atlas/agents/src/skills/registry');
     await initializeSkillRegistry();
     const registry = getSkillRegistry();
     const stats = registry.getStats();
