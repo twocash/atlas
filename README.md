@@ -22,7 +22,7 @@ In 1999, Eric Raymond documented something the software industry keeps forgettin
 
 The AI industry is now repeating the pattern that Unix disrupted: massive capital concentration, proprietary systems, walled gardens, bloated monoliths. $650 billion flows toward building bigger models behind thicker walls. Grove's bet is the same bet Unix made: that philosophically coherent software, designed for composability and transparency, adopted grassroots by people who care about what they're building, beats capital concentration over time. Not by outspending it. By out-designing it.
 
-This is not a retrospective analogy. It is a design methodology. Three philosophical commitments govern every line of code in this system, and each one traces to a conviction about how software should work and who it should serve.
+This is not a retrospective analogy. It is a design methodology. Three philosophical commitments govern every line of code in this system, and each one traces to a conviction about how software should work and who it should serve. I come from a specific lineage of packaged software development methodology, and philopsophy was a requirement. These days, not so much. So here we I am. 
 
 ### **1. The Extended Mind Thesis**
 
