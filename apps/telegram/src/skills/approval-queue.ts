@@ -22,7 +22,7 @@ import {
   type SkillProposal,
   approveProposal as doApprove,
   rejectProposal as doReject,
-} from './pattern-detector';
+} from '@atlas/agents/src/skills/pattern-detector';
 import type { SkillDefinition } from '@atlas/agents/src/skills/schema';
 import {
   classifyZone,
@@ -31,7 +31,7 @@ import {
   type ZoneClassification,
 } from '@atlas/agents/src/skills/zone-classifier';
 import { getFeatureFlags, getSafetyLimits } from '../config/features';
-import { getSkillRegistry } from './registry';
+import { getSkillRegistry } from '@atlas/agents/src/skills/registry';
 
 // =============================================================================
 // QUEUE STORAGE

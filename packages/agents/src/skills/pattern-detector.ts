@@ -9,17 +9,35 @@
 
 import { NOTION_DB } from '@atlas/shared/config';
 import { logger } from '../logger';
-import { isFeatureEnabled, getDetectionConfig, getSafetyLimits } from '../config/features';
-import { hasSameIntent } from '@atlas/agents/src/skills/intent-hash';
+import { hasSameIntent } from './intent-hash';
 import {
   type SkillDefinition,
   type SkillTrigger,
   type SkillProcess,
   type SkillTier,
   createDefaultMetrics,
-} from '@atlas/agents/src/skills/schema';
+} from './schema';
 import { getSkillRegistry } from './registry';
-import type { Pillar } from '@atlas/agents/src/conversation/types';
+import type { Pillar } from '../conversation/types';
+
+// Feature flags and config (inline to avoid circular dependency with @atlas/telegram)
+const isPatternDetectionEnabled = () => process.env.ATLAS_PATTERN_DETECTION === 'true';
+const isAutoDeployTier0Enabled = () => process.env.ATLAS_AUTO_DEPLOY_TIER0 === 'true';
+
+function getDetectionConfig() {
+  return {
+    windowDays: parseInt(process.env.ATLAS_PATTERN_WINDOW_DAYS || '14', 10),
+    minFrequency: parseInt(process.env.ATLAS_PATTERN_MIN_FREQUENCY || '5', 10),
+    cooldownHours: parseInt(process.env.ATLAS_PATTERN_COOLDOWN_HOURS || '24', 10),
+  };
+}
+
+function getSafetyLimits() {
+  return {
+    maxSkillsPerWeek: parseInt(process.env.ATLAS_SKILL_MAX_WEEKLY || '5', 10),
+    maxTier2PerWeek: parseInt(process.env.ATLAS_SKILL_MAX_TIER2_WEEKLY || '1', 10),
+  };
+}
 
 // =============================================================================
 // TYPES
@@ -509,7 +527,7 @@ export function markPatternRejected(intentHash: string, reason: string): void {
  */
 export async function detectPatterns(): Promise<PatternDetectionResult> {
   // Check if pattern detection is enabled
-  if (!isFeatureEnabled('patternDetection')) {
+  if (!isPatternDetectionEnabled()) {
     logger.debug('Pattern detection disabled');
     return {
       patterns: [],
@@ -628,7 +646,7 @@ export async function detectPatterns(): Promise<PatternDetectionResult> {
   }
 
   // Auto-deploy Tier 0 skills if configured
-  if (isFeatureEnabled('autoDeployTier0')) {
+  if (isAutoDeployTier0Enabled()) {
     for (const proposal of proposals) {
       if (proposal.skill.tier === 0) {
         proposal.skill.enabled = true;

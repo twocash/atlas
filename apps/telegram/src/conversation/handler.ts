@@ -47,8 +47,8 @@ import { handleSocraticAnswer, executeResolvedGoal } from './socratic-adapter';
 import { logAction, getIntentHash, isFeatureEnabled } from '../skills';
 import { reportFailure } from '@atlas/shared/error-escalation';
 import { createTrace, addStep, completeStep, completeTrace, failTrace, type TraceContext } from '@atlas/shared/trace';
-import { classifyWithFallback, triageForAudit, triageMessage } from '../cognitive/triage-skill';
-import type { TriageResult } from '../cognitive/triage-skill';
+import { classifyWithFallback, triageForAudit, triageMessage } from '@atlas/agents/src/cognitive/triage-skill';
+import type { TriageResult } from '@atlas/agents/src/cognitive/triage-skill';
 import { enrichWithContextSlots, type EnrichmentResult } from './context-enrichment';
 import {
   generateDispatchChoiceId,

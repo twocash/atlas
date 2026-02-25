@@ -4,7 +4,7 @@
  * Centralizes all configuration for the cognitive routing layer.
  */
 
-import type { ModelId } from '@atlas/agents/src/cognitive/models';
+import type { ModelId } from '../cognitive/models';
 
 /**
  * API configuration for each provider

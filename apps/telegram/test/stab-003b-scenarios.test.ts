@@ -41,7 +41,7 @@ import {
 
 import type { RequestAssessment, AssessmentContext } from '../../../packages/agents/src/assessment/types';
 import type { ApproachProposal } from '../../../packages/agents/src/assessment/types';
-import type { TriageResult } from '../src/cognitive/triage-skill';
+import type { TriageResult } from '@atlas/agents/src/cognitive/triage-skill';
 
 import {
   isApprovalSignal,

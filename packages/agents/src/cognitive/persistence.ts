@@ -5,7 +5,7 @@
  */
 
 import { Client } from "@notionhq/client";
-import type { TokenLedgerEntry, WorkerResult } from "@atlas/agents/src/cognitive/types";
+import type { TokenLedgerEntry, WorkerResult } from "./types";
 import { getCognitiveConfig } from "../config/cognitive";
 import { logger } from "../logger";
 

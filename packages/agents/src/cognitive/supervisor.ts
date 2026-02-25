@@ -17,7 +17,7 @@ import type {
   WorkerResult,
   CircuitBreakerState,
   ValidationResult,
-} from "@atlas/agents/src/cognitive/types";
+} from "./types";
 import { profileTask, assessRiskTier, canSkipLLM, getQuickResponse, upgradeComplexity } from "./profiler";
 import { selectModel, upgradeModelSelection } from "./selector";
 import { routeProvider, getFallbackRoute } from "./router";

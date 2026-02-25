@@ -15,8 +15,8 @@ import { Client } from '@notionhq/client';
 import { NOTION_DB } from '@atlas/shared/config';
 import { logger } from '../logger';
 import { isFeatureEnabled } from '../config/features';
-import { executeSkillWithApproval } from '../skills/executor';
-import { getPendingApprovals, removePendingApproval } from '../skills/executor';
+import { executeSkillWithApproval } from '@atlas/agents/src/skills/executor';
+import { getPendingApprovals, removePendingApproval } from '@atlas/agents/src/skills/executor';
 import { updateFeedEntryAction } from '../notion';
 
 // ==========================================

@@ -8,7 +8,7 @@
  */
 
 import { TEST_MATRIX, TEST_MARKERS, type TestCase, type TestAssertion } from './e2e-test-matrix';
-import { triageMessage } from '../src/cognitive/triage-skill';
+import { triageMessage } from '@atlas/agents/src/cognitive/triage-skill';
 import { detectContentShare } from '../src/conversation/content-flow';
 import { getFeatureFlags } from '../src/config/features';
 import { logger } from '../src/logger';

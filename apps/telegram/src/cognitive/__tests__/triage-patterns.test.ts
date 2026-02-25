@@ -6,7 +6,7 @@
 
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import * as fs from 'fs';
-import type { TriageResult } from '../triage-skill';
+import type { TriageResult } from '@atlas/agents/src/cognitive/triage-skill';
 
 // Mock fs operations
 vi.mock('fs', () => ({
@@ -26,12 +26,12 @@ vi.mock('../../logger', () => ({
 }));
 
 describe('generatePatternKey', () => {
-  let generatePatternKey: typeof import('../triage-patterns').generatePatternKey;
+  let generatePatternKey: typeof import('@atlas/agents/src/cognitive/triage-patterns').generatePatternKey;
 
   beforeEach(async () => {
     vi.clearAllMocks();
     vi.resetModules();
-    const module = await import('../triage-patterns');
+    const module = await import('@atlas/agents/src/cognitive/triage-patterns');
     generatePatternKey = module.generatePatternKey;
   });
 
@@ -78,9 +78,9 @@ describe('generatePatternKey', () => {
 });
 
 describe('getCachedTriage', () => {
-  let getCachedTriage: typeof import('../triage-patterns').getCachedTriage;
-  let recordTriageFeedback: typeof import('../triage-patterns').recordTriageFeedback;
-  let clearPatterns: typeof import('../triage-patterns').clearPatterns;
+  let getCachedTriage: typeof import('@atlas/agents/src/cognitive/triage-patterns').getCachedTriage;
+  let recordTriageFeedback: typeof import('@atlas/agents/src/cognitive/triage-patterns').recordTriageFeedback;
+  let clearPatterns: typeof import('@atlas/agents/src/cognitive/triage-patterns').clearPatterns;
 
   beforeEach(async () => {
     vi.clearAllMocks();
@@ -89,7 +89,7 @@ describe('getCachedTriage', () => {
     // Mock empty pattern file initially
     (fs.existsSync as ReturnType<typeof vi.fn>).mockReturnValue(false);
 
-    const module = await import('../triage-patterns');
+    const module = await import('@atlas/agents/src/cognitive/triage-patterns');
     getCachedTriage = module.getCachedTriage;
     recordTriageFeedback = module.recordTriageFeedback;
     clearPatterns = module.clearPatterns;
@@ -190,9 +190,9 @@ describe('getCachedTriage', () => {
 });
 
 describe('getTriageExamples', () => {
-  let getTriageExamples: typeof import('../triage-patterns').getTriageExamples;
-  let recordTriageFeedback: typeof import('../triage-patterns').recordTriageFeedback;
-  let clearPatterns: typeof import('../triage-patterns').clearPatterns;
+  let getTriageExamples: typeof import('@atlas/agents/src/cognitive/triage-patterns').getTriageExamples;
+  let recordTriageFeedback: typeof import('@atlas/agents/src/cognitive/triage-patterns').recordTriageFeedback;
+  let clearPatterns: typeof import('@atlas/agents/src/cognitive/triage-patterns').clearPatterns;
 
   beforeEach(async () => {
     vi.clearAllMocks();
@@ -200,7 +200,7 @@ describe('getTriageExamples', () => {
 
     (fs.existsSync as ReturnType<typeof vi.fn>).mockReturnValue(false);
 
-    const module = await import('../triage-patterns');
+    const module = await import('@atlas/agents/src/cognitive/triage-patterns');
     getTriageExamples = module.getTriageExamples;
     recordTriageFeedback = module.recordTriageFeedback;
     clearPatterns = module.clearPatterns;
@@ -272,9 +272,9 @@ describe('getTriageExamples', () => {
 });
 
 describe('recordTriageFeedback', () => {
-  let recordTriageFeedback: typeof import('../triage-patterns').recordTriageFeedback;
-  let getAllPatterns: typeof import('../triage-patterns').getAllPatterns;
-  let clearPatterns: typeof import('../triage-patterns').clearPatterns;
+  let recordTriageFeedback: typeof import('@atlas/agents/src/cognitive/triage-patterns').recordTriageFeedback;
+  let getAllPatterns: typeof import('@atlas/agents/src/cognitive/triage-patterns').getAllPatterns;
+  let clearPatterns: typeof import('@atlas/agents/src/cognitive/triage-patterns').clearPatterns;
 
   beforeEach(async () => {
     vi.clearAllMocks();
@@ -282,7 +282,7 @@ describe('recordTriageFeedback', () => {
 
     (fs.existsSync as ReturnType<typeof vi.fn>).mockReturnValue(false);
 
-    const module = await import('../triage-patterns');
+    const module = await import('@atlas/agents/src/cognitive/triage-patterns');
     recordTriageFeedback = module.recordTriageFeedback;
     getAllPatterns = module.getAllPatterns;
     clearPatterns = module.clearPatterns;
@@ -372,9 +372,9 @@ describe('recordTriageFeedback', () => {
 });
 
 describe('seedPatterns', () => {
-  let seedPatterns: typeof import('../triage-patterns').seedPatterns;
-  let getAllPatterns: typeof import('../triage-patterns').getAllPatterns;
-  let clearPatterns: typeof import('../triage-patterns').clearPatterns;
+  let seedPatterns: typeof import('@atlas/agents/src/cognitive/triage-patterns').seedPatterns;
+  let getAllPatterns: typeof import('@atlas/agents/src/cognitive/triage-patterns').getAllPatterns;
+  let clearPatterns: typeof import('@atlas/agents/src/cognitive/triage-patterns').clearPatterns;
 
   beforeEach(async () => {
     vi.clearAllMocks();
@@ -382,7 +382,7 @@ describe('seedPatterns', () => {
 
     (fs.existsSync as ReturnType<typeof vi.fn>).mockReturnValue(false);
 
-    const module = await import('../triage-patterns');
+    const module = await import('@atlas/agents/src/cognitive/triage-patterns');
     seedPatterns = module.seedPatterns;
     getAllPatterns = module.getAllPatterns;
     clearPatterns = module.clearPatterns;

@@ -9,7 +9,7 @@
 
 import { describe, test, expect, mock, beforeEach } from 'bun:test';
 import type { SkillDefinition, SkillProcess } from '@atlas/agents/src/skills/schema';
-import type { ExecutionContext, SkillExecutionResult } from './executor';
+import type { ExecutionContext, SkillExecutionResult } from '@atlas/agents/src/skills/executor';
 
 // Mock feature flags
 const mockFeatures = {

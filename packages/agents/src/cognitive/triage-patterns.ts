@@ -12,7 +12,7 @@ import { readFileSync, writeFileSync, existsSync } from 'fs';
 import { join } from 'path';
 import { logger } from '../logger';
 import { createCachedTriageResult, type TriageResult } from './triage-skill';
-import type { Pillar, RequestType } from '@atlas/agents/src/conversation/types';
+import type { Pillar, RequestType } from '../conversation/types';
 
 // ==========================================
 // Constants

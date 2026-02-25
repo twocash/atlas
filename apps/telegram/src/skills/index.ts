@@ -73,7 +73,7 @@ export {
   initializeSkillRegistry,
   type TriggerMatchResult,
   type MatchContext,
-} from './registry';
+} from '@atlas/agents/src/skills/registry';
 
 // Executor (Phase 2)
 export {
@@ -92,7 +92,7 @@ export {
   type ExecutionContext,
   type StepResult,
   type SkillExecutionResult,
-} from './executor';
+} from '@atlas/agents/src/skills/executor';
 
 // Pattern Detection (Phase 3)
 export {
@@ -105,7 +105,7 @@ export {
   type DetectedPattern,
   type SkillProposal,
   type PatternDetectionResult,
-} from './pattern-detector';
+} from '@atlas/agents/src/skills/pattern-detector';
 
 // Approval Queue (Phase 3)
 export {

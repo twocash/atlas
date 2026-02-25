@@ -4,7 +4,7 @@
  * These tests prevent cognitive logic from drifting back into surface apps.
  * They scan actual file contents for import violations.
  *
- * Sprint: ARCH-CPE-001 Phase 1
+ * Sprint: ARCH-CPE-001 Phase 1 + Phase 2
  */
 
 import { describe, it, expect } from 'bun:test';
@@ -44,8 +44,9 @@ function getImportLines(filePath: string): { line: number; text: string }[] {
 // 1. Moved files no longer exist at old locations
 // ============================================================================
 
-describe('Phase 1: Moved files deleted from apps/telegram/', () => {
+describe('Moved files deleted from apps/telegram/', () => {
   const movedFiles = [
+    // Phase 1
     'apps/telegram/src/skills/schema.ts',
     'apps/telegram/src/skills/frontmatter.ts',
     'apps/telegram/src/skills/zone-classifier.ts',
@@ -54,6 +55,21 @@ describe('Phase 1: Moved files deleted from apps/telegram/', () => {
     'apps/telegram/src/cognitive/types.ts',
     'apps/telegram/src/cognitive/models.ts',
     'apps/telegram/src/conversation/types.ts',
+    // Phase 2
+    'apps/telegram/src/cognitive/profiler.ts',
+    'apps/telegram/src/cognitive/selector.ts',
+    'apps/telegram/src/cognitive/ledger.ts',
+    'apps/telegram/src/cognitive/persistence.ts',
+    'apps/telegram/src/cognitive/worker.ts',
+    'apps/telegram/src/cognitive/router.ts',
+    'apps/telegram/src/cognitive/supervisor.ts',
+    'apps/telegram/src/cognitive/triage-skill.ts',
+    'apps/telegram/src/cognitive/triage-patterns.ts',
+    'apps/telegram/src/cognitive/index.ts',
+    'apps/telegram/src/config/cognitive.ts',
+    'apps/telegram/src/skills/registry.ts',
+    'apps/telegram/src/skills/pattern-detector.ts',
+    'apps/telegram/src/skills/executor.ts',
   ];
 
   for (const file of movedFiles) {
@@ -67,8 +83,9 @@ describe('Phase 1: Moved files deleted from apps/telegram/', () => {
 // 2. Moved files exist at new locations
 // ============================================================================
 
-describe('Phase 1: Moved files exist in packages/agents/', () => {
+describe('Moved files exist in packages/agents/', () => {
   const destinations = [
+    // Phase 1
     'packages/agents/src/skills/schema.ts',
     'packages/agents/src/skills/frontmatter.ts',
     'packages/agents/src/skills/zone-classifier.ts',
@@ -77,6 +94,21 @@ describe('Phase 1: Moved files exist in packages/agents/', () => {
     'packages/agents/src/cognitive/types.ts',
     'packages/agents/src/cognitive/models.ts',
     'packages/agents/src/conversation/types.ts',
+    // Phase 2
+    'packages/agents/src/cognitive/profiler.ts',
+    'packages/agents/src/cognitive/selector.ts',
+    'packages/agents/src/cognitive/ledger.ts',
+    'packages/agents/src/cognitive/persistence.ts',
+    'packages/agents/src/cognitive/worker.ts',
+    'packages/agents/src/cognitive/router.ts',
+    'packages/agents/src/cognitive/supervisor.ts',
+    'packages/agents/src/cognitive/triage-skill.ts',
+    'packages/agents/src/cognitive/triage-patterns.ts',
+    'packages/agents/src/cognitive/index.ts',
+    'packages/agents/src/config/cognitive.ts',
+    'packages/agents/src/skills/registry.ts',
+    'packages/agents/src/skills/pattern-detector.ts',
+    'packages/agents/src/skills/executor.ts',
   ];
 
   for (const file of destinations) {
@@ -103,22 +135,39 @@ describe('No dangling relative imports to moved files', () => {
 
   // Patterns that would indicate a dangling reference to a moved file
   const danglingPatterns = [
-    // Relative imports to skills files that moved
+    // Phase 1: Relative imports to skills files that moved
     /from\s+['"]\.\.?\/skills\/(schema|frontmatter|zone-classifier|intent-hash|action-log)['"]/,
-    // Relative imports to cognitive types/models that moved
+    // Phase 1: Relative imports to cognitive types/models that moved
     /from\s+['"]\.\.?\/(cognitive\/(types|models))['"]/,
-    // Relative imports to conversation/types that moved
+    // Phase 1: Relative imports to conversation/types that moved
     /from\s+['"]\.\.?\/conversation\/types['"]/,
-    // Parent-relative imports
+    // Phase 1: Parent-relative imports
     /from\s+['"]\.\.\/conversation\/types['"]/,
     /from\s+['"]\.\.\/cognitive\/(types|models)['"]/,
     /from\s+['"]\.\.\/skills\/(schema|frontmatter|zone-classifier|intent-hash|action-log)['"]/,
-    // Deep relative imports from test/scripts
+    // Phase 1: Deep relative imports from test/scripts
     /from\s+['"]\.\.\/src\/skills\/(schema|frontmatter|zone-classifier|intent-hash|action-log)['"]/,
     /from\s+['"]\.\.\/src\/cognitive\/(types|models)['"]/,
     /from\s+['"]\.\.\/src\/conversation\/types['"]/,
-    // Dynamic imports
+    // Phase 1: Dynamic imports
     /import\(['"]\.\.\/src\/skills\/(schema|frontmatter|zone-classifier|intent-hash|action-log)['"]\)/,
+
+    // Phase 2: Relative imports to cognitive engine files that moved
+    /from\s+['"]\.\.?\/cognitive\/(profiler|selector|ledger|persistence|worker|router|supervisor|triage-skill|triage-patterns|index)['"]/,
+    // Phase 2: Relative imports to skills engine files that moved
+    /from\s+['"]\.\.?\/skills\/(registry|pattern-detector|executor)['"]/,
+    // Phase 2: Relative imports to config/cognitive that moved
+    /from\s+['"]\.\.?\/config\/cognitive['"]/,
+    // Phase 2: Parent-relative imports
+    /from\s+['"]\.\.\/cognitive\/(profiler|selector|ledger|persistence|worker|router|supervisor|triage-skill|triage-patterns|index)['"]/,
+    /from\s+['"]\.\.\/skills\/(registry|pattern-detector|executor)['"]/,
+    /from\s+['"]\.\.\/config\/cognitive['"]/,
+    // Phase 2: Deep relative imports from test/scripts
+    /from\s+['"]\.\.\/src\/cognitive\/(profiler|selector|ledger|persistence|worker|router|supervisor|triage-skill|triage-patterns|index)['"]/,
+    /from\s+['"]\.\.\/src\/skills\/(registry|pattern-detector|executor)['"]/,
+    /from\s+['"]\.\.\/src\/config\/cognitive['"]/,
+    // Phase 2: Barrel import to cognitive/ directory (the index.ts that moved)
+    /from\s+['"]\.\.?\/cognitive['"]/,
   ];
 
   it('zero dangling relative imports across apps/telegram/', () => {
@@ -215,6 +264,7 @@ describe('Package boundary: packages/agents/ does not import from apps/', () => 
 
 describe('No re-export stubs for moved files', () => {
   const movedSources = [
+    // Phase 1
     'apps/telegram/src/skills/schema.ts',
     'apps/telegram/src/skills/frontmatter.ts',
     'apps/telegram/src/skills/zone-classifier.ts',
@@ -223,6 +273,21 @@ describe('No re-export stubs for moved files', () => {
     'apps/telegram/src/cognitive/types.ts',
     'apps/telegram/src/cognitive/models.ts',
     'apps/telegram/src/conversation/types.ts',
+    // Phase 2
+    'apps/telegram/src/cognitive/profiler.ts',
+    'apps/telegram/src/cognitive/selector.ts',
+    'apps/telegram/src/cognitive/ledger.ts',
+    'apps/telegram/src/cognitive/persistence.ts',
+    'apps/telegram/src/cognitive/worker.ts',
+    'apps/telegram/src/cognitive/router.ts',
+    'apps/telegram/src/cognitive/supervisor.ts',
+    'apps/telegram/src/cognitive/triage-skill.ts',
+    'apps/telegram/src/cognitive/triage-patterns.ts',
+    'apps/telegram/src/cognitive/index.ts',
+    'apps/telegram/src/config/cognitive.ts',
+    'apps/telegram/src/skills/registry.ts',
+    'apps/telegram/src/skills/pattern-detector.ts',
+    'apps/telegram/src/skills/executor.ts',
   ];
 
   it('no re-export files exist at old locations', () => {
@@ -231,6 +296,36 @@ describe('No re-export stubs for moved files', () => {
       throw new Error(
         `Re-export stubs found (should be deleted):\n` +
         existing.map(f => `  ${f}`).join('\n')
+      );
+    }
+  });
+});
+
+// ============================================================================
+// 7. Bridge ADR-005: packages/bridge/ must not import from apps/
+// ============================================================================
+
+describe('Bridge boundary: packages/bridge/ does not import from apps/', () => {
+  const bridgeSrc = join(PROJECT_ROOT, 'packages', 'bridge', 'src');
+  const bridgeFiles = getAllTsFiles(bridgeSrc);
+
+  it('packages/bridge/src/ has zero imports from apps/', () => {
+    const violations: string[] = [];
+
+    for (const file of bridgeFiles) {
+      const imports = getImportLines(file);
+      for (const { line, text } of imports) {
+        if (text.match(/from\s+['"].*apps\/(telegram|chrome)/)) {
+          const relPath = file.replace(PROJECT_ROOT + '\\', '').replace(/\\/g, '/');
+          violations.push(`${relPath}:${line} — ${text.trim()}`);
+        }
+      }
+    }
+
+    if (violations.length > 0) {
+      throw new Error(
+        `packages/bridge/ imports from apps/ (ADR-005 violation):\n` +
+        violations.map(v => `  ${v}`).join('\n')
       );
     }
   });

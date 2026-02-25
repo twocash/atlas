@@ -6,7 +6,7 @@
  */
 
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import type { TriageResult } from '../triage-skill';
+import type { TriageResult } from '@atlas/agents/src/cognitive/triage-skill';
 
 // Mock the Anthropic SDK
 vi.mock('@anthropic-ai/sdk', () => {
@@ -31,7 +31,7 @@ vi.mock('../../logger', () => ({
 
 describe('triageMessage', () => {
   let mockCreate: ReturnType<typeof vi.fn>;
-  let triageMessage: typeof import('../triage-skill').triageMessage;
+  let triageMessage: typeof import('@atlas/agents/src/cognitive/triage-skill').triageMessage;
 
   beforeEach(async () => {
     vi.clearAllMocks();
@@ -45,7 +45,7 @@ describe('triageMessage', () => {
 
     // Re-import to get fresh instance
     vi.resetModules();
-    const module = await import('../triage-skill');
+    const module = await import('@atlas/agents/src/cognitive/triage-skill');
     triageMessage = module.triageMessage;
   });
 
@@ -269,7 +269,7 @@ describe('triageMessage', () => {
 
 describe('createCachedTriageResult', () => {
   it('should create result with default values', async () => {
-    const { createCachedTriageResult } = await import('../triage-skill');
+    const { createCachedTriageResult } = await import('@atlas/agents/src/cognitive/triage-skill');
 
     const result = createCachedTriageResult({
       intent: 'capture',

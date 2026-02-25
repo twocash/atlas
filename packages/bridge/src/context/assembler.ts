@@ -11,9 +11,9 @@
  * Slot 9: Self-Model — runtime capability awareness       (WIRED)
  */
 
-import { triageMessage, type TriageResult } from "../../../../apps/telegram/src/cognitive/triage-skill"
-import { composeFromStructuredContext } from "../../../../packages/agents/src/services/prompt-composition"
-import type { StructuredCompositionInput } from "../../../../packages/agents/src/services/prompt-composition/types"
+import { triageMessage, type TriageResult } from "@atlas/agents/src/cognitive/triage-skill"
+import { composeFromStructuredContext } from "@atlas/agents/src/services/prompt-composition"
+import type { StructuredCompositionInput } from "@atlas/agents/src/services/prompt-composition/types"
 import type {
   OrchestrationRequest,
   SessionContext,

@@ -10,12 +10,14 @@
 
 import Anthropic from '@anthropic-ai/sdk';
 import { z } from 'zod';
-import { TASK_MODEL_MAP } from '@atlas/agents/src/cognitive/models';
+import { TASK_MODEL_MAP } from './models';
 import { logger } from '../logger';
-import { getFeatureFlags } from '../config/features';
 import { reportFailure } from '@atlas/shared/error-escalation';
-import type { Pillar, RequestType, ClassificationResult } from '@atlas/agents/src/conversation/types';
-import { PILLARS, REQUEST_TYPES } from '@atlas/agents/src/conversation/types';
+import type { Pillar, RequestType, ClassificationResult } from '../conversation/types';
+import { PILLARS, REQUEST_TYPES } from '../conversation/types';
+
+// Feature flag: low confidence fallback to capture (default ON, kill switch)
+const isLowConfidenceCaptureEnabled = () => process.env.ATLAS_LOW_CONFIDENCE_CAPTURE !== 'false';
 
 // ==========================================
 // Types
@@ -580,8 +582,7 @@ export async function triageMessage(
 
     // BUG #3 FIX: Low confidence fallback to capture
     // Philosophy: "capture is always safe, asking always adds friction"
-    const flags = getFeatureFlags();
-    if (flags.lowConfidenceFallbackToCapture) {
+    if (isLowConfidenceCaptureEnabled()) {
       if (result.intent === 'clarify' && result.confidence < 0.5) {
         logger.info('[Triage] Applying low-confidence fallback: clarify → capture', {
           originalConfidence: result.confidence,

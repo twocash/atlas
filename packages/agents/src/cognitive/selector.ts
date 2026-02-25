@@ -5,13 +5,13 @@
  * Layer 1 of the two-layer routing system.
  */
 
-import type { TaskProfile, ModelSelection } from "@atlas/agents/src/cognitive/types";
+import type { TaskProfile, ModelSelection } from "./types";
 import {
   type ModelId,
   MODEL_CATALOG,
   estimateCost,
   DEFAULT_MODEL_BY_TASK,
-} from "@atlas/agents/src/cognitive/models";
+} from "./models";
 import { logger } from "../logger";
 
 /**

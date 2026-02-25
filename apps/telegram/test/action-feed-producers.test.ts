@@ -107,7 +107,7 @@ const mockSkillRegistry = {
   get: (name: string) => null,
   getStats: () => ({ total: 0, enabled: 0, disabled: 0 }),
 };
-mock.module('../src/skills/registry', () => ({
+mock.module('@atlas/agents/src/skills/registry', () => ({
   getSkillRegistry: () => mockSkillRegistry,
   initializeSkillRegistry: async () => {},
 }));
@@ -116,7 +116,7 @@ mock.module('../src/skills/registry', () => ({
 // Imports — AFTER all mock.module() calls
 // =============================================================================
 
-import { executeSkill, getPendingApprovals, removePendingApproval, executeSkillWithApproval } from '../src/skills/executor';
+import { executeSkill, getPendingApprovals, removePendingApproval, executeSkillWithApproval, setExecutorHooks } from '@atlas/agents/src/skills/executor';
 import { startApprovalListener, stopApprovalListener } from '../src/feed/approval-listener';
 import { startReviewListener, stopReviewListener } from '../src/feed/review-listener';
 import type { ActionDataApproval, ActionDataReview } from '../src/types';
@@ -191,6 +191,19 @@ beforeEach(() => {
   createActionFeedEntryCounter = 0;
   updateFeedEntryActionCalls = [];
   featureFlagOverrides = {};
+  // Wire executor hooks — executor now uses injectable hooks instead of direct imports
+  setExecutorHooks({
+    createActionFeedEntry: async (actionType: string, actionData: any, source: string, title?: string, keywords?: string[]) => {
+      createActionFeedEntryCalls.push({ actionType, actionData, source, title, keywords });
+      if (createActionFeedEntryBehavior === 'throw') {
+        throw new Error('Mock: Notion API unavailable');
+      }
+      if (createActionFeedEntryBehavior === 'slow') {
+        await new Promise(resolve => setTimeout(resolve, createActionFeedEntryDelay));
+      }
+      return 'mock-feed-page-id-' + (++createActionFeedEntryCounter);
+    },
+  });
   // Clear pending approvals between tests
   const pending = getPendingApprovals();
   for (const key of pending.keys()) {
@@ -332,7 +345,8 @@ describe('P2 Approval Cards', () => {
   // E2E-15: Feature Flag OFF Bypasses Approval
   // ---------------------------------------------------------------------------
   it('E2E-15: Flag OFF — Tier 2 skill blocked without creating Approval card', async () => {
-    featureFlagOverrides = { approvalProducer: false };
+    // executor reads process.env directly (injectable env pattern from CPE Phase 2)
+    process.env.ATLAS_APPROVAL_PRODUCER = 'false';
 
     const skill = makeTier2Skill('twitter-follow');
     const result = await executeSkill(skill as any, makeContext());
@@ -346,6 +360,9 @@ describe('P2 Approval Cards', () => {
 
     // No pending approvals
     expect(getPendingApprovals().size).toBe(0);
+
+    // Restore default
+    delete process.env.ATLAS_APPROVAL_PRODUCER;
   });
 
   // ---------------------------------------------------------------------------

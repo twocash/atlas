@@ -7,7 +7,7 @@
 import type { Context } from "grammy";
 import type { IntentDetectionResult } from "../types";
 import { getStatusSummary } from "../notion";
-import { getRoutingHealthSummary, getSessionSummary } from "../cognitive";
+import { getRoutingHealthSummary, getSessionSummary } from "@atlas/agents/src/cognitive";
 import { logger } from "../logger";
 import { audit } from "../audit";
 

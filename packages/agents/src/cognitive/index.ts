@@ -26,7 +26,7 @@ export type {
   WorkerResultEntry,
   CircuitBreakerState,
   CircuitBreakerResponse,
-} from "@atlas/agents/src/cognitive/types";
+} from "./types";
 
 // Models
 export {
@@ -43,7 +43,7 @@ export {
   getModelsByProvider,
   getCheapestModelWithStrengths,
   DEFAULT_MODEL_BY_TASK,
-} from "@atlas/agents/src/cognitive/models";
+} from "./models";
 
 // Profiler
 export {
