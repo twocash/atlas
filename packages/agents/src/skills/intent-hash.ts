@@ -376,6 +376,14 @@ export function compareIntentHashes(
  * @param threshold - Similarity threshold (default 0.7)
  * @returns true if messages have similar intent
  */
+/**
+ * Convenience alias for generateIntentHash
+ * Used by pipeline orchestrator and action-log
+ */
+export function getIntentHash(messageText: string): IntentHashResult {
+  return generateIntentHash(messageText);
+}
+
 export function hasSameIntent(
   text1: string,
   text2: string,

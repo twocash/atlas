@@ -27,6 +27,7 @@ import {
   send as bridgeSend,
   sendRaw,
   onMessage,
+  type BridgeMessageContext,
 } from "./bridge-client"
 
 // ─── Hook ────────────────────────────────────────────────────
@@ -266,8 +267,34 @@ export function useClaudeCode(): UseClaudeCodeReturn {
 
   // ─── Send ────────────────────────────────────────────────
 
-  const send = useCallback((text: string) => {
-    const sent = bridgeSend([{ type: "text", text }])
+  const send = useCallback(async (text: string) => {
+    // Capture browser context from the active tab so the Bridge pipeline
+    // can populate Slot 4 (Browser). Best-effort — if tab query fails,
+    // we still send the message without context. (BUG-006)
+    let browserContext: BridgeMessageContext | undefined
+    try {
+      const [tab] = await chrome.tabs.query({ active: true, currentWindow: true })
+      if (tab) {
+        browserContext = {
+          url: tab.url,
+          title: tab.title,
+        }
+      }
+    } catch {
+      // Tab query can fail in some contexts — send without context
+    }
+
+    // Capture any selected text on the page
+    if (browserContext) {
+      try {
+        const selection = window.getSelection?.()?.toString?.()
+        if (selection) {
+          browserContext.selectedText = selection
+        }
+      } catch { /* sidepanel may not have access */ }
+    }
+
+    const sent = bridgeSend([{ type: "text", text }], browserContext)
     if (!sent) {
       console.warn("[claude-hook] Cannot send — bridge not connected")
       return

@@ -27,7 +27,10 @@ export interface AnythingLLMResponse {
 
 // ─── Configuration ───────────────────────────────────────
 
-const TIMEOUT_MS = 5000
+// Increased from 5000ms — AnythingLLM vector search can take 6-10s under load.
+// MCP server uses 30s; this slot query timeout should be generous enough to
+// avoid intermittent failures without blocking the pipeline. (BUG-005)
+const TIMEOUT_MS = 12_000
 
 function getConfig(): { url: string; apiKey: string } | null {
   const url = process.env.ANYTHINGLLM_URL?.trim()

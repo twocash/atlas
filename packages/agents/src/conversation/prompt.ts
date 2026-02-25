@@ -30,8 +30,11 @@ async function loadFile(path: string): Promise<string> {
     // realpath resolves symlinks
     const content = await readFile(path, 'utf-8');
     return content;
-  } catch (error) {
-    logger.warn('Failed to load file', { path, error });
+  } catch {
+    // Persona files (SOUL.md, USER.md, MEMORY.md) are optional and may not
+    // exist in every deployment. Demoted from warn to debug to prevent
+    // log spam on every message. (BUG-003)
+    logger.debug('Optional file not found', { path });
     return '';
   }
 }

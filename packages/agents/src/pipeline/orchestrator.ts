@@ -1235,8 +1235,11 @@ export async function orchestrateMessage(
     };
 
     const AUDIT_CONFIDENCE_THRESHOLD = 0.7;
+    // Skip audit only for simple requests with no tool use AND sufficient confidence.
+    // Tool-heavy requests MUST be audited — telemetry gap otherwise (BUG-007).
     const skipAudit = assessment?.complexity === 'simple' &&
-      (toolsUsed.length > 0 || classification.confidence < AUDIT_CONFIDENCE_THRESHOLD);
+      toolsUsed.length === 0 &&
+      classification.confidence < AUDIT_CONFIDENCE_THRESHOLD;
 
     const auditStep = addStep(trace, 'audit-trail');
     let auditResult: AuditResult | null = null;

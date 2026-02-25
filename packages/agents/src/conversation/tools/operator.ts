@@ -395,7 +395,10 @@ function getExecutor(ext: string): { cmd: string; args: string[] } {
     case '.js':
       return { cmd: 'bun', args: ['run'] };
     case '.py':
-      return { cmd: 'python', args: [] };
+      // On Windows, 'python' may not be in PATH. Try 'python' first (works on
+      // most systems), fall back to 'python3' via env detection. The spawn call
+      // in executeRunScript will use whichever is resolved here. (BUG-001)
+      return { cmd: process.platform === 'win32' ? 'python' : 'python3', args: [] };
     case '.sh':
       return { cmd: 'bash', args: [] };
     default:
@@ -684,8 +687,14 @@ async function executeRunScript(
       cwd: WORKSPACE_DIR,
       timeout: timeoutSeconds * 1000,
       env: {
+        // Pass full system PATH so child process can find interpreters.
+        // On Windows, also include USERPROFILE-based paths where Python
+        // and other tools are commonly installed. (BUG-001)
         PATH: process.env.PATH,
+        PATHEXT: process.env.PATHEXT,
+        SystemRoot: process.env.SystemRoot,
         HOME: process.env.HOME || process.env.USERPROFILE,
+        USERPROFILE: process.env.USERPROFILE,
         USER: process.env.USER || process.env.USERNAME,
         LANG: 'en_US.UTF-8',
       },

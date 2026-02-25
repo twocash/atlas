@@ -112,16 +112,27 @@ export function disconnect(): void {
   monitorUpdateBridge("disconnected")
 }
 
-/** Send a UserMessage with ContentBlock[] to Bridge. Returns false if not connected. */
-export function send(contentBlocks: ContentBlock[]): boolean {
+/** Browser context attached to each user message for the Bridge pipeline. */
+export interface BridgeMessageContext {
+  url?: string
+  title?: string
+  selectedText?: string
+}
+
+/** Send a UserMessage with ContentBlock[] to Bridge. Returns false if not connected.
+ *  Optionally attaches browserContext so the Bridge slot assembler can populate Slot 4. (BUG-006) */
+export function send(contentBlocks: ContentBlock[], browserContext?: BridgeMessageContext): boolean {
   if (!ws || ws.readyState !== WebSocket.OPEN) {
     console.warn("[bridge-client] Cannot send — not connected")
     return false
   }
 
-  const payload = {
+  const payload: Record<string, unknown> = {
     type: "user_message",
     content: contentBlocks,
+  }
+  if (browserContext) {
+    payload.browserContext = browserContext
   }
   ws.send(JSON.stringify(payload))
   return true
