@@ -20,30 +20,12 @@ import type { ComplexityTier } from "../src/types/orchestration"
 // Module Mocks (BEFORE any imports)
 // ═══════════════════════════════════════════════════════════════
 
-// Resolve absolute paths from the importing modules' directories
-const assemblerDir = process.cwd() + "/packages/bridge/src/context"
-const handlerDir = process.cwd() + "/packages/bridge/src/handlers"
-
-const triageSkillPath = require.resolve(
-  "../../../../apps/telegram/src/cognitive/triage-skill",
-  { paths: [assemblerDir] },
-)
-const compositionPath = require.resolve(
-  "../../../../packages/agents/src/services/prompt-composition",
-  { paths: [assemblerDir] },
-)
-const compositionTypesPath = require.resolve(
-  "../../../../packages/agents/src/services/prompt-composition/types",
-  { paths: [assemblerDir] },
-)
-const profilerPath = require.resolve(
-  "../../../../apps/telegram/src/cognitive/profiler",
-  { paths: [handlerDir] },
-)
-const loggerPath = require.resolve(
-  "../logger",
-  { paths: [process.cwd() + "/apps/telegram/src/cognitive"] },
-)
+// Mock module specifiers — use workspace package paths matching actual imports (post-CPE)
+const triageSkillPath = "@atlas/agents/src/cognitive/triage-skill"
+const compositionPath = "@atlas/agents/src/services/prompt-composition"
+const compositionTypesPath = "@atlas/agents/src/services/prompt-composition/types"
+const profilerPath = "@atlas/agents/src/cognitive/profiler"
+const loggerPath = "@atlas/agents/src/logger"
 
 // ─── Triage Message Mock ──────────────────────────────────────
 // Returns realistic triage results based on message content.
@@ -244,11 +226,14 @@ function makeCapture(): TestCapture {
   return { claudeMessages, clientResponses, broadcasts, context }
 }
 
-// Ensure triage is enabled
+// Ensure triage is enabled + hydrate system preamble for prompt construction
+import { hydrateSystemPreamble } from "../src/context/prompt-constructor"
+
 let origBridgeTriage: string | undefined
 beforeAll(() => {
   origBridgeTriage = process.env.BRIDGE_TRIAGE
   delete process.env.BRIDGE_TRIAGE // Default = enabled
+  hydrateSystemPreamble("You are Atlas, Jim's AI Chief of Staff. [TEST PREAMBLE]")
 })
 afterAll(() => {
   if (origBridgeTriage !== undefined) {

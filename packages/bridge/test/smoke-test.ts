@@ -15,14 +15,10 @@
 
 import { mock } from "bun:test"
 
-const assemblerDir = process.cwd() + "/packages/bridge/src/context"
-const handlerDir = process.cwd() + "/packages/bridge/src/handlers"
+// Mock module specifiers — use workspace package paths matching actual imports (post-CPE)
 
 // Mock triageMessage (Haiku API call)
-const triageSkillPath = require.resolve(
-  "../../../../apps/telegram/src/cognitive/triage-skill",
-  { paths: [assemblerDir] },
-)
+const triageSkillPath = "@atlas/agents/src/cognitive/triage-skill"
 mock.module(triageSkillPath, () => ({
   triageMessage: async (text: string) => {
     const isGreeting = /^(hey|hi|hello|yo|sup)[\s!?,]*$/i.test(text.trim())
@@ -41,10 +37,7 @@ mock.module(triageSkillPath, () => ({
 }))
 
 // Mock prompt composition (reads Notion/files)
-const compositionPath = require.resolve(
-  "../../../../packages/agents/src/services/prompt-composition",
-  { paths: [assemblerDir] },
-)
+const compositionPath = "@atlas/agents/src/services/prompt-composition"
 mock.module(compositionPath, () => ({
   composeFromStructuredContext: async () => ({
     prompt: "Be concise, clear, and actionable. Write in Jim's voice.",
@@ -54,11 +47,9 @@ mock.module(compositionPath, () => ({
 }))
 
 // Suppress logger noise
-const loggerPath = require.resolve("../logger", {
-  paths: [process.cwd() + "/apps/telegram/src/cognitive"],
-})
+const loggerPath = "@atlas/agents/src/logger"
 mock.module(loggerPath, () => ({
-  default: { info: () => {}, warn: () => {}, error: () => {}, debug: () => {} },
+  logger: { info: () => {}, warn: () => {}, error: () => {}, debug: () => {} },
 }))
 
 // ─── Now import the handler chain ───────────────────────────

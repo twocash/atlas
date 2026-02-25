@@ -46,9 +46,7 @@ mock.module("../src/context/assembler", () => ({
 }))
 
 // Mock the profiler (imported by triage handler)
-const resolvedProfilerPath = require.resolve("../../../../apps/telegram/src/cognitive/profiler", {
-  paths: [process.cwd() + "/packages/bridge/src/handlers"],
-})
+const resolvedProfilerPath = "@atlas/agents/src/cognitive/profiler"
 mock.module(resolvedProfilerPath, () => ({
   profileTask: (input: string) => ({
     taskId: "test",
