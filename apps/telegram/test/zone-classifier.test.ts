@@ -1,7 +1,7 @@
 /**
  * Zone Classifier Tests
  *
- * Run with: bun test src/skills/zone-classifier.test.ts
+ * Run with: bun test test/zone-classifier.test.ts
  *
  * Sprint: Pit Stop (Autonomous Skill Repair)
  */

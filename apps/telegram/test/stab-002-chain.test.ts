@@ -32,16 +32,16 @@ import {
   resetThreadCounter,
 } from "../../../packages/agents/src/dialogue"
 
-// Dialogue session store
+// Unified conversation state (supersedes dialogue-session.ts)
 import {
-  storeDialogueSession,
-  getDialogueSession,
-  getDialogueSessionByUserId,
-  hasDialogueSessionForUser,
-  removeDialogueSession,
-  clearAllDialogueSessions,
-  type PendingDialogueSession,
-} from "../src/conversation/dialogue-session"
+  enterDialoguePhase,
+  getState,
+  getStateByUserId,
+  isInPhase,
+  returnToIdle,
+  clearAllStates,
+  type DialogueSessionState,
+} from "../../../packages/agents/src/conversation/conversation-state"
 
 // Trace infrastructure
 import {
@@ -253,7 +253,7 @@ function runDialogueEntryStep(
 function runDialogueContinuationStep(
   trace: ReturnType<typeof createTrace>,
   replyText: string,
-  session: PendingDialogueSession,
+  dialogueData: DialogueSessionState,
 ): { continued: boolean; resolved: boolean; message?: string; state?: any; proposal?: any } {
   const dialogueStep = addStep(trace, "dialogue-continue")
   try {
@@ -264,7 +264,7 @@ function runDialogueContinuationStep(
       return { continued: false, resolved: false }
     }
 
-    const result = continueDialogue(replyText, session.dialogueState, model)
+    const result = continueDialogue(replyText, dialogueData.dialogueState, model)
 
     if (result.needsResponse) {
       dialogueStep.metadata = {
@@ -334,7 +334,7 @@ describe("STAB-002 Chain: Simple request → no dialogue", () => {
   beforeEach(() => {
     invalidateCache()
     resetThreadCounter()
-    clearAllDialogueSessions()
+    clearAllStates()
   })
 
   it("simple request flows through assessment without entering dialogue", async () => {
@@ -370,7 +370,7 @@ describe("STAB-002 Chain: Rough request → dialogue entry", () => {
   beforeEach(() => {
     invalidateCache()
     resetThreadCounter()
-    clearAllDialogueSessions()
+    clearAllStates()
   })
 
   it("rough request enters dialogue, returns message, skips Claude", async () => {
@@ -433,12 +433,10 @@ describe("STAB-002 Chain: Rough request → dialogue entry", () => {
     const dialogueResult = runDialogueEntryStep(trace, messageText, assessment, triage)
     expect(dialogueResult.entered).toBe(true)
 
-    // Simulate storeDialogueSession (what handler.ts does)
+    // Simulate enterDialoguePhase (what handler.ts does)
     const chatId = 12345
     const userId = 67890
-    storeDialogueSession({
-      chatId,
-      userId,
+    enterDialoguePhase(chatId, userId, {
       questionMessageId: 999,
       dialogueState: dialogueResult.state,
       assessment,
@@ -451,16 +449,16 @@ describe("STAB-002 Chain: Rough request → dialogue entry", () => {
         hasDeadline: false,
       },
       originalMessage: messageText,
-      createdAt: Date.now(),
     })
 
-    // Verify session stored and retrievable
-    expect(hasDialogueSessionForUser(userId)).toBe(true)
-    const session = getDialogueSession(chatId)
-    expect(session).toBeDefined()
-    expect(session!.dialogueState.terrain).toBe("rough")
-    expect(session!.dialogueState.turnCount).toBe(1)
-    expect(session!.originalMessage).toBe(messageText)
+    // Verify session stored and retrievable via unified state
+    expect(isInPhase(userId, 'dialogue')).toBe(true)
+    const convState = getState(chatId)
+    expect(convState).toBeDefined()
+    expect(convState!.dialogue).toBeDefined()
+    expect(convState!.dialogue!.dialogueState.terrain).toBe("rough")
+    expect(convState!.dialogue!.dialogueState.turnCount).toBe(1)
+    expect(convState!.dialogue!.originalMessage).toBe(messageText)
   })
 })
 
@@ -468,7 +466,7 @@ describe("STAB-002 Chain: Dialogue continuation → resolved", () => {
   beforeEach(() => {
     invalidateCache()
     resetThreadCounter()
-    clearAllDialogueSessions()
+    clearAllStates()
   })
 
   it("affirmation reply resolves dialogue and removes session", async () => {
@@ -487,12 +485,10 @@ describe("STAB-002 Chain: Dialogue continuation → resolved", () => {
     const entryResult = runDialogueEntryStep(entryTrace, messageText, assessment, triage)
     expect(entryResult.entered).toBe(true)
 
-    // Store session
+    // Store session via unified state
     const chatId = 11111
     const userId = 22222
-    const session: PendingDialogueSession = {
-      chatId,
-      userId,
+    const dialogueData: DialogueSessionState = {
       questionMessageId: 999,
       dialogueState: entryResult.state,
       assessment,
@@ -505,13 +501,12 @@ describe("STAB-002 Chain: Dialogue continuation → resolved", () => {
         hasDeadline: false,
       },
       originalMessage: messageText,
-      createdAt: Date.now(),
     }
-    storeDialogueSession(session)
+    enterDialoguePhase(chatId, userId, dialogueData)
 
     // Step 2: Jim replies with affirmation
     const contTrace = createTrace()
-    const contResult = runDialogueContinuationStep(contTrace, "Yes, go ahead", session)
+    const contResult = runDialogueContinuationStep(contTrace, "Yes, go ahead", dialogueData)
 
     // Should be resolved
     expect(contResult.resolved).toBe(true)
@@ -525,9 +520,9 @@ describe("STAB-002 Chain: Dialogue continuation → resolved", () => {
     expect(contStep!.metadata!.status).toBe("resolved")
     expect(contStep!.metadata!.hasProposal).toBe(true)
 
-    // Handler would remove session after resolution
-    removeDialogueSession(chatId)
-    expect(hasDialogueSessionForUser(userId)).toBe(false)
+    // Handler would return to idle after resolution
+    returnToIdle(chatId)
+    expect(isInPhase(userId, 'dialogue')).toBe(false)
   })
 })
 
@@ -535,7 +530,7 @@ describe("STAB-002 Chain: Dialogue continuation → multi-turn", () => {
   beforeEach(() => {
     invalidateCache()
     resetThreadCounter()
-    clearAllDialogueSessions()
+    clearAllStates()
   })
 
   it("partial reply continues dialogue with updated state", async () => {
@@ -559,44 +554,42 @@ describe("STAB-002 Chain: Dialogue continuation → multi-turn", () => {
     }
     const entry = enterDialogue(messageText, assessment, assessCtx, model)
 
-    // Store session
+    // Store session via unified state
     const chatId = 33333
     const userId = 44444
-    const session: PendingDialogueSession = {
-      chatId,
-      userId,
+    const dialogueData: DialogueSessionState = {
       questionMessageId: 100,
       dialogueState: entry.state,
       assessment,
       assessmentContext: assessCtx,
       originalMessage: messageText,
-      createdAt: Date.now(),
     }
-    storeDialogueSession(session)
+    enterDialoguePhase(chatId, userId, dialogueData)
 
     // Jim replies with partial context (not affirmation)
     const contTrace = createTrace()
     const contResult = runDialogueContinuationStep(
       contTrace,
       "I'm thinking blog posts but also need to consider the LinkedIn presence",
-      session,
+      dialogueData,
     )
 
     // Should continue (not resolve) — dialogue needs more turns
     expect(contResult.state.turnCount).toBe(2)
     expect(contResult.message).toBeTruthy()
 
-    // Handler would update the stored session
+    // Handler would update the stored session via unified state
     if (contResult.continued) {
-      storeDialogueSession({
-        ...session,
+      enterDialoguePhase(chatId, userId, {
+        ...dialogueData,
         dialogueState: contResult.state,
       })
 
       // Session still active with updated state
-      const updated = getDialogueSession(chatId)
-      expect(updated).toBeDefined()
-      expect(updated!.dialogueState.turnCount).toBe(2)
+      const convState = getState(chatId)
+      expect(convState).toBeDefined()
+      expect(convState!.dialogue).toBeDefined()
+      expect(convState!.dialogue!.dialogueState.turnCount).toBe(2)
     }
 
     // Verify trace
@@ -678,7 +671,7 @@ describe("STAB-002 Chain: Full trace triage → assessment → dialogue", () => 
   beforeEach(() => {
     invalidateCache()
     resetThreadCounter()
-    clearAllDialogueSessions()
+    clearAllStates()
   })
 
   it("full chain produces all expected trace steps for rough terrain", async () => {

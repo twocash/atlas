@@ -20,7 +20,7 @@ vi.mock('@anthropic-ai/sdk', () => {
 });
 
 // Mock the logger
-vi.mock('../../logger', () => ({
+vi.mock('../src/logger', () => ({
   logger: {
     debug: vi.fn(),
     info: vi.fn(),

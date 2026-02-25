@@ -72,12 +72,7 @@ import {
   extractKeywords,
   type DomainType,
 } from '../../../../packages/agents/src';
-import {
-  hasDialogueSessionForUser,
-  getDialogueSessionByUserId,
-  storeDialogueSession,
-  removeDialogueSession,
-} from './dialogue-session';
+// dialogue-session.ts REMOVED (CPE Phase 4) — superseded by conversation-state.ts
 import {
   hasApprovalSessionForUser,
   getApprovalSessionByUserId,
@@ -98,6 +93,7 @@ import {
   enterGoalClarificationPhase,
   returnToIdle,
   recordTurn,
+  isInPhase,
 } from '@atlas/agents/src/conversation/conversation-state';
 import {
   incorporateClarification,
@@ -581,142 +577,130 @@ export async function handleConversation(ctx: Context): Promise<void> {
     }
   }
 
-  // DIALOGUE SESSION: Check for pending rough-terrain dialogue
+  // DIALOGUE SESSION: Check for pending rough-terrain dialogue (unified state)
   // Moved AFTER Socratic check — Socratic handles content capture,
   // dialogue handles rough-terrain exploration. Mutually exclusive by design.
-  if (!hasAttachment && messageText && hasDialogueSessionForUser(userId)) {
+  if (!hasAttachment && messageText && isInPhase(userId, 'dialogue')) {
     const containsUrl = /https?:\/\/\S+/i.test(messageText);
+    const dialogueConvState = getStateByUserId(userId);
+    const dialogueData = dialogueConvState?.dialogue;
     if (containsUrl) {
       // URL = new content, cancel stale dialogue
-      const staleSession = getDialogueSessionByUserId(userId);
-      if (staleSession) {
-        removeDialogueSession(staleSession.chatId);
-        returnToIdle(staleSession.chatId);
+      if (dialogueConvState) {
+        returnToIdle(dialogueConvState.chatId);
         logger.info('Dialogue session bypassed: new URL content', { userId });
       }
-    } else {
+    } else if (dialogueConvState && dialogueData) {
       // Continue dialogue with Jim's response
-      const dialogueSession = getDialogueSessionByUserId(userId);
-      if (dialogueSession) {
-        const dialogueStep = addStep(trace, 'dialogue-continue');
-        try {
-          const model = getCachedModel();
-          if (!model) {
-            // Can't continue without model — cancel and fall through
-            removeDialogueSession(dialogueSession.chatId);
-            returnToIdle(dialogueSession.chatId);
-            dialogueStep.metadata = { status: 'cancelled', reason: 'no-cached-model' };
+      const dialogueChatId = dialogueConvState.chatId;
+      const dialogueStep = addStep(trace, 'dialogue-continue');
+      try {
+        const model = getCachedModel();
+        if (!model) {
+          // Can't continue without model — cancel and fall through
+          returnToIdle(dialogueChatId);
+          dialogueStep.metadata = { status: 'cancelled', reason: 'no-cached-model' };
+          completeStep(dialogueStep);
+        } else {
+          const result = continueDialogue(messageText, dialogueData.dialogueState, model);
+          if (result.needsResponse) {
+            // Dialogue continues — update state, send next message
+            const nextMsgId = (await ctx.reply(
+              result.message.length > 4000 ? result.message.substring(0, 3997) + '...' : result.message,
+              { parse_mode: 'HTML' },
+            )).message_id;
+            enterDialoguePhase(dialogueChatId, userId, {
+              questionMessageId: nextMsgId,
+              dialogueState: result.state,
+              assessment: dialogueData.assessment,
+              assessmentContext: dialogueData.assessmentContext,
+              originalMessage: dialogueData.originalMessage,
+            });
+            dialogueStep.metadata = {
+              status: 'continued',
+              turn: result.state.turnCount,
+              openQuestions: result.state.openQuestions.length,
+            };
             completeStep(dialogueStep);
+            completeTrace(trace);
+            return;
           } else {
-            const result = continueDialogue(messageText, dialogueSession.dialogueState, model);
-            if (result.needsResponse) {
-              // Dialogue continues — update state, send next message
-              const nextMsgId = (await ctx.reply(
-                result.message.length > 4000 ? result.message.substring(0, 3997) + '...' : result.message,
+            // Dialogue resolved — clear phase, proceed with refined request
+            returnToIdle(dialogueChatId);
+
+            // STAB-003 Fix 1: Substitute refined request for downstream processing.
+            // The dialogue engine synthesizes user intent into a clear, actionable
+            // request. Using the original vague message would discard that work.
+            if (result.refinedRequest) {
+              const original = messageText;
+              messageText = result.refinedRequest;
+              logger.info('Refined request substituted (STAB-003)', {
+                original: original.substring(0, 50),
+                refined: messageText.substring(0, 50),
+              });
+            }
+
+            // STAB-003 Fix 2: If dialogue produced a proposal, surface it for approval
+            // before executing. Complex terrain deserves user sign-off.
+            if (result.proposal) {
+              const proposalMsg = formatProposalMessage(result.proposal, 'complex');
+              const sentMsg = await ctx.reply(
+                proposalMsg.length > 4000 ? proposalMsg.substring(0, 3997) + '...' : proposalMsg,
                 { parse_mode: 'HTML' },
-              )).message_id;
-              storeDialogueSession({
-                ...dialogueSession,
-                dialogueState: result.state,
-                questionMessageId: nextMsgId,
+              );
+              storeApprovalSession({
+                chatId: ctx.chat!.id,
+                userId,
+                proposalMessageId: sentMsg.message_id,
+                proposal: result.proposal,
+                refinedRequest: result.refinedRequest,
+                originalMessage: dialogueData.originalMessage,
+                assessment: dialogueData.assessment,
+                assessmentContext: dialogueData.assessmentContext,
+                createdAt: Date.now(),
               });
-              // SESSION-STATE-FOUNDATION: Mirror to unified state
-              enterDialoguePhase(dialogueSession.chatId, userId, {
-                questionMessageId: nextMsgId,
-                dialogueState: result.state,
-                assessment: dialogueSession.assessment,
-                assessmentContext: dialogueSession.assessmentContext,
-                originalMessage: dialogueSession.originalMessage,
+              enterApprovalPhase(ctx.chat!.id, userId, {
+                proposalMessageId: sentMsg.message_id,
+                proposal: result.proposal,
+                refinedRequest: result.refinedRequest,
+                originalMessage: dialogueData.originalMessage,
+                assessment: dialogueData.assessment,
+                assessmentContext: dialogueData.assessmentContext,
               });
               dialogueStep.metadata = {
-                status: 'continued',
-                turn: result.state.turnCount,
-                openQuestions: result.state.openQuestions.length,
-              };
-              completeStep(dialogueStep);
-              completeTrace(trace);
-              return;
-            } else {
-              // Dialogue resolved — remove session, proceed with refined request
-              removeDialogueSession(dialogueSession.chatId);
-              returnToIdle(dialogueSession.chatId);
-
-              // STAB-003 Fix 1: Substitute refined request for downstream processing.
-              // The dialogue engine synthesizes user intent into a clear, actionable
-              // request. Using the original vague message would discard that work.
-              if (result.refinedRequest) {
-                const original = messageText;
-                messageText = result.refinedRequest;
-                logger.info('Refined request substituted (STAB-003)', {
-                  original: original.substring(0, 50),
-                  refined: messageText.substring(0, 50),
-                });
-              }
-
-              // STAB-003 Fix 2: If dialogue produced a proposal, surface it for approval
-              // before executing. Complex terrain deserves user sign-off.
-              if (result.proposal) {
-                const proposalMsg = formatProposalMessage(result.proposal, 'complex');
-                const sentMsg = await ctx.reply(
-                  proposalMsg.length > 4000 ? proposalMsg.substring(0, 3997) + '...' : proposalMsg,
-                  { parse_mode: 'HTML' },
-                );
-                storeApprovalSession({
-                  chatId: ctx.chat!.id,
-                  userId,
-                  proposalMessageId: sentMsg.message_id,
-                  proposal: result.proposal,
-                  refinedRequest: result.refinedRequest,
-                  originalMessage: dialogueSession.originalMessage,
-                  assessment: dialogueSession.assessment,
-                  assessmentContext: dialogueSession.assessmentContext,
-                  createdAt: Date.now(),
-                });
-                // SESSION-STATE-FOUNDATION: Mirror to unified state
-                enterApprovalPhase(ctx.chat!.id, userId, {
-                  proposalMessageId: sentMsg.message_id,
-                  proposal: result.proposal,
-                  refinedRequest: result.refinedRequest,
-                  originalMessage: dialogueSession.originalMessage,
-                  assessment: dialogueSession.assessment,
-                  assessmentContext: dialogueSession.assessmentContext,
-                });
-                dialogueStep.metadata = {
-                  status: 'resolved-awaiting-approval',
-                  turns: result.state.turnCount,
-                  hasProposal: true,
-                  hasRefinedRequest: !!result.refinedRequest,
-                };
-                completeStep(dialogueStep);
-                completeTrace(trace);
-                logger.info('Dialogue resolved, approval pending', {
-                  turns: result.state.turnCount,
-                  hasRefinedRequest: !!result.refinedRequest,
-                });
-                return;
-              }
-
-              dialogueStep.metadata = {
-                status: 'resolved',
+                status: 'resolved-awaiting-approval',
                 turns: result.state.turnCount,
-                hasProposal: false,
+                hasProposal: true,
                 hasRefinedRequest: !!result.refinedRequest,
               };
               completeStep(dialogueStep);
-              // Fall through to normal processing with refined (or original) message
+              completeTrace(trace);
+              logger.info('Dialogue resolved, approval pending', {
+                turns: result.state.turnCount,
+                hasRefinedRequest: !!result.refinedRequest,
+              });
+              return;
             }
+
+            dialogueStep.metadata = {
+              status: 'resolved',
+              turns: result.state.turnCount,
+              hasProposal: false,
+              hasRefinedRequest: !!result.refinedRequest,
+            };
+            completeStep(dialogueStep);
+            // Fall through to normal processing with refined (or original) message
           }
-        } catch (err) {
-          removeDialogueSession(dialogueSession.chatId);
-          returnToIdle(dialogueSession.chatId);
-          dialogueStep.metadata = {
-            status: 'failed',
-            error: err instanceof Error ? err.message : String(err),
-          };
-          completeStep(dialogueStep);
-          logger.warn('Dialogue continuation failed, falling through to normal flow', { error: err });
-          // Fall through to normal processing
         }
+      } catch (err) {
+        returnToIdle(dialogueChatId);
+        dialogueStep.metadata = {
+          status: 'failed',
+          error: err instanceof Error ? err.message : String(err),
+        };
+        completeStep(dialogueStep);
+        logger.warn('Dialogue continuation failed, falling through to normal flow', { error: err });
+        // Fall through to normal processing
       }
     }
   }
@@ -1001,17 +985,6 @@ export async function handleConversation(ctx: Context): Promise<void> {
           ? result.message.substring(0, 3997) + '...'
           : result.message;
         const sentMsg = await ctx.reply(dialogueMsg, { parse_mode: 'HTML' });
-        storeDialogueSession({
-          chatId: ctx.chat!.id,
-          userId,
-          questionMessageId: sentMsg.message_id,
-          dialogueState: result.state,
-          assessment,
-          assessmentContext: assessCtx,
-          originalMessage: messageText,
-          createdAt: Date.now(),
-        });
-        // SESSION-STATE-FOUNDATION: Mirror to unified state
         enterDialoguePhase(ctx.chat!.id, userId, {
           questionMessageId: sentMsg.message_id,
           dialogueState: result.state,

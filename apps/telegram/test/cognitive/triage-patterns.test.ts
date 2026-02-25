@@ -16,7 +16,7 @@ vi.mock('fs', () => ({
 }));
 
 // Mock logger
-vi.mock('../../logger', () => ({
+vi.mock('../src/logger', () => ({
   logger: {
     debug: vi.fn(),
     info: vi.fn(),

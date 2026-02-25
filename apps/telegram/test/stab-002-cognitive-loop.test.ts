@@ -11,18 +11,6 @@
 
 import { describe, it, expect, beforeEach } from "bun:test"
 
-// Dialogue session store
-import {
-  storeDialogueSession,
-  getDialogueSession,
-  getDialogueSessionByUserId,
-  hasDialogueSessionForUser,
-  removeDialogueSession,
-  getDialogueSessionCount,
-  clearAllDialogueSessions,
-  type PendingDialogueSession,
-} from "../src/conversation/dialogue-session"
-
 // Dialogue engine + terrain classifier
 import {
   assessmentNeedsDialogue,
@@ -138,110 +126,6 @@ function makeRoughAssessment(): RequestAssessment {
     },
   })
 }
-
-function makeDialogueSession(overrides: Partial<PendingDialogueSession> = {}): PendingDialogueSession {
-  return {
-    chatId: 12345,
-    userId: 67890,
-    questionMessageId: 111,
-    dialogueState: {
-      terrain: "rough",
-      turnCount: 1,
-      threads: [
-        { id: "t1", insight: "Content strategy spans multiple channels", source: "inference", relevance: 0.8 },
-      ],
-      resolvedContext: { intent: "research", pillar: "The Grove" },
-      openQuestions: ["What form should this take?"],
-      currentQuestion: "What angle feels right?",
-      resolved: false,
-    },
-    assessment: makeRoughAssessment(),
-    assessmentContext: {
-      intent: "research",
-      pillar: "The Grove",
-      keywords: ["content", "strategy"],
-      hasUrl: false,
-      hasContact: false,
-      hasDeadline: false,
-    },
-    originalMessage: "I need to rethink our content strategy for Q3",
-    createdAt: Date.now(),
-    ...overrides,
-  }
-}
-
-// ─── Dialogue Session Store ──────────────────────────────
-
-describe("STAB-002: Dialogue session store", () => {
-  beforeEach(() => {
-    clearAllDialogueSessions()
-  })
-
-  it("stores and retrieves session by chatId", () => {
-    const session = makeDialogueSession()
-    storeDialogueSession(session)
-
-    const retrieved = getDialogueSession(12345)
-    expect(retrieved).toBeDefined()
-    expect(retrieved!.chatId).toBe(12345)
-    expect(retrieved!.userId).toBe(67890)
-    expect(retrieved!.dialogueState.terrain).toBe("rough")
-  })
-
-  it("retrieves session by userId", () => {
-    const session = makeDialogueSession()
-    storeDialogueSession(session)
-
-    const retrieved = getDialogueSessionByUserId(67890)
-    expect(retrieved).toBeDefined()
-    expect(retrieved!.chatId).toBe(12345)
-  })
-
-  it("hasDialogueSessionForUser returns true when session exists", () => {
-    storeDialogueSession(makeDialogueSession())
-    expect(hasDialogueSessionForUser(67890)).toBe(true)
-    expect(hasDialogueSessionForUser(99999)).toBe(false)
-  })
-
-  it("removes session by chatId", () => {
-    storeDialogueSession(makeDialogueSession())
-    expect(hasDialogueSessionForUser(67890)).toBe(true)
-
-    removeDialogueSession(12345)
-    expect(hasDialogueSessionForUser(67890)).toBe(false)
-  })
-
-  it("expires sessions after TTL", () => {
-    const session = makeDialogueSession({
-      createdAt: Date.now() - 11 * 60 * 1000, // 11 minutes ago (> 10 min TTL)
-    })
-    storeDialogueSession(session)
-
-    // TTL check happens on retrieval
-    expect(getDialogueSession(12345)).toBeUndefined()
-    expect(hasDialogueSessionForUser(67890)).toBe(false)
-  })
-
-  it("latest session wins for same chatId", () => {
-    storeDialogueSession(makeDialogueSession({ originalMessage: "first" }))
-    storeDialogueSession(makeDialogueSession({ originalMessage: "second" }))
-
-    const retrieved = getDialogueSession(12345)
-    expect(retrieved!.originalMessage).toBe("second")
-  })
-
-  it("getDialogueSessionCount cleans expired and returns correct count", () => {
-    storeDialogueSession(makeDialogueSession({ chatId: 1, userId: 1 }))
-    storeDialogueSession(makeDialogueSession({
-      chatId: 2,
-      userId: 2,
-      createdAt: Date.now() - 11 * 60 * 1000, // expired
-    }))
-    storeDialogueSession(makeDialogueSession({ chatId: 3, userId: 3 }))
-
-    expect(getDialogueSessionCount()).toBe(2) // expired one cleaned
-  })
-})
 
 // ─── Assessment Prompt Injection ─────────────────────────
 

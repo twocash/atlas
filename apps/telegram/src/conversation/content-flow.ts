@@ -1,24 +1,31 @@
 /**
- * Content Flow - Integration layer for Universal Content Analysis
+ * Content Flow - Surface adapter for Universal Content Analysis (Telegram)
  *
- * Detects when a message is primarily a URL share and triggers
- * the interactive classification keyboard instead of full Claude processing.
+ * Grammy-dependent surface layer that wires cognitive content detection
+ * (from @atlas/agents) to Telegram's Context object for message handling.
  *
- * This provides Jim with one-tap confirmation for content classification.
+ * Cognitive logic (detection, confirmation tracking) lives in:
+ *   packages/agents/src/conversation/content-detection.ts
+ *
+ * This file handles:
+ * - triggerContentConfirmation (ctx.reply, ctx.replyWithChatAction)
+ * - maybeHandleAsContentShare (ctx.message)
+ * - triggerInstantClassification (ctx.from, ctx.chat, ctx.message)
+ * - triggerMediaConfirmation (ctx.from, ctx.chat, ctx.message)
+ *
+ * Extracted as part of Cognitive Pipeline Extraction (CPE Phase 4).
  */
 
 import type { Context } from 'grammy';
 import { logger } from '../logger';
 import {
   routeForAnalysis,
-  extractUrlsFromText,
-  detectContentSource,
   extractDomain,
   type ContentSource,
 } from '@atlas/agents/src/conversation/content-router';
 import { isNotionUrl, handleNotionUrl } from './notion-url';
 import type { Pillar } from './types';
-import type { MediaContext } from './media';
+import type { MediaContext } from '@atlas/agents/src/media/processor';
 import type { AttachmentInfo } from '@atlas/agents/src/conversation/attachments';
 import { socraticInterview } from './socratic-adapter';
 import { getFeatureFlags } from '../config/features';
@@ -26,123 +33,32 @@ import { checkUrl } from '../utils/url-dedup';
 import { triageMessage, type TriageResult } from '@atlas/agents/src/cognitive/triage-skill';
 import { extractContent, toUrlContent } from '@atlas/agents/src/conversation/content-extractor';
 import { preReadContent } from '@atlas/agents/src/conversation/content-pre-reader';
-import { reportExtractionFailure, type ExtractionChainTrace } from '../../../../packages/shared/src/extraction-failure-reporter';
+import { reportExtractionFailure } from '../../../../packages/shared/src/extraction-failure-reporter';
 import { getSpaSourcesSync } from '../config/content-sources';
 import { storeContentContext, storeTriage } from '@atlas/agents/src/conversation/conversation-state';
 
 // ==========================================
-// Bug #1 Fix: Duplicate Confirmation Guard
+// Re-exports from cognitive module
 // ==========================================
 
-/**
- * Tracks message IDs that have already had confirmations sent.
- * Prevents duplicate confirmation keyboards from race conditions.
- * Entries auto-expire after TTL_MS.
- */
-const confirmationsSent = new Map<number, number>(); // messageId -> timestamp
-const CONFIRMATION_TTL_MS = 30_000; // 30 seconds
+import {
+  detectContentShare,
+  markConfirmationSent,
+  hasConfirmationSent,
+} from '@atlas/agents/src/conversation/content-detection';
 
-/**
- * Mark a message as having sent a confirmation.
- * Used to prevent duplicate keyboards when multiple paths detect the same content.
- */
-export function markConfirmationSent(messageId: number): void {
-  confirmationsSent.set(messageId, Date.now());
+export { detectContentShare, markConfirmationSent, hasConfirmationSent, confirmationTracker } from '@atlas/agents/src/conversation/content-detection';
+export type { ContentDetectionResult } from '@atlas/agents/src/conversation/content-detection';
 
-  // Cleanup expired entries (lazy cleanup on each mark)
-  const now = Date.now();
-  for (const [id, ts] of confirmationsSent) {
-    if (now - ts > CONFIRMATION_TTL_MS) {
-      confirmationsSent.delete(id);
-    }
-  }
-}
-
-/**
- * Check if a confirmation has already been sent for this message.
- * Returns true if a confirmation was sent within the TTL window.
- */
-export function hasConfirmationSent(messageId: number): boolean {
-  const ts = confirmationsSent.get(messageId);
-  if (!ts) return false;
-
-  // Check if within TTL
-  if (Date.now() - ts > CONFIRMATION_TTL_MS) {
-    confirmationsSent.delete(messageId);
-    return false;
-  }
-
-  return true;
-}
-
-/**
- * Export tracker for testing/inspection
- */
-export const confirmationTracker = {
-  size: () => confirmationsSent.size,
-  clear: () => confirmationsSent.clear(),
-};
-
-/**
- * Result of content detection
- */
-export interface ContentDetectionResult {
-  isContentShare: boolean;  // Is this primarily a content share?
-  urls: string[];           // Extracted URLs
-  primaryUrl?: string;      // Main URL to process
-  needsBrowser: boolean;    // Does extraction require browser?
-}
-
-/**
- * Detect if a message is primarily a URL/content share
- *
- * A message is a "content share" if:
- * - It contains 1-2 URLs
- * - The non-URL text is minimal (< 50 chars of context)
- * - OR the message is JUST a URL
- */
-export function detectContentShare(text: string): ContentDetectionResult {
-  const urls = extractUrlsFromText(text);
-
-  if (urls.length === 0) {
-    return { isContentShare: false, urls: [], needsBrowser: false };
-  }
-
-  // Get the primary URL (first one)
-  const primaryUrl = urls[0];
-
-  // Remove URLs from text to check remaining context
-  let remainingText = text;
-  for (const url of urls) {
-    remainingText = remainingText.replace(url, '').trim();
-  }
-
-  // Content share if:
-  // 1. Just a URL (or URLs)
-  // 2. URL with minimal context (< 50 chars)
-  // 3. Looks like a "check this out" pattern
-  const isContentShare =
-    urls.length > 0 &&
-    (remainingText.length < 50 ||
-     /^(check|look|see|read|watch|this|here|fyi|interesting|cool|nice)/i.test(remainingText));
-
-  // Determine if browser extraction is needed
-  const source = detectContentSource(primaryUrl);
-  const needsBrowser = getSpaSourcesSync().includes(source);
-
-  return {
-    isContentShare,
-    urls,
-    primaryUrl,
-    needsBrowser,
-  };
-}
+// ==========================================
+// Surface Adapter Functions (Grammy-dependent)
+// ==========================================
 
 /**
  * Trigger the content confirmation flow
  *
  * V3 UPDATE (2026-02-05): Now routes to V3 Progressive Profiling flow
- * (Pillar → Action → Voice) instead of the old confirmation keyboard.
+ * (Pillar -> Action -> Voice) instead of the old confirmation keyboard.
  *
  * TRIAGE INTELLIGENCE (2026-02-06): When triageSkill flag is enabled,
  * uses unified Haiku triage for smart title generation and pillar suggestion.
@@ -173,7 +89,7 @@ export async function triggerContentConfirmation(
     markConfirmationSent(messageId);
   }
 
-  // URL dedup check — skip if this URL already has a Feed entry
+  // URL dedup check -- skip if this URL already has a Feed entry
   const dedup = await checkUrl(url);
   if (dedup.isDuplicate) {
     const verb = dedup.wasSkipped ? 'skipped' : 'captured';
@@ -181,14 +97,14 @@ export async function triggerContentConfirmation(
       url, source: dedup.source, existingFeedId: dedup.existingFeedId, wasSkipped: dedup.wasSkipped,
     });
     await ctx.reply(
-      `Already ${verb}. ${dedup.existingFeedId ? '📋' : '⏭️'}`,
+      `Already ${verb}. ${dedup.existingFeedId ? '\u{1F4CB}' : '\u{23ED}\u{FE0F}'}`,
       { reply_to_message_id: messageId },
     );
-    return true; // Handled — don't show keyboard
+    return true; // Handled -- don't show keyboard
   }
 
   // Each enrichment step is individually fault-tolerant.
-  // The keyboard MUST always show — enrichment failures degrade gracefully.
+  // The keyboard MUST always show -- enrichment failures degrade gracefully.
   const fallbackTitle = contextText || `Content from ${extractDomain(url)}`;
   let title = fallbackTitle;
   let triageResult: TriageResult | undefined;
@@ -217,7 +133,7 @@ export async function triggerContentConfirmation(
     }
   }
 
-  // Route analysis — non-fatal, use fallback if it fails
+  // Route analysis -- non-fatal, use fallback if it fails
   let route: { source: ContentSource; method: string; domain?: string; needsBrowser?: boolean } = {
     source: 'generic' as ContentSource,
     method: 'Fetch',
@@ -275,7 +191,7 @@ export async function triggerContentConfirmation(
       });
     }
   } catch (fetchError) {
-    logger.error('URL extraction THREW in content-flow — no content available', {
+    logger.error('URL extraction THREW in content-flow -- no content available', {
       url,
       error: fetchError instanceof Error ? fetchError.message : String(fetchError),
     });
@@ -311,7 +227,7 @@ export async function triggerContentConfirmation(
         urlContent.preReadSummary = preRead.summary;
         urlContent.preReadContentType = preRead.contentType;
       }
-      // If pre-read fails, we continue without it — not a blocking error
+      // If pre-read fails, we continue without it -- not a blocking error
     } catch (err) {
       logger.warn('Haiku pre-read failed, continuing without summary', {
         error: err instanceof Error ? err.message : String(err),
@@ -361,8 +277,8 @@ export async function triggerContentConfirmation(
 export async function maybeHandleAsContentShare(ctx: Context): Promise<boolean> {
   const text = ctx.message?.text || '';
 
-  // Detect if this is a content share
-  const detection = detectContentShare(text);
+  // Detect if this is a content share (pass surface-specific SPA sources provider)
+  const detection = detectContentShare(text, getSpaSourcesSync);
 
   if (!detection.isContentShare || !detection.primaryUrl) {
     return false; // Not a content share, continue normal processing
@@ -394,12 +310,12 @@ export async function maybeHandleAsContentShare(ctx: Context): Promise<boolean> 
  * Trigger classification for media (images, documents, etc.)
  *
  * V3 UPDATE (2026-02-05): Now routes to V3 Progressive Profiling flow
- * (Pillar → Action → Voice) instead of the old instant classification keyboard.
+ * (Pillar -> Action -> Voice) instead of the old instant classification keyboard.
  *
  * Flow:
  * 1. User shares image/document/video
  * 2. Show V3 pillar keyboard
- * 3. User taps pillar → action → voice
+ * 3. User taps pillar -> action -> voice
  * 4. Feed + Work Queue created with attachment info
  */
 export async function triggerInstantClassification(
@@ -452,7 +368,7 @@ export async function triggerInstantClassification(
  * Trigger the content confirmation flow for MEDIA (images, docs, etc.)
  *
  * V3 UPDATE (2026-02-05): Now routes to V3 Progressive Profiling flow
- * (Pillar → Action → Voice) instead of the old confirmation keyboard.
+ * (Pillar -> Action -> Voice) instead of the old confirmation keyboard.
  *
  * Note: This is called after Gemini analysis, so we include the analysis
  * in the title for context.

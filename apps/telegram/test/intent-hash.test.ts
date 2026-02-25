@@ -1,7 +1,7 @@
 /**
  * Intent Hash Tests
  *
- * Run with: bun test src/skills/intent-hash.test.ts
+ * Run with: bun test test/intent-hash.test.ts
  */
 
 import { describe, it, expect } from 'bun:test';
