@@ -303,9 +303,9 @@ export class SkillRegistry {
         const fullPath = join(dir, entry.name);
 
         if (entry.isDirectory()) {
-          // Check for SKILL.md or skill.yaml in subdirectory
-          await this.loadSkillFromSubdir(fullPath);
-          // Also recurse into subdirectories
+          // Recurse into subdirectories — the recursion finds skill.yaml/SKILL.md
+          // as file entries and loads them. Do NOT also call loadSkillFromSubdir()
+          // here, as that causes each skill to load twice (BUG-008).
           await this.loadSkillsFromDirectory(fullPath);
         } else if (entry.name === 'skill.yaml' || entry.name === 'skill.yml') {
           await this.loadSkillFile(fullPath);

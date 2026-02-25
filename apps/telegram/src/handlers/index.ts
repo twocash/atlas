@@ -7,7 +7,7 @@
 import type { Context } from "grammy";
 import type { IntentDetectionResult } from "../types";
 import { detectIntent } from "../intent";
-import { handleSparkIntent, handleSparkCallback, cleanupPendingSparkClarifications } from "./spark";
+import { handleSparkIntent, handleSparkCallback } from "./spark";
 import { handleQueryIntent } from "./query";
 import { handleStatusIntent } from "./status";
 import { handleLookupIntent } from "./lookup";
@@ -170,7 +170,7 @@ export async function routeCallback(ctx: Context): Promise<void> {
  * Clean up all pending operations
  */
 export function cleanupAll(maxAgeMinutes: number = 30): void {
-  cleanupPendingSparkClarifications(maxAgeMinutes);
+  // cleanupPendingSparkClarifications removed — no-op in V3 flow (TD-002)
   cleanupPendingActions(Math.min(maxAgeMinutes, 5)); // Actions timeout faster
 }
 
