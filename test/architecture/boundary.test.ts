@@ -4,7 +4,7 @@
  * These tests prevent cognitive logic from drifting back into surface apps.
  * They scan actual file contents for import violations.
  *
- * Sprint: ARCH-CPE-001 Phase 1 + Phase 2 + Phase 3 + Phase 4 + Phase 5
+ * Sprint: ARCH-CPE-001 Phase 1 + Phase 2 + Phase 3 + Phase 4 + Phase 5 + Phase 6
  */
 
 import { describe, it, expect } from 'bun:test';
@@ -187,6 +187,21 @@ describe('Moved files exist in packages/agents/', () => {
     // Phase 5 — Pipeline orchestrator
     'packages/agents/src/pipeline/orchestrator.ts',
     'packages/agents/src/pipeline/types.ts',
+    // Phase 6 — Unified Cognitive Architecture
+    'packages/agents/src/pipeline/surface.ts',
+    'packages/agents/src/pipeline/system.ts',
+    'packages/agents/src/pipeline/router.ts',
+    'packages/agents/src/pipeline/router-config.ts',
+    'packages/agents/src/pipeline/tool-executor.ts',
+    'packages/agents/src/pipeline/context-assembly.ts',
+    'packages/agents/src/pipeline/cognitive-pipeline.ts',
+    'packages/agents/src/pipeline/backends/claude-api.ts',
+    'packages/agents/src/pipeline/backends/claude-code.ts',
+    'packages/agents/src/pipeline/backends/local-model.ts',
+    'packages/agents/src/pipeline/backends/index.ts',
+    'packages/agents/src/pipeline/surfaces/telegram.ts',
+    'packages/agents/src/pipeline/surfaces/bridge.ts',
+    'packages/agents/src/pipeline/surfaces/index.ts',
   ];
 
   for (const file of destinations) {
@@ -501,5 +516,322 @@ describe('Bridge boundary: packages/bridge/ does not import from apps/', () => {
         violations.map(v => `  ${v}`).join('\n')
       );
     }
+  });
+});
+
+// ============================================================================
+// 9. Phase 6: Unified Cognitive Architecture — Contract Tests
+// ============================================================================
+
+describe('Phase 6: AtlasSurface contract', () => {
+  const surfacePath = join(PROJECT_ROOT, 'packages', 'agents', 'src', 'pipeline', 'surface.ts');
+
+  it('defines AtlasSurface interface', () => {
+    const content = readFileSync(surfacePath, 'utf-8');
+    expect(content).toMatch(/export interface AtlasSurface/);
+  });
+
+  it('AtlasSurface has ≤4 delivery methods', () => {
+    const content = readFileSync(surfacePath, 'utf-8');
+    // Required: reply, sendTyping. Optional: acknowledge, acquireMedia
+    expect(content).toMatch(/reply\(.*\).*Promise/);
+    expect(content).toMatch(/sendTyping\(\).*Promise/);
+    expect(content).toMatch(/acknowledge\?.*Promise/);
+    expect(content).toMatch(/acquireMedia\?.*Promise/);
+  });
+
+  it('AtlasSurface provides context and device tools', () => {
+    const content = readFileSync(surfacePath, 'utf-8');
+    expect(content).toMatch(/getContext\(\).*Promise<SurfaceContext>/);
+    expect(content).toMatch(/getDeviceTools\(\).*DeviceToolDefinition\[\]/);
+    expect(content).toMatch(/executeDeviceTool\(/);
+  });
+
+  it('AtlasSurface has NO compute constraints (forbidden anti-pattern)', () => {
+    const content = readFileSync(surfacePath, 'utf-8');
+    // Extract only the AtlasSurface interface body (not comments)
+    const interfaceMatch = content.match(/export interface AtlasSurface\s*\{[\s\S]*?\n\}/);
+    const interfaceBody = interfaceMatch?.[0] ?? '';
+    // These would be anti-patterns as interface members
+    expect(interfaceBody).not.toMatch(/maxTier\s*[?:]|maxTier\s*\(/);
+    expect(interfaceBody).not.toMatch(/supportsAgenticExecution\s*[?:]/);
+    expect(interfaceBody).not.toMatch(/availableModels\s*[?:]/);
+    expect(interfaceBody).not.toMatch(/maxComplexity\s*[?:]/);
+  });
+
+  it('DeliveryConstraints only constrains delivery, not compute', () => {
+    const content = readFileSync(surfacePath, 'utf-8');
+    expect(content).toMatch(/export interface DeliveryConstraints/);
+    expect(content).toMatch(/supportsStreaming.*boolean/);
+    expect(content).toMatch(/maxResponseLength/);
+    expect(content).toMatch(/supportsRichFormatting.*boolean/);
+  });
+
+  it('has zero Grammy imports', () => {
+    const content = readFileSync(surfacePath, 'utf-8');
+    expect(content).not.toMatch(/from\s+['"]grammy['"]/);
+  });
+});
+
+describe('Phase 6: SystemCapabilities contract', () => {
+  const systemPath = join(PROJECT_ROOT, 'packages', 'agents', 'src', 'pipeline', 'system.ts');
+
+  it('defines SystemCapabilities interface', () => {
+    const content = readFileSync(systemPath, 'utf-8');
+    expect(content).toMatch(/export interface SystemCapabilities/);
+  });
+
+  it('SystemCapabilities has backends + desk tools', () => {
+    const content = readFileSync(systemPath, 'utf-8');
+    expect(content).toMatch(/backends.*ExecutionBackend\[\]/);
+    expect(content).toMatch(/deskTools.*ToolDefinition\[\]/);
+    expect(content).toMatch(/deskToolHandlers.*Map/);
+  });
+
+  it('CognitiveTier is 0|1|2|3', () => {
+    const content = readFileSync(systemPath, 'utf-8');
+    expect(content).toMatch(/export type CognitiveTier\s*=\s*0\s*\|\s*1\s*\|\s*2\s*\|\s*3/);
+  });
+
+  it('ExecutionMode has deterministic|conversational|agentic', () => {
+    const content = readFileSync(systemPath, 'utf-8');
+    expect(content).toMatch(/'deterministic'/);
+    expect(content).toMatch(/'conversational'/);
+    expect(content).toMatch(/'agentic'/);
+  });
+});
+
+describe('Phase 6: CognitiveRouter contract', () => {
+  const routerPath = join(PROJECT_ROOT, 'packages', 'agents', 'src', 'pipeline', 'router.ts');
+
+  it('exports route() function', () => {
+    const content = readFileSync(routerPath, 'utf-8');
+    expect(content).toMatch(/export function route\(/);
+  });
+
+  it('exports checkContextRequirements() function', () => {
+    const content = readFileSync(routerPath, 'utf-8');
+    expect(content).toMatch(/export function checkContextRequirements\(/);
+  });
+
+  it('route() returns ExecutionStrategy', () => {
+    const content = readFileSync(routerPath, 'utf-8');
+    expect(content).toMatch(/\):\s*ExecutionStrategy/);
+  });
+
+  it('has zero Grammy imports', () => {
+    const content = readFileSync(routerPath, 'utf-8');
+    expect(content).not.toMatch(/from\s+['"]grammy['"]/);
+  });
+});
+
+describe('Phase 6: RouterConfigCache contract', () => {
+  const configPath = join(PROJECT_ROOT, 'packages', 'agents', 'src', 'pipeline', 'router-config.ts');
+
+  it('defines RouterConfig and RouterConfigCache', () => {
+    const content = readFileSync(configPath, 'utf-8');
+    expect(content).toMatch(/export interface RouterConfig/);
+    expect(content).toMatch(/export interface RouterConfigCache/);
+  });
+
+  it('has COMPILED_DEFAULTS with tier 0-3 mappings', () => {
+    const content = readFileSync(configPath, 'utf-8');
+    expect(content).toMatch(/COMPILED_DEFAULTS.*RouterConfig/);
+    expect(content).toMatch(/0:.*primary.*deterministic/);
+    expect(content).toMatch(/1:.*primary.*haiku/);
+    expect(content).toMatch(/2:.*primary.*sonnet/);
+    expect(content).toMatch(/3:.*primary.*sonnet/);
+  });
+
+  it('cache has startPolling/stopPolling/forceRefresh', () => {
+    const content = readFileSync(configPath, 'utf-8');
+    expect(content).toMatch(/startPolling\(/);
+    expect(content).toMatch(/stopPolling\(/);
+    expect(content).toMatch(/forceRefresh\(/);
+  });
+
+  it('has staleness detection', () => {
+    const content = readFileSync(configPath, 'utf-8');
+    expect(content).toMatch(/STALE_THRESHOLD/);
+    expect(content).toMatch(/checkStaleness/);
+  });
+});
+
+describe('Phase 6: ToolExecutor contract', () => {
+  const executorPath = join(PROJECT_ROOT, 'packages', 'agents', 'src', 'pipeline', 'tool-executor.ts');
+
+  it('defines OrchestratorToolExecutor class', () => {
+    const content = readFileSync(executorPath, 'utf-8');
+    expect(content).toMatch(/export class OrchestratorToolExecutor/);
+  });
+
+  it('routes desk vs device tools', () => {
+    const content = readFileSync(executorPath, 'utf-8');
+    expect(content).toMatch(/executeDeskTool/);
+    expect(content).toMatch(/executeDeviceTool/);
+    expect(content).toMatch(/classification.*===.*'device'/);
+  });
+
+  it('has LegacyToolBridge for strangler fig migration', () => {
+    const content = readFileSync(executorPath, 'utf-8');
+    expect(content).toMatch(/export class LegacyToolBridge/);
+    expect(content).toMatch(/createHandlers\(/);
+    expect(content).toMatch(/createToolDefinitions\(/);
+  });
+
+  it('has mergeTools utility', () => {
+    const content = readFileSync(executorPath, 'utf-8');
+    expect(content).toMatch(/export function mergeTools\(/);
+  });
+});
+
+describe('Phase 6: Execution Backends', () => {
+  const apiPath = join(PROJECT_ROOT, 'packages', 'agents', 'src', 'pipeline', 'backends', 'claude-api.ts');
+  const codePath = join(PROJECT_ROOT, 'packages', 'agents', 'src', 'pipeline', 'backends', 'claude-code.ts');
+  const localPath = join(PROJECT_ROOT, 'packages', 'agents', 'src', 'pipeline', 'backends', 'local-model.ts');
+
+  it('ClaudeAPIBackend implements ExecutionBackend', () => {
+    const content = readFileSync(apiPath, 'utf-8');
+    expect(content).toMatch(/class ClaudeAPIBackend implements ExecutionBackend/);
+    expect(content).toMatch(/backendId\s*=\s*'claude-api'/);
+    expect(content).toMatch(/async \*execute\(/);
+  });
+
+  it('ClaudeAPIBackend has tool use loop', () => {
+    const content = readFileSync(apiPath, 'utf-8');
+    expect(content).toMatch(/tool_use/);
+    expect(content).toMatch(/MAX_TOOL_ITERATIONS/);
+    expect(content).toMatch(/toolExecutor\.execute/);
+  });
+
+  it('ClaudeCodeBackend implements ExecutionBackend', () => {
+    const content = readFileSync(codePath, 'utf-8');
+    expect(content).toMatch(/class ClaudeCodeBackend implements ExecutionBackend/);
+    expect(content).toMatch(/backendId\s*=\s*'claude-code'/);
+    expect(content).toMatch(/stream-json/);
+  });
+
+  it('ClaudeCodeBackend uses NDJSON protocol', () => {
+    const content = readFileSync(codePath, 'utf-8');
+    expect(content).toMatch(/NDJSON/i);
+    expect(content).toMatch(/parseNdjsonMessage/);
+  });
+
+  it('LocalModelBackend is a seam (stub)', () => {
+    const content = readFileSync(localPath, 'utf-8');
+    expect(content).toMatch(/class LocalModelBackend implements ExecutionBackend/);
+    expect(content).toMatch(/backendId\s*=\s*'local-model'/);
+  });
+});
+
+describe('Phase 6: Surface Implementations', () => {
+  const telegramPath = join(PROJECT_ROOT, 'packages', 'agents', 'src', 'pipeline', 'surfaces', 'telegram.ts');
+  const bridgePath = join(PROJECT_ROOT, 'packages', 'agents', 'src', 'pipeline', 'surfaces', 'bridge.ts');
+
+  it('TelegramSurface implements AtlasSurface', () => {
+    const content = readFileSync(telegramPath, 'utf-8');
+    expect(content).toMatch(/class TelegramSurface implements AtlasSurface/);
+    expect(content).toMatch(/surfaceId\s*=\s*'telegram'/);
+  });
+
+  it('TelegramSurface has no Grammy imports (uses bindings)', () => {
+    const content = readFileSync(telegramPath, 'utf-8');
+    expect(content).not.toMatch(/from\s+['"]grammy['"]/);
+  });
+
+  it('TelegramSurface has correct delivery constraints', () => {
+    const content = readFileSync(telegramPath, 'utf-8');
+    expect(content).toMatch(/supportsStreaming:\s*false/);
+    expect(content).toMatch(/maxResponseLength:\s*4096/);
+  });
+
+  it('TelegramSurface has no device tools', () => {
+    const content = readFileSync(telegramPath, 'utf-8');
+    expect(content).toMatch(/getDeviceTools\(\).*DeviceToolDefinition\[\]/);
+    expect(content).toMatch(/return\s*\[\]/);
+  });
+
+  it('BridgeSurface implements AtlasSurface', () => {
+    const content = readFileSync(bridgePath, 'utf-8');
+    expect(content).toMatch(/class BridgeSurface implements AtlasSurface/);
+    expect(content).toMatch(/surfaceId\s*=\s*'bridge'/);
+  });
+
+  it('BridgeSurface supports streaming', () => {
+    const content = readFileSync(bridgePath, 'utf-8');
+    expect(content).toMatch(/supportsStreaming:\s*true/);
+  });
+
+  it('BridgeSurface has browser device tools', () => {
+    const content = readFileSync(bridgePath, 'utf-8');
+    expect(content).toMatch(/browser_click/);
+    expect(content).toMatch(/browser_type/);
+    expect(content).toMatch(/browser_navigate/);
+    expect(content).toMatch(/browser_extract/);
+    expect(content).toMatch(/classification:\s*'device'/);
+  });
+
+  it('BridgeSurface has no Grammy imports', () => {
+    const content = readFileSync(bridgePath, 'utf-8');
+    expect(content).not.toMatch(/from\s+['"]grammy['"]/);
+  });
+});
+
+describe('Phase 6: CognitivePipeline integration', () => {
+  const pipelinePath = join(PROJECT_ROOT, 'packages', 'agents', 'src', 'pipeline', 'cognitive-pipeline.ts');
+
+  it('defines CognitivePipeline class', () => {
+    const content = readFileSync(pipelinePath, 'utf-8');
+    expect(content).toMatch(/export class CognitivePipeline/);
+  });
+
+  it('process() takes PipelineRequest + AtlasSurface', () => {
+    const content = readFileSync(pipelinePath, 'utf-8');
+    expect(content).toMatch(/async process\(/);
+    expect(content).toMatch(/request:\s*PipelineRequest/);
+    expect(content).toMatch(/surface:\s*AtlasSurface/);
+  });
+
+  it('wires router, assembler, executor, and backend', () => {
+    const content = readFileSync(pipelinePath, 'utf-8');
+    expect(content).toMatch(/route\(/);
+    expect(content).toMatch(/assembler\.assemble\(/);
+    expect(content).toMatch(/OrchestratorToolExecutor/);
+    expect(content).toMatch(/strategy\.backend\.execute\(/);
+  });
+
+  it('delivers via surface.reply()', () => {
+    const content = readFileSync(pipelinePath, 'utf-8');
+    expect(content).toMatch(/surface\.reply\(/);
+  });
+
+  it('has zero Grammy imports', () => {
+    const content = readFileSync(pipelinePath, 'utf-8');
+    expect(content).not.toMatch(/from\s+['"]grammy['"]/);
+  });
+});
+
+describe('Phase 6: Hook Migration Map documented', () => {
+  const typesPath = join(PROJECT_ROOT, 'packages', 'agents', 'src', 'pipeline', 'types.ts');
+
+  it('types.ts has hook migration map', () => {
+    const content = readFileSync(typesPath, 'utf-8');
+    expect(content).toMatch(/HOOK MIGRATION MAP/);
+    expect(content).toMatch(/Phase 5 Hook.*Phase 6 Destination/);
+  });
+
+  it('PipelineSurfaceHooks is marked @deprecated', () => {
+    const content = readFileSync(typesPath, 'utf-8');
+    expect(content).toMatch(/@deprecated/);
+  });
+
+  it('types.ts re-exports Phase 6 types', () => {
+    const content = readFileSync(typesPath, 'utf-8');
+    expect(content).toMatch(/from '\.\/surface'/);
+    expect(content).toMatch(/from '\.\/system'/);
+    expect(content).toMatch(/from '\.\/router'/);
+    expect(content).toMatch(/from '\.\/router-config'/);
+    expect(content).toMatch(/from '\.\/tool-executor'/);
+    expect(content).toMatch(/from '\.\/context-assembly'/);
   });
 });
