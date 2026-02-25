@@ -1416,6 +1416,23 @@ docker exec -w /app/server anythingllm node -e "const { PrismaClient } = require
 
 Alternatively, generate a new key in the web UI at `http://localhost:3001` under Settings > Tools > API Keys. Then update `ANYTHINGLLM_API_KEY` in `apps/telegram/.env` and restart the bot/bridge.
 
+**CRITICAL: Ghost env var from native install.** The native Windows app set `ANYTHINGLLM_API_KEY` as a **User-level environment variable**. The `start-bridge.ps1` `.env` loader skips keys that are already set in the environment (line 29: "Only set if not already defined"). This means the old native-app key silently overrides the correct Docker key from `.env`.
+
+Diagnostic:
+```powershell
+# Check for ghost User-level env vars from the native install
+[System.Environment]::GetEnvironmentVariable("ANYTHINGLLM_API_KEY", "User")
+[System.Environment]::GetEnvironmentVariable("ANYTHINGLLM_URL", "User")
+```
+
+Fix:
+```powershell
+# Remove the stale User-level variable — .env will take over
+[System.Environment]::SetEnvironmentVariable("ANYTHINGLLM_API_KEY", $null, "User")
+```
+
+This was the root cause of the persistent 403 loop (Feb 2026). The key in `.env` was correct, the key in the Docker container was correct, but the Bridge process inherited the wrong key from the User environment.
+
 **Case 5: Native app squatting port 3001**
 
 If the native desktop app was accidentally launched or re-added to startup, it will grab port 3001 before Docker can bind it. Symptoms: Docker container starts but AnythingLLM is unreachable, or the container logs show port-in-use errors.

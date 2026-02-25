@@ -1316,6 +1316,17 @@ export async function orchestrateMessage(
         sessionId: sessionTelemetry.sessionId,
         turnNumber: sessionTelemetry.turnNumber,
         priorIntentHash: sessionTelemetry.priorIntentHash,
+      }).then(() => {
+        // Feed write hook: trigger emergence check (non-blocking, fire-and-forget)
+        if (process.env.ATLAS_EMERGENCE_AWARENESS === 'true') {
+          import('../emergence/monitor').then(({ checkForEmergence }) => {
+            checkForEmergence().catch(err => {
+              logger.warn('Emergence check failed (non-fatal)', { error: err });
+            });
+          }).catch(() => {
+            // Dynamic import failed — emergence module not available
+          });
+        }
       }).catch(err => {
         logger.warn('Skill action logging failed (non-fatal)', { error: err });
       });
