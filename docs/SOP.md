@@ -1514,4 +1514,133 @@ The `/atlas-supervisor` v3.0 checks AnythingLLM status via HTTP ping on each `st
 
 ---
 
+## SOP-015: Client RAG Pipeline
+
+**Effective:** 2026-02-26
+**Scope:** Client document ingestion into AnythingLLM workspaces for RAG retrieval
+
+### Overview
+
+Client documents from der-tier (Jim's laptop) and grove-node-1 are automatically synced into AnythingLLM workspaces. The sync script runs on grove-node-1 where AnythingLLM Docker lives. It reads der-tier files via the mapped `T:` drive (SMB).
+
+### Architecture
+
+```
+der-tier (laptop)                grove-node-1 (server)
+  C:\github\clients\   ──SMB──>  T:\github\clients\     (read via T: drive)
+                                  C:\github\clients\     (local files)
+                                        │
+                                  rag-sync.ts (every 15 min)
+                                        │
+                                  AnythingLLM Docker (port 3001)
+                                    ├── monarch workspace
+                                    ├── take-flight workspace
+                                    ├── drumwave workspace
+                                    └── grove-corpus workspace
+```
+
+### Client Folder Structure
+
+```
+C:\github\clients\           (separate git repo)
+├── monarch/                 → workspace: monarch
+├── take-flight/             → workspace: take-flight
+├── drumwave/                → workspace: drumwave
+└── grove-corpus/            → workspace: grove-corpus
+    Each with: correspondence/, deliverables/, research/
+```
+
+Supported file types: `.txt`, `.md`, `.pdf`, `.docx`, `.csv`, `.json`
+
+### Workspace Routing
+
+| Client Folder | AnythingLLM Workspace |
+|---------------|----------------------|
+| `monarch/` | `monarch` |
+| `take-flight/` | `take-flight` |
+| `drumwave/` | `drumwave` |
+| `grove-corpus/` | `grove-corpus` |
+
+### Sync Script
+
+**File:** `scripts/rag-sync.ts`
+
+```bash
+# Manual run
+bun run scripts/rag-sync.ts
+
+# Dry run (preview only)
+bun run scripts/rag-sync.ts --dry-run
+
+# Verbose output
+bun run scripts/rag-sync.ts --verbose
+```
+
+**What it does:**
+1. Preflight: verify local dir, remote dir (T: mount), AnythingLLM health
+2. Scan both source paths for supported files
+3. Hash each file (SHA-256), compare against manifest
+4. Upload new/changed files via `POST /api/v1/document/upload` (multipart)
+5. Embed into workspace via `POST /api/v1/workspace/:slug/update-embeddings`
+6. Update manifest at `data/rag-manifest.json`
+
+**Dedup rules:** Files at both `C:\` and `T:\` with identical hashes upload once (local wins). Files only on `T:\` are uploaded from there.
+
+### Manifest
+
+**File:** `data/rag-manifest.json` (auto-generated, do not edit)
+
+Tracks `{ path, hash, uploadedAt, workspace, docLocation, source }` per file. The `docLocation` is returned by AnythingLLM's upload API and is what `update-embeddings` needs. NOT the original file path.
+
+### Scheduled Sync
+
+**Windows Task Scheduler job:** `Atlas RAG Sync`
+
+```powershell
+# Install/update
+powershell -ExecutionPolicy Bypass -File scripts\install-rag-sync-task.ps1
+
+# Remove
+powershell -ExecutionPolicy Bypass -File scripts\install-rag-sync-task.ps1 -Remove
+```
+
+Runs every 15 minutes. Logs to `data/rag-sync.log` (append mode).
+
+### AnythingLLM Upload API
+
+The `embed_text` endpoint is broken. Use the working multipart upload:
+
+```
+POST /api/v1/document/upload
+Content-Type: multipart/form-data
+Authorization: Bearer <API_KEY>
+Body: file=<binary>
+Response: { success: true, documents: [{ location: "custom-documents/..." }] }
+
+POST /api/v1/workspace/:slug/update-embeddings
+Content-Type: application/json
+Authorization: Bearer <API_KEY>
+Body: { adds: ["custom-documents/..."], deletes: [] }
+```
+
+### Troubleshooting
+
+| Symptom | Cause | Fix |
+|---------|-------|-----|
+| `T:` drive not reachable | der-tier offline or SMB disconnected | `net use T: \\der-tier\Der-TierC` |
+| AnythingLLM not responding | Docker down | `docker start anythingllm` |
+| Upload returns 403 | Bad API key | Check `ANYTHINGLLM_API_KEY` in `.env`, see SOP-014 Case 4 |
+| File not embedding | `docLocation` mismatch | Check manifest, re-run sync |
+| Workspace not found | New client folder | Add to `WORKSPACE_MAP` in `rag-sync.ts` |
+
+### Cross-References
+
+- **SOP-014:** AnythingLLM infrastructure (Docker, recovery, env vars)
+- **Manifest:** `data/rag-manifest.json`
+- **Client docs repo:** `C:\github\clients\` (separate git repo)
+- **Sync script:** `scripts/rag-sync.ts`
+- **Task installer:** `scripts/install-rag-sync-task.ps1`
+
+---
+
 *SOPs are living documents. Update as patterns emerge.*

@@ -50,3 +50,7 @@ apps/telegram/logs/
 packages/agents/scripts/spike-output.md
 packages/agents/scripts/pipeline-audit.json
 apps/telegram/scripts/*.json
+
+# RAG sync operational state
+data/rag-manifest.json
+data/rag-sync.log
