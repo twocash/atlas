@@ -28,11 +28,15 @@ const LOG_PATH = join("C:\\github\\atlas", "data", "rag-sync.log")
 const SUPPORTED_EXTENSIONS = new Set([".txt", ".md", ".pdf", ".docx", ".csv", ".json"])
 
 // Client folder name → AnythingLLM workspace slug
+// Every AnythingLLM workspace gets a matching folder
 const WORKSPACE_MAP: Record<string, string> = {
   monarch: "monarch",
   "take-flight": "take-flight",
   drumwave: "drumwave",
   "grove-corpus": "grove-corpus",
+  "grove-technical": "grove-technical",
+  "grove-vision": "grove-vision",
+  "gtm-consulting": "gtm-consulting",
 }
 
 const DRY_RUN = process.argv.includes("--dry-run")
