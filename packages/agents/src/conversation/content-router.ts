@@ -38,6 +38,7 @@ export type ContentSource =
   | 'linkedin'
   | 'github'
   | 'youtube'
+  | 'notion'
   | 'article'
   | 'generic';
 
@@ -102,6 +103,7 @@ function detectContentSourceFallback(url: string): ContentSource {
     if (hostname.includes('linkedin.com')) return 'linkedin';
     if (hostname.includes('github.com')) return 'github';
     if (hostname.includes('youtube.com') || hostname.includes('youtu.be')) return 'youtube';
+    if (hostname.includes('notion.so') || hostname.includes('notion.site')) return 'notion';
 
     return 'article';
   } catch (error) {

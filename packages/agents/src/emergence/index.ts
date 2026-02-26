@@ -36,7 +36,7 @@ export {
 export {
   generateProposal,
   generateSkillName,
-  formatProposalForTelegram,
+  formatProposalText,
 } from './proposal-generator';
 
 // Monitor (main entry point)

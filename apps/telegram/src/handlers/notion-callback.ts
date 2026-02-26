@@ -1,3 +1,7 @@
+// DEAD CODE after hotfix/notion-handler-pipeline-migration
+// Cleanup ticket: pending
+// Do not add new functionality here.
+
 /**
  * Notion URL Callback Handler
  *
@@ -5,6 +9,9 @@
  * - Work Queue: Process, Mark Done, Update
  * - Feed: Create Task, Details
  * - Unknown: Track, Log, Read
+ *
+ * SUPERSEDED: Notion URLs now route through the Content Router pipeline.
+ * Callback queries for Notion actions are no longer generated.
  */
 
 import type { Context } from 'grammy';

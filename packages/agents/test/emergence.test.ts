@@ -54,7 +54,7 @@ import {
 import {
   generateProposal,
   generateSkillName,
-  formatProposalForTelegram,
+  formatProposalText,
 } from '../src/emergence/proposal-generator';
 
 import {
@@ -339,12 +339,17 @@ describe('proposal generation', () => {
     expect(name).toContain('query');
   });
 
-  it('formats proposal for Telegram', () => {
+  it('formats proposal as plain text (no HTML)', () => {
     const proposal = makeProposal();
-    const formatted = formatProposalForTelegram(proposal);
+    const formatted = formatProposalText(proposal);
 
     expect(formatted).toContain('Pattern Detected');
     expect(formatted).toContain(proposal.suggestedSkillName);
+    // Verify no Telegram HTML tags leak into cognitive layer output
+    expect(formatted).not.toContain('<b>');
+    expect(formatted).not.toContain('</b>');
+    expect(formatted).not.toContain('<i>');
+    expect(formatted).not.toContain('</i>');
   });
 });
 

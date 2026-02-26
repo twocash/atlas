@@ -988,6 +988,7 @@ async function runAgentsUnitTests(cwd: string): Promise<SuiteResult> {
       'test/dialogue.test.ts',
       'test/stab-001-wiring.test.ts',  // STAB-001: Provider + assessment pipeline unit tests
       'test/emergence.test.ts',         // CONV-ARCH-004: Skill Emergence (Sprint 4)
+      'test/architecture-boundary.test.ts', // CPE boundary scanner (5 rules)
     ],
     agentsCwd,
     60000

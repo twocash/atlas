@@ -23,7 +23,7 @@ import {
   extractDomain,
   type ContentSource,
 } from '@atlas/agents/src/conversation/content-router';
-import { isNotionUrl, handleNotionUrl } from './notion-url';
+import { isNotionUrl, extractNotionContent } from '@atlas/agents/src/conversation/notion-extractor';
 import type { Pillar } from './types';
 import type { MediaContext } from '@atlas/agents/src/media/processor';
 import type { AttachmentInfo } from '@atlas/agents/src/conversation/attachments';
@@ -156,39 +156,45 @@ export async function triggerContentConfirmation(
   }
 
   // FETCH URL CONTENT: Tiered extraction (HTTP or Jina Reader) before routing
+  // Notion URLs use API extraction (login-walled, HTTP fetch fails)
   let urlContent;
   try {
     await ctx.replyWithChatAction('typing');
-    const extraction = await extractContent(url);
-    urlContent = toUrlContent(extraction);
 
-    // CONSTRAINT 4: Log level matches severity
-    if (extraction.status === 'failed' || !urlContent.success) {
-      logger.error('URL extraction FAILED in content-flow', {
-        url,
-        method: extraction.method,
-        source: extraction.source,
-        status: extraction.status,
-        error: urlContent.error || extraction.error,
-        fallbackUsed: extraction.fallbackUsed,
-      });
-    } else if (extraction.fallbackUsed || extraction.status === 'degraded') {
-      logger.warn('URL extraction DEGRADED in content-flow (fallback used)', {
-        url,
-        method: extraction.method,
-        source: extraction.source,
-        status: extraction.status,
-        fallbackUsed: extraction.fallbackUsed,
-      });
+    if (route.source === 'notion') {
+      urlContent = await extractNotionContent(url);
     } else {
-      logger.info('URL content extracted for content-flow', {
-        url,
-        method: extraction.method,
-        source: extraction.source,
-        status: extraction.status,
-        title: urlContent.title?.substring(0, 80),
-        tokenEstimate: extraction.tokenEstimate,
-      });
+      const extraction = await extractContent(url);
+      urlContent = toUrlContent(extraction);
+
+      // CONSTRAINT 4: Log level matches severity
+      if (extraction.status === 'failed' || !urlContent.success) {
+        logger.error('URL extraction FAILED in content-flow', {
+          url,
+          method: extraction.method,
+          source: extraction.source,
+          status: extraction.status,
+          error: urlContent.error || extraction.error,
+          fallbackUsed: extraction.fallbackUsed,
+        });
+      } else if (extraction.fallbackUsed || extraction.status === 'degraded') {
+        logger.warn('URL extraction DEGRADED in content-flow (fallback used)', {
+          url,
+          method: extraction.method,
+          source: extraction.source,
+          status: extraction.status,
+          fallbackUsed: extraction.fallbackUsed,
+        });
+      } else {
+        logger.info('URL content extracted for content-flow', {
+          url,
+          method: extraction.method,
+          source: extraction.source,
+          status: extraction.status,
+          title: urlContent.title?.substring(0, 80),
+          tokenEstimate: extraction.tokenEstimate,
+        });
+      }
     }
   } catch (fetchError) {
     logger.error('URL extraction THREW in content-flow -- no content available', {
@@ -282,18 +288,6 @@ export async function maybeHandleAsContentShare(ctx: Context): Promise<boolean> 
 
   if (!detection.isContentShare || !detection.primaryUrl) {
     return false; // Not a content share, continue normal processing
-  }
-
-  // NOTION URL INTELLIGENCE: Check if this is a Notion URL first
-  // Notion URLs get special object-aware handling
-  if (isNotionUrl(detection.primaryUrl)) {
-    logger.info('Detected Notion URL, routing to Notion handler', { url: detection.primaryUrl });
-    const handled = await handleNotionUrl(ctx, detection.primaryUrl);
-    if (handled) {
-      return true; // Notion handler took over
-    }
-    // If Notion handler failed, fall through to generic URL handling
-    logger.warn('Notion URL handler failed, falling back to generic handling');
   }
 
   // Get any non-URL context

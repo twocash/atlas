@@ -172,21 +172,21 @@ export function generateProposal(signal: EmergenceSignal): EmergenceProposal {
 }
 
 // =============================================================================
-// TELEGRAM FORMATTING
+// PROPOSAL FORMATTING (surface-agnostic)
 // =============================================================================
 
 /**
- * Format an EmergenceProposal for Telegram display (HTML parse mode).
+ * Format an EmergenceProposal as plain text for delivery to any surface.
  */
-export function formatProposalForTelegram(proposal: EmergenceProposal): string {
+export function formatProposalText(proposal: EmergenceProposal): string {
   const lines: string[] = [];
 
-  lines.push('<b>Pattern Detected</b>');
+  lines.push('Pattern Detected');
   lines.push('');
   lines.push(proposal.proposalText);
   lines.push('');
-  lines.push(`<i>Suggested skill: ${proposal.suggestedSkillName}</i>`);
-  lines.push(`<i>Seen ${proposal.signal.frequency}x, last: ${formatDate(proposal.signal.lastOccurrence)}</i>`);
+  lines.push(`Suggested skill: ${proposal.suggestedSkillName}`);
+  lines.push(`Seen ${proposal.signal.frequency}x, last: ${formatDate(proposal.signal.lastOccurrence)}`);
 
   return lines.join('\n');
 }

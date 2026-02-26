@@ -1,3 +1,7 @@
+// DEAD CODE after hotfix/notion-handler-pipeline-migration
+// Cleanup ticket: pending
+// Do not add new functionality here.
+
 /**
  * Notion URL Intelligence - Telegram Surface Adapter
  *
@@ -8,6 +12,9 @@
  *   @atlas/agents/src/conversation/notion-lookup.ts
  *
  * Extracted as part of Phase 4 CPE (Cognitive Pipeline Extraction).
+ *
+ * SUPERSEDED: Notion URLs now route through the Content Router pipeline
+ * (content-router.ts → notion-extractor.ts → Socratic interview).
  */
 
 import { InlineKeyboard } from 'grammy';
