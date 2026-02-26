@@ -212,6 +212,15 @@ export interface FeatureFlags {
    * @default false (opt-in - enable with ATLAS_SELF_MODEL=true)
    */
   selfModel: boolean;
+
+  /**
+   * Emergence Awareness (CONV-ARCH-004)
+   * When enabled, monitors Feed 2.0 telemetry for recurring workflow patterns
+   * (frequency + session sequences) and surfaces skill creation proposals.
+   * Fires on Feed write hook (not timer). Rate-limited to 3 proposals/day.
+   * @default false (opt-in - enable with ATLAS_EMERGENCE_AWARENESS=true)
+   */
+  emergenceAwareness: boolean;
 }
 
 /**
@@ -322,6 +331,7 @@ function loadFeatureFlags(): FeatureFlags {
     contentSourcesNotion: process.env.ATLAS_CONTENT_SOURCES_NOTION === 'true', // Default OFF
     // Conversational Architecture (EPIC: CONV-ARCH) — opt-in
     selfModel: process.env.ATLAS_SELF_MODEL === 'true', // Default OFF
+    emergenceAwareness: process.env.ATLAS_EMERGENCE_AWARENESS === 'true', // Default OFF
   };
 }
 
