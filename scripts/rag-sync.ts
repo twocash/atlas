@@ -81,33 +81,40 @@ interface ScanResult {
 // ─── Environment ──────────────────────────────────────────
 
 function loadEnv(): { url: string; apiKey: string } {
-  // Read .env file first, then let process.env override
-  const envPath = join("C:\\github\\atlas", "apps", "telegram", ".env")
+  // Read root .env, falling back to process env vars
+  // NOTE: This intentionally reads from atlas root, NOT apps/telegram/.env
+  const envPaths = [
+    join("C:\\github\\atlas", ".env"),
+    join("C:\\github\\atlas", ".env.local"),
+  ]
   const parsed: Record<string, string> = {}
 
-  try {
-    const text = require("node:fs").readFileSync(envPath, "utf-8") as string
-    for (const line of text.split("\n")) {
-      const trimmed = line.trim()
-      if (!trimmed || trimmed.startsWith("#")) continue
-      const eqIdx = trimmed.indexOf("=")
-      if (eqIdx === -1) continue
-      const key = trimmed.slice(0, eqIdx).trim()
-      const val = trimmed.slice(eqIdx + 1).trim().replace(/^["']|["']$/g, "")
-      parsed[key] = val
+  for (const envPath of envPaths) {
+    try {
+      const text = require("node:fs").readFileSync(envPath, "utf-8") as string
+      for (const line of text.split("\n")) {
+        const trimmed = line.trim()
+        if (!trimmed || trimmed.startsWith("#")) continue
+        const eqIdx = trimmed.indexOf("=")
+        if (eqIdx === -1) continue
+        const key = trimmed.slice(0, eqIdx).trim()
+        const val = trimmed.slice(eqIdx + 1).trim().replace(/^["']|["']$/g, "")
+        parsed[key] = val
+      }
+    } catch {
+      // File doesn't exist, continue
     }
-  } catch {
-    // Fall through to env vars only
   }
 
-  // Process env overrides .env file
-  const url = process.env.ANYTHINGLLM_URL || parsed.ANYTHINGLLM_URL || ""
-  const apiKey = process.env.ANYTHINGLLM_API_KEY || parsed.ANYTHINGLLM_API_KEY || ""
+  // .env file takes priority over stale shell env vars for API key
+  // (shell env caching is a documented trap — see MEMORY.md)
+  const url = parsed.ANYTHINGLLM_URL || process.env.ANYTHINGLLM_URL || ""
+  const apiKey = parsed.ANYTHINGLLM_API_KEY || process.env.ANYTHINGLLM_API_KEY || ""
 
   if (!url || !apiKey) {
     throw new Error(
       "Missing ANYTHINGLLM_URL or ANYTHINGLLM_API_KEY. " +
-        "Set in apps/telegram/.env or environment."
+        "Set in C:\\github\\atlas\\.env or environment variables."
     )
   }
 
@@ -233,6 +240,10 @@ async function checkHealth(config: { url: string; apiKey: string }): Promise<boo
       headers: { Authorization: `Bearer ${config.apiKey}` },
       signal: AbortSignal.timeout(10_000),
     })
+    if (!resp.ok) {
+      const body = await resp.text().catch(() => "(no body)")
+      log(`Health check failed: HTTP ${resp.status} — ${body.slice(0, 200)}`)
+    }
     return resp.ok
   } catch {
     return false
@@ -292,7 +303,7 @@ async function uploadDocument(
       Authorization: `Bearer ${config.apiKey}`,
     },
     body: formData,
-    signal: AbortSignal.timeout(60_000), // large files may take a while
+    signal: AbortSignal.timeout(120_000), // large files may take a while
   })
 
   if (!resp.ok) {
@@ -331,7 +342,7 @@ async function embedInWorkspace(
         "Content-Type": "application/json",
       },
       body: JSON.stringify({ adds: [docLocation], deletes: [] }),
-      signal: AbortSignal.timeout(60_000),
+      signal: AbortSignal.timeout(900_000), // Ollama CPU embedding: batch=1, large docs can take 10-15 min
     }
   )
 
@@ -340,6 +351,35 @@ async function embedInWorkspace(
     throw new Error(
       `Embed failed for ${docLocation} in ${workspaceSlug}: ${resp.status} ${text}`
     )
+  }
+}
+
+/**
+ * Remove a document from a workspace (un-embed and delete).
+ * Call this BEFORE uploading a replacement to prevent duplicate accumulation.
+ */
+async function removeFromWorkspace(
+  config: { url: string; apiKey: string },
+  workspaceSlug: string,
+  docLocation: string
+): Promise<void> {
+  const resp = await fetch(
+    `${config.url}/api/v1/workspace/${workspaceSlug}/update-embeddings`,
+    {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${config.apiKey}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({ adds: [], deletes: [docLocation] }),
+      signal: AbortSignal.timeout(60_000),
+    }
+  )
+
+  if (!resp.ok) {
+    const text = await resp.text().catch(() => "")
+    log(`  WARN: Failed to remove old doc ${docLocation} from ${workspaceSlug}: ${resp.status} ${text.slice(0, 200)}`)
+    // Non-fatal — continue with upload. Worst case is one extra duplicate.
   }
 }
 
@@ -483,6 +523,13 @@ async function main(): Promise<void> {
     try {
       log(`  Uploading: ${file.relPath} → ${workspace}`)
 
+      // Step 0: Remove old version from workspace if it exists (prevents duplicate accumulation)
+      const existingEntry = manifest.entries[file.relPath]
+      if (existingEntry?.docLocation) {
+        logVerbose(`    Removing old doc: ${existingEntry.docLocation}`)
+        await removeFromWorkspace(config, workspace, existingEntry.docLocation)
+      }
+
       // Step 1: Upload to AnythingLLM document store
       const docLocation = await uploadDocument(config, file.absPath)
       logVerbose(`    docLocation: ${docLocation}`)
@@ -491,7 +538,7 @@ async function main(): Promise<void> {
       await embedInWorkspace(config, workspace, docLocation)
       log(`    Embedded in workspace: ${workspace}`)
 
-      // Step 3: Update manifest
+      // Step 3: Update manifest + save incrementally (no lost progress on timeout)
       manifest.entries[file.relPath] = {
         path: file.absPath,
         hash: file.hash,
@@ -500,6 +547,7 @@ async function main(): Promise<void> {
         docLocation,
         source: file.source,
       }
+      await saveManifest(manifest)
       uploaded++
     } catch (err) {
       log(`  ERROR: ${file.relPath}: ${(err as Error).message}`)
@@ -507,7 +555,7 @@ async function main(): Promise<void> {
     }
   }
 
-  // ── Save manifest ──
+  // ── Final manifest save with timestamp ──
   manifest.lastRun = new Date().toISOString()
   if (!DRY_RUN) await saveManifest(manifest)
 
