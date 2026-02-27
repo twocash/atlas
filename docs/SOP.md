@@ -855,61 +855,77 @@ When a feature is shipped via Pit Crew (`update_status → shipped/deployed`):
 ## SOP-013: Atlas Stack Startup
 
 **Effective:** 2026-02-18
-**Updated:** 2026-02-22 (AnythingLLM auto-start, Bridge .env loading, supervisor v3.0)
+**Updated:** 2026-02-27 (auto-start via Task Scheduler, two .env files, Docker service auto-start)
 **Scope:** Starting the Atlas production stack for a dev or monitoring session
 
 ### Overview
 
-The Atlas production stack has 4 components. Bot and Bridge each run in their own terminal.
-AnythingLLM is auto-started by the supervisor if offline. The supervisor monitors all three.
+The Atlas production stack has 4 components. On reboot, the full chain starts automatically
+via Windows Task Scheduler + Docker service. No manual intervention required.
 
 ### Components
 
 | # | Component | Purpose | Start Method |
 |---|-----------|---------|-------------|
-| 1 | Telegram Bot | Handles messages from Jim's phone | `start-telegram.bat` (Terminal 1) |
-| 2 | Bridge Server | Claude Code ↔ Chrome Extension WebSocket | `start-bridge.bat` (Terminal 2) |
-| 3 | AnythingLLM | RAG slot for document search | Auto-started by supervisor, or launch manually |
-| 4 | Supervisor | Monitors all components, dispatches errors to Pit Crew | `/atlas-supervisor` in Claude Code |
+| 1 | Docker + AnythingLLM | RAG document search | Docker service (auto) + container `--restart always` |
+| 2 | Ollama | Embedding engine | Windows service (auto) |
+| 3 | Telegram Bot | Handles messages from Jim's phone | Task Scheduler: `Atlas Telegram Bot` (+90s delay) |
+| 4 | Bridge Server | Claude Code ↔ Chrome Extension WebSocket | Task Scheduler: `Atlas Bridge` (+120s delay) |
+
+### Reboot Chain (Zero-Touch)
+
+On reboot, everything starts automatically in order:
+
+1. **Windows services start**: Docker service (`com.docker.service`, set to `auto`) + Ollama service
+2. **Docker Desktop starts**: `AutoStart: true` in `%APPDATA%\Docker\settings-store.json`
+3. **AnythingLLM container starts**: `--restart always` policy (port 3001)
+4. **+90s: Atlas Telegram Bot starts**: visible terminal window via Task Scheduler
+5. **+120s: Atlas Bridge starts**: visible terminal window via Task Scheduler
+
+The delays give Docker + Ollama time to initialize before the bot/bridge try to connect.
 
 ### Environment Variables
 
-**Single source of truth:** `apps/telegram/.env`
+**Two .env files, two purposes:**
 
-- **Bot** loads `.env` via `dotenv` package (in `src/index.ts`)
-- **Bridge** loads `.env` via PowerShell parser in `start-bridge.ps1` (added 2026-02-22)
-- Both processes see the same env vars. System-level env vars take precedence over `.env` values.
-- **AnythingLLM** uses `ANYTHINGLLM_API_KEY` from `.env` — both bot and bridge need this for RAG queries.
+| File | Contents | Who reads it |
+|------|----------|-------------|
+| `C:\github\atlas\.env` (root) | `ANYTHINGLLM_URL`, `ANYTHINGLLM_API_KEY` | Bot, Bridge, rag-sync.ts |
+| `apps/telegram/.env` | `TELEGRAM_BOT_TOKEN`, `NOTION_API_KEY`, `ANTHROPIC_API_KEY`, etc. | Bot, Bridge |
 
-### Startup Sequence
+**Loading order (both startup scripts AND dotenv in code):**
+1. Root `.env` loaded FIRST (infra vars)
+2. `apps/telegram/.env` loaded SECOND (API keys)
+3. dotenv won't overwrite - first file wins for shared keys
+4. System-level env vars take precedence over both
 
-**Step 1 — Start the Telegram Bot (Terminal 1)**
+**WARNING - ENV VAR TRAP (burned 4 times):** If a stale shell has cached env vars, they override .env files. Fix: start a fresh shell or `unset` the offending var. Do NOT rearchitect the loading chain.
 
+### Manual Start (Without Reboot)
+
+```powershell
+# Start via Task Scheduler (same as reboot would)
+Start-ScheduledTask -TaskName 'Atlas Telegram Bot'
+Start-ScheduledTask -TaskName 'Atlas Bridge'
+
+# Or start directly in current terminal
+.\start-telegram.ps1    # Bot
+.\start-bridge.ps1      # Bridge
 ```
-C:\github\atlas\start-telegram.bat
+
+### Task Scheduler Management
+
+```powershell
+# View all Atlas tasks
+Get-ScheduledTask -TaskName 'Atlas*' | Format-Table TaskName, State
+
+# Stop/Start individual tasks
+Stop-ScheduledTask -TaskName 'Atlas Telegram Bot'
+Start-ScheduledTask -TaskName 'Atlas Telegram Bot'
+
+# Re-install tasks (requires admin)
+powershell -ExecutionPolicy Bypass -File scripts\install-atlas-startup-tasks.ps1
 ```
-
-Wait for: `Bot started as @MyBoyAtlas_bot`
-
-**Step 2 — Start the Bridge Server (Terminal 2)**
-
-```
-C:\github\atlas\start-bridge.bat
-```
-
-Wait for: `Bridge identity hydrated` and `Claude Code connected via WebSocket!`
-
-The bridge startup script loads env vars from `apps/telegram/.env` before launching bun.
-
-**Step 3 — Start the Supervisor (Claude Code)**
-
-In a Claude Code session, invoke `/atlas-supervisor`.
-
-The supervisor will:
-1. Detect running processes (bot PID, bridge port, AnythingLLM ping)
-2. Auto-start AnythingLLM if it's offline
-3. Check Bridge identity health (constitution, soul, user, memory, goals)
-4. Attach to log files for monitoring
 
 ### Log Files
 
@@ -917,8 +933,8 @@ Both start scripts write logs to:
 
 ```
 C:\github\atlas\apps\telegram\data\logs\
-  atlas-bot.log       ← Telegram bot stdout
-  atlas-bridge.log    ← Bridge server stdout
+  atlas-bot.log       <- Telegram bot stdout
+  atlas-bridge.log    <- Bridge server stdout
 ```
 
 **Note:** Log files are UTF-16 encoded. Use PowerShell for searching:
@@ -930,10 +946,20 @@ Standard `grep` will NOT work on these files.
 
 ### Stopping the Stack
 
-- **Bot:** Ctrl+C in Terminal 1 (or close the window)
-- **Bridge:** Ctrl+C in Terminal 2 (or close the window)
-- **AnythingLLM:** Close the desktop app (or let supervisor manage it)
-- **Supervisor:** Say "stop" in the Claude Code session
+- **Bot:** `Stop-ScheduledTask -TaskName 'Atlas Telegram Bot'` or Ctrl+C in terminal
+- **Bridge:** `Stop-ScheduledTask -TaskName 'Atlas Bridge'` or Ctrl+C in terminal
+- **AnythingLLM:** `docker stop anythingllm` (auto-restarts on next Docker start)
+
+### Health Check
+
+Bot startup runs a comprehensive health check (32 checks) including:
+- ENV: all required vars present
+- Notion: Feed 2.0 + Work Queue 2.0 accessible
+- Claude: Sonnet + Haiku connected
+- **RAG: AnythingLLM online + per-workspace doc counts** (delegated to Bridge's shared `healthCheck()`)
+- Data: SOUL.md, USER.md, MEMORY.md, voice configs
+
+If RAG is offline, the bot continues but injects `[RAG offline - answering without client docs]` into responses (Constraint 4).
 
 ### When to Skip the Bridge
 
@@ -943,21 +969,16 @@ If you're only using Telegram, you can skip starting the bridge.
 ### Switching Between Production and Dev
 
 Production bot runs from `C:\github\atlas\` (master branch).
-Dev work happens in a worktree. To supervise a dev worktree bot:
-
-1. Start the bot from the worktree (e.g., `C:\github\atlas-repairs\start-telegram.bat`)
-2. Invoke `/atlas-supervisor` — it detects the running PID via the lock file
+Dev work happens in a worktree. See Constraint 7.
 
 ### Acceptance Criteria
 
 - [ ] Bot responds to Telegram messages
 - [ ] Bridge responds on `ws://localhost:3848` (if started)
 - [ ] Bridge identity fully hydrated (constitution, soul, user, memory, goals)
-- [ ] AnythingLLM online (auto-started or manual)
+- [ ] AnythingLLM online with doc counts > 0 in health check
 - [ ] Log files are being written under `data/logs/`
-- [ ] Supervisor dashboard shows all green
-
-Or say: "run tests", "quality check", "master blaster"
+- [ ] Health check shows 32/32 pass
 
 ---
 
@@ -1287,7 +1308,7 @@ This includes:
 ## SOP-014: AnythingLLM RAG Infrastructure
 
 **Effective:** 2026-02-18
-**Updated:** 2026-02-24 (Docker migration, multi-user mode, reboot chain)
+**Updated:** 2026-02-27 (env var fix, Docker service auto-start, health check, API jank docs)
 **Scope:** AnythingLLM Docker container on grove-node-1
 
 ### Overview
@@ -1309,11 +1330,12 @@ AnythingLLM is a RAG (Retrieval-Augmented Generation) server running as a **Dock
 | **Host storage** | `C:\anythingllm-storage` -> `/app/server/storage` (container) |
 | **Tailscale IP** | `100.80.12.118` (remote access: `http://100.80.12.118:3001`) |
 | **Multi-user mode** | Enabled |
-| **Embedding engine** | Native (MiniLM-L6-v2) |
+| **Embedding engine** | Ollama + snowflake-arctic-embed2 (1024 dims, 8K context) |
+| **Ollama host** | `http://host.docker.internal:11434` (Ollama runs on host, Docker reaches via bridge) |
 | **Vector DB** | lancedb |
 | **LLM provider** | Anthropic (Claude Sonnet 4), set via Docker `-e` env vars |
 | **LLM model** | `claude-sonnet-4-20250514` |
-| **Workspaces** | My Workspace, grove-technical, grove-vision, monarch, take-flight, gtm-consulting |
+| **Workspaces** | grove-technical, grove-vision, monarch, take-flight, gtm-consulting, drumwave, grove-corpus |
 
 **Storage is PRODUCTION DATA -- NEVER WIPE `C:\anythingllm-storage`.**
 
@@ -1321,29 +1343,48 @@ AnythingLLM is a RAG (Retrieval-Augmented Generation) server running as a **Dock
 
 On a normal reboot, AnythingLLM comes back automatically with no human intervention:
 
-1. Windows login
-2. Docker Desktop auto-starts (registered in `HKCU\Software\Microsoft\Windows\CurrentVersion\Run`, added 2026-02-24)
-3. Docker daemon starts
+1. Docker service (`com.docker.service`) starts automatically (set to `auto` on 2026-02-27)
+2. Docker Desktop starts (AutoStart: true in `%APPDATA%\Docker\settings-store.json`)
+3. Docker daemon initializes
 4. AnythingLLM container auto-starts (`--restart always` policy)
+5. Ollama starts as Windows service (auto)
 
 The native Windows desktop app has been **removed** from `HKCU\...\Run` to prevent it from squatting port 3001 before Docker comes up. If AnythingLLM fails to start after reboot, check Case 5 below.
 
+**Ollama cold-start warning:** First embedding query after Docker restart takes 15-20s while Ollama loads the model. The AnythingLLM client uses a 20s timeout to survive this.
+
 ### Environment Variables
 
-Single source of truth: `apps/telegram/.env`
+**Two .env files (updated 2026-02-27):**
 
-```
-ANYTHINGLLM_URL=http://localhost:3001
-ANYTHINGLLM_API_KEY=<from apps/telegram/.env>
-```
+| File | Contains | Purpose |
+|------|----------|---------|
+| `C:\github\atlas\.env` (root) | `ANYTHINGLLM_URL`, `ANYTHINGLLM_API_KEY` | Shared infra vars |
+| `apps/telegram/.env` | `NOTION_API_KEY`, `ANTHROPIC_API_KEY`, etc. | Surface API keys |
 
-Both bot and bridge read from this `.env` file:
-- Bot loads via `dotenv` package in `src/index.ts`
-- Bridge loads via PowerShell parser in `start-bridge.ps1`
+**AnythingLLM vars were REMOVED from `apps/telegram/.env` on 2026-02-26 and moved to root `.env`.** Both bot and bridge now load root `.env` first, then `apps/telegram/.env` second:
+- **Bot**: `start-telegram.ps1` loads both .env files via PowerShell before bun launch. `dotenv` in `src/index.ts` also loads `apps/telegram/.env`.
+- **Bridge**: `start-bridge.ps1` loads both .env files via PowerShell. `dotenv` in `server.ts` loads both as defense-in-depth.
+
+**WARNING - ENV VAR TRAP (burned 4 times):** Stale shell env vars override .env files. If RAG shows "Not configured" despite correct .env, start a fresh shell. Do NOT rearchitect the loading chain.
 
 ### Health Check
 
-Atlas `/health` command includes an AnythingLLM check via `checkAnythingLlm()` in `health.ts`.
+Bot startup includes an AnythingLLM health check that delegates to Bridge's shared `healthCheck()` in `packages/bridge/src/context/anythingllm-client.ts`. Returns structured `AnythingLLMHealthReport`:
+- Auth verification (Bearer token against `/api/v1/auth`)
+- Per-workspace doc counts (queries each configured workspace)
+- Workspace routing via `getConfiguredWorkspaces()` in `workspace-router.ts`
+
+### API Jank (DOCUMENTED)
+
+AnythingLLM's API has quirks that have burned debugging time:
+
+| Issue | Details | Workaround |
+|-------|---------|------------|
+| **Workspace returns array** | `GET /api/v1/workspace/:slug` returns `{ workspace: [{...}] }` not `{ workspace: {...} }` | Access `data.workspace[0]` |
+| **embed_text is broken** | REST endpoint doesn't work | Use multipart upload + `update-embeddings` (SOP-015) |
+| **Chat history poisoning** | Stale wrong answers in `openAiHistory` teach model to repeat them | Delete `workspace_chats` records |
+| **Ollama cold-start timeout** | First query after restart takes 15-20s | `TIMEOUT_MS = 20_000` in client |
 
 Manual check (unauthenticated):
 ```bash
