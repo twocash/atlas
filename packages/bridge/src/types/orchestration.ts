@@ -63,6 +63,9 @@ export interface ContextSlot {
   populated: boolean
 }
 
+/** Total token budget for all slots combined */
+export const TOTAL_CONTEXT_BUDGET = 8000
+
 /** Default token budgets per slot (configurable) */
 export const SLOT_TOKEN_BUDGETS: Record<SlotId, number> = {
   intent: 500,
@@ -71,7 +74,7 @@ export const SLOT_TOKEN_BUDGETS: Record<SlotId, number> = {
   voice: 1000,
   browser: 1500,
   output: 500,
-  session: 1000,
+  session: TOTAL_CONTEXT_BUDGET,
   self_model: 500,
 }
 
@@ -86,9 +89,6 @@ export const SLOT_PRIORITIES: Record<SlotId, number> = {
   domain_rag: 20, // Nice-to-have — corpus knowledge
   session: 10,    // Trimmed first — multi-turn context
 }
-
-/** Total token budget for all slots combined */
-export const TOTAL_CONTEXT_BUDGET = 8000
 
 // ─── Orchestration Request / Response ────────────────────────
 
@@ -113,6 +113,9 @@ export interface OrchestrationRequest {
 
   /** Timestamp when the bridge received this message */
   timestamp: string
+
+  /** Whether this is a continuation of an existing session (turnNumber > 1) */
+  isSessionContinuation?: boolean
 }
 
 /**

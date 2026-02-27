@@ -991,6 +991,8 @@ async function runAgentsUnitTests(cwd: string): Promise<SuiteResult> {
       'test/emergence.test.ts',         // CONV-ARCH-004: Skill Emergence (Sprint 4)
       'test/architecture-boundary.test.ts', // CPE boundary scanner (5 rules)
       'test/intent-interpreter-regression.test.ts', // SESSION-TELEMETRY-QA: Autonomaton Loop 1 — reportFailure wiring
+      'test/session-manager.test.ts',  // SESSION-TELEMETRY P0: SessionManager lifecycle
+      'test/session-journal.test.ts',  // SESSION-TELEMETRY P0: Journal + artifact
     ],
     agentsCwd,
     60000

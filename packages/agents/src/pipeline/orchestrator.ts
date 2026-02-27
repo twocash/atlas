@@ -64,6 +64,7 @@ import {
   recordTurn,
   isInPhase,
 } from '../conversation/conversation-state';
+import { sessionManager } from '../sessions/session-manager';
 import {
   incorporateClarification,
   resolveAfterClarification,
@@ -298,6 +299,18 @@ export async function orchestrateMessage(
   // Session telemetry
   const currentIntentHash = messageText ? getIntentHash(messageText).hash : undefined;
   const sessionTelemetry = recordTurn(chatId, userId, currentIntentHash);
+
+  // Session tracking (P0 SessionManager)
+  if (process.env.ATLAS_SESSION_TRACKING === 'true') {
+    sessionManager.startTurn(
+      sessionTelemetry.sessionId,
+      messageText,
+      'telegram',
+      { intentHash: currentIntentHash },
+    ).catch(err => {
+      logger.warn('SessionManager.startTurn failed (non-fatal)', { error: (err as Error).message });
+    });
+  }
 
   // React to indicate message received
   await hooks.setReaction(REACTIONS.READING);
@@ -1333,6 +1346,20 @@ export async function orchestrateMessage(
     }
 
     completeTrace(trace);
+
+    // Session tracking: completeTurn with response data (P0 SessionManager)
+    if (process.env.ATLAS_SESSION_TRACKING === 'true') {
+      const responsePreview = responseText ? responseText.substring(0, 200) : undefined;
+      sessionManager.completeTurn(
+        sessionTelemetry.sessionId,
+        {
+          responsePreview,
+          toolsUsed: toolsUsed.length > 0 ? toolsUsed : undefined,
+        },
+      ).catch(err => {
+        logger.warn('SessionManager.completeTurn failed (non-fatal)', { error: (err as Error).message });
+      });
+    }
 
     logger.info('Conversation response sent', {
       userId,
