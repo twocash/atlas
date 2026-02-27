@@ -12,7 +12,7 @@
  */
 
 import { Client } from "@notionhq/client";
-import { NOTION_DB } from "./config";
+import { NOTION_DB, ATLAS_NODE } from "./config";
 
 // ─── Configuration ───────────────────────────────────────
 
@@ -182,7 +182,7 @@ async function escalateToFeed(
           title: [{ text: { content: title.substring(0, 100) } }],
         },
         Source: {
-          select: { name: "Atlas [telegram]" },
+          select: { name: `Atlas [${ATLAS_NODE}]` },
         },
         "Action Type": {
           select: { name: "Alert" },

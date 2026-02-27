@@ -29,6 +29,7 @@ import { assessContext } from './context-assessor';
 import { getIntentInterpreter } from './intent-interpreter';
 import { RegexFallbackInterpreter } from './intent-interpreter';
 import { logTrainingEntry } from './training-collector';
+import { reportFailure } from '@atlas/shared/error-escalation';
 
 // ==========================================
 // Pillar Mapping (for tap-friendly buttons + Notion answer maps)
@@ -273,6 +274,15 @@ export async function mapAnswer(
       // Fail loud per ADR-008 — but don't block the answer mapping
       const errorMsg = err instanceof Error ? err.message : String(err);
       console.error(`[mapAnswer] Intent interpretation failed: ${errorMsg}`);
+
+      // Autonomaton Loop 1: report to error escalation pipeline
+      reportFailure('intent-interpretation', err, {
+        timestamp: new Date().toISOString(),
+        answer: answer.substring(0, 200),
+        questionSlot: question.targetSlot,
+        questionText: question.text?.substring(0, 200),
+        suggestedFix: 'Check IntentInterpreter health — if Haiku is failing, the RatchetInterpreter should be catching it. If this fires, the ratchet itself is broken.',
+      });
 
       // Preserve user direction even on failure
       resolved.extraContext = {
