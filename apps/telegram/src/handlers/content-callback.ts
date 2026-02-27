@@ -28,6 +28,7 @@ import { getPatternSuggestion, recordClassificationFeedback } from '@atlas/agent
 import type { Pillar, RequestType } from '@atlas/agents/src/conversation/types';
 import { logAction, getIntentHash, isFeatureEnabled, triggerContextualExtraction } from '../skills';
 import { getState } from '@atlas/agents/src/conversation/conversation-state';
+import { sessionManager } from '@atlas/agents/src/sessions/session-manager';
 import { safeAnswerCallback } from '../utils/telegram-helpers';
 import {
   runResearchAgentWithNotifications,
@@ -741,6 +742,25 @@ async function handleConfirm(
       );
     } else {
       await ctx.reply('Logged (links unavailable)');
+    }
+
+    // Session tracking: completeTurn for content confirmation (P0 SessionManager)
+    if (isFeatureEnabled('sessionTracking')) {
+      const stChatId = ctx.chat?.id;
+      const stState = stChatId ? getState(stChatId) : undefined;
+      if (stState?.sessionId) {
+        sessionManager.completeTurn(
+          stState.sessionId,
+          {
+            responsePreview: `Confirmed: ${pending.pillar} / ${pending.requestType}`,
+            toolsUsed: ['content-confirm'],
+          },
+        ).catch(err => {
+          logger.warn('SessionManager.completeTurn failed in content-callback (non-fatal)', {
+            error: (err as Error).message,
+          });
+        });
+      }
     }
 
     // Log action for skill pattern detection (Phase 1)

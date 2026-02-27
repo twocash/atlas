@@ -221,6 +221,17 @@ export interface FeatureFlags {
    * @default false (opt-in - enable with ATLAS_EMERGENCE_AWARENESS=true)
    */
   emergenceAwareness: boolean;
+
+  // === Session Tracking (Sprint: SESSION-TELEMETRY P0) ===
+
+  /**
+   * Session Tracking
+   * When enabled, drives the SessionManager with startTurn()/completeTurn()
+   * calls from the orchestrator and content-callback. Writes session journals,
+   * Feed 2.0 completion entries, and RAG artifacts.
+   * @default false (opt-in - enable with ATLAS_SESSION_TRACKING=true)
+   */
+  sessionTracking: boolean;
 }
 
 /**
@@ -332,6 +343,8 @@ function loadFeatureFlags(): FeatureFlags {
     // Conversational Architecture (EPIC: CONV-ARCH) — opt-in
     selfModel: process.env.ATLAS_SELF_MODEL === 'true', // Default OFF
     emergenceAwareness: process.env.ATLAS_EMERGENCE_AWARENESS === 'true', // Default OFF
+    // Session Tracking (Sprint: SESSION-TELEMETRY P0) — opt-in
+    sessionTracking: process.env.ATLAS_SESSION_TRACKING === 'true', // Default OFF
   };
 }
 

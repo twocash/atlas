@@ -36,6 +36,7 @@ import { assembleDomainRagSlot } from "./domain-rag-slot"
 import { assemblePovSlot } from "./pov-slot"
 import { assembleSelfModelSlot, type SelfModelProvider } from "./self-model-slot"
 import { reportFailure } from "@atlas/shared/error-escalation"
+import { sessionManager } from "@atlas/agents/src/sessions/session-manager"
 
 // ─── Assembly Result ──────────────────────────────────────
 
@@ -375,7 +376,15 @@ export async function assembleContext(
   const outputSlot = assembleOutputSlot(landingSurface)
 
   // Step 6: Assemble session slot (Slot 7)
-  const { slot: sessionSlot } = assembleSessionSlot(request.sessionContext)
+  // If no session context from surface, try SessionManager for intellectual thread
+  let sessionContext = request.sessionContext;
+  if (!sessionContext && request.sessionId) {
+    const smContext = sessionManager.getSessionContext(request.sessionId);
+    if (smContext) {
+      sessionContext = smContext;
+    }
+  }
+  const { slot: sessionSlot } = assembleSessionSlot(sessionContext)
 
   // Step 7: Enforce budget
   const rawSlots: ContextSlot[] = [
