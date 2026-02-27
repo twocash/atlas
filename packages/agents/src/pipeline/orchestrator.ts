@@ -301,7 +301,7 @@ export async function orchestrateMessage(
   const sessionTelemetry = recordTurn(chatId, userId, currentIntentHash);
 
   // Session tracking (P0 SessionManager)
-  if (process.env.ATLAS_SESSION_TRACKING === 'true') {
+  if (process.env.ATLAS_SESSION_TRACKING !== 'false') {
     sessionManager.startTurn(
       sessionTelemetry.sessionId,
       messageText,
@@ -1348,7 +1348,7 @@ export async function orchestrateMessage(
     completeTrace(trace);
 
     // Session tracking: completeTurn with response data (P0 SessionManager)
-    if (process.env.ATLAS_SESSION_TRACKING === 'true') {
+    if (process.env.ATLAS_SESSION_TRACKING !== 'false') {
       const responsePreview = responseText ? responseText.substring(0, 200) : undefined;
       sessionManager.completeTurn(
         sessionTelemetry.sessionId,

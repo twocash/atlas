@@ -229,7 +229,7 @@ export interface FeatureFlags {
    * When enabled, drives the SessionManager with startTurn()/completeTurn()
    * calls from the orchestrator and content-callback. Writes session journals,
    * Feed 2.0 completion entries, and RAG artifacts.
-   * @default false (opt-in - enable with ATLAS_SESSION_TRACKING=true)
+   * @default true (disable with ATLAS_SESSION_TRACKING=false)
    */
   sessionTracking: boolean;
 }
@@ -344,7 +344,7 @@ function loadFeatureFlags(): FeatureFlags {
     selfModel: process.env.ATLAS_SELF_MODEL === 'true', // Default OFF
     emergenceAwareness: process.env.ATLAS_EMERGENCE_AWARENESS === 'true', // Default OFF
     // Session Tracking (Sprint: SESSION-TELEMETRY P0) — opt-in
-    sessionTracking: process.env.ATLAS_SESSION_TRACKING === 'true', // Default OFF
+    sessionTracking: process.env.ATLAS_SESSION_TRACKING !== 'false', // Default ON
   };
 }
 
