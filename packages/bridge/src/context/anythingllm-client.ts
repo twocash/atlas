@@ -27,10 +27,10 @@ export interface AnythingLLMResponse {
 
 // ─── Configuration ───────────────────────────────────────
 
-// Increased from 5000ms — AnythingLLM vector search can take 6-10s under load.
-// MCP server uses 30s; this slot query timeout should be generous enough to
-// avoid intermittent failures without blocking the pipeline. (BUG-005)
-const TIMEOUT_MS = 12_000
+// Increased from 12000ms — Ollama embedding cold-start after Docker restart can
+// take 15-20s on first query. MCP server uses 30s; this should be generous
+// enough to survive cold-start without blocking the pipeline. (BUG-005, BUG-006)
+const TIMEOUT_MS = 20_000
 
 function getConfig(): { url: string; apiKey: string } | null {
   const url = process.env.ANYTHINGLLM_URL?.trim()
@@ -41,21 +41,43 @@ function getConfig(): { url: string; apiKey: string } | null {
 
 // ─── Health Check ────────────────────────────────────────
 
+export interface WorkspaceHealth {
+  slug: string
+  docCount: number
+  status: 'ok' | 'empty' | 'not_found' | 'error'
+  message: string
+}
+
+export interface AnythingLLMHealthReport {
+  configured: boolean
+  reachable: boolean
+  authenticated: boolean
+  error?: string
+  workspaces: WorkspaceHealth[]
+}
+
 /**
- * Check if AnythingLLM server is reachable and authenticated.
+ * Comprehensive health check for AnythingLLM: auth + workspace doc counts.
+ * Surface-agnostic — usable by any health check consumer.
  */
-export async function healthCheck(): Promise<boolean> {
+export async function healthCheck(): Promise<AnythingLLMHealthReport> {
   const config = getConfig()
   if (!config) {
-    console.warn("[AnythingLLM] Not configured — missing ANYTHINGLLM_URL or ANYTHINGLLM_API_KEY")
-    return false
+    return {
+      configured: false,
+      reachable: false,
+      authenticated: false,
+      error: `Missing ${!process.env.ANYTHINGLLM_URL?.trim() ? 'ANYTHINGLLM_URL' : 'ANYTHINGLLM_API_KEY'}`,
+      workspaces: [],
+    }
   }
 
   console.info(`[AnythingLLM] Config: url=${config.url}, key=${config.apiKey.slice(0, 4)}...(${config.apiKey.length} chars)`)
 
+  // Auth check
   try {
     const controller = new AbortController()
-    const timeout = setTimeout(() => controller.abort(), TIMEOUT_MS)
+    const timeout = setTimeout(() => controller.abort(), 10_000)
 
     const response = await fetch(`${config.url}/api/v1/auth`, {
       method: "GET",
@@ -64,10 +86,73 @@ export async function healthCheck(): Promise<boolean> {
     })
     clearTimeout(timeout)
 
-    return response.ok
+    if (!response.ok) {
+      return {
+        configured: true,
+        reachable: true,
+        authenticated: false,
+        error: `Auth failed (HTTP ${response.status})`,
+        workspaces: [],
+      }
+    }
   } catch (err) {
-    console.warn("[AnythingLLM] Health check failed:", (err as Error).message)
-    return false
+    return {
+      configured: true,
+      reachable: false,
+      authenticated: false,
+      error: (err as Error).message,
+      workspaces: [],
+    }
+  }
+
+  // Workspace health — query each configured workspace for doc count
+  const { getConfiguredWorkspaces } = await import("./workspace-router")
+  const workspaces: WorkspaceHealth[] = []
+
+  for (const slug of getConfiguredWorkspaces()) {
+    try {
+      const controller = new AbortController()
+      const timeout = setTimeout(() => controller.abort(), 10_000)
+      const response = await fetch(`${config.url}/api/v1/workspace/${slug}`, {
+        headers: { Authorization: `Bearer ${config.apiKey}` },
+        signal: controller.signal,
+      })
+      clearTimeout(timeout)
+
+      if (response.ok) {
+        // AnythingLLM returns workspace as a single-element array: { workspace: [{ documents: [...] }] }
+        const data = await response.json() as { workspace?: Array<{ documents?: unknown[] }> }
+        const ws = Array.isArray(data?.workspace) ? data.workspace[0] : data?.workspace
+        const docCount = (ws as { documents?: unknown[] })?.documents?.length ?? 0
+        workspaces.push({
+          slug,
+          docCount,
+          status: docCount > 0 ? 'ok' : 'empty',
+          message: docCount > 0 ? `${slug}: ${docCount} docs` : `${slug}: 0 docs (empty)`,
+        })
+      } else {
+        workspaces.push({
+          slug,
+          docCount: 0,
+          status: 'not_found',
+          message: `${slug}: not found (HTTP ${response.status})`,
+        })
+      }
+    } catch {
+      workspaces.push({
+        slug,
+        docCount: 0,
+        status: 'error',
+        message: `${slug}: query failed`,
+      })
+    }
+  }
+
+  return {
+    configured: true,
+    reachable: true,
+    authenticated: true,
+    workspaces,
   }
 }
 

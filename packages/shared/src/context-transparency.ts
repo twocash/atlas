@@ -4,26 +4,41 @@
  * When any enrichment slot fails or returns empty, this utility
  * produces a concise note for injection into the system prompt so
  * the LLM knows it's operating with partial context.
+ *
+ * Constraint 4: Fail Fast, Fail Loud. These notes must be specific
+ * and actionable, not vague. The user (Jim) should know exactly what's
+ * missing and what that means for the response quality.
  */
 
-import type { SlotResult } from './types/slot-result';
-import { SLOT_DISPLAY_NAMES } from './types/slot-result';
+import type { SlotResult, SlotName } from './types/slot-result';
+
+/**
+ * Slot-specific failure instructions for the LLM.
+ *
+ * Each entry tells the LLM exactly what to say to the user when
+ * that slot fails. No vague language — explicit and actionable.
+ */
+const SLOT_FAILURE_INSTRUCTIONS: Record<SlotName, string> = {
+  domain_rag: '[RAG offline — answering without client docs]. You MUST include this exact bracketed note at the START of your response when domain_rag is unavailable. Do NOT paraphrase it as "information gap" or "domain knowledge unavailable". Say it verbatim.',
+  pov: 'POV Library unavailable — responding without strategic position context.',
+  voice: 'Voice calibration unavailable — using default tone.',
+  intent: 'Triage failed — intent classification may be inaccurate.',
+  browser: 'No browser context available.',
+  output: 'Output surface context unavailable.',
+};
 
 /**
  * Builds a consolidated degraded-context note from slot results.
  *
  * Returns `null` when all slots are ok — no note is needed.
  * When one or more slots are degraded or failed, returns a single
- * human-readable string suitable for injection into the system prompt.
+ * string suitable for injection into the system prompt with explicit
+ * instructions for how the LLM should communicate the degradation.
  *
  * @example
- *   // Two degraded slots
+ *   // RAG failed
  *   buildDegradedContextNote(results)
- *   // => "⚠️ Context Note: Domain RAG unavailable (AnythingLLM timeout). Voice unavailable (No voice match). Responses may lack domain specificity and tone calibration."
- *
- *   // All ok
- *   buildDegradedContextNote(results)
- *   // => null
+ *   // => "⚠️ DEGRADED CONTEXT — you are missing information sources:\n\n- [RAG offline — answering without client docs]..."
  */
 export function buildDegradedContextNote(
   slotResults: SlotResult[],
@@ -32,13 +47,13 @@ export function buildDegradedContextNote(
 
   if (nonOk.length === 0) return null;
 
-  const details = nonOk
+  const instructions = nonOk
     .map((s) => {
-      const label = SLOT_DISPLAY_NAMES[s.slotName] ?? s.slotName;
-      const suffix = s.reason ? ` (${s.reason})` : '';
-      return `${label} unavailable${suffix}`;
+      const instruction = SLOT_FAILURE_INSTRUCTIONS[s.slotName] ?? `${s.slotName} unavailable.`;
+      const reason = s.reason ? ` (Reason: ${s.reason})` : '';
+      return `- ${instruction}${reason}`;
     })
-    .join('. ');
+    .join('\n');
 
-  return `⚠️ Context Note: ${details}. Responses may lack specificity in affected areas.`;
+  return `⚠️ DEGRADED CONTEXT — you are missing information sources. Be transparent about this:\n\n${instructions}`;
 }

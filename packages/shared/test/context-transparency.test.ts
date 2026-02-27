@@ -112,7 +112,7 @@ describe('buildDegradedContextNote', () => {
     expect(buildDegradedContextNote([])).toBeNull()
   })
 
-  it('generates note for single failed slot', () => {
+  it('generates note for single failed slot with RAG-specific instruction', () => {
     const slots: SlotResult[] = [
       wrapSlotResult('intent', 'ok'),
       wrapSlotResult('domain_rag', null, 'Notion API timeout'),
@@ -120,9 +120,9 @@ describe('buildDegradedContextNote', () => {
     ]
     const note = buildDegradedContextNote(slots)
     expect(note).not.toBeNull()
-    expect(note).toContain('Domain RAG unavailable')
+    expect(note).toContain('RAG offline')
+    expect(note).toContain('answering without client docs')
     expect(note).toContain('Notion API timeout')
-    expect(note).toContain('Responses may lack specificity')
   })
 
   it('generates note for single degraded slot', () => {
@@ -132,7 +132,7 @@ describe('buildDegradedContextNote', () => {
     ]
     const note = buildDegradedContextNote(slots)
     expect(note).not.toBeNull()
-    expect(note).toContain('Voice unavailable')
+    expect(note).toContain('Voice calibration unavailable')
     expect(note).toContain('Voice config not found')
   })
 
@@ -144,9 +144,9 @@ describe('buildDegradedContextNote', () => {
       wrapSlotResult('voice', null, 'Voice fetch error'),
     ]
     const note = buildDegradedContextNote(slots)!
-    expect(note).toContain('Domain RAG unavailable')
+    expect(note).toContain('RAG offline')
     expect(note).toContain('POV Library unavailable')
-    expect(note).toContain('Voice unavailable')
+    expect(note).toContain('Voice calibration unavailable')
     // All three reasons present
     expect(note).toContain('RAG down')
     expect(note).toContain('Empty POV')
@@ -166,14 +166,13 @@ describe('buildDegradedContextNote', () => {
     ]
     const note = buildDegradedContextNote(slots)!
     expect(note).not.toContain('Triage')
-    expect(note).toContain('Domain RAG')
+    expect(note).toContain('RAG offline')
   })
 
   it('handles slot without explicit reason', () => {
     const slots: SlotResult[] = [wrapSlotResult('domain_rag', null)]
     const note = buildDegradedContextNote(slots)!
-    // Default reason from wrapSlotResult
-    expect(note).toContain('Domain RAG unavailable')
+    expect(note).toContain('RAG offline')
     expect(note).toContain('Slot returned no content')
   })
 
@@ -185,10 +184,10 @@ describe('buildDegradedContextNote', () => {
       wrapSlotResult('voice', null, 'voice err'),
     ]
     const note = buildDegradedContextNote(slots)!
-    expect(note).toContain('Triage unavailable')
-    expect(note).toContain('Domain RAG unavailable')
+    expect(note).toContain('Triage failed')
+    expect(note).toContain('RAG offline')
     expect(note).toContain('POV Library unavailable')
-    expect(note).toContain('Voice unavailable')
+    expect(note).toContain('Voice calibration unavailable')
   })
 })
 
@@ -206,8 +205,9 @@ describe('SlotResult → degraded note integration', () => {
     ]
     const note = buildDegradedContextNote(slots)!
     // Only degraded/failed appear
-    expect(note).toContain('Domain RAG unavailable')
-    expect(note).toContain('Voice unavailable (API 500)')
+    expect(note).toContain('RAG offline')
+    expect(note).toContain('Voice calibration unavailable')
+    expect(note).toContain('API 500')
     // ok slots absent
     expect(note).not.toContain('Triage')
     expect(note).not.toContain('POV Library')
@@ -219,7 +219,7 @@ describe('SlotResult → degraded note integration', () => {
     ]
     const note = buildDegradedContextNote(slots)!
     const systemPrompt = `You are Atlas.\n\n## Cognitive Context\n\nSome enriched content\n\n${note}`
-    expect(systemPrompt).toContain('⚠️ Context Note')
-    expect(systemPrompt).toContain('Domain RAG unavailable')
+    expect(systemPrompt).toContain('DEGRADED CONTEXT')
+    expect(systemPrompt).toContain('RAG offline')
   })
 })

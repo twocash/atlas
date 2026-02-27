@@ -377,6 +377,68 @@ async function checkNotionDatabases(): Promise<HealthCheckResult[]> {
 }
 
 /**
+ * Check AnythingLLM RAG connectivity and workspace doc counts.
+ * Thin wrapper — delegates to Bridge's healthCheck() (shared infrastructure).
+ */
+async function checkAnythingLLM(): Promise<HealthCheckResult[]> {
+  const results: HealthCheckResult[] = [];
+
+  try {
+    const { healthCheck: ragHealthCheck } = await import('../../../../packages/bridge/src/context/anythingllm-client');
+    const report = await ragHealthCheck();
+
+    if (!report.configured) {
+      results.push({
+        name: 'rag:config',
+        status: 'fail',
+        message: `AnythingLLM NOT CONFIGURED — ${report.error}`,
+      });
+      return results;
+    }
+
+    if (!report.reachable) {
+      results.push({
+        name: 'rag:connection',
+        status: 'fail',
+        message: `AnythingLLM UNREACHABLE — domain RAG disabled (${report.error})`,
+      });
+      return results;
+    }
+
+    if (!report.authenticated) {
+      results.push({
+        name: 'rag:connection',
+        status: 'fail',
+        message: `AnythingLLM auth failed — ${report.error}`,
+      });
+      return results;
+    }
+
+    results.push({
+      name: 'rag:connection',
+      status: 'pass',
+      message: 'AnythingLLM ONLINE',
+    });
+
+    for (const ws of report.workspaces) {
+      results.push({
+        name: `rag:${ws.slug}`,
+        status: ws.status === 'ok' ? 'pass' : 'warn',
+        message: ws.message,
+      });
+    }
+  } catch (err) {
+    results.push({
+      name: 'rag:connection',
+      status: 'fail',
+      message: `AnythingLLM health check failed: ${(err as Error).message}`,
+    });
+  }
+
+  return results;
+}
+
+/**
  * Run all health checks
  */
 export async function runHealthChecks(): Promise<HealthReport> {
@@ -387,6 +449,7 @@ export async function runHealthChecks(): Promise<HealthReport> {
   checks.push(await checkNotion());
   checks.push(...await checkNotionDatabases()); // Databases BEFORE Claude - if these fail, bot is broken
   checks.push(...await checkClaude());
+  checks.push(...await checkAnythingLLM());     // RAG after core services
   checks.push(...await checkDataFiles());
   checks.push(...await checkVoiceConfigs());
 

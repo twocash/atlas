@@ -28,10 +28,15 @@ import { resolve, dirname } from "path"
 import { fileURLToPath } from "url"
 import { mkdirSync, writeFileSync } from "fs"
 
-// Load shared .env BEFORE any modules that read process.env (PromptManager needs NOTION_PROMPTS_DB_ID)
+// Load env vars BEFORE any modules that read process.env (PromptManager needs NOTION_PROMPTS_DB_ID).
+// Root .env (infra: AnythingLLM, shared config) + apps/telegram/.env (API keys: Notion, Claude, etc.).
+// start-bridge.ps1 also loads these, but dotenv here is defense-in-depth for `bun run dev`
+// and stale shell environments. dotenv won't overwrite existing vars.
 import { config } from "dotenv"
 const __bridgeDir = dirname(fileURLToPath(import.meta.url))
-config({ path: resolve(__bridgeDir, "../../../apps/telegram/.env") })
+const __repoRoot = resolve(__bridgeDir, "../../..")
+config({ path: resolve(__repoRoot, ".env") })
+config({ path: resolve(__repoRoot, "apps/telegram/.env") })
 
 import type { ServerWebSocket } from "bun"
 import { spawn, type Subprocess } from "bun"

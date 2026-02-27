@@ -7,35 +7,39 @@ $logFile = "$logDir\atlas-bridge.log"
 
 New-Item -ItemType Directory -Force -Path $logDir | Out-Null
 
-# Load .env from apps/telegram/.env (same source the bot uses via dotenv)
-# Bridge has no dotenv loader - we inject env vars here before launch
-$envFile = "C:\github\atlas\apps\telegram\.env"
-if (Test-Path $envFile) {
-    $loaded = 0
-    Get-Content $envFile | ForEach-Object {
-        $line = $_.Trim()
-        # Skip comments and blank lines
-        if ($line -and -not $line.StartsWith('#')) {
-            $eqIndex = $line.IndexOf('=')
-            if ($eqIndex -gt 0) {
-                $key = $line.Substring(0, $eqIndex).Trim()
-                $val = $line.Substring($eqIndex + 1).Trim()
-                # Strip surrounding quotes (single or double)
-                if (($val.StartsWith('"') -and $val.EndsWith('"')) -or
-                    ($val.StartsWith("'") -and $val.EndsWith("'"))) {
-                    $val = $val.Substring(1, $val.Length - 2)
-                }
-                # Only set if not already defined (system env takes precedence)
-                if (-not [System.Environment]::GetEnvironmentVariable($key)) {
-                    [System.Environment]::SetEnvironmentVariable($key, $val, 'Process')
-                    $loaded++
+# Load root .env first (AnythingLLM and other infra vars)
+# Then telegram .env (API keys, Notion, etc.) - telegram vars take precedence
+foreach ($envEntry in @(
+    @{ Path = "C:\github\atlas\.env"; Label = "root" },
+    @{ Path = "C:\github\atlas\apps\telegram\.env"; Label = "telegram" }
+)) {
+    $envFile = $envEntry.Path
+    $label = $envEntry.Label
+    if (Test-Path $envFile) {
+        $loaded = 0
+        Get-Content $envFile | ForEach-Object {
+            $line = $_.Trim()
+            if ($line -and -not $line.StartsWith('#')) {
+                $eqIndex = $line.IndexOf('=')
+                if ($eqIndex -gt 0) {
+                    $key = $line.Substring(0, $eqIndex).Trim()
+                    $val = $line.Substring($eqIndex + 1).Trim()
+                    if (($val.StartsWith('"') -and $val.EndsWith('"')) -or
+                        ($val.StartsWith("'") -and $val.EndsWith("'"))) {
+                        $val = $val.Substring(1, $val.Length - 2)
+                    }
+                    # Only set if not already defined (later files and system env take precedence)
+                    if (-not [System.Environment]::GetEnvironmentVariable($key)) {
+                        [System.Environment]::SetEnvironmentVariable($key, $val, 'Process')
+                        $loaded++
+                    }
                 }
             }
         }
+        Write-Host "Loaded $loaded env vars from $label .env" -ForegroundColor DarkGray
+    } else {
+        Write-Host "WARNING: $envFile not found" -ForegroundColor Yellow
     }
-    Write-Host "Loaded $loaded env vars from .env" -ForegroundColor DarkGray
-} else {
-    Write-Host "WARNING: $envFile not found - bridge may lack API keys" -ForegroundColor Yellow
 }
 
 Write-Host "Starting Atlas Bridge Server..." -ForegroundColor Cyan
