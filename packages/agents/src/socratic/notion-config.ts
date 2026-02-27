@@ -11,6 +11,7 @@
 
 import { Client } from '@notionhq/client';
 import { NOTION_DB } from '@atlas/shared/config';
+import { reportFailure } from '@atlas/shared/error-escalation';
 import type {
   SocraticConfig,
   SocraticConfigEntry,
@@ -129,6 +130,12 @@ async function fetchPageContent(notion: Client, pageId: string): Promise<string>
     return parts.join('\n');
   } catch (error) {
     console.error(`[SocraticConfig] Failed to fetch page body for ${pageId}:`, error);
+    reportFailure('socratic-config', error, {
+      timestamp: new Date().toISOString(),
+      operation: 'fetchPageContent',
+      pageId,
+      suggestedFix: 'Check Notion API key and Socratic Interview Config DB accessibility.',
+    });
     return '';
   }
 }
@@ -194,6 +201,12 @@ export async function fetchSocraticConfig(): Promise<SocraticConfig> {
       entries.push(parseEntry(page, content));
     } catch (e) {
       console.warn(`[SocraticConfig] Failed to fetch body for ${page.id}:`, e);
+      reportFailure('socratic-config', e, {
+        timestamp: new Date().toISOString(),
+        operation: 'fetchEntryBody',
+        pageId: page.id,
+        suggestedFix: 'Individual page body fetch failed. Check Notion block permissions.',
+      });
       entries.push(parseEntry(page, ''));
     }
   }
@@ -278,6 +291,14 @@ export async function getSocraticConfig(): Promise<SocraticConfig | null> {
     return await refreshSocraticConfig();
   } catch (e) {
     console.error('[SocraticConfig] Failed to fetch config:', e);
+
+    // Autonomaton Loop 1: full config fetch failure is a degraded cognitive path
+    reportFailure('socratic-config', e, {
+      timestamp: new Date().toISOString(),
+      operation: 'getSocraticConfig',
+      hasStaleCache: !!cachedEntry?.config,
+      suggestedFix: 'Full Socratic config fetch failed. Check NOTION_API_KEY and Socratic Interview Config DB. Stale cache used if available.',
+    });
 
     // Try stale cache as last resort
     if (cachedEntry?.config) {

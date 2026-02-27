@@ -702,6 +702,14 @@ export async function classifyWithFallback(message: string): Promise<Classificat
     };
   } catch (error) {
     logger.warn('[Triage] classifyWithFallback failed, returning safe default', { error });
+
+    // Autonomaton Loop 1: triage classification failure degrades downstream routing
+    reportFailure('triage-classify', error, {
+      timestamp: new Date().toISOString(),
+      messagePreview: message.substring(0, 200),
+      suggestedFix: 'Check triageMessage() health — Haiku model, API key, prompt resolution. If persistent, check ATLAS_TRIAGE_MODEL env var.',
+    });
+
     return {
       pillar: 'The Grove',
       requestType: 'Chat',
@@ -736,6 +744,14 @@ export async function triageForAudit(message: string): Promise<{
     };
   } catch (error) {
     logger.warn('[Triage] triageForAudit failed, returning safe defaults', { error });
+
+    // Autonomaton Loop 1: audit triage failure means Feed entries get default classification
+    reportFailure('triage-audit', error, {
+      timestamp: new Date().toISOString(),
+      messagePreview: message.substring(0, 200),
+      suggestedFix: 'Check triageMessage() health. Feed entries created during this failure window will have default classification.',
+    });
+
     return {
       classification: {
         pillar: 'The Grove',

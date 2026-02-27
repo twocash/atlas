@@ -23,6 +23,7 @@ import type {
 } from './types';
 import type { IntentType, DepthLevel, AudienceType, Pillar } from '../services/prompt-composition/types';
 import { getPromptManager } from '../services/prompt-manager';
+import { reportFailure } from '@atlas/shared/error-escalation';
 
 // ==========================================
 // Haiku Interpreter (Primary — Cloud LLM)
@@ -239,8 +240,26 @@ export class RatchetInterpreter implements IntentInterpreter {
         `Model: ${HAIKU_MODEL}`
       );
 
+      // Autonomaton Loop 1: report to error escalation pipeline.
+      // This is the Haiku 404 fix — silent degradation is categorically unacceptable.
+      reportFailure('intent-interpreter', err, {
+        timestamp: new Date().toISOString(),
+        model: HAIKU_MODEL,
+        consecutiveFailures: this.consecutiveFailures,
+        primaryInterpreter: this.primary.name,
+        fallbackInterpreter: this.fallback.name,
+        messagePreview: answer.substring(0, 200),
+        title: context.title,
+        suggestedFix: `Check ATLAS_INTENT_MODEL env var (current: ${HAIKU_MODEL}) and Anthropic API status. If model deprecated, update env var or Notion config.`,
+      });
+
       const fallbackResult = await this.fallback.interpret(answer, context);
-      return fallbackResult;
+      // Mark the result as degraded so downstream consumers know
+      return {
+        ...fallbackResult,
+        method: 'regex_fallback' as InterpretationMethod,
+        degradedFrom: this.primary.name,
+      };
     }
   }
 }

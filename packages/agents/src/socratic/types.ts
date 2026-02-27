@@ -280,6 +280,8 @@ export interface InterpretationResult {
   latencyMs: number;
   /** Raw model response (for training data collection) */
   rawResponse?: string;
+  /** If the primary interpreter failed and a fallback was used, the name of the failed interpreter */
+  degradedFrom?: string;
 }
 
 /**

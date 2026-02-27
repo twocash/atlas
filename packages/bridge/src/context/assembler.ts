@@ -35,6 +35,7 @@ import {
 import { assembleDomainRagSlot } from "./domain-rag-slot"
 import { assemblePovSlot } from "./pov-slot"
 import { assembleSelfModelSlot, type SelfModelProvider } from "./self-model-slot"
+import { reportFailure } from "@atlas/shared/error-escalation"
 
 // ─── Assembly Result ──────────────────────────────────────
 
@@ -146,6 +147,16 @@ async function assembleVoiceSlot(
     }
   } catch (err) {
     console.warn("[assembler] Voice slot composition failed:", (err as Error).message)
+
+    // Autonomaton Loop 1: voice composition failure is a degraded cognitive path
+    reportFailure("voice-slot", err, {
+      timestamp: new Date().toISOString(),
+      intent: triage.intent,
+      pillar: triage.pillar,
+      complexityTier: triage.complexityTier,
+      messagePreview: messageText.substring(0, 200),
+      suggestedFix: "Check prompt-composition service and Notion System Prompts DB connectivity.",
+    })
   }
 
   return createEmptySlot("voice", "prompt-composition")

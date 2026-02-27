@@ -566,6 +566,7 @@ async function runRegressionTests(cwd: string): Promise<SuiteResult> {
     'test/conversation-state.test.ts',           // SESSION-STATE-FOUNDATION: Unified state manager unit tests
     'test/stab-003b-scenarios.test.ts',          // SESSION-STATE-FOUNDATION: Chain tests for 5-bug fix scenarios
     'test/session-telemetry.test.ts',            // SESSION-TELEMETRY: Session fields flow through logAction
+    'test/master-blaster-realworld.test.ts',    // SESSION-TELEMETRY-QA: Real-world Autonomaton Loop 1 — 5 URL scenarios
   ];
 
   const result = await runCommand(
@@ -989,6 +990,7 @@ async function runAgentsUnitTests(cwd: string): Promise<SuiteResult> {
       'test/stab-001-wiring.test.ts',  // STAB-001: Provider + assessment pipeline unit tests
       'test/emergence.test.ts',         // CONV-ARCH-004: Skill Emergence (Sprint 4)
       'test/architecture-boundary.test.ts', // CPE boundary scanner (5 rules)
+      'test/intent-interpreter-regression.test.ts', // SESSION-TELEMETRY-QA: Autonomaton Loop 1 — reportFailure wiring
     ],
     agentsCwd,
     60000
