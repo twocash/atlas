@@ -12,6 +12,7 @@
 import type { AttachmentInfo } from '../conversation/attachments';
 import type { MediaContext, Pillar } from '../media/processor';
 import type { TriageResult } from '../cognitive/triage-skill';
+import type { EmergenceProposal } from '../emergence/types';
 
 // ─── Re-exports from Phase 6 modules ────────────────────
 
@@ -163,6 +164,9 @@ export interface PipelineSurfaceHooks {
 
   // Dispatch choice → orchestrator internal
   handleLowConfidenceRouting(data: LowConfidenceRoutingData): Promise<void>;
+
+  // Emergence delivery → surface adapter
+  deliverEmergenceProposal(proposal: EmergenceProposal): Promise<number>;
 }
 
 // ─── Pipeline Config ────────────────────────────────────

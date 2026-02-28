@@ -311,3 +311,53 @@ export {
   type DialogueState,
   type DialogueResult,
 } from "./dialogue";
+
+// Emergence — Skill Emergence Detection & Delivery (CONV-ARCH-004)
+export {
+  // Monitor
+  checkForEmergence,
+  dismissProposal,
+  approveProposal,
+  onEmergenceEvent,
+  offEmergenceEvent,
+
+  // Session detection
+  querySessionActions,
+  groupActionsBySession,
+  extractIntentSequences,
+  extractAllSequences,
+  detectSequencePatterns,
+
+  // Proposal generation
+  generateProposal,
+  generateSkillName,
+  formatProposalText,
+
+  // Approval store
+  storeEmergenceProposal,
+  hasPendingEmergenceProposal,
+  getPendingEmergenceProposal,
+  processEmergenceResponse,
+
+  // Feed writer
+  wireEmergenceFeedSubscriber,
+  persistDismissedPattern,
+
+  // Config
+  DEFAULT_EMERGENCE_CONFIG,
+
+  // Types
+  type SessionAction,
+  type SessionGroup,
+  type IntentTransition,
+  type IntentSequence,
+  type SequencePattern,
+  type EmergenceSignal,
+  type EmergenceSource,
+  type DismissedPattern,
+  type EmergenceProposal,
+  type EmergenceConfig,
+  type EmergenceCheckResult,
+  type EmergenceEvent,
+  type EmergenceEventType,
+} from "./emergence";

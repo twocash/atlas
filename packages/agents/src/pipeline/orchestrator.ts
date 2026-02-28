@@ -70,6 +70,12 @@ import {
   resolveAfterClarification,
   recordClarification,
 } from '../goal';
+import {
+  hasPendingEmergenceProposal,
+  processEmergenceResponse,
+  storeEmergenceProposal,
+} from '../emergence/approval-store';
+import { persistDismissedPattern, wireEmergenceFeedSubscriber } from '../emergence/feed-writer';
 
 import type {
   MessageInput,
@@ -612,6 +618,36 @@ export async function orchestrateMessage(
         logger.warn('Dialogue continuation failed, falling through to normal flow', { error: err });
       }
     }
+  }
+
+  // ── Gate 7: Emergence Proposal Response ──
+  if (!hasAttachment && messageText && hasPendingEmergenceProposal(chatId)) {
+    const emergenceResult = processEmergenceResponse(chatId, messageText);
+    if (emergenceResult) {
+      const { action, proposal } = emergenceResult;
+      if (action === 'approved') {
+        await hooks.reply(
+          `Got it — "${proposal.suggestedSkillName}" approved. I'll start building it.`,
+        );
+      } else {
+        await hooks.reply(
+          `Noted — "${proposal.suggestedSkillName}" dismissed. I won't bring it up again for a while.`,
+        );
+        // Persist dismiss to Feed 2.0 (fire-and-forget)
+        persistDismissedPattern(proposal, proposal.dismissReason).catch(err => {
+          logger.warn('Dismiss persistence failed (non-fatal)', { error: err });
+        });
+      }
+      await hooks.setReaction(REACTIONS.DONE);
+      logger.info('Emergence proposal response processed', {
+        userId,
+        action,
+        skillName: proposal.suggestedSkillName,
+      });
+      completeTrace(trace);
+      return;
+    }
+    // Not a clear signal — fall through to normal processing
   }
 
   // ── Build user content ──
@@ -1330,11 +1366,28 @@ export async function orchestrateMessage(
         turnNumber: sessionTelemetry.turnNumber,
         priorIntentHash: sessionTelemetry.priorIntentHash,
       }).then(() => {
-        // Feed write hook: trigger emergence check (non-blocking, fire-and-forget)
+        // Feed write hook: trigger emergence check + deliver proposals
         if (process.env.ATLAS_EMERGENCE_AWARENESS === 'true') {
+          // Ensure Feed subscriber is wired (idempotent)
+          wireEmergenceFeedSubscriber();
           import('../emergence/monitor').then(({ checkForEmergence }) => {
-            checkForEmergence().catch(err => {
-              logger.warn('Emergence check failed (non-fatal)', { error: err });
+            checkForEmergence().then(result => {
+              if (result.proposals.length > 0) {
+                // Deliver first proposal to the user (rate-limited by monitor)
+                const proposal = result.proposals[0];
+                hooks.deliverEmergenceProposal(proposal).then(messageId => {
+                  storeEmergenceProposal(chatId, messageId, proposal);
+                  logger.info('Emergence proposal delivered', {
+                    proposalId: proposal.id,
+                    skillName: proposal.suggestedSkillName,
+                    messageId,
+                  });
+                }).catch(deliverErr => {
+                  logger.warn('Emergence proposal delivery failed (non-fatal)', { error: deliverErr });
+                });
+              }
+            }).catch(err => {
+              reportFailure('emergence-check', err, { subsystem: 'emergence' });
             });
           }).catch(() => {
             // Dynamic import failed — emergence module not available

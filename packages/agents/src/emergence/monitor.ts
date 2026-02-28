@@ -13,6 +13,7 @@
  */
 
 import { logger } from '../logger';
+import { reportFailure } from '@atlas/shared/error-escalation';
 import { detectPatterns } from '../skills/pattern-detector';
 import {
   querySessionActions,
@@ -140,7 +141,7 @@ export async function checkForEmergence(
       signals.push(signal);
     }
   } catch (error) {
-    logger.error('Frequency detection failed (non-fatal)', { error });
+    reportFailure('emergence-frequency', error, { subsystem: 'emergence' });
   }
 
   // ─── 2. Sequence Detection (new session-aware) ────────────
@@ -179,7 +180,7 @@ export async function checkForEmergence(
       signals.push(signal);
     }
   } catch (error) {
-    logger.error('Sequence detection failed (non-fatal)', { error });
+    reportFailure('emergence-sequence', error, { subsystem: 'emergence' });
   }
 
   // ─── 3. Generate Proposals (respecting daily limit) ────────
@@ -323,7 +324,10 @@ function emitEvent(event: EmergenceEvent): void {
     try {
       listener(event);
     } catch (error) {
-      logger.error('Emergence event listener error', { error, eventType: event.type });
+      reportFailure('emergence-event-listener', error, {
+        subsystem: 'emergence',
+        metadata: { eventType: event.type },
+      });
     }
   }
 }

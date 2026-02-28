@@ -44,6 +44,16 @@ mock.module('../src/logger', () => ({
   logger: { info: () => {}, warn: () => {}, error: () => {}, debug: () => {} },
 }));
 
+// Mock @atlas/shared (used by monitor.ts, feed-writer.ts, session-detector.ts)
+mock.module('@atlas/shared/error-escalation', () => ({
+  reportFailure: () => {},
+}));
+
+mock.module('@atlas/shared/config', () => ({
+  NOTION_DB: { FEED: 'mock-feed-id' },
+  ATLAS_NODE: 'test-node',
+}));
+
 import {
   groupActionsBySession,
   extractIntentSequences,

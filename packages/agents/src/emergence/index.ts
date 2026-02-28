@@ -55,3 +55,9 @@ export {
   getPendingEmergenceProposal,
   processEmergenceResponse,
 } from './approval-store';
+
+// Feed 2.0 writer (telemetry + dismiss persistence)
+export {
+  wireEmergenceFeedSubscriber,
+  persistDismissedPattern,
+} from './feed-writer';

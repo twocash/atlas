@@ -34,6 +34,8 @@ import {
 import type { AttachmentInfo } from '@atlas/agents/src/conversation/attachments';
 import type { MediaContext, Pillar } from '@atlas/agents/src/media/processor';
 import type { TriageResult } from '@atlas/agents/src/cognitive/triage-skill';
+import { formatProposalText } from '@atlas/agents/src/emergence/proposal-generator';
+import type { EmergenceProposal } from '@atlas/agents/src/emergence/types';
 
 // Feature flags — resolved once at module load from env vars
 const CONTENT_CONFIRM_ENABLED = process.env.ATLAS_CONTENT_CONFIRM !== 'false';
@@ -181,6 +183,13 @@ function buildHooks(ctx: Context): PipelineSurfaceHooks {
         parse_mode: 'HTML',
         reply_markup: keyboard,
       });
+    },
+
+    // Emergence proposal delivery — formatted plain text (no HTML)
+    async deliverEmergenceProposal(proposal: EmergenceProposal): Promise<number> {
+      const text = formatProposalText(proposal);
+      const msg = await ctx.reply(text);
+      return msg.message_id;
     },
   };
 }
