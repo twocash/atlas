@@ -2,7 +2,7 @@
  * bridge_update_memory — Self-modification tool for Bridge Claude.
  *
  * Writes structured corrections, learnings, and patterns to the
- * MEMORY Notion page (bridge.memory in System Prompts DB).
+ * MEMORY Notion page (atlas.memory in System Prompts DB).
  *
  * Writes are async fire-and-forget — Bridge Claude confirms conversationally
  * before the write completes. Failure to write triggers a console error
@@ -14,7 +14,7 @@
 
 import { Client } from '@notionhq/client';
 
-/** The Notion page ID for bridge.memory — set after first resolution */
+/** The Notion page ID for atlas.memory — set after first resolution */
 let memoryPageId: string | null = null;
 
 /** Memory entry types */
@@ -52,7 +52,7 @@ async function resolveMemoryPageId(notion: Client): Promise<string | null> {
       database_id: dbId,
       filter: {
         property: 'ID',
-        rich_text: { equals: 'bridge.memory' },
+        rich_text: { equals: 'atlas.memory' },
       },
       page_size: 1,
     });
@@ -62,7 +62,7 @@ async function resolveMemoryPageId(notion: Client): Promise<string | null> {
       return memoryPageId;
     }
 
-    console.error('[bridge-memory] bridge.memory entry not found in System Prompts DB');
+    console.error('[bridge-memory] atlas.memory entry not found in System Prompts DB');
     return null;
   } catch (error) {
     console.error('[bridge-memory] Failed to resolve MEMORY page ID:', error);
@@ -91,7 +91,7 @@ export async function writeMemory(params: MemoryWriteParams): Promise<MemoryWrit
   const pageId = await resolveMemoryPageId(notion);
 
   if (!pageId) {
-    return { success: false, error: 'Could not resolve bridge.memory page ID' };
+    return { success: false, error: 'Could not resolve atlas.memory page ID' };
   }
 
   const timestamp = new Date().toISOString().split('T')[0]; // YYYY-MM-DD

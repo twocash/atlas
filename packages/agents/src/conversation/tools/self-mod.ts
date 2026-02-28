@@ -1,58 +1,86 @@
 /**
  * Atlas Telegram Bot - Self-Modification Tools
  *
- * Tools for Atlas to update its own identity, memory, and skills.
+ * Tools for Atlas to update its own memory and manage skills.
+ *
+ * Identity resolution is Notion-governed (ADR-001):
+ * - update_memory → appends to atlas.memory page in Notion
+ * - read_memory → reads atlas.memory via PromptManager
+ * - Skills tools → filesystem (skills are local, not identity)
+ *
+ * KILLED (identity unification):
+ * - update_soul → identity is Notion-governed, not filesystem-mutable
+ * - update_user → identity is Notion-governed, not filesystem-mutable
+ * - read_soul → identity is Notion-governed, use composeAtlasIdentity()
  */
 
 import type Anthropic from '@anthropic-ai/sdk';
 import { readFile, writeFile, mkdir } from 'fs/promises';
 import { join, dirname } from 'path';
 import { fileURLToPath } from 'url';
+import { Client } from '@notionhq/client';
 import { logger } from '../../logger';
 import { parseSkillFrontmatter, validateSkillFrontmatter, generateFrontmatter } from '../../skills/frontmatter';
+import { getPromptManager } from '../../services/prompt-manager';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
 const DATA_DIR = join(__dirname, '../../../data');
 
+/** Notion page ID for atlas.memory — resolved lazily from System Prompts DB */
+let memoryPageId: string | null = null;
+
+/**
+ * Resolve the Notion page ID for atlas.memory from the System Prompts DB.
+ * Cached after first resolution.
+ */
+async function resolveMemoryPageId(): Promise<string | null> {
+  if (memoryPageId) return memoryPageId;
+
+  const apiKey = process.env.NOTION_API_KEY;
+  const dbId = process.env.NOTION_PROMPTS_DB_ID;
+  if (!apiKey || !dbId) {
+    logger.error('[self-mod] Cannot resolve atlas.memory: NOTION_API_KEY or NOTION_PROMPTS_DB_ID not set');
+    return null;
+  }
+
+  try {
+    const notion = new Client({ auth: apiKey });
+    const response = await notion.databases.query({
+      database_id: dbId,
+      filter: {
+        and: [
+          { property: 'ID', rich_text: { equals: 'atlas.memory' } },
+          { property: 'Active', checkbox: { equals: true } },
+        ],
+      },
+      page_size: 1,
+    });
+
+    if (response.results.length === 0) {
+      logger.error('[self-mod] atlas.memory not found in System Prompts DB');
+      return null;
+    }
+
+    memoryPageId = response.results[0].id;
+    logger.info('[self-mod] Resolved atlas.memory page', { pageId: memoryPageId });
+    return memoryPageId;
+  } catch (err) {
+    logger.error('[self-mod] Failed to resolve atlas.memory page', { error: err });
+    return null;
+  }
+}
+
 export const SELF_MOD_TOOLS: Anthropic.Tool[] = [
   {
-    name: 'update_soul',
-    description: 'Update SOUL.md to change Atlas behavior/personality. Use when Jim asks to change how you operate. IMPORTANT: Always tell Jim when you update your soul.',
-    input_schema: {
-      type: 'object' as const,
-      properties: {
-        section: {
-          type: 'string',
-          enum: ['Core Truths', 'Boundaries', 'Vibe', 'Confirmation Threshold', 'Continuity'],
-          description: 'Which section of SOUL.md to update',
-        },
-        action: {
-          type: 'string',
-          enum: ['append', 'replace'],
-          description: 'Whether to append to the section or replace it entirely',
-        },
-        content: {
-          type: 'string',
-          description: 'New content to add or replace',
-        },
-        reason: {
-          type: 'string',
-          description: 'Why this change is being made (for logging)',
-        },
-      },
-      required: ['section', 'action', 'content', 'reason'],
-    },
-  },
-  {
     name: 'update_memory',
-    description: 'Update MEMORY.md to record persistent learnings. Use when Jim corrects you or teaches you something to remember.',
+    description: 'Record a persistent learning to Atlas Memory in Notion. Use when Jim corrects you or teaches you something to remember across sessions.',
     input_schema: {
       type: 'object' as const,
       properties: {
         category: {
           type: 'string',
-          enum: ['Classification Rules', 'Corrections Log', 'Preferences', 'Patterns'],
+          enum: ['Classification Rules', 'Corrections Log', 'Preferences', 'Patterns', 'Learnings'],
           description: 'Which category to update',
         },
         content: {
@@ -61,25 +89,6 @@ export const SELF_MOD_TOOLS: Anthropic.Tool[] = [
         },
       },
       required: ['category', 'content'],
-    },
-  },
-  {
-    name: 'update_user',
-    description: 'Update USER.md with new information about Jim. Use when you learn something new about Jim that should persist.',
-    input_schema: {
-      type: 'object' as const,
-      properties: {
-        section: {
-          type: 'string',
-          enum: ['Who Jim Is', 'The Four Pillars', 'Work Style', 'Current Context', 'Known Preferences', 'Communication'],
-          description: 'Which section to update',
-        },
-        content: {
-          type: 'string',
-          description: 'What to add',
-        },
-      },
-      required: ['section', 'content'],
     },
   },
   {
@@ -109,17 +118,8 @@ export const SELF_MOD_TOOLS: Anthropic.Tool[] = [
     },
   },
   {
-    name: 'read_soul',
-    description: 'Read current SOUL.md content. Use to check current settings before making changes.',
-    input_schema: {
-      type: 'object' as const,
-      properties: {},
-      required: [],
-    },
-  },
-  {
     name: 'read_memory',
-    description: 'Read current MEMORY.md content. Use to recall persistent learnings, corrections, and patterns.',
+    description: 'Read current Atlas Memory from Notion. Use to recall persistent learnings, corrections, and patterns.',
     input_schema: {
       type: 'object' as const,
       properties: {},
@@ -159,16 +159,10 @@ export async function executeSelfModTools(
   input: Record<string, unknown>
 ): Promise<{ success: boolean; result: unknown; error?: string } | null> {
   switch (toolName) {
-    case 'update_soul':
-      return await executeUpdateSoul(input);
     case 'update_memory':
       return await executeUpdateMemory(input);
-    case 'update_user':
-      return await executeUpdateUser(input);
     case 'create_skill':
       return await executeCreateSkill(input);
-    case 'read_soul':
-      return await executeReadSoul();
     case 'read_memory':
       return await executeReadMemory();
     case 'list_skills':
@@ -180,159 +174,83 @@ export async function executeSelfModTools(
   }
 }
 
-async function executeUpdateSoul(
-  input: Record<string, unknown>
-): Promise<{ success: boolean; result: unknown; error?: string }> {
-  const section = input.section as string;
-  const action = input.action as 'append' | 'replace';
-  const content = input.content as string;
-  const reason = input.reason as string;
-
-  const soulPath = join(DATA_DIR, 'SOUL.md');
-
-  try {
-    let soulContent = await readFile(soulPath, 'utf-8');
-
-    // Find the section
-    const sectionHeader = `## ${section}`;
-    const sectionIndex = soulContent.indexOf(sectionHeader);
-
-    if (sectionIndex === -1) {
-      return { success: false, result: null, error: `Section not found: ${section}` };
-    }
-
-    // Find the end of this section (next ## or end of file)
-    const nextSectionMatch = soulContent.slice(sectionIndex + sectionHeader.length).match(/\n## /);
-    const sectionEnd = nextSectionMatch
-      ? sectionIndex + sectionHeader.length + nextSectionMatch.index!
-      : soulContent.length;
-
-    if (action === 'append') {
-      // Add content before the next section
-      const insertPoint = sectionEnd;
-      const newContent = `\n${content}\n`;
-      soulContent = soulContent.slice(0, insertPoint) + newContent + soulContent.slice(insertPoint);
-    } else {
-      // Replace section content (keep header)
-      const headerEnd = sectionIndex + sectionHeader.length;
-      soulContent = soulContent.slice(0, headerEnd) + '\n\n' + content + '\n' + soulContent.slice(sectionEnd);
-    }
-
-    await writeFile(soulPath, soulContent, 'utf-8');
-
-    logger.info('SOUL.md updated', { section, action, reason });
-
-    return {
-      success: true,
-      result: {
-        section,
-        action,
-        reason,
-        message: `Updated ${section} in SOUL.md. Jim should be notified of this change.`,
-      },
-    };
-  } catch (error) {
-    logger.error('Update soul failed', { error, section });
-    return { success: false, result: null, error: String(error) };
-  }
-}
-
+/**
+ * Append a learning to the atlas.memory page in Notion.
+ *
+ * Strategy: Append a bulleted_list_item block to the page.
+ * The PromptManager cache will pick up the change on next TTL expiry (5 min).
+ */
 async function executeUpdateMemory(
   input: Record<string, unknown>
 ): Promise<{ success: boolean; result: unknown; error?: string }> {
   const category = input.category as string;
   const content = input.content as string;
 
-  const memoryPath = join(DATA_DIR, 'MEMORY.md');
-
   try {
-    let memoryContent = await readFile(memoryPath, 'utf-8');
-
-    // Find the category header
-    const categoryHeader = `## ${category}`;
-    const categoryIndex = memoryContent.indexOf(categoryHeader);
-
-    if (categoryIndex === -1) {
-      // Add the category if it doesn't exist
-      memoryContent += `\n\n## ${category}\n\n${content}\n`;
-    } else {
-      // Find end of this category
-      const nextSectionMatch = memoryContent.slice(categoryIndex + categoryHeader.length).match(/\n## /);
-      const insertPoint = nextSectionMatch
-        ? categoryIndex + categoryHeader.length + nextSectionMatch.index!
-        : memoryContent.length;
-
-      // Insert before next section or end
-      memoryContent = memoryContent.slice(0, insertPoint) + `\n- ${content}` + memoryContent.slice(insertPoint);
+    const pageId = await resolveMemoryPageId();
+    if (!pageId) {
+      return {
+        success: false,
+        result: null,
+        error: 'Cannot resolve atlas.memory page in Notion. Check NOTION_API_KEY and NOTION_PROMPTS_DB_ID.',
+      };
     }
 
-    // Update timestamp
-    const timestampLine = `\n*Last updated: ${new Date().toISOString().split('T')[0]}*`;
-    memoryContent = memoryContent.replace(/\n\*Last updated:.*\*/, timestampLine);
-    if (!memoryContent.includes('*Last updated:')) {
-      memoryContent += timestampLine;
+    const apiKey = process.env.NOTION_API_KEY;
+    if (!apiKey) {
+      return { success: false, result: null, error: 'NOTION_API_KEY not set' };
     }
 
-    await writeFile(memoryPath, memoryContent, 'utf-8');
+    const notion = new Client({ auth: apiKey });
 
-    logger.info('MEMORY.md updated', { category, content: content.substring(0, 50) });
+    // Append: category header (heading_3) + content (bulleted_list_item)
+    // The heading acts as a visual separator when multiple updates accumulate
+    const timestamp = new Date().toISOString().split('T')[0];
+
+    await notion.blocks.children.append({
+      block_id: pageId,
+      children: [
+        {
+          object: 'block',
+          type: 'bulleted_list_item',
+          bulleted_list_item: {
+            rich_text: [
+              {
+                type: 'text',
+                text: { content: `[${category}] ${content}` },
+              },
+              {
+                type: 'text',
+                text: { content: ` — ${timestamp}` },
+                annotations: { italic: true, color: 'gray' },
+              },
+            ],
+          },
+        },
+      ],
+    });
+
+    // Invalidate PromptManager cache so next identity resolution picks up the change
+    try {
+      const pm = getPromptManager();
+      pm.invalidateCache('atlas.memory');
+    } catch {
+      // PromptManager not initialized — fine, cache will expire naturally
+    }
+
+    logger.info('[self-mod] Memory updated in Notion', { category, content: content.substring(0, 50), pageId });
 
     return {
       success: true,
       result: {
         category,
         added: content,
-        message: 'Memory updated successfully',
+        target: 'Notion (atlas.memory)',
+        message: 'Memory updated in Notion. Will be included in next identity resolution.',
       },
     };
   } catch (error) {
-    logger.error('Update memory failed', { error, category });
-    return { success: false, result: null, error: String(error) };
-  }
-}
-
-async function executeUpdateUser(
-  input: Record<string, unknown>
-): Promise<{ success: boolean; result: unknown; error?: string }> {
-  const section = input.section as string;
-  const content = input.content as string;
-
-  const userPath = join(DATA_DIR, 'USER.md');
-
-  try {
-    let userContent = await readFile(userPath, 'utf-8');
-
-    // Find the section
-    const sectionHeader = `## ${section}`;
-    const sectionIndex = userContent.indexOf(sectionHeader);
-
-    if (sectionIndex === -1) {
-      // Add section at end
-      userContent += `\n\n## ${section}\n\n${content}\n`;
-    } else {
-      // Find end of section
-      const nextSectionMatch = userContent.slice(sectionIndex + sectionHeader.length).match(/\n## /);
-      const insertPoint = nextSectionMatch
-        ? sectionIndex + sectionHeader.length + nextSectionMatch.index!
-        : userContent.length;
-
-      userContent = userContent.slice(0, insertPoint) + `\n- ${content}` + userContent.slice(insertPoint);
-    }
-
-    await writeFile(userPath, userContent, 'utf-8');
-
-    logger.info('USER.md updated', { section, content: content.substring(0, 50) });
-
-    return {
-      success: true,
-      result: {
-        section,
-        added: content,
-        message: 'User knowledge updated',
-      },
-    };
-  } catch (error) {
-    logger.error('Update user failed', { error, section });
+    logger.error('[self-mod] Update memory failed', { error, category });
     return { success: false, result: null, error: String(error) };
   }
 }
@@ -403,38 +321,31 @@ ${instructions}
   }
 }
 
-async function executeReadSoul(): Promise<{ success: boolean; result: unknown; error?: string }> {
-  const soulPath = join(DATA_DIR, 'SOUL.md');
-
-  try {
-    const content = await readFile(soulPath, 'utf-8');
-    return {
-      success: true,
-      result: {
-        content,
-        path: 'data/SOUL.md',
-      },
-    };
-  } catch (error) {
-    logger.error('Read soul failed', { error });
-    return { success: false, result: null, error: String(error) };
-  }
-}
-
+/**
+ * Read atlas.memory from Notion via PromptManager.
+ */
 async function executeReadMemory(): Promise<{ success: boolean; result: unknown; error?: string }> {
-  const memoryPath = join(DATA_DIR, 'MEMORY.md');
-
   try {
-    const content = await readFile(memoryPath, 'utf-8');
+    const pm = getPromptManager();
+    const content = await pm.getPromptById('atlas.memory');
+
+    if (content) {
+      return {
+        success: true,
+        result: {
+          content,
+          source: 'Notion (atlas.memory)',
+        },
+      };
+    }
+
     return {
-      success: true,
-      result: {
-        content,
-        path: 'data/MEMORY.md',
-      },
+      success: false,
+      result: null,
+      error: 'atlas.memory not found in Notion System Prompts DB',
     };
   } catch (error) {
-    logger.error('Read memory failed', { error });
+    logger.error('[self-mod] Read memory failed', { error });
     return { success: false, result: null, error: String(error) };
   }
 }

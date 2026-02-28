@@ -32,7 +32,7 @@ export type ResearchDepth = "light" | "standard" | "deep";
  * Writing voice/style for research output
  */
 export type ResearchVoice =
-  | "grove-analytical"
+  | "atlas-research"
   | "linkedin-punchy"
   | "consulting"
   | "raw-notes"
@@ -719,7 +719,7 @@ async function getGeminiClient(): Promise<GeminiClient> {
  * If you see Spanish in research output, it means the PM chain is broken.
  */
 const FALLBACK_VOICE_DEFAULTS: Record<Exclude<ResearchVoice, "custom">, string> = {
-  "grove-analytical": `
+  "atlas-research": `
 ## Voz de Escritura: Grove Analítico [MODO DEGRADADO — VOZ HARDCODEADA]
 
 Escribir con profundidad técnica manteniendo la accesibilidad. Características clave:
@@ -782,14 +782,14 @@ Proporcionar investigación en formato de notas de trabajo. Características cla
  * Tries PromptManager first, falls back to hardcoded defaults.
  */
 async function getVoiceInstructionsAsync(config: ResearchConfig): Promise<string> {
-  const voice = config.voice || "grove-analytical";
+  const voice = config.voice || "atlas-research";
 
   // Handle custom voice (pre-loaded content from Telegram voice selection)
   if (voice === "custom" && config.voiceInstructions) {
     return `\n## Writing Voice: Custom\n\n${config.voiceInstructions}\n`;
   }
 
-  // Try to fetch from PromptManager (Notion) by direct ID: "voice.grove-analytical", "voice.consulting", etc.
+  // Try to fetch from PromptManager (Notion) by direct ID: "voice.atlas-research", "voice.consulting", etc.
   const promptId = `voice.${voice}`;
   try {
     const promptManager = getPromptManager();
@@ -805,8 +805,8 @@ async function getVoiceInstructionsAsync(config: ResearchConfig): Promise<string
 
   // Fallback to hardcoded defaults — LOUD about it (ADR-008)
   logDegradedFallback(promptId, 'getVoiceInstructionsAsync', { voice });
-  const fallbackVoice = voice === "custom" ? "grove-analytical" : voice;
-  const fallbackText = FALLBACK_VOICE_DEFAULTS[fallbackVoice] || FALLBACK_VOICE_DEFAULTS["grove-analytical"];
+  const fallbackVoice = voice === "custom" ? "atlas-research" : voice;
+  const fallbackText = FALLBACK_VOICE_DEFAULTS[fallbackVoice] || FALLBACK_VOICE_DEFAULTS["atlas-research"];
   return fallbackText + '\n' + degradedWarning(promptId);
 }
 
@@ -815,8 +815,8 @@ async function getVoiceInstructionsAsync(config: ResearchConfig): Promise<string
  * @deprecated Use getVoiceInstructionsAsync for PromptManager integration
  */
 function getVoiceInstructions(config: ResearchConfig): string {
-  if (!config.voice || config.voice === "grove-analytical") {
-    return FALLBACK_VOICE_DEFAULTS["grove-analytical"];
+  if (!config.voice || config.voice === "atlas-research") {
+    return FALLBACK_VOICE_DEFAULTS["atlas-research"];
   }
 
   if (config.voice === "custom" && config.voiceInstructions) {
@@ -824,8 +824,8 @@ function getVoiceInstructions(config: ResearchConfig): string {
   }
 
   // Type assertion needed because voice can be "custom" which isn't in FALLBACK_VOICE_DEFAULTS
-  const fallbackVoice = config.voice === "custom" ? "grove-analytical" : config.voice;
-  return FALLBACK_VOICE_DEFAULTS[fallbackVoice] || FALLBACK_VOICE_DEFAULTS["grove-analytical"];
+  const fallbackVoice = config.voice === "custom" ? "atlas-research" : config.voice;
+  return FALLBACK_VOICE_DEFAULTS[fallbackVoice] || FALLBACK_VOICE_DEFAULTS["atlas-research"];
 }
 
 // ==========================================

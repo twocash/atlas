@@ -59,7 +59,7 @@ import {
   type ToolRequest,
   type ToolResponse,
 } from "./types/tool-protocol"
-import { composeBridgePrompt } from "../../agents/src/services/prompt-composition"
+import { composeAtlasIdentity } from "../../agents/src/services/prompt-composition"
 import { hydrateSystemPreamble } from "./context/prompt-constructor"
 import { detectStaleness } from "./staleness"
 import { runBridgeHealthCheck } from "./health"
@@ -940,13 +940,13 @@ const server = Bun.serve({
 startHealthChecks()
 
 // ─── Identity Hydration ──────────────────────────────────────
-// Resolve bridge.soul + bridge.goals from Notion and hydrate the system preamble
+// Resolve atlas.soul + atlas.goals from Notion and hydrate the system preamble
 // BEFORE spawning Claude. ADR-001: Notion governs all prompts.
 // ADR-008: Identity resolution failure is a hard error.
 
 async function hydrateBridgeIdentity(): Promise<void> {
   try {
-    const result = await composeBridgePrompt()
+    const result = await composeAtlasIdentity('bridge')
     hydrateSystemPreamble(result.prompt)
     identityComponents = result.components
     if (result.warnings.length > 0) {

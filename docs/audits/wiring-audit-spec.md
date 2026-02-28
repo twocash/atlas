@@ -41,7 +41,7 @@ cat apps/telegram/data/migrations/prompts-v1.json | grep '"id"' | sed 's/.*"id":
 - `drafter.default.draft`
 - `drafter.default.analysis`
 - `drafter.default.summarize`
-- `voice.grove-analytical`
+- `voice.atlas-research`
 - `voice.linkedin-punchy`
 - `voice.consulting`
 
@@ -102,7 +102,7 @@ grep -rn "resolveDrafterId\|resolveVoiceId\|resolveDefaultDrafterId" packages/ a
 
 ```bash
 # Search for each slug as a string literal
-for slug in "drafter.default.capture" "drafter.the-grove.research" "drafter.default.research" "drafter.default.draft" "drafter.default.analysis" "drafter.default.summarize" "voice.grove-analytical" "voice.linkedin-punchy" "voice.consulting"; do
+for slug in "drafter.default.capture" "drafter.the-grove.research" "drafter.default.research" "drafter.default.draft" "drafter.default.analysis" "drafter.default.summarize" "voice.atlas-research" "voice.linkedin-punchy" "voice.consulting"; do
   echo "=== $slug ==="
   grep -rn "$slug" packages/ apps/ --include="*.ts" | grep -v node_modules | grep -v ".test." | grep -v ".d.ts" | grep -v "prompts-v1.json"
 done
@@ -249,7 +249,7 @@ For each Notion slug, check whether an existing test verifies the full chain (sl
 
 ```bash
 # Tests that reference prompt slugs
-for slug in "drafter.default.capture" "drafter.the-grove.research" "drafter.default.research" "voice.grove-analytical" "voice.linkedin-punchy" "voice.consulting" "research-agent.standard" "research-agent.light" "research-agent.deep"; do
+for slug in "drafter.default.capture" "drafter.the-grove.research" "drafter.default.research" "voice.atlas-research" "voice.linkedin-punchy" "voice.consulting" "research-agent.standard" "research-agent.light" "research-agent.deep"; do
   echo "=== $slug ==="
   grep -rn "$slug" apps/telegram/test/ packages/ --include="*.test.ts" --include="*.test.js"
 done
@@ -276,7 +276,7 @@ Generate a single markdown report with the following structure:
 | Slug | Call Sites | Reachable? | Output Uses It? | Hardcoded Replacement | Status |
 |------|-----------|-----------|----------------|----------------------|--------|
 | `drafter.the-grove.research` | `composer.ts:42` via `resolveDrafterId()` | No — `composePrompt()` never called from research path | N/A | `buildResearchPrompt()` line 730 constructs prompt inline | 🔴 BYPASSED |
-| `voice.grove-analytical` | `research.ts:590` via `getVoiceInstructionsAsync()` | Yes — loaded at runtime | Partial — injected into prompt but JSON schema overrides format | `FALLBACK_VOICE_DEFAULTS` at line 565 | 🟡 PARTIALLY WIRED |
+| `voice.atlas-research` | `research.ts:590` via `getVoiceInstructionsAsync()` | Yes — loaded at runtime | Partial — injected into prompt but JSON schema overrides format | `FALLBACK_VOICE_DEFAULTS` at line 565 | 🟡 PARTIALLY WIRED |
 | ... | ... | ... | ... | ... | ... |
 
 **Status legend:**

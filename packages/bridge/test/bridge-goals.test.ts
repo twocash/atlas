@@ -2,7 +2,7 @@
  * Bridge Goal State Architecture — Structural Integrity Tests
  *
  * Verifies the GOALS.md wiring chain:
- *   Notion (bridge.goals) → composeBridgePrompt() → Slot 0 hydration →
+ *   Notion (atlas.goals) → composeBridgePrompt() → Slot 0 hydration →
  *   bridge_update_goals MCP tool → staleness detection → session startup
  *
  * Pattern: Source-code text inspection via Bun.file().text()
@@ -32,21 +32,21 @@ async function readAgents(relativePath: string): Promise<string> {
 // ─── 1. composeBridgePrompt() — GOALS.md Hydration ─────────
 
 describe('composeBridgePrompt() with GOALS', () => {
-  it('declares bridge.goals prompt ID', async () => {
+  it('declares atlas.goals prompt ID', async () => {
     const src = await readAgents('src/services/prompt-composition/bridge.ts');
-    expect(src).toContain("const BRIDGE_GOALS_ID = 'bridge.goals'");
+    expect(src).toContain("const GOALS_ID = 'atlas.goals'");
   });
 
-  it('resolves bridge.goals in parallel with soul/user/memory', async () => {
+  it('resolves atlas.goals in parallel with soul/user/memory', async () => {
     const src = await readAgents('src/services/prompt-composition/bridge.ts');
-    expect(src).toContain('pm.getPromptById(BRIDGE_GOALS_ID)');
+    expect(src).toContain('pm.getPromptById(GOALS_ID)');
     // Should be in the Promise.all block
     expect(src).toContain('Promise.all([');
     const promiseAllBlock = src.slice(
       src.indexOf('Promise.all(['),
       src.indexOf(']);', src.indexOf('Promise.all(['))
     );
-    expect(promiseAllBlock).toContain('BRIDGE_GOALS_ID');
+    expect(promiseAllBlock).toContain('GOALS_ID');
   });
 
   it('treats goals as optional with ADR-008 degraded mode', async () => {
@@ -69,9 +69,9 @@ describe('composeBridgePrompt() with GOALS', () => {
     expect(src).toContain('## Active Goals & Projects');
   });
 
-  it('raises token ceiling to 6000 for SOUL+USER+MEMORY+GOALS', async () => {
+  it('raises token ceiling to 8000 for CONSTITUTION+SOUL+USER+MEMORY+GOALS', async () => {
     const src = await readAgents('src/services/prompt-composition/bridge.ts');
-    expect(src).toContain('SLOT_0_TOKEN_CEILING = 6000');
+    expect(src).toContain('SLOT_0_TOKEN_CEILING = 8000');
   });
 
   it('warns about pruning GOALS when token budget exceeded', async () => {
@@ -112,7 +112,7 @@ describe('bridge_update_goals MCP tool', () => {
 
   it('resolves GOALS page from System Prompts DB', async () => {
     const src = await readSource('src/tools/bridge-goals.ts');
-    expect(src).toContain("rich_text: { equals: 'bridge.goals' }");
+    expect(src).toContain("rich_text: { equals: 'atlas.goals' }");
     expect(src).toContain('resolveGoalsPageId');
   });
 
@@ -315,14 +315,14 @@ describe('parseGoalsProjects()', () => {
 describe('goals chain integrity', () => {
   it('composeBridgePrompt → hydrate → staleness → startup', async () => {
     // Verify the complete chain exists in source:
-    // 1. bridge.ts resolves bridge.goals via PromptManager
+    // 1. bridge.ts resolves atlas.goals via PromptManager
     const bridge = await readAgents('src/services/prompt-composition/bridge.ts');
-    expect(bridge).toContain('BRIDGE_GOALS_ID');
-    expect(bridge).toContain('pm.getPromptById(BRIDGE_GOALS_ID)');
+    expect(bridge).toContain('GOALS_ID');
+    expect(bridge).toContain('pm.getPromptById(GOALS_ID)');
 
-    // 2. server.ts calls composeBridgePrompt and checks goals component
+    // 2. server.ts calls composeAtlasIdentity and checks goals component
     const server = await readSource('src/server.ts');
-    expect(server).toContain('composeBridgePrompt()');
+    expect(server).toContain("composeAtlasIdentity('bridge')");
     expect(server).toContain('result.components.goals');
 
     // 3. Staleness runs after hydration

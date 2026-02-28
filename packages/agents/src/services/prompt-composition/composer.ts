@@ -64,7 +64,7 @@ export function resolveDrafterIdByDomain(domain: string, action: ActionType): st
  * Pattern: voice.{voice-id}
  *
  * @example
- * resolveVoiceId('grove-analytical') → 'voice.grove-analytical'
+ * resolveVoiceId('atlas-research') → 'voice.atlas-research'
  */
 export function resolveVoiceId(voiceId: string): string {
   // If already prefixed, return as-is
@@ -194,7 +194,7 @@ export function validateContext(ctx: CompositionContext): ValidationError[] {
  * const result = await composePrompt({
  *   pillar: 'The Grove',
  *   action: 'research',
- *   voice: 'grove-analytical',
+ *   voice: 'atlas-research',
  *   content: 'https://example.com/article',
  *   title: 'Interesting Article',
  * });

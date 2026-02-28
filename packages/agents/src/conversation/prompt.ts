@@ -1,7 +1,11 @@
 /**
  * Atlas Telegram Bot - System Prompt Builder
  *
- * Builds the system prompt from SOUL.md, USER.md, MEMORY.md, and skills.
+ * Composes the system prompt via composeAtlasIdentity() (Notion-governed)
+ * plus Telegram-specific operational instructions (tools, protocols, formatting).
+ *
+ * Identity resolution: packages/agents/src/services/prompt-composition/bridge.ts
+ * ADR-001: Notion as source of truth. ADR-008: fail fast, fail loud.
  */
 
 import { readFile, readdir } from 'fs/promises';
@@ -10,7 +14,7 @@ import { fileURLToPath } from 'url';
 import { NOTION_DB } from '@atlas/shared/config';
 import { logger } from '../logger';
 import type { ConversationState } from './context';
-import { getPromptManager } from '../services/prompt-manager';
+import { composeAtlasIdentity } from '../services/prompt-composition';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
@@ -20,23 +24,6 @@ const SKILLS_DIR = join(DATA_DIR, 'skills');
 interface SkillMetadata {
   name: string;
   description: string;
-}
-
-/**
- * Load a file safely, returning empty string on error
- */
-async function loadFile(path: string): Promise<string> {
-  try {
-    // realpath resolves symlinks
-    const content = await readFile(path, 'utf-8');
-    return content;
-  } catch {
-    // Persona files (SOUL.md, USER.md, MEMORY.md) are optional and may not
-    // exist in every deployment. Demoted from warn to debug to prevent
-    // log spam on every message. (BUG-003)
-    logger.debug('Optional file not found', { path });
-    return '';
-  }
 }
 
 /**
@@ -124,14 +111,39 @@ function formatRecentToolContext(conversation: ConversationState | undefined): s
 
 /**
  * Build the complete system prompt
+ *
+ * Identity resolution: composeAtlasIdentity('telegram') from Notion (ADR-001).
+ * Telegram operational instructions: hardcoded block (TODO: migrate to Notion).
+ * Skills, canonical databases, and tool context appended after identity.
  */
 export async function buildSystemPrompt(conversation?: ConversationState): Promise<string> {
-  // Load identity files
-  const soul = await loadFile(join(DATA_DIR, 'SOUL.md'));
-  const user = await loadFile(join(DATA_DIR, 'USER.md'));
-  const memory = await loadFile(join(DATA_DIR, 'MEMORY.md'));
+  // ── Identity Resolution (Notion-governed) ──────────────────────
+  // Resolves: atlas.constitution, atlas.soul, atlas.user, atlas.memory, atlas.goals
+  // Hard-fails if constitution or soul missing (ADR-008).
+  let identityPrompt: string;
+  try {
+    const identity = await composeAtlasIdentity('telegram');
 
-  // Load skills metadata
+    // Log warnings (degraded components) but don't fail — only constitution+soul are hard requirements
+    for (const warning of identity.warnings) {
+      logger.warn(`[identity] ${warning}`);
+    }
+
+    logger.info('[prompt] Identity resolved from Notion', {
+      surface: identity.surface,
+      tokenCount: identity.tokenCount,
+      components: identity.components,
+      warningCount: identity.warnings.length,
+    });
+
+    identityPrompt = identity.prompt;
+  } catch (err) {
+    // ADR-008: Identity resolution failure is fatal. No filesystem fallback.
+    logger.error('[prompt] FATAL: Identity resolution failed — cannot build system prompt', { error: err });
+    throw err;
+  }
+
+  // Load skills metadata (still filesystem — skills are local, not identity)
   const skills = await loadSkillsMetadata();
 
   // Canonical database list - prevents hallucination of non-existent databases
@@ -162,68 +174,26 @@ You have access to EXACTLY these databases. No others exist.
 **HALLUCINATION CHECK:** "Grove Sprout Factory", "Reading List", "Personal CRM", "Bookmarks", "Projects" do NOT exist. If asked about a database not in this list, respond: "I don't have a database called [name]."
 `;
 
-  // Build the prompt
-  let prompt = `${soul}
+  // Build the prompt — identity FIRST, then Telegram operational layers
+  let prompt = identityPrompt;
 
----
-
-## About Jim
-${user}
-
----
-
-## Persistent Memory
-${memory}
-
----
-
-${CANONICAL_DATABASES}
-`;
+  // Canonical databases (anti-hallucination)
+  prompt += `\n\n---\n\n${CANONICAL_DATABASES}`;
 
   // Add skills section if any exist
   if (skills.length > 0) {
-    prompt += `
----
-
-## Available Skills
-${skills.map(s => `- **${s.name}**: ${s.description}`).join('\n')}
-`;
+    prompt += `\n---\n\n## Available Skills\n${skills.map(s => `- **${s.name}**: ${s.description}`).join('\n')}\n`;
   }
 
-  // Core instructions: PromptManager (Notion-tunable) — LOUD fail if misconfigured
-  // Uses getPromptById for exact match — the broad getPrompt({ capability: 'System', useCase: 'General' })
-  // returns the wrong prompt because 5+ entries share Type=System, Action=General in the Notion DB.
-  let notionCoreInstructions: string | null = null;
-  try {
-    const pm = getPromptManager();
-    notionCoreInstructions = await pm.getPromptById('system.general');
-  } catch (err) {
-    logger.error('PROMPT MANAGER FAILURE: System prompt fetch threw an exception', {
-      error: err,
-      promptId: 'system.general',
-      envVar: process.env.NOTION_PROMPTS_DB_ID ? 'SET' : 'MISSING',
-      fix: [
-        '1. Verify NOTION_PROMPTS_DB_ID is set in .env',
-        '2. Run seed migration: bun run apps/telegram/data/migrations/seed-prompts.ts',
-        '3. Check Notion DB has entry with ID=system.general',
-      ],
-    });
-  }
-
-  if (notionCoreInstructions) {
-    prompt += '\n---\n\n' + notionCoreInstructions;
-  } else {
-    // LOUD: Log error with fix pointers — hardcoded fallback kept only until Notion prompt confirmed working
-    logger.error('PROMPT MANAGER: System prompt returned null/empty — using HARDCODED fallback', {
-      promptId: 'system.general',
-      dbId: process.env.NOTION_PROMPTS_DB_ID || 'NOT SET',
-      fix: [
-        '1. Verify NOTION_PROMPTS_DB_ID is set in .env (expected: 2fc780a78eef8196b29bdb4a6adfdc27)',
-        '2. Confirm Notion DB has a row with ID=system.general and non-empty page body',
-        '3. Once confirmed, the hardcoded block below (400+ lines) should be deleted',
-      ],
-    });
-    prompt += `
+  // ── Telegram Operational Instructions ──────────────────────────
+  // Surface-specific tool documentation, protocols, and formatting rules.
+  // Previously fetched from system.general (now atlas.user), but that content
+  // is already in the identity prompt via composeAtlasIdentity().
+  // The block below is Telegram-specific operational content (tool docs,
+  // anti-hallucination protocols, formatting rules) that hasn't been migrated
+  // to a dedicated Notion prompt yet.
+  // TODO: Migrate to atlas.telegram.ops in Notion and fetch via PromptManager.
+  prompt += `
 ---
 
 ## TICKET CREATION PROTOCOL (Task Architect Model)
@@ -381,9 +351,7 @@ For video: scene description, speech transcription
 - \`create_skill\` → Codify repeatable workflows
 
 ### Self-Modification
-- \`update_memory\` → "remember this", corrections, learnings
-- \`update_soul\` → Change behavior/personality (tell Jim when you do this)
-- \`update_user\` → Learn new facts about Jim
+- \`update_memory\` → "remember this", corrections, learnings (writes to Notion)
 
 ### Operator Tools (Shell Execution & Diagnostics)
 - \`run_script\` → Execute scripts from data/temp/scripts/ or data/skills/
@@ -625,7 +593,6 @@ Platform: Telegram Mobile
 
 **Creating a Dev Pipeline or Work Queue item requires calling the tool. There is no other way.**
 `;
-  }
 
   // Add recent tool context for continuity
   const toolContextSection = formatRecentToolContext(conversation);

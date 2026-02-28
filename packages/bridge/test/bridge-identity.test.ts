@@ -2,7 +2,7 @@
  * Bridge Identity Architecture — Structural Integrity Tests
  *
  * Verifies the full identity wiring chain:
- *   Notion (bridge.soul, bridge.memory) → composeBridgePrompt() →
+ *   Notion (atlas.soul, atlas.memory) → composeBridgePrompt() →
  *   hydrateSystemPreamble() → server.ts startup → prompt-constructor.ts →
  *   MCP tool registration (bridge_update_memory) → Feed 2.0 logging
  *
@@ -33,25 +33,25 @@ async function readAgents(relativePath: string): Promise<string> {
 // ─── 1. composeBridgePrompt() — Identity Resolution ─────────
 
 describe('composeBridgePrompt()', () => {
-  it('resolves bridge.soul as required (hard-fail)', async () => {
+  it('resolves atlas.soul as required (hard-fail)', async () => {
     const src = await readAgents('src/services/prompt-composition/bridge.ts');
-    expect(src).toContain("const BRIDGE_SOUL_ID = 'bridge.soul'");
+    expect(src).toContain("const SOUL_ID = 'atlas.soul'");
     expect(src).toContain('if (!soul)');
     expect(src).toContain('throw new Error');
-    expect(src).toContain('FATAL: bridge.soul not found');
+    expect(src).toContain('FATAL: atlas.soul not found');
   });
 
-  it('resolves bridge.memory as optional (soft-degrade with warning)', async () => {
+  it('resolves atlas.memory as optional (soft-degrade with warning)', async () => {
     const src = await readAgents('src/services/prompt-composition/bridge.ts');
-    expect(src).toContain("const BRIDGE_MEMORY_ID = 'bridge.memory'");
+    expect(src).toContain("const MEMORY_ID = 'atlas.memory'");
     expect(src).toContain('MEMORY unavailable');
     // Must NOT throw on missing memory
     expect(src).not.toMatch(/if\s*\(\s*!memory\s*\)\s*\{?\s*throw/);
   });
 
-  it('resolves system.general as optional (soft-degrade with warning)', async () => {
+  it('resolves atlas.user as optional (soft-degrade with warning)', async () => {
     const src = await readAgents('src/services/prompt-composition/bridge.ts');
-    expect(src).toContain("const USER_ID = 'system.general'");
+    expect(src).toContain("const USER_ID = 'atlas.user'");
     expect(src).toContain('USER context unavailable');
     expect(src).not.toMatch(/if\s*\(\s*!user\s*\)\s*\{?\s*throw/);
   });
@@ -59,7 +59,7 @@ describe('composeBridgePrompt()', () => {
   it('uses PromptManager (not direct Notion API)', async () => {
     const src = await readAgents('src/services/prompt-composition/bridge.ts');
     expect(src).toContain("import { getPromptManager }");
-    expect(src).toContain('pm.getPromptById(BRIDGE_SOUL_ID)');
+    expect(src).toContain('pm.getPromptById(SOUL_ID)');
     // Should NOT have direct @notionhq/client import
     expect(src).not.toContain("from '@notionhq/client'");
   });
@@ -68,10 +68,10 @@ describe('composeBridgePrompt()', () => {
     const src = await readAgents('src/services/prompt-composition/bridge.ts');
     expect(src).toContain('Promise.all([');
     expect(src).toContain('pm.getPromptById(CONSTITUTION_ID)');
-    expect(src).toContain('pm.getPromptById(BRIDGE_SOUL_ID)');
+    expect(src).toContain('pm.getPromptById(SOUL_ID)');
     expect(src).toContain('pm.getPromptById(USER_ID)');
-    expect(src).toContain('pm.getPromptById(BRIDGE_MEMORY_ID)');
-    expect(src).toContain('pm.getPromptById(BRIDGE_GOALS_ID)');
+    expect(src).toContain('pm.getPromptById(MEMORY_ID)');
+    expect(src).toContain('pm.getPromptById(GOALS_ID)');
   });
 
   it('enforces Slot 0 token ceiling of 8000 (CONSTITUTION+SOUL+USER+MEMORY+GOALS)', async () => {
@@ -82,8 +82,8 @@ describe('composeBridgePrompt()', () => {
 
   it('is exported from the prompt-composition index', async () => {
     const idx = await readAgents('src/services/prompt-composition/index.ts');
-    expect(idx).toContain("export { composeBridgePrompt");
-    expect(idx).toContain("type BridgePromptResult");
+    expect(idx).toContain("composeAtlasIdentity");
+    expect(idx).toContain("type AtlasIdentityResult");
     expect(idx).toContain("from './bridge'");
   });
 
@@ -131,9 +131,9 @@ describe('prompt-constructor hydration', () => {
 // ─── 3. server.ts — Startup Hydration + CWD ────────────────
 
 describe('server.ts identity wiring', () => {
-  it('imports composeBridgePrompt', async () => {
+  it('imports composeAtlasIdentity', async () => {
     const src = await readSource('src/server.ts');
-    expect(src).toContain("import { composeBridgePrompt }");
+    expect(src).toContain("import { composeAtlasIdentity }");
   });
 
   it('imports hydrateSystemPreamble', async () => {
@@ -141,9 +141,9 @@ describe('server.ts identity wiring', () => {
     expect(src).toContain("import { hydrateSystemPreamble }");
   });
 
-  it('calls composeBridgePrompt() at startup', async () => {
+  it('calls composeAtlasIdentity() at startup', async () => {
     const src = await readSource('src/server.ts');
-    expect(src).toContain('composeBridgePrompt()');
+    expect(src).toContain("composeAtlasIdentity('bridge')");
     expect(src).toContain('hydrateSystemPreamble(result.prompt)');
   });
 
@@ -196,7 +196,7 @@ describe('bridge_update_memory MCP tool', () => {
 
   it('resolves MEMORY page from System Prompts DB', async () => {
     const src = await readSource('src/tools/bridge-memory.ts');
-    expect(src).toContain("rich_text: { equals: 'bridge.memory' }");
+    expect(src).toContain("rich_text: { equals: 'atlas.memory' }");
     expect(src).toContain('resolveMemoryPageId');
   });
 
@@ -305,11 +305,11 @@ describe('BRIDGE-CLAUDE.md', () => {
     expect(content).toContain('desktop co-pilot');
   });
 
-  it('references bridge.soul and bridge.memory', async () => {
+  it('references atlas.soul and atlas.memory', async () => {
     const repoRoot = resolve(bridgeRoot, '../..');
     const content = await Bun.file(resolve(repoRoot, 'atlas-bridge/CLAUDE.md')).text();
-    expect(content).toContain('bridge.soul');
-    expect(content).toContain('bridge.memory');
+    expect(content).toContain('atlas.soul');
+    expect(content).toContain('atlas.memory');
   });
 
   it('lists all MCP tools including bridge_update_memory', async () => {
@@ -333,11 +333,11 @@ describe('BRIDGE-CLAUDE.md', () => {
 // ─── 8. Chain Test: Hydration → Preamble → Prompt ──────────
 
 describe('identity chain integrity', () => {
-  it('server.ts → composeBridgePrompt → hydrateSystemPreamble → constructPrompt', async () => {
+  it('server.ts → composeAtlasIdentity → hydrateSystemPreamble → constructPrompt', async () => {
     // Verify the complete chain exists in source:
-    // 1. server.ts imports composeBridgePrompt
+    // 1. server.ts imports composeAtlasIdentity
     const server = await readSource('src/server.ts');
-    expect(server).toContain("composeBridgePrompt");
+    expect(server).toContain("composeAtlasIdentity");
     expect(server).toContain("hydrateSystemPreamble");
 
     // 2. composeBridgePrompt resolves from PromptManager

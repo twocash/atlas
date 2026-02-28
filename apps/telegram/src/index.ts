@@ -141,17 +141,16 @@ async function main() {
   // Warm-up validates Notion connectivity — LOUD fail if DB unreachable
   try {
     const pm = getPromptManager();
-    const systemPrompt = await pm.getPromptById('system.general');
-    if (systemPrompt) {
-      logger.info("PromptManager initialized (System prompt loaded from Notion)");
+    const userPrompt = await pm.getPromptById('atlas.user');
+    if (userPrompt) {
+      logger.info("PromptManager initialized (atlas.user loaded from Notion)");
     } else {
-      logger.error("PROMPT MANAGER: System prompt not found at startup — hardcoded fallback will be used", {
-        promptId: 'system.general',
+      logger.error("PROMPT MANAGER: atlas.user not found at startup — identity resolution will be incomplete", {
+        promptId: 'atlas.user',
         dbId: process.env.NOTION_PROMPTS_DB_ID || 'NOT SET',
         fix: [
           '1. Verify NOTION_PROMPTS_DB_ID is set in .env',
-          '2. Run seed migration: bun run apps/telegram/data/migrations/seed-prompts.ts',
-          '3. Confirm Notion DB contains a row with ID=system.general',
+          '2. Confirm Notion DB contains a row with ID=atlas.user',
         ],
       });
     }

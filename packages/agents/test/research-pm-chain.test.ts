@@ -75,8 +75,8 @@ import { afterAll } from 'bun:test';
 
 describe('degradedWarning format', () => {
   it('produces standard [DEGRADED: ...] format', () => {
-    const warning = degradedWarning('voice.grove-analytical');
-    expect(warning).toBe('[DEGRADED: voice.grove-analytical unavailable — using hardcoded fallback]');
+    const warning = degradedWarning('voice.atlas-research');
+    expect(warning).toBe('[DEGRADED: voice.atlas-research unavailable — using hardcoded fallback]');
   });
 
   it('contains the slug for grep-ability', () => {
@@ -89,15 +89,15 @@ describe('PM lookup chain (via mock)', () => {
   describe('voice lookup chain', () => {
     it('queries PM with correct voice slug', async () => {
       // Simulate a voice lookup the way getVoiceInstructionsAsync does
-      const voice = 'grove-analytical';
+      const voice = 'atlas-research';
       const slug = `voice.${voice}`;
       await mockGetPromptById(slug);
-      expect(pmLookups).toContain('voice.grove-analytical');
+      expect(pmLookups).toContain('voice.atlas-research');
     });
 
     it('returns Notion content when PM has it', async () => {
-      pmResponses.set('voice.grove-analytical', '## Grove Analytical Voice\nBe strategic and insightful.');
-      const result = await mockGetPromptById('voice.grove-analytical');
+      pmResponses.set('voice.atlas-research', '## Grove Analytical Voice\nBe strategic and insightful.');
+      const result = await mockGetPromptById('voice.atlas-research');
       expect(result).toBe('## Grove Analytical Voice\nBe strategic and insightful.');
     });
 
@@ -150,7 +150,7 @@ describe('PM lookup chain (via mock)', () => {
 describe('degraded warning injection', () => {
   it('fallback voice text includes degraded marker', () => {
     // When PM returns null for voice, the fallback should include a degraded warning
-    const slug = 'voice.grove-analytical';
+    const slug = 'voice.atlas-research';
     const fallbackText = 'Some hardcoded voice instructions';
     const withWarning = fallbackText + '\n' + degradedWarning(slug);
     expect(withWarning).toContain('[DEGRADED:');
@@ -176,7 +176,7 @@ describe('slug coverage — all PM-gated paths', () => {
   // Verify that all expected slug patterns are queryable
   const expectedPatterns = [
     // Voice slugs
-    'voice.grove-analytical',
+    'voice.atlas-research',
     'voice.linkedin-punchy',
     'voice.consulting',
     'voice.raw-notes',

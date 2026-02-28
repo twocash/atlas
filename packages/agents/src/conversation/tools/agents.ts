@@ -26,7 +26,7 @@ export const AGENT_TOOLS: Anthropic.Tool[] = [
         },
         voice: {
           type: 'string',
-          enum: ['grove-analytical', 'linkedin-punchy', 'consulting', 'raw-notes', 'custom'],
+          enum: ['atlas-research', 'linkedin-punchy', 'consulting', 'raw-notes', 'custom'],
           description: 'Output voice/style. Check data/skills/voices/ for definitions.',
         },
         focus: {
@@ -123,7 +123,7 @@ async function executeDispatchResearch(
 ): Promise<{ success: boolean; result: unknown; error?: string }> {
   const query = input.query as string;
   const depth = (input.depth as string) || 'standard';
-  const voice = (input.voice as string) || 'grove-analytical';
+  const voice = (input.voice as string) || 'atlas-research';
   const focus = input.focus as string | undefined;
   const pillar = input.pillar as string;
 
@@ -176,7 +176,7 @@ async function executeDispatchResearch(
         query,
         depth: depth as 'light' | 'standard' | 'deep',
         focus,
-        voice: voice as 'grove-analytical' | 'linkedin-punchy' | 'consulting' | 'raw-notes' | 'custom',
+        voice: voice as 'atlas-research' | 'linkedin-punchy' | 'consulting' | 'raw-notes' | 'custom',
       },
       agent,
       registry

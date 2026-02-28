@@ -144,7 +144,7 @@ function classifyIntent(
 
 const VOICE_SIGNALS: { pattern: RegExp; voice: ResearchVoice }[] = [
   { pattern: /\b(punchy|linkedin|thought\s*leadership)\b/i, voice: 'linkedin-punchy' },
-  { pattern: /\b(analytical|academic|grove)\b/i, voice: 'grove-analytical' },
+  { pattern: /\b(analytical|academic|grove)\b/i, voice: 'atlas-research' },
   { pattern: /\b(consulting|client|executive)\b/i, voice: 'consulting' },
   { pattern: /\b(raw|notes|quick)\b/i, voice: 'raw-notes' },
 ];

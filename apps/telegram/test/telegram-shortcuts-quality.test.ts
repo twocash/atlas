@@ -82,6 +82,17 @@ mock.module('../src/logger', () => ({
   },
 }));
 
+// Mock PromptManager for read_memory (now Notion-governed via atlas.memory)
+mock.module('@atlas/agents/src/services/prompt-manager', () => ({
+  getPromptManager: () => ({
+    getPromptById: async (id: string) => {
+      if (id === 'atlas.memory') return MOCK_MEMORY;
+      return null;
+    },
+    invalidateCache: () => {},
+  }),
+}));
+
 mock.module('fs/promises', () => ({
   readFile: async (filePath: string) => {
     if (filePath.includes('MEMORY.md')) return MOCK_MEMORY;
@@ -181,19 +192,10 @@ describe('read_memory Quality', () => {
     expect(content.length).toBeGreaterThan(0);
   });
 
-  it('content contains expected ## sections', async () => {
+  it('source field indicates Notion', async () => {
     const result = await executeSelfModTools('read_memory', {});
-    const { content } = result!.result as any;
-    expect(content).toContain('## Classification Rules');
-    expect(content).toContain('## Corrections Log');
-    expect(content).toContain('## Preferences');
-    expect(content).toContain('## Patterns');
-  });
-
-  it('path field is data/MEMORY.md', async () => {
-    const result = await executeSelfModTools('read_memory', {});
-    const { path } = result!.result as any;
-    expect(path).toBe('data/MEMORY.md');
+    const { source } = result!.result as any;
+    expect(source).toBe('Notion (atlas.memory)');
   });
 });
 

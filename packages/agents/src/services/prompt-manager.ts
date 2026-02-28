@@ -112,7 +112,7 @@ export interface PromptVariables {
  */
 export interface PromptComposition {
   drafter?: string;  // e.g. "drafter.capture", "drafter.research"
-  voice?: string;    // e.g. "voice.grove-analytical", "voice.linkedin-punchy"
+  voice?: string;    // e.g. "voice.atlas-research", "voice.linkedin-punchy"
   lens?: string;     // e.g. "lens.strategic", "lens.tactical" (future)
 }
 
@@ -808,7 +808,7 @@ export class PromptManager {
    * ```typescript
    * const composed = await pm.composePrompts({
    *   drafter: 'drafter.research',
-   *   voice: 'voice.grove-analytical',
+   *   voice: 'voice.atlas-research',
    * }, { pillar: 'The Grove' });
    * ```
    */
@@ -822,7 +822,7 @@ export class PromptManager {
    * ```typescript
    * const composed = await pm.composePrompts({
    *   drafter: 'drafter.research',
-   *   voice: 'voice.grove-analytical',
+   *   voice: 'voice.atlas-research',
    * }, { pillar: 'The Grove' });
    * ```
    */

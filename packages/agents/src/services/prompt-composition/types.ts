@@ -148,7 +148,7 @@ export interface PromptSelectionState {
 export interface PromptCompositionIds {
   /** Drafter ID, e.g. "drafter.the-grove.research" */
   drafter?: string;
-  /** Voice ID, e.g. "voice.grove-analytical" */
+  /** Voice ID, e.g. "voice.atlas-research" */
   voice?: string;
   /** Lens ID, e.g. "lens.strategic" (future) */
   lens?: string;
@@ -221,7 +221,7 @@ export interface PromptCompositionResult {
  * Voice option for UI presentation
  */
 export interface VoiceOption {
-  /** Voice ID (e.g. "grove-analytical") */
+  /** Voice ID (e.g. "atlas-research") */
   id: string;
   /** Display name (e.g. "Grove Analytical") */
   name: string;

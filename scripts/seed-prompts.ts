@@ -83,7 +83,7 @@ function sleep(ms: number): Promise<void> {
  * Create a display name from the prompt ID
  */
 function createDisplayName(prompt: PromptRecord): string {
-  // Convert id like "voice.grove-analytical" to "Voice: Grove Analytical"
+  // Convert id like "voice.atlas-research" to "Voice: Grove Analytical"
   const parts = prompt.id.split('.');
   const formatted = parts.map(part =>
     part

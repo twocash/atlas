@@ -62,7 +62,7 @@ describe('Research Agent PM Chain', () => {
 
     it('leaves clean IDs untouched', () => {
       expect(sanitizeNotionId('research-agent.standard')).toBe('research-agent.standard');
-      expect(sanitizeNotionId('voice.grove-analytical')).toBe('voice.grove-analytical');
+      expect(sanitizeNotionId('voice.atlas-research')).toBe('voice.atlas-research');
       expect(sanitizeNotionId('drafter.home-garage.draft')).toBe('drafter.home-garage.draft');
     });
   });
@@ -139,7 +139,7 @@ describe('Research Agent PM Chain', () => {
     ];
 
     const EXPECTED_VOICE_IDS = [
-      'voice.grove-analytical',
+      'voice.atlas-research',
       'voice.linkedin-punchy',
       'voice.consulting',
       'voice.raw-notes',

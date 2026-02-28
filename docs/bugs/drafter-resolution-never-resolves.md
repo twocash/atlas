@@ -173,7 +173,7 @@ circuit breaker path — it just returns null.
 | client | Consulting | `voice.consulting-brief` | `drafter.consulting.capture` |
 | public | Consulting | `voice.client-facing` | `drafter.consulting.capture` |
 | self | The Grove | `voice.raw-notes` | `drafter.the-grove.capture` |
-| client | The Grove | `voice.grove-analytical` | `drafter.the-grove.capture` |
+| client | The Grove | `voice.atlas-research` | `drafter.the-grove.capture` |
 | self | Personal | `voice.reflective` | `drafter.personal.capture` |
 | self | Home/Garage | `voice.practical` | `drafter.home-garage.capture` |
 

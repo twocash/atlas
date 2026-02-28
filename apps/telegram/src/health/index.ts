@@ -204,37 +204,9 @@ async function checkClaude(): Promise<HealthCheckResult[]> {
 async function checkDataFiles(): Promise<HealthCheckResult[]> {
   const results: HealthCheckResult[] = [];
 
-  const requiredFiles = [
-    { path: join(DATA_DIR, 'SOUL.md'), name: 'SOUL.md' },
-    { path: join(DATA_DIR, 'USER.md'), name: 'USER.md' },
-    { path: join(DATA_DIR, 'MEMORY.md'), name: 'MEMORY.md' },
-  ];
-
-  for (const file of requiredFiles) {
-    const exists = await fileExists(file.path);
-    if (exists) {
-      try {
-        const content = await readFile(file.path, 'utf-8');
-        results.push({
-          name: `data:${file.name}`,
-          status: 'pass',
-          message: `${file.name} exists (${content.length} bytes)`,
-        });
-      } catch (error) {
-        results.push({
-          name: `data:${file.name}`,
-          status: 'warn',
-          message: `${file.name} exists but unreadable`,
-        });
-      }
-    } else {
-      results.push({
-        name: `data:${file.name}`,
-        status: 'fail',
-        message: `${file.name} missing`,
-      });
-    }
-  }
+  // Identity files removed (identity unification — now Notion-governed via composeAtlasIdentity).
+  // Identity health is checked at startup when buildSystemPrompt() calls composeAtlasIdentity().
+  // If atlas.constitution or atlas.soul are missing, startup fails hard (ADR-008).
 
   // Check directories
   const requiredDirs = ['conversations', 'skills', 'memory', 'temp', 'exports'];

@@ -107,11 +107,11 @@ describe('Drafter ID Resolution', () => {
 describe('Voice ID Resolution', () => {
 
   it('prefixes bare voice IDs', () => {
-    expect(resolveVoiceId('grove-analytical')).toBe('voice.grove-analytical');
+    expect(resolveVoiceId('atlas-research')).toBe('voice.atlas-research');
   });
 
   it('preserves already-prefixed voice IDs', () => {
-    expect(resolveVoiceId('voice.grove-analytical')).toBe('voice.grove-analytical');
+    expect(resolveVoiceId('voice.atlas-research')).toBe('voice.atlas-research');
   });
 
   it('all registered voices have valid IDs', () => {
@@ -139,14 +139,14 @@ describe('Selection State → Prompt IDs', () => {
       step: 'confirm',
       pillar: 'The Grove',
       action: 'research',
-      voice: 'grove-analytical',
+      voice: 'atlas-research',
       timestamp: Date.now(),
       expiresAt: Date.now() + 300_000,
     };
 
     const ids = buildPromptIds(state);
     expect(ids.drafter).toBe('drafter.the-grove.research');
-    expect(ids.voice).toBe('voice.grove-analytical');
+    expect(ids.voice).toBe('voice.atlas-research');
   });
 
   it('omits voice when not selected', () => {

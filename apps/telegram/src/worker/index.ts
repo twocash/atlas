@@ -303,7 +303,7 @@ export async function runWorkerCycle(): Promise<string> {
     // Execute research
     logger.info('[Worker] Executing research', { taskId: task.id, agentId: agent.id });
     const result = await executeResearch(
-      { query: task.title, depth: 'standard', voice: 'grove-analytical' },
+      { query: task.title, depth: 'standard', voice: 'atlas-research' },
       agent,
       registry
     );

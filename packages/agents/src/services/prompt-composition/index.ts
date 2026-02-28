@@ -21,7 +21,7 @@
  * const result = await composePrompt({
  *   pillar: 'The Grove',
  *   action: 'research',
- *   voice: 'grove-analytical',
+ *   voice: 'atlas-research',
  *   content: 'https://example.com/article',
  *   title: 'Interesting Article',
  * });
@@ -125,4 +125,4 @@ export {
 // Bridge Identity Composition
 // ==========================================
 
-export { composeBridgePrompt, type BridgePromptResult } from './bridge';
+export { composeAtlasIdentity, composeBridgePrompt, type AtlasIdentityResult, type BridgePromptResult } from './bridge';

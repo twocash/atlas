@@ -76,7 +76,7 @@ function classifyHealthZone(check: HealthCheckResult): 1 | 2 | 3 {
   switch (category) {
     case 'data':
       // Only warn-level data issues are auto-fixable (missing dirs, optional files).
-      // Fail-level data issues (SOUL.md missing) need human attention.
+      // Fail-level data issues need human attention.
       return check.status === 'warn' ? 1 : 3;
     case 'voice':
       // Voice configs are optional — missing ones are warn-level, auto-fixable

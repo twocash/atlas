@@ -89,7 +89,7 @@ handlers/prompt-selection-callback.ts (external)
 packages/agents/src/services/prompt-composition/
   │ composePromptFromState(state)
   │ → resolveDrafterId(pillar, action) → 'drafter.the-grove.research'
-  │ → resolveVoiceId(voiceId) → 'voice.grove-analytical'
+  │ → resolveVoiceId(voiceId) → 'voice.atlas-research'
   │ → PromptManager.composePrompts(ids, variables)
   │ → Fallback: pillar-specific → default → hardcoded
   ▼

@@ -46,12 +46,12 @@ const EXCLUDED_FILES = ["editorial_memory.md"];
 /**
  * Maps filesystem voice IDs to Notion PromptManager IDs.
  * Filesystem: grove.md → id "grove"
- * Notion: prompt ID "voice.grove-analytical"
+ * Notion: prompt ID "voice.atlas-research"
  *
  * Voices without a mapping (e.g., "personal") are filesystem-only.
  */
 const FILESYSTEM_TO_NOTION_ID: Record<string, string> = {
-  grove: "voice.grove-analytical",
+  grove: "voice.atlas-research",
   linkedin: "voice.linkedin-punchy",
   consulting: "voice.consulting",
 };

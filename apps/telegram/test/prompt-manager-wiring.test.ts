@@ -184,7 +184,7 @@ describe('Voice ID Convention Alignment', () => {
     );
 
     // Test known voice IDs from voice-manager.ts FILESYSTEM_TO_NOTION_ID map
-    expect(seedVoiceIds.has(resolveVoiceId('grove-analytical'))).toBe(true);
+    expect(seedVoiceIds.has(resolveVoiceId('atlas-research'))).toBe(true);
     expect(seedVoiceIds.has(resolveVoiceId('linkedin-punchy'))).toBe(true);
     expect(seedVoiceIds.has(resolveVoiceId('consulting'))).toBe(true);
   });

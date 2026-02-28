@@ -10,8 +10,8 @@ import { degradedWarning, logDegradedFallback } from '../src/services/degraded-c
 
 describe('degradedWarning', () => {
   it('returns standard format with slug', () => {
-    const result = degradedWarning('voice.grove-analytical');
-    expect(result).toBe('[DEGRADED: voice.grove-analytical unavailable — using hardcoded fallback]');
+    const result = degradedWarning('voice.atlas-research');
+    expect(result).toBe('[DEGRADED: voice.atlas-research unavailable — using hardcoded fallback]');
   });
 
   it('works with research-agent slugs', () => {

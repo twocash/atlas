@@ -442,7 +442,7 @@ export type ResearchDepth = "light" | "standard" | "deep";
  * Writing voice/style for research output
  */
 export type ResearchVoice =
-  | "grove-analytical"
+  | "atlas-research"
   | "linkedin-punchy"
   | "consulting"
   | "raw-notes"

@@ -290,16 +290,11 @@ async function testSelfModTools() {
 
   const { executeSelfModTools } = await import('@atlas/agents/src/conversation/tools/self-mod');
 
-  await runTest('read_soul works', async () => {
-    const result = await executeSelfModTools('read_soul', {});
-    if (!result?.success) throw new Error(result?.error || 'Failed');
-    const data = result.result as { content: string };
-    if (!data.content.includes('ATLAS')) throw new Error('Missing ATLAS content');
-  });
-
-  await runTest('read_memory works', async () => {
+  await runTest('read_memory works (Notion)', async () => {
     const result = await executeSelfModTools('read_memory', {});
     if (!result?.success) throw new Error(result?.error || 'Failed');
+    const data = result.result as { source: string };
+    if (data.source !== 'Notion (atlas.memory)') throw new Error('Expected Notion source');
   });
 }
 

@@ -169,7 +169,7 @@ describe('Scenario 2: Client Deliverable', () => {
 
 describe('Scenario 3: LinkedIn Engage', () => {
   // Engage → Quick → Public. Action resolves to draft.
-  it('maps engage→draft with public grove-analytical voice and quick config', async () => {
+  it('maps engage→draft with public atlas-research voice and quick config', async () => {
     const result = await composeFromStructuredContext(makeInput({
       intent: 'engage',
       depth: 'quick',
@@ -186,8 +186,8 @@ describe('Scenario 3: LinkedIn Engage', () => {
     // Action: engage → draft
     expect(mapIntentToAction('engage')).toBe('draft');
 
-    // Voice: public + The Grove → grove-analytical
-    expect(resolveAudienceVoice('public', 'The Grove', null)).toBe('grove-analytical');
+    // Voice: public + The Grove → atlas-research
+    expect(resolveAudienceVoice('public', 'The Grove', null)).toBe('atlas-research');
 
     // Quick config
     expect(result.temperature).toBe(0.7);
@@ -281,7 +281,7 @@ describe('Scenario 6: Backward Compatibility Canary', () => {
     const ctx: CompositionContext = {
       pillar: 'The Grove',
       action: 'research',
-      voice: 'grove-analytical',
+      voice: 'atlas-research',
       content: GITHUB_FIXTURE.content,
       title: GITHUB_FIXTURE.title,
       url: GITHUB_FIXTURE.url,

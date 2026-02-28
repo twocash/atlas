@@ -20,7 +20,7 @@
 | 4 | `drafter.default.draft` | Drafter | Yes |
 | 5 | `drafter.default.analysis` | Drafter | Yes |
 | 6 | `drafter.default.summarize` | Drafter | Yes |
-| 7 | `voice.grove-analytical` | Voice | Yes |
+| 7 | `voice.atlas-research` | Voice | Yes |
 | 8 | `voice.linkedin-punchy` | Voice | Yes |
 | 9 | `voice.consulting` | Voice | Yes |
 
@@ -70,7 +70,7 @@ These IDs existed in the seed file but were not found in Notion, likely replaced
 | Legacy Slug | Likely Replacement |
 |-------------|-------------------|
 | (original 9 voice/drafter defaults) | Pillar-specific variants above |
-| `voice.grove-analytical` | Still exists (matched) |
+| `voice.atlas-research` | Still exists (matched) |
 
 *Note: The seed file contained 9 entries that all matched. The "seed-only" category applies to any entries that were in the seed but later deleted from Notion. All 9 seed entries currently match.*
 
@@ -117,7 +117,7 @@ This is the key output. For each slug group, the wiring status from Notion entry
 
 | Slug | Call Site | Reachable? | Output Uses It? | Hardcoded Replacement | Status |
 |------|----------|-----------|----------------|----------------------|--------|
-| `voice.grove-analytical` | `src/services/voice-manager.ts:54` via `FILESYSTEM_TO_NOTION_ID` map | Yes — loaded for Grove pillar content | Yes — voice text injected into prompts | Filesystem fallback in `data/voices/` | **PARTIALLY WIRED** |
+| `voice.atlas-research` | `src/services/voice-manager.ts:54` via `FILESYSTEM_TO_NOTION_ID` map | Yes — loaded for Grove pillar content | Yes — voice text injected into prompts | Filesystem fallback in `data/voices/` | **PARTIALLY WIRED** |
 | `voice.linkedin-punchy` | `src/services/voice-manager.ts:55` | Yes | Yes | Filesystem fallback | **PARTIALLY WIRED** |
 | `voice.consulting` | `src/services/voice-manager.ts:56` | Yes | Yes | Filesystem fallback | **PARTIALLY WIRED** |
 
@@ -305,7 +305,7 @@ This is the key output. For each slug group, the wiring status from Notion entry
 | `classifier.spark-classification` | YES | NO | NO | NO | **PARTIAL** |
 | `classifier.intent-detection` | YES | NO | NO | NO | **PARTIAL** |
 | `classifier.chat-with-tools` | YES | NO | NO | NO | **PARTIAL** |
-| `voice.grove-analytical` | YES | NO | NO (filesystem only) | NO | **PARTIAL** |
+| `voice.atlas-research` | YES | NO | NO (filesystem only) | NO | **PARTIAL** |
 | `voice.linkedin-punchy` | YES | NO | NO (filesystem only) | NO | **PARTIAL** |
 | `voice.consulting` | YES | NO | NO (filesystem only) | NO | **PARTIAL** |
 | `voice.{dynamic}` (research) | NO | NO | NO | NO | **NO COVERAGE** |

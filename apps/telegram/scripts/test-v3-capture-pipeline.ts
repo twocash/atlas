@@ -177,7 +177,7 @@ async function testPromptManager() {
 
     // Voices
     { id: 'voice.strategic', expectedType: 'Voice' },
-    { id: 'voice.grove-analytical', expectedType: 'Voice' },
+    { id: 'voice.atlas-research', expectedType: 'Voice' },
     { id: 'voice.consulting-brief', expectedType: 'Voice' },
     { id: 'voice.client-facing', expectedType: 'Voice' },
     { id: 'voice.raw-notes', expectedType: 'Voice' },

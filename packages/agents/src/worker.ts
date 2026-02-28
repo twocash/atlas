@@ -299,7 +299,7 @@ async function executeTask(task: TriagedTask): Promise<void> {
       {
         query: fullQuery,
         depth: "standard",
-        voice: "grove-analytical",
+        voice: "atlas-research",
       },
       agent,
       registry

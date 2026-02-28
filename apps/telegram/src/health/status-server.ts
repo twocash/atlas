@@ -172,7 +172,7 @@ app.get('/debug/skills', async (c) => {
  */
 interface PromptCompositionIds {
   drafter?: string;  // e.g. "drafter.capture", "drafter.research"
-  voice?: string;    // e.g. "voice.grove-analytical", "voice.linkedin-punchy"
+  voice?: string;    // e.g. "voice.atlas-research", "voice.linkedin-punchy"
   lens?: string;     // e.g. "lens.strategic", "lens.tactical" (future)
 }
 
@@ -183,7 +183,7 @@ interface CaptureRequest {
   selectedText?: string;
   // V3 Active Capture fields
   action?: string;   // e.g. "capture", "research"
-  voice?: string;    // e.g. "grove-analytical", "consulting"
+  voice?: string;    // e.g. "atlas-research", "consulting"
   promptIds?: PromptCompositionIds;
 }
 

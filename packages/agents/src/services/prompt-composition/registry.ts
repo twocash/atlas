@@ -132,7 +132,7 @@ export const PILLAR_ACTIONS: Record<Pillar, ActionType[]> = {
 export const PILLAR_VOICES: Record<Pillar, VoiceOption[]> = {
   'The Grove': [
     {
-      id: 'grove-analytical',
+      id: 'atlas-research',
       name: 'Grove Analytical',
       description: 'Technical thought leadership with concentration risk thesis',
       emoji: '🎯',
@@ -206,7 +206,7 @@ export const PILLAR_VOICES: Record<Pillar, VoiceOption[]> = {
  */
 export const ACTION_VOICE_PREFERENCES: Partial<Record<ActionType, string[]>> = {
   // Research benefits from analytical voices
-  research: ['grove-analytical', 'consulting-brief', 'strategic'],
+  research: ['atlas-research', 'consulting-brief', 'strategic'],
   // Draft works with any voice
   draft: undefined,
   // Capture typically wants minimal processing

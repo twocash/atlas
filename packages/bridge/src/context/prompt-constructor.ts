@@ -19,7 +19,7 @@ import type { AssemblyResult } from "./assembler"
 // ─── System Preamble (Hydrated from Notion) ─────────────
 
 /**
- * System preamble — hydrated from Notion via composeBridgePrompt() at startup.
+ * System preamble — hydrated from Notion via composeAtlasIdentity() at startup.
  * Null until hydrated. constructPrompt() will throw if called before hydration
  * per ADR-008 (fail fast, fail loud).
  */
@@ -49,7 +49,7 @@ export function constructPrompt(assembly: AssemblyResult): string {
   if (!systemPreamble) {
     throw new Error(
       "[prompt-constructor] System preamble not hydrated. " +
-      "composeBridgePrompt() must be called at startup before prompt construction. " +
+      "composeAtlasIdentity() must be called at startup before prompt construction. " +
       "See ADR-008 (fail fast, fail loud).",
     )
   }

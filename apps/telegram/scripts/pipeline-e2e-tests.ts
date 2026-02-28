@@ -414,7 +414,7 @@ async function testResearchPipeline(
       {
         query: testQuery,
         depth,
-        voice: 'grove-analytical',
+        voice: 'atlas-research',
       },
       agent,
       registry

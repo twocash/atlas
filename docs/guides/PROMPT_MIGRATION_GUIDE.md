@@ -53,7 +53,7 @@ This guide documents how to migrate hardcoded prompts from TypeScript to the **A
 ```
 
 Examples:
-- `voice.grove-analytical` - Grove analytical writing voice
+- `voice.atlas-research` - Grove analytical writing voice
 - `research-agent.standard` - Standard research depth
 - `research-agent.the-grove.sprout-generation` - Grove-specific sprout research
 
@@ -167,7 +167,7 @@ const pm = getPromptManager();
 console.log(pm.getCacheStats());
 
 // Force cache invalidation
-pm.invalidateCache("voice.grove-analytical");
+pm.invalidateCache("voice.atlas-research");
 
 // Fetch fresh
 const prompt = await pm.getPrompt({

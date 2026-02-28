@@ -14,10 +14,10 @@
  *
  * @example
  * ```ts
- * const voiceText = await pm.getPromptById('voice.grove-analytical');
+ * const voiceText = await pm.getPromptById('voice.atlas-research');
  * if (!voiceText) {
- *   logDegradedFallback('voice.grove-analytical', 'getVoiceInstructionsAsync');
- *   return FALLBACK + '\n' + degradedWarning('voice.grove-analytical');
+ *   logDegradedFallback('voice.atlas-research', 'getVoiceInstructionsAsync');
+ *   return FALLBACK + '\n' + degradedWarning('voice.atlas-research');
  * }
  * ```
  */
@@ -45,7 +45,7 @@ const REMEDIATION_STEPS = [
 /**
  * Emit a structured console.error for a degraded PM fallback.
  *
- * @param slug - The PM slug that was not found (e.g., 'voice.grove-analytical')
+ * @param slug - The PM slug that was not found (e.g., 'voice.atlas-research')
  * @param caller - The function name where the fallback occurred
  * @param extra - Optional additional context (e.g., { depth: 'deep', pillar: 'the-grove' })
  */

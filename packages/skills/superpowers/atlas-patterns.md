@@ -193,7 +193,7 @@ The composition engine lives in `packages/agents/src/services/prompt-composition
 - `composer.ts` — resolveDrafterId(), composePrompt(), fallback chain
 
 **Drafter ID pattern:** `drafter.{pillar-slug}.{action}` (e.g., `drafter.the-grove.research`)
-**Voice ID pattern:** `voice.{voice-id}` (e.g., `voice.grove-analytical`)
+**Voice ID pattern:** `voice.{voice-id}` (e.g., `voice.atlas-research`)
 **Fallback chain:** pillar-specific → `drafter.default.{action}` → hardcoded fallback
 
 ### Forbidden Patterns

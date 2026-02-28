@@ -2,7 +2,7 @@
  * bridge_update_goals — Goal state management tool for Bridge Claude.
  *
  * Writes structured goal updates to the GOALS.md Notion page
- * (bridge.goals in System Prompts DB).
+ * (atlas.goals in System Prompts DB).
  *
  * Operations:
  *   - add_project: Add a new project under a pillar
@@ -19,7 +19,7 @@
 
 import { Client } from '@notionhq/client';
 
-/** The Notion page ID for bridge.goals — set after first resolution */
+/** The Notion page ID for atlas.goals — set after first resolution */
 let goalsPageId: string | null = null;
 
 /** Goal update operation types */
@@ -56,7 +56,7 @@ async function resolveGoalsPageId(notion: Client): Promise<string | null> {
       database_id: dbId,
       filter: {
         property: 'ID',
-        rich_text: { equals: 'bridge.goals' },
+        rich_text: { equals: 'atlas.goals' },
       },
       page_size: 1,
     });
@@ -66,7 +66,7 @@ async function resolveGoalsPageId(notion: Client): Promise<string | null> {
       return goalsPageId;
     }
 
-    console.error('[bridge-goals] bridge.goals entry not found in System Prompts DB');
+    console.error('[bridge-goals] atlas.goals entry not found in System Prompts DB');
     return null;
   } catch (error) {
     console.error('[bridge-goals] Failed to resolve GOALS page ID:', error);
@@ -103,7 +103,7 @@ export async function updateGoals(params: GoalUpdateParams): Promise<GoalUpdateR
   const pageId = await resolveGoalsPageId(notion);
 
   if (!pageId) {
-    return { success: false, error: 'Could not resolve bridge.goals page ID' };
+    return { success: false, error: 'Could not resolve atlas.goals page ID' };
   }
 
   const timestamp = new Date().toISOString().split('T')[0]; // YYYY-MM-DD

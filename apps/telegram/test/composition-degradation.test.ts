@@ -173,7 +173,7 @@ describe('Composition Graceful Degradation (Bug #1 Fix)', () => {
 
     it('composes all three components when found', async () => {
       const drafterId = 'drafter.the-grove.analysis';
-      const voiceId = 'voice.grove-analytical';
+      const voiceId = 'voice.atlas-research';
       const lensId = 'lens.strategic';
 
       (pm as any).cache.set(drafterId, {

@@ -128,16 +128,16 @@ describe('audience-voice: resolveAudienceVoice', () => {
     expect(resolveAudienceVoice('client', 'Consulting', null)).toBe('consulting-brief');
   });
 
-  it('client + The Grove → grove-analytical', () => {
-    expect(resolveAudienceVoice('client', 'The Grove', null)).toBe('grove-analytical');
+  it('client + The Grove → atlas-research', () => {
+    expect(resolveAudienceVoice('client', 'The Grove', null)).toBe('atlas-research');
   });
 
   it('public + Consulting → client-facing', () => {
     expect(resolveAudienceVoice('public', 'Consulting', null)).toBe('client-facing');
   });
 
-  it('public + The Grove → grove-analytical', () => {
-    expect(resolveAudienceVoice('public', 'The Grove', null)).toBe('grove-analytical');
+  it('public + The Grove → atlas-research', () => {
+    expect(resolveAudienceVoice('public', 'The Grove', null)).toBe('atlas-research');
   });
 
   it('self + The Grove → raw-notes', () => {
@@ -280,13 +280,13 @@ describe('composeFromStructuredContext', () => {
   });
 
   it('uses explicit voice_hint over audience default', async () => {
-    const voice = resolveAudienceVoice('self', 'The Grove', 'grove-analytical');
-    expect(voice).toBe('grove-analytical');
+    const voice = resolveAudienceVoice('self', 'The Grove', 'atlas-research');
+    expect(voice).toBe('atlas-research');
 
     const result = await composeFromStructuredContext(makeInput({
       audience: 'self',
       pillar: 'The Grove',
-      voice_hint: 'grove-analytical',
+      voice_hint: 'atlas-research',
     }));
     expect(result.prompt.length).toBeGreaterThan(0);
   });

@@ -172,15 +172,15 @@ async function testSelfModTools(): Promise<TestResult[]> {
   const results: TestResult[] = [];
   const { executeSelfModTools } = await import('@atlas/agents/src/conversation/tools/self-mod');
 
-  // Test read soul
-  results.push(await runTest('Read SOUL.md', async () => {
-    const result = await executeSelfModTools('read_soul', {});
+  // Test read memory (from Notion via PromptManager)
+  results.push(await runTest('Read atlas.memory', async () => {
+    const result = await executeSelfModTools('read_memory', {});
     if (!result?.success) {
-      throw new Error(result?.error || 'Read soul failed');
+      throw new Error(result?.error || 'Read memory failed');
     }
-    const data = result.result as { content: string };
-    if (!data.content.includes('Core Truths')) {
-      throw new Error('SOUL.md missing expected content');
+    const data = result.result as { content: string; source: string };
+    if (!data.content || data.content.length === 0) {
+      throw new Error('atlas.memory returned empty content');
     }
   }));
 

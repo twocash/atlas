@@ -24,13 +24,13 @@ const AUDIENCE_VOICE_DEFAULTS: Record<AudienceType, Partial<Record<Pillar, strin
     'Home/Garage': 'practical',
   },
   client: {
-    'The Grove': 'grove-analytical',
+    'The Grove': 'atlas-research',
     'Consulting': 'consulting-brief',
     'Personal': 'reflective',
     'Home/Garage': 'practical',
   },
   public: {
-    'The Grove': 'grove-analytical',
+    'The Grove': 'atlas-research',
     'Consulting': 'client-facing',
     'Personal': 'reflective',
     'Home/Garage': 'practical',

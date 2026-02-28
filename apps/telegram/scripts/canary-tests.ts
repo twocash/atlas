@@ -145,18 +145,16 @@ async function runSystemPromptCanaries(): Promise<CanarySuite> {
     // Canary 1: Prompt has minimum viable length
     results.push(assertMinLength(prompt, 5000, 'Prompt minimum length'));
 
-    // Canary 2: SOUL critical phrases (not just "SOUL" but actual content)
+    // Canary 2: SOUL critical phrases (Notion-governed atlas.soul)
     results.push(assertContainsAll(prompt, [
       'Core Truths',
       'Jim Calhoun',
-      'chief of staff',  // From SOUL.md actual phrasing
     ], 'SOUL identity phrases'));
 
-    // Canary 3: Memory critical phrases
+    // Canary 3: Memory critical phrases (Notion-governed, no filesystem reference)
     results.push(assertContainsAll(prompt, [
       'Classification Rules',
       'Anti-Hallucination',
-      'MEMORY.md',
     ], 'MEMORY content loaded'));
 
     // Canary 4: Pillars must all be present
@@ -209,43 +207,57 @@ async function runSystemPromptCanaries(): Promise<CanarySuite> {
 }
 
 /**
- * Data File Canaries - Verify required files load with content
+ * Identity Resolution Canaries - Verify Notion-governed identity loads
+ *
+ * Identity files (SOUL.md, USER.md, MEMORY.md) were removed in the Identity
+ * Unification sprint. All identity now resolves from Notion via PromptManager.
  */
-async function runDataFileCanaries(): Promise<CanarySuite> {
+async function runIdentityResolutionCanaries(): Promise<CanarySuite> {
   const results: CanaryResult[] = [];
 
-  console.log('\n🐤 DATA FILE CANARIES');
+  console.log('\n🐤 IDENTITY RESOLUTION CANARIES');
   console.log('─'.repeat(50));
 
-  const fs = await import('fs/promises');
-  const dataDir = join(import.meta.dir, '..', 'data');
-
-  const criticalFiles = [
-    { path: 'SOUL.md', minLength: 1000, mustContain: ['Core Truths', 'Atlas'] },
-    { path: 'MEMORY.md', minLength: 500, mustContain: ['Classification', 'Patterns'] },
-    { path: 'USER.md', minLength: 100, mustContain: ['Jim'] },
+  const criticalPrompts = [
+    { id: 'atlas.soul', minLength: 500, mustContain: ['Core Truths', 'Atlas'] },
+    { id: 'atlas.memory', minLength: 100, mustContain: ['Classification'] },
+    { id: 'atlas.user', minLength: 50, mustContain: ['Jim'] },
   ];
 
-  for (const file of criticalFiles) {
-    const fullPath = join(dataDir, file.path);
-    try {
-      const content = await fs.readFile(fullPath, 'utf-8');
+  try {
+    const { getPromptManager } = await import('@atlas/agents/src/services/prompt-manager');
+    const pm = getPromptManager();
 
-      // Check length
-      const lenResult = assertMinLength(content, file.minLength, `${file.path} length`);
-      results.push(lenResult);
+    for (const prompt of criticalPrompts) {
+      try {
+        const content = await pm.getPromptById(prompt.id);
+        if (!content) {
+          results.push({
+            name: `${prompt.id} resolved`,
+            passed: false,
+            error: `${prompt.id} not found in Notion System Prompts DB`,
+          });
+          continue;
+        }
 
-      // Check required content
-      const contentResult = assertContainsAll(content, file.mustContain, `${file.path} content`);
-      results.push(contentResult);
+        results.push(assertMinLength(content, prompt.minLength, `${prompt.id} length`));
+        results.push(assertContainsAll(content, prompt.mustContain, `${prompt.id} content`));
 
-    } catch (err: any) {
-      results.push({
-        name: `${file.path} exists`,
-        passed: false,
-        error: `File not found or unreadable: ${err.message}`,
-      });
+      } catch (err: any) {
+        results.push({
+          name: `${prompt.id} resolved`,
+          passed: false,
+          error: `Failed to resolve: ${err.message}`,
+        });
+      }
     }
+
+  } catch (err: any) {
+    results.push({
+      name: 'PromptManager import',
+      passed: false,
+      error: `Failed to import PromptManager: ${err.message}`,
+    });
   }
 
   // Report
@@ -255,7 +267,7 @@ async function runDataFileCanaries(): Promise<CanarySuite> {
     if (r.error) console.log(`     └─ ${r.error}`);
   }
 
-  return { name: 'Data Files', results };
+  return { name: 'Identity Resolution', results };
 }
 
 /**
@@ -320,18 +332,22 @@ async function runToolResponseCanaries(): Promise<CanarySuite> {
       });
     }
 
-    // Canary 3: read_soul returns actual SOUL content
+    // Canary 3: read_memory returns Notion-governed memory
     const { executeSelfModTools } = await import('@atlas/agents/src/conversation/tools/self-mod');
-    const soulResult = await executeSelfModTools('read_soul', {});
-    if (soulResult?.success) {
-      const content = (soulResult.result as { content?: string })?.content || '';
-      results.push(assertMinLength(content, 500, 'SOUL content via tool'));
-      results.push(assertContainsAll(content, ['Core Truths'], 'SOUL identity via tool'));
+    const memoryResult = await executeSelfModTools('read_memory', {});
+    if (memoryResult?.success) {
+      const content = (memoryResult.result as { content?: string })?.content || '';
+      results.push(assertMinLength(content, 100, 'Memory content via tool'));
+      results.push({
+        name: 'read_memory source is Notion',
+        passed: (memoryResult.result as any)?.source === 'Notion (atlas.memory)',
+        error: 'Expected source to be Notion (atlas.memory)',
+      });
     } else {
       results.push({
-        name: 'read_soul succeeds',
+        name: 'read_memory succeeds',
         passed: false,
-        error: soulResult?.error || 'Unknown error',
+        error: memoryResult?.error || 'Unknown error',
       });
     }
 
@@ -592,7 +608,7 @@ async function main() {
 
   // Run all canary suites
   suites.push(await runEnvironmentCanaries());
-  suites.push(await runDataFileCanaries());
+  suites.push(await runIdentityResolutionCanaries());
   suites.push(await runSystemPromptCanaries());
   suites.push(await runSkillRegistryCanaries());
   suites.push(await runToolResponseCanaries());

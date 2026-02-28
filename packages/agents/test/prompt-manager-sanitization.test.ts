@@ -69,8 +69,8 @@ describe('sanitizeNotionId', () => {
     });
 
     it('passes voice slugs unchanged', () => {
-      expect(sanitizeNotionId('voice.grove-analytical')).toBe(
-        'voice.grove-analytical'
+      expect(sanitizeNotionId('voice.atlas-research')).toBe(
+        'voice.atlas-research'
       );
     });
 
