@@ -996,6 +996,7 @@ async function runAgentsUnitTests(cwd: string): Promise<SuiteResult> {
       'test/session-journal.test.ts',  // SESSION-TELEMETRY P0: Journal + artifact
       'test/research-context-injection.test.ts', // ATLAS-RCI-001: Source context composition + prompt injection
       'test/andon-gate.test.ts', // ATLAS-AG-001: Andon Gate epistemic honesty for research output
+      'test/rpo-001-search-provider.test.ts', // ATLAS-RPO-001: SearchProvider + prompt split + orchestrator
     ],
     agentsCwd,
     60000

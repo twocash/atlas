@@ -55,9 +55,12 @@ describe('handleTrackInWQ — requestType default', () => {
 // (e) source fingerprinting — function signature
 // ──────────────────────────────────────────────────────────────────────────────
 describe('runResearchAgentWithNotifications — source fingerprinting', () => {
+  // RPO-001: Business logic moved to research-orchestrator.ts, delivery to research-adapter.ts.
+  // research-executor.ts is now a re-export shim. Tests read from the actual source files.
+
   it('accepts source as 5th parameter with default "unknown"', async () => {
     const src = await Bun.file(
-      rel('../src/services/research-executor.ts')
+      rel('../src/services/research-adapter.ts')
     ).text();
 
     // Signature must have source with default 'unknown'
@@ -66,7 +69,7 @@ describe('runResearchAgentWithNotifications — source fingerprinting', () => {
 
   it('sendCompletionNotification accepts source as 6th parameter', async () => {
     const src = await Bun.file(
-      rel('../src/services/research-executor.ts')
+      rel('../src/services/research-adapter.ts')
     ).text();
 
     expect(src).toContain("source = 'unknown'");
@@ -78,19 +81,19 @@ describe('runResearchAgentWithNotifications — source fingerprinting', () => {
 
   it('source is included in structured logger calls', async () => {
     const src = await Bun.file(
-      rel('../src/services/research-executor.ts')
+      rel('../src/services/research-adapter.ts')
     ).text();
 
     // Logger calls should include source field
-    expect(src).toMatch(/logger\.(info|error|warn)\(.*\{[\s\S]*?source[\s\S]*?\}/);
+    expect(src).toMatch(/logger\.(info|warn)\(.*\{[\s\S]*?source[\s\S]*?\}/);
   });
 
   it('source is embedded in agent name for WQ spawn comment provenance', async () => {
     const src = await Bun.file(
-      rel('../src/services/research-executor.ts')
+      join(rel('..'), '..', '..', 'packages', 'agents', 'src', 'orchestration', 'research-orchestrator.ts')
     ).text();
 
-    // Agent name should include source
+    // Agent name should include source (now in orchestrator)
     expect(src).toContain('`Research [${source}]:');
   });
 });

@@ -1,0 +1,153 @@
+/**
+ * Gemini Search Provider
+ *
+ * Implements SearchProvider using Google Gemini with Google Search grounding.
+ * Consolidates dual SDK paths to @google/genai only.
+ *
+ * ROOT CAUSE FIX (RPO-001):
+ * - Uses `systemInstruction` to separate behavioral instructions from query
+ * - Keeps `contents` focused on the research query + output format
+ * - Retries once on grounding failure (probabilistic suppression)
+ */
+
+import type {
+  SearchProvider,
+  SearchRequest,
+  SearchResult,
+  Citation,
+} from "./types";
+
+const GROUNDING_RETRY_MAX = 1;
+
+export class GeminiSearchProvider implements SearchProvider {
+  readonly name = "gemini-google-search";
+
+  private ai: any = null;
+  private readonly apiKey: string;
+  private readonly model: string;
+
+  constructor(apiKey?: string, model = "gemini-2.0-flash") {
+    this.apiKey = apiKey || process.env.GEMINI_API_KEY || "";
+    this.model = model;
+
+    if (!this.apiKey) {
+      throw new Error("GEMINI_API_KEY is required for GeminiSearchProvider");
+    }
+  }
+
+  private async ensureClient(): Promise<any> {
+    if (!this.ai) {
+      const { GoogleGenAI } = await import("@google/genai");
+      this.ai = new GoogleGenAI({ apiKey: this.apiKey });
+      console.log(`[GeminiSearch] Initialized @google/genai, model=${this.model}`);
+    }
+    return this.ai;
+  }
+
+  async generate(request: SearchRequest): Promise<SearchResult> {
+    const ai = await this.ensureClient();
+
+    let lastResult: SearchResult | null = null;
+
+    for (let attempt = 0; attempt <= GROUNDING_RETRY_MAX; attempt++) {
+      if (attempt > 0) {
+        console.log(
+          `[GeminiSearch] Grounding retry ${attempt}/${GROUNDING_RETRY_MAX} — previous attempt had no grounding`
+        );
+      }
+
+      const result = await this.executeCall(ai, request);
+
+      if (result.groundingUsed) {
+        if (attempt > 0) {
+          console.log(
+            `[GeminiSearch] Grounding succeeded on retry ${attempt}`
+          );
+        }
+        return result;
+      }
+
+      lastResult = result;
+    }
+
+    // All attempts failed grounding — return last result with groundingUsed=false
+    // Caller (research.ts) decides whether to throw HALLUCINATION
+    console.warn(
+      `[GeminiSearch] Grounding failed after ${GROUNDING_RETRY_MAX + 1} attempts`
+    );
+    return lastResult!;
+  }
+
+  private async executeCall(
+    ai: any,
+    request: SearchRequest
+  ): Promise<SearchResult> {
+    console.log("[GeminiSearch] Calling Gemini with Google Search grounding...");
+    console.log(
+      `[GeminiSearch] Query length: ${request.query.length}, systemInstruction length: ${request.systemInstruction.length}`
+    );
+
+    const startTime = Date.now();
+
+    const response = await ai.models.generateContent({
+      model: this.model,
+      contents: request.query,
+      config: {
+        systemInstruction: request.systemInstruction,
+        tools: [{ googleSearch: {} }],
+        maxOutputTokens: request.maxOutputTokens,
+      },
+    });
+
+    const elapsed = Date.now() - startTime;
+    console.log(`[GeminiSearch] Response received in ${elapsed}ms`);
+
+    return this.parseResponse(response);
+  }
+
+  private parseResponse(response: any): SearchResult {
+    const candidate = response.candidates?.[0];
+    const gm = candidate?.groundingMetadata;
+
+    // Extract grounding signals
+    const groundingChunks: any[] = gm?.groundingChunks || [];
+    const groundingSupports: any[] = gm?.groundingSupports || [];
+    const webSearchQueries: string[] = gm?.webSearchQueries || [];
+
+    // Extract citations from grounding chunks
+    const citations: Citation[] = [];
+    for (const chunk of groundingChunks) {
+      if (chunk.web) {
+        citations.push({
+          url: chunk.web.uri || "",
+          title: chunk.web.title || "",
+        });
+      }
+    }
+
+    // Grounding confirmed if ANY signal present
+    const groundingUsed =
+      groundingSupports.length > 0 ||
+      groundingChunks.length > 0 ||
+      citations.length > 0 ||
+      webSearchQueries.length > 0;
+
+    console.log("[GeminiSearch] Grounding status:", {
+      used: groundingUsed,
+      chunks: groundingChunks.length,
+      supports: groundingSupports.length,
+      queries: webSearchQueries.length,
+      citations: citations.length,
+      finishReason: candidate?.finishReason,
+    });
+
+    return {
+      text: response.text || "",
+      citations,
+      groundingUsed,
+      groundingMetadata: gm,
+      searchQueries: webSearchQueries,
+      groundingSupportCount: groundingSupports.length,
+    };
+  }
+}

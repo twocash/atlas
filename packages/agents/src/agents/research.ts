@@ -495,201 +495,36 @@ async function resolveAllRedirectUrls(
 }
 
 // ==========================================
-// Gemini Client with Google Search Grounding
+// Search Provider (RPO-001: replaces dual-SDK GeminiClient)
 // ==========================================
 
-interface GeminiClient {
-  generateContent: (prompt: string, maxTokens: number) => Promise<GeminiResponse>;
-}
+import { GeminiSearchProvider, type SearchProvider, type SearchResult as SearchProviderResult } from "../search";
 
+// Backward-compat bridge: GeminiResponse shape used by parseResearchResponse
 interface GeminiResponse {
   text: string;
   citations: Array<{ url: string; title: string }>;
   groundingMetadata?: unknown;
-  groundingUsed?: boolean; // True if grounding evidence was found
+  groundingUsed?: boolean;
 }
 
-let _geminiClient: GeminiClient | null = null;
+let _searchProvider: SearchProvider | null = null;
 
-async function getGeminiClient(): Promise<GeminiClient> {
-  if (!_geminiClient) {
-    const apiKey = process.env.GEMINI_API_KEY;
-    if (!apiKey) {
-      throw new Error("GEMINI_API_KEY environment variable is required");
-    }
-
-    // Use the new @google/genai SDK (recommended for Gemini 2.0+)
-    // Falls back to legacy SDK if new one isn't available
-    let useNewSdk = false;
-    let genaiModule: any;
-
-    try {
-      genaiModule = await import("@google/genai");
-      useNewSdk = true;
-    } catch {
-      // Fall back to legacy SDK
-      genaiModule = await import("@google/generative-ai");
-    }
-
-    if (useNewSdk) {
-      // New SDK: @google/genai
-      const { GoogleGenAI } = genaiModule;
-      const ai = new GoogleGenAI({ apiKey });
-      console.log("[Research] Using NEW SDK (@google/genai)");
-
-      _geminiClient = {
-        generateContent: async (prompt: string, maxTokens: number): Promise<GeminiResponse> => {
-          console.log("[Research] Calling Gemini with Google Search grounding...");
-          const response = await ai.models.generateContent({
-            model: "gemini-2.0-flash",
-            contents: prompt,
-            config: {
-              tools: [{ googleSearch: {} }],
-              maxOutputTokens: maxTokens,
-            },
-          });
-
-          // Extract grounding metadata from response
-          const candidate = response.candidates?.[0];
-          const groundingMetadata = candidate?.groundingMetadata;
-
-          // DEBUG: Log full grounding structure
-          console.log("[Research] Grounding metadata keys:", groundingMetadata ? Object.keys(groundingMetadata) : "null");
-          console.log("[Research] Candidate finishReason:", candidate?.finishReason);
-
-          const groundingChunks = (groundingMetadata as any)?.groundingChunks || [];
-          const searchEntryPoint = (groundingMetadata as any)?.searchEntryPoint;
-          const webSearchQueries = (groundingMetadata as any)?.webSearchQueries || [];
-
-          console.log("[Research] Web search queries:", webSearchQueries);
-          console.log("[Research] Grounding chunks count:", groundingChunks.length);
-          if (searchEntryPoint) {
-            console.log("[Research] Search entry point present:", !!searchEntryPoint.renderedContent);
-          }
-
-          const citations: Array<{ url: string; title: string }> = [];
-          for (const chunk of groundingChunks) {
-            if (chunk.web) {
-              citations.push({
-                url: chunk.web.uri || "",
-                title: chunk.web.title || "",
-              });
-            }
-          }
-
-          // Check if grounding was actually used (Gemini 2.0 has different structure)
-          const groundingSupports = (groundingMetadata as any)?.groundingSupports || [];
-
-          // Gemini 2.0 uses groundingSupports instead of groundingChunks
-          // If groundingSupports exists, grounding DID run even if we don't have URLs
-          if (groundingSupports.length > 0) {
-            console.log("[Research] Grounding confirmed via groundingSupports:", groundingSupports.length, "segments");
-          } else if (webSearchQueries.length === 0 && citations.length === 0) {
-            console.warn("[Research] WARNING: No grounding evidence found - results may be from training data!");
-          }
-
-          // Grounding is confirmed if ANY of these are present:
-          // - groundingSupports (Gemini 2.0 style)
-          // - groundingChunks (legacy style)
-          // - citations extracted from groundingChunks
-          // - webSearchQueries (Gemini searched for something)
-          const groundingUsed = groundingSupports.length > 0 || groundingChunks.length > 0 || citations.length > 0 || webSearchQueries.length > 0;
-          console.log("[Research] Grounding used:", groundingUsed, {
-            groundingSupports: groundingSupports.length,
-            groundingChunks: groundingChunks.length,
-            citations: citations.length,
-            webSearchQueries: webSearchQueries.length,
-          });
-
-          return {
-            text: response.text || "",
-            citations,
-            groundingMetadata,
-            groundingUsed,
-          };
-        },
-      };
-    } else {
-      // Legacy SDK: @google/generative-ai
-      const { GoogleGenerativeAI } = genaiModule;
-      const genAI = new GoogleGenerativeAI(apiKey);
-      console.log("[Research] Using LEGACY SDK (@google/generative-ai)");
-
-      _geminiClient = {
-        generateContent: async (prompt: string, maxTokens: number): Promise<GeminiResponse> => {
-          console.log("[Research] Calling Gemini with Google Search grounding (legacy)...");
-          // For legacy SDK with Gemini 2.0, use google_search (not googleSearchRetrieval)
-          const model = genAI.getGenerativeModel({
-            model: "gemini-2.0-flash",
-            tools: [{ google_search: {} }] as any,
-            generationConfig: {
-              maxOutputTokens: maxTokens,
-            },
-          });
-
-          const result = await model.generateContent(prompt);
-          const response = result.response;
-
-          // Extract grounding citations
-          const candidate = response.candidates?.[0];
-          const groundingMetadata = candidate?.groundingMetadata;
-
-          // DEBUG: Log full grounding structure
-          console.log("[Research] Grounding metadata keys:", groundingMetadata ? Object.keys(groundingMetadata as object) : "null");
-          console.log("[Research] Candidate finishReason:", candidate?.finishReason);
-
-          const groundingChunks = (groundingMetadata as any)?.groundingChunks ||
-                                  (groundingMetadata as any)?.groundingChuncks || []; // Typo in some SDK versions
-          const webSearchQueries = (groundingMetadata as any)?.webSearchQueries || [];
-
-          console.log("[Research] Web search queries:", webSearchQueries);
-          console.log("[Research] Grounding chunks count:", groundingChunks.length);
-
-          const citations: Array<{ url: string; title: string }> = [];
-          for (const chunk of groundingChunks) {
-            if (chunk.web) {
-              citations.push({
-                url: chunk.web.uri || "",
-                title: chunk.web.title || "",
-              });
-            }
-          }
-
-          // Check if grounding was actually used (Gemini 2.0 has different structure)
-          const groundingSupports = (groundingMetadata as any)?.groundingSupports || [];
-
-          // Gemini 2.0 uses groundingSupports instead of groundingChunks
-          if (groundingSupports.length > 0) {
-            console.log("[Research] Grounding confirmed via groundingSupports:", groundingSupports.length, "segments");
-          } else if (webSearchQueries.length === 0 && citations.length === 0) {
-            console.warn("[Research] WARNING: No grounding evidence found - results may be from training data!");
-          }
-
-          // Grounding is confirmed if ANY of these are present:
-          // - groundingSupports (Gemini 2.0 style)
-          // - citations extracted from groundingChunks
-          // - webSearchQueries (Gemini searched for something)
-          // - groundingChunks (legacy style)
-          const groundingUsed = groundingSupports.length > 0 || citations.length > 0 || webSearchQueries.length > 0 || groundingChunks.length > 0;
-          console.log("[Research] Grounding used:", groundingUsed, {
-            groundingSupports: groundingSupports.length,
-            citations: citations.length,
-            webSearchQueries: webSearchQueries.length,
-            groundingChunks: groundingChunks.length,
-          });
-
-          return {
-            text: response.text(),
-            citations,
-            groundingMetadata,
-            groundingUsed,
-          };
-        },
-      };
-    }
+function getSearchProvider(): SearchProvider {
+  if (!_searchProvider) {
+    _searchProvider = new GeminiSearchProvider();
   }
+  return _searchProvider;
+}
 
-  return _geminiClient;
+/** Convert SearchProviderResult to legacy GeminiResponse shape for parseResearchResponse */
+function toGeminiResponse(result: SearchProviderResult): GeminiResponse {
+  return {
+    text: result.text,
+    citations: result.citations,
+    groundingMetadata: result.groundingMetadata,
+    groundingUsed: result.groundingUsed,
+  };
 }
 
 // ==========================================
@@ -894,7 +729,7 @@ async function getResearchInstructionsFromNotion(config: ResearchConfig): Promis
   }
 }
 
-async function buildResearchPrompt(config: ResearchConfig): Promise<{ prompt: string; isDrafterMode: boolean }> {
+async function buildResearchPrompt(config: ResearchConfig): Promise<{ systemInstruction: string; contents: string; isDrafterMode: boolean }> {
   const depth = config.depth || "standard";
   const depthCfg = DEPTH_CONFIG[depth];
 
@@ -976,10 +811,10 @@ Provide your response in this exact JSON format:
     {
       "claim": "Specific fact or insight discovered",
       "source": "Name of the publication or website",
-      "url": "<THE_ACTUAL_URL_FROM_YOUR_SEARCH>"${depth === "deep" ? ',\n      "author": "Author Name if available",\n      "date": "Publication date if available"' : ""}
+      "url": "the actual URL from your Google Search results"${depth === "deep" ? ',\n      "author": "Author Name if available",\n      "date": "Publication date if available"' : ""}
     }
   ],
-  "sources": ["<REAL_URL_1>", "<REAL_URL_2>", "..."]${depth === "deep" ? ',\n  "bibliography": ["Chicago-style citation 1", "Chicago-style citation 2"]' : ""}
+  "sources": ["actual-search-result-url-1", "actual-search-result-url-2", "..."]${depth === "deep" ? ',\n  "bibliography": ["Chicago-style citation 1", "Chicago-style citation 2"]' : ""}
 }
 \`\`\`
 
@@ -999,18 +834,15 @@ Provide your response in this exact JSON format:
 \`\`\``;
   }
 
-  const basePrompt = `You are Atlas Research Agent, an autonomous research assistant with access to Google Search.
+  // RPO-001: Split prompt into systemInstruction (behavioral) and contents (query).
+  // systemInstruction tells Gemini HOW to respond (role, voice, quality, format).
+  // contents tells Gemini WHAT to research (query, sources, context).
+  // This separation prevents grounding suppression. See docs/RPO-001-ROOT-CAUSE.md.
+
+  const systemInstruction = `You are Atlas Research Agent, an autonomous research assistant with access to Google Search.
 
 ## STYLE GUIDELINES (CRITICAL - ADOPT THIS VOICE THROUGHOUT)
 ${voiceInstructions}
-
-## Research Task
-Query: "${config.query}"
-${config.sourceUrl ? `Source URL: ${config.sourceUrl}` : ""}
-${config.focus ? `Focus Area: ${config.focus}` : ""}
-Depth: ${depth} — ${depthCfg.description}
-${config.sourceContent ? `\n## Source Content (extracted from shared URL)\nYou have been provided extracted content from the source URL. Use Google Search to find ADDITIONAL context, but ANALYZE this provided material as your baseline — do not discover from scratch.\n\n${config.sourceContent.slice(0, 3000)}\n` : ""}${config.userContext ? `\n## User's Intent\nThe person requesting this research said: "${config.userContext.slice(0, 500)}"\nFactor this into your research angle and framing — this is what they specifically care about.\n` : ""}
-Target Sources: ${config.maxSources || depthCfg.targetSources}+
 
 ## Instructions
 
@@ -1019,11 +851,19 @@ ${researchInstructions}
 
 ${outputSection}
 
-${qualityBlock}
+${qualityBlock}`.trim();
+
+  const contents = `## Research Task
+Query: "${config.query}"
+${config.sourceUrl ? `Source URL: ${config.sourceUrl}` : ""}
+${config.focus ? `Focus Area: ${config.focus}` : ""}
+Depth: ${depth} — ${depthCfg.description}
+${config.sourceContent ? `\n## Source Content (extracted from shared URL)\nYou have been provided extracted content from the source URL. Use Google Search to find ADDITIONAL context, but ANALYZE this provided material as your baseline — do not discover from scratch.\n\n${config.sourceContent.slice(0, 3000)}\n` : ""}${config.userContext ? `\n## User's Intent\nThe person requesting this research said: "${config.userContext.slice(0, 500)}"\nFactor this into your research angle and framing — this is what they specifically care about.\n` : ""}
+Target Sources: ${config.maxSources || depthCfg.targetSources}+
 
 Begin your research now.`;
 
-  return { prompt: basePrompt, isDrafterMode };
+  return { systemInstruction, contents, isDrafterMode };
 }
 
 function getDepthInstructions(depth: ResearchDepth): string {
@@ -1236,21 +1076,21 @@ export async function executeResearch(
     // Report starting
     await registry.updateProgress(agent.id, 5, `Starting ${depth} research`);
 
-    // Get Gemini client with grounding
-    const gemini = await getGeminiClient();
+    // RPO-001: Use SearchProvider (replaces dual-SDK GeminiClient)
+    const searchProvider = getSearchProvider();
     await registry.updateProgress(agent.id, 15, "Searching with Google");
 
-    // Build prompt and execute
+    // Build prompt — split into systemInstruction (behavioral) + contents (query)
     // V2 configs get structured context composition; V1 configs use the legacy prompt builder
-    let prompt: string;
+    let systemInstruction: string;
+    let contents: string;
     let isDrafterMode: boolean;
     if (isResearchConfigV2(config)) {
       const v2Sections = buildResearchPromptV2(config);
       const v1Result = await buildResearchPrompt(config);
-      // V2 sections are INJECTED into the V1 prompt between Instructions and Output Format.
-      // This preserves voice, Notion instructions, output format, and quality guidelines
-      // while adding POV context, evidence requirements, and quality floor.
-      prompt = v1Result.prompt.replace(
+      systemInstruction = v1Result.systemInstruction;
+      // V2 sections are INJECTED into contents between task context and "Begin your research now."
+      contents = v1Result.contents.replace(
         'Begin your research now.',
         v2Sections + '\n\nBegin your research now.',
       );
@@ -1263,12 +1103,18 @@ export async function executeResearch(
       });
     } else {
       const result = await buildResearchPrompt(config);
-      prompt = result.prompt;
+      systemInstruction = result.systemInstruction;
+      contents = result.contents;
       isDrafterMode = result.isDrafterMode;
     }
 
     await registry.updateProgress(agent.id, 30, `Analyzing sources (${depth})`);
-    const response = await gemini.generateContent(prompt, depthCfg.maxTokens);
+    const searchResult = await searchProvider.generate({
+      query: contents,
+      systemInstruction,
+      maxOutputTokens: depthCfg.maxTokens,
+    });
+    const response = toGeminiResponse(searchResult);
     apiCalls++;
 
     // DEBUG: Log raw response for troubleshooting
@@ -1328,7 +1174,7 @@ export async function executeResearch(
     const metrics: AgentMetrics = {
       durationMs: Date.now() - startTime,
       apiCalls,
-      tokensUsed: Math.ceil(prompt.length / 4) + Math.ceil(response.text.length / 4),
+      tokensUsed: Math.ceil((systemInstruction.length + contents.length) / 4) + Math.ceil(response.text.length / 4),
       retries: 0,
     };
 

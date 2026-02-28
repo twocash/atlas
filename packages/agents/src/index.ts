@@ -361,3 +361,10 @@ export {
   type EmergenceEvent,
   type EmergenceEventType,
 } from "./emergence";
+
+// Research Orchestration — Surface-agnostic pipeline (RPO-001)
+export {
+  orchestrateResearch,
+  type OrchestratorInput,
+  type OrchestratorResult,
+} from "./orchestration";
