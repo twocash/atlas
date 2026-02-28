@@ -14,6 +14,7 @@ import { isFeatureEnabled } from "../config/features";
 import { createActionFeedEntry } from "../notion";
 import type { ActionDataReview } from "../types";
 import { stashAgentResult } from "@atlas/agents/src/conversation/context-manager";
+import { assessOutput, type AndonInput } from "../../../../packages/agents/src/services/andon-gate";
 import { getContentContext, getSocraticAnswer, getState } from "../../../../packages/agents/src/conversation/conversation-state";
 import { composeResearchContext } from "../../../../packages/agents/src/services/research-context";
 import { isResearchConfigV2 } from "../../../../packages/agents/src/types/research-v2";
@@ -310,7 +311,43 @@ export async function sendCompletionNotification(
   if (result.success) {
     const researchResult = result.output as ResearchResult | undefined;
 
-    let message = `✅ Research complete!\n\n`;
+    // ── Andon Gate: Step 6.5 — Assess before delivery ──────────────────
+    // Classify output quality. Calibrate framing. No unconditional celebration.
+    const andonInput: AndonInput = {
+      wasDispatched: true, // We're in completion notification — research was dispatched
+      groundingUsed: true, // Guaranteed: line 1296 of research.ts throws on false
+      sourceCount: researchResult?.sources?.length ?? 0,
+      findingCount: researchResult?.findings?.length ?? 0,
+      bibliographyCount: researchResult?.bibliography?.length ?? 0,
+      durationMs: result.metrics?.durationMs ?? 0,
+      summary: researchResult?.summary ?? '',
+      originalQuery: researchResult?.query ?? agent.name ?? '',
+      success: true,
+      hallucinationGuardPassed: true, // Guaranteed: HallucinationError caught upstream
+      contentMode: researchResult?.contentMode,
+      hasProseContent: !!(researchResult as any)?.proseContent,
+      source,
+    };
+    const assessment = assessOutput(andonInput);
+
+    logger.info("Andon Gate assessment", {
+      agentId: agent.id,
+      confidence: assessment.confidence,
+      routing: assessment.routing,
+      noveltyScore: assessment.noveltyScore,
+      reason: assessment.reason,
+      keyword: assessment.telemetry.keyword,
+      source,
+    });
+
+    // ── Build delivery message with calibrated framing ──────────────────
+    const { calibration } = assessment;
+    let message = `${calibration.emoji} ${calibration.label}\n\n`;
+
+    // Caveat text — epistemic honesty about what we know and don't
+    if (calibration.caveat) {
+      message += `${calibration.caveat}\n\n`;
+    }
 
     if (researchResult?.summary) {
       // Truncate summary for Telegram and convert markdown to HTML
@@ -347,6 +384,9 @@ export async function sendCompletionNotification(
         message += ` (${result.metrics.tokensUsed} tokens)`;
       }
     }
+
+    // Confidence classification for transparency
+    message += `\n📊 Confidence: ${assessment.confidence}`;
 
     // Always include Notion link for easy access
     if (notionUrl) {

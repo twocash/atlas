@@ -28,6 +28,18 @@ export {
   logDegradedFallback,
 } from './degraded-context';
 
+// Andon Gate — Epistemic Honesty for Cognitive Output (ATLAS-AG-001)
+export {
+  assessOutput,
+  calibrateDelivery,
+  assessNovelty,
+  type ConfidenceLevel,
+  type RoutingDecision,
+  type AndonInput,
+  type DeliveryCalibration,
+  type AndonAssessment,
+} from './andon-gate';
+
 // Prompt Composition Service (V3 Active Capture)
 export {
   // Main composition

@@ -129,6 +129,18 @@ export {
   type ComposedPrompt,
 } from "./services";
 
+// Andon Gate — Epistemic Honesty for Cognitive Output (ATLAS-AG-001)
+export {
+  assessOutput,
+  calibrateDelivery,
+  assessNovelty,
+  type ConfidenceLevel,
+  type RoutingDecision,
+  type AndonInput,
+  type DeliveryCalibration,
+  type AndonAssessment,
+} from "./services";
+
 // Socratic Interview Engine
 export {
   SocraticEngine,
