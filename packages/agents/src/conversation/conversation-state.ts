@@ -148,6 +148,9 @@ export interface ConversationState {
   contentContext?: ContentContext;
   /** Last classification/triage result (Bug #4, #5 fix) */
   lastTriage?: TriageResult;
+  /** Jim's Socratic answer — persisted for research context injection (ATLAS-RCI-001).
+   * Previously a local var in socratic-adapter that died at function scope. */
+  lastSocraticAnswer?: string;
   /** Last assessment result (Bug #1 fix — reused after approval) */
   lastAssessment?: RequestAssessment;
   /** Last assessment context */
@@ -329,6 +332,34 @@ export function storeContentContext(
 export function getContentContext(chatId: number): ContentContext | undefined {
   const state = getState(chatId);
   return state?.contentContext;
+}
+
+// ─── Socratic Answer Persistence (ATLAS-RCI-001) ────────
+
+/**
+ * Store Jim's Socratic answer in unified state.
+ * Previously a local var in socratic-adapter that died at function scope —
+ * now persisted so research-executor can inject it into research context.
+ */
+export function storeSocraticAnswer(chatId: number, answer: string): void {
+  const state = states.get(chatId);
+  if (state && !isExpired(state)) {
+    state.lastSocraticAnswer = answer;
+    state.lastActivity = Date.now();
+
+    logger.debug('Stored Socratic answer', {
+      chatId,
+      answerLength: answer.length,
+    });
+  }
+}
+
+/**
+ * Get the last Socratic answer for a chat.
+ */
+export function getSocraticAnswer(chatId: number): string | undefined {
+  const state = getState(chatId);
+  return state?.lastSocraticAnswer;
 }
 
 // ─── Triage & Assessment Caching (Bug #1, #4, #5 fix) ──

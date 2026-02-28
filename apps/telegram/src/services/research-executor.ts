@@ -14,6 +14,10 @@ import { isFeatureEnabled } from "../config/features";
 import { createActionFeedEntry } from "../notion";
 import type { ActionDataReview } from "../types";
 import { stashAgentResult } from "@atlas/agents/src/conversation/context-manager";
+import { getContentContext, getSocraticAnswer, getState } from "../../../../packages/agents/src/conversation/conversation-state";
+import { composeResearchContext } from "../../../../packages/agents/src/services/research-context";
+import { isResearchConfigV2 } from "../../../../packages/agents/src/types/research-v2";
+import type { ResearchConfigV2 } from "../../../../packages/agents/src/types/research-v2";
 
 // Import from @atlas/agents package
 import {
@@ -116,6 +120,54 @@ export async function runResearchAgentWithNotifications(
   await registry.start(agent.id);
 
   try {
+    // ATLAS-RCI-001: Compose source context from unified state.
+    // Reads PreReader summary, extracted content, Socratic answer,
+    // and triage result from conversation state — enriches the research
+    // config so Gemini analyzes what Atlas already extracted.
+    if (isResearchConfigV2(config)) {
+      try {
+        const contentCtx = getContentContext(chatId);
+        const socraticAnswer = getSocraticAnswer(chatId);
+        const convState = getState(chatId);
+
+        const sourceContext = composeResearchContext({
+          preReaderSummary: contentCtx?.preReadSummary,
+          preReaderContentType: contentCtx?.prefetchedUrlContent?.preReadContentType,
+          extractedContent: contentCtx?.prefetchedUrlContent?.fullContent
+            || contentCtx?.prefetchedUrlContent?.bodySnippet,
+          socraticAnswer,
+          sourceUrl: contentCtx?.url || config.sourceUrl,
+          triageTitle: convState?.lastTriage?.title,
+          triageConfidence: convState?.lastTriage?.confidence,
+          triageKeywords: convState?.lastTriage?.keywords,
+        });
+
+        if (sourceContext) {
+          (config as ResearchConfigV2).sourceContext = sourceContext;
+          logger.info('ATLAS-RCI-001: Source context composed for research', {
+            hasPreReader: sourceContext.preReaderAvailable,
+            hasExtracted: !!sourceContext.extractedContent,
+            hasAngle: !!sourceContext.researchAngle,
+            hasAudience: !!sourceContext.targetAudience,
+            contentType: sourceContext.contentType,
+            estimatedTokens: sourceContext.estimatedTokens,
+            wasTruncated: sourceContext.wasTruncated,
+          });
+        } else {
+          logger.info('ATLAS-RCI-001: No source context available (non-URL or empty state)', {
+            hasContentCtx: !!contentCtx,
+            hasSocratic: !!socraticAnswer,
+            hasTriage: !!convState?.lastTriage,
+          });
+        }
+      } catch (contextError) {
+        // Non-blocking — research proceeds without enrichment
+        logger.warn('ATLAS-RCI-001: Source context composition failed (non-blocking)', {
+          error: contextError instanceof Error ? contextError.message : String(contextError),
+        });
+      }
+    }
+
     // Import and run the actual research
     logger.info("Importing research module...", { agentId: agent.id });
     const { executeResearch } = await import(

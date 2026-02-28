@@ -993,6 +993,7 @@ async function runAgentsUnitTests(cwd: string): Promise<SuiteResult> {
       'test/intent-interpreter-regression.test.ts', // SESSION-TELEMETRY-QA: Autonomaton Loop 1 — reportFailure wiring
       'test/session-manager.test.ts',  // SESSION-TELEMETRY P0: SessionManager lifecycle
       'test/session-journal.test.ts',  // SESSION-TELEMETRY P0: Journal + artifact
+      'test/research-context-injection.test.ts', // ATLAS-RCI-001: Source context composition + prompt injection
     ],
     agentsCwd,
     60000

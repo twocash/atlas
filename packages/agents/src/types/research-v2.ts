@@ -129,6 +129,42 @@ export type SourceType =
 /** Quality floor for source filtering */
 export type QualityFloor = 'any' | 'primary_sources' | 'grove_grade';
 
+// ─── Source Context (ATLAS-RCI-001) ─────────────────────
+
+/**
+ * Structured upstream context for research content injection.
+ *
+ * Assembled by composeResearchContext() from unified state.
+ * Injected into the research system prompt as "Source Material" section.
+ *
+ * ADR-003: This is SEPARATE from ResearchConfig.query.
+ * Query drives Google Search. Source context drives analysis.
+ */
+export interface SourceContext {
+  /** Haiku PreReader summary — preferred analytical context (~500ch) */
+  preReaderSummary?: string;
+  /** Truncated extracted content — fallback when PreReader unavailable (~3000ch max) */
+  extractedContent?: string;
+  /** Content type from PreReader (article, discussion, social_post, etc.) */
+  contentType?: string;
+  /** Jim's stated research angle — what aspect he wants explored */
+  researchAngle?: string;
+  /** Jim's stated target audience — who the output is for */
+  targetAudience?: string;
+  /** Original URL of shared content */
+  sourceUrl?: string;
+  /** Triage-generated title */
+  triageTitle?: string;
+  /** Triage confidence score */
+  triageConfidence?: number;
+  /** Estimated token count of injected source material */
+  estimatedTokens?: number;
+  /** Whether PreReader was available (for telemetry) */
+  preReaderAvailable?: boolean;
+  /** Whether content was truncated (for telemetry) */
+  wasTruncated?: boolean;
+}
+
 // ─── ResearchConfigV2 ──────────────────────────────────
 
 /**
@@ -159,6 +195,11 @@ export interface ResearchConfigV2 extends ResearchConfig {
 
   /** User's natural language direction (informs focus, not query) */
   userDirection?: string;
+
+  /** Structured upstream context from capture pipeline (ATLAS-RCI-001).
+   * Assembled by composeResearchContext(). Injected as "Source Material" section.
+   * ADR-003: separate from query. Query drives search, source context drives analysis. */
+  sourceContext?: SourceContext;
 }
 
 /**
@@ -167,5 +208,6 @@ export interface ResearchConfigV2 extends ResearchConfig {
 export function isResearchConfigV2(config: ResearchConfig): config is ResearchConfigV2 {
   return 'evidenceRequirements' in config
     || 'povContext' in config
-    || 'thesisHook' in config;
+    || 'thesisHook' in config
+    || 'sourceContext' in config;
 }

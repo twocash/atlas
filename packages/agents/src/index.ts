@@ -104,10 +104,13 @@ export {
   type ResearchIntent,
   type SourceType,
   type QualityFloor,
+  type SourceContext,
 } from "./types/research-v2";
 export { parseAnswerToRouting } from "./services/answer-parser";
 export { fetchPOVContext, clearPovCache, type PovFetchResult, type PovFetchStatus } from "./services/pov-fetcher";
 export { buildResearchPromptV2 } from "./services/research-prompt-v2";
+export { composeResearchContext } from "./services/research-context";
+export type { ResearchContextInput } from "./services/research-context";
 
 // Services
 export {

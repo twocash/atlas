@@ -22,7 +22,7 @@ import {
 import type { IntentType } from '../../../../packages/agents/src/services/prompt-composition/types';
 import type { TriageResult } from '@atlas/agents/src/cognitive/triage-skill';
 import { storeSocraticSession, removeSocraticSession, getSocraticSession } from '@atlas/agents/src/conversation/socratic-session';
-import { enterSocraticPhase, enterGoalClarificationPhase, returnToIdle } from '@atlas/agents/src/conversation/conversation-state';
+import { enterSocraticPhase, enterGoalClarificationPhase, returnToIdle, storeSocraticAnswer } from '@atlas/agents/src/conversation/conversation-state';
 import { createAuditTrail } from '@atlas/agents/src/conversation/audit';
 import {
   parseGoalFromResponse,
@@ -366,7 +366,13 @@ async function handleResolved(
       || title;
 
     // ─── TELEMETRY: Merge goal signals into audit trail ─────────
-    const baseKeywords = [resolved.intent, resolved.depth, resolved.audience, `socratic/${resolved.resolvedVia}`].filter(Boolean) as string[];
+    // ATLAS-RCI-001: Content injection telemetry keywords for Feed 2.0 observability
+    const injectionKeywords: string[] = [];
+    if (prefetchedUrlContent?.preReadSummary) injectionKeywords.push('rci:pre-reader');
+    if (prefetchedUrlContent?.fullContent) injectionKeywords.push('rci:extracted');
+    if (answerContext) injectionKeywords.push('rci:socratic-answer');
+
+    const baseKeywords = [resolved.intent, resolved.depth, resolved.audience, `socratic/${resolved.resolvedVia}`, ...injectionKeywords].filter(Boolean) as string[];
     const goalKeywords = goalTelemetry ? goalTelemetryToKeywords(goalTelemetry) : [];
     const goalMetadata = goalTelemetry ? goalTelemetryToMetadata(goalTelemetry) : undefined;
 
@@ -639,6 +645,11 @@ export async function handleSocraticAnswer(
     returnToIdle(chatId);
 
     if (result.type === 'resolved') {
+      // ATLAS-RCI-001: Persist Socratic answer to unified state BEFORE dispatch.
+      // Previously a local var that died at function scope — now available for
+      // research-executor to inject into research context (ADR-001 fix).
+      storeSocraticAnswer(chatId, answerText);
+
       await handleResolved(
         ctx,
         result.context,

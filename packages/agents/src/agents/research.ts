@@ -1009,7 +1009,7 @@ Query: "${config.query}"
 ${config.sourceUrl ? `Source URL: ${config.sourceUrl}` : ""}
 ${config.focus ? `Focus Area: ${config.focus}` : ""}
 Depth: ${depth} — ${depthCfg.description}
-${config.sourceContent ? `\n## Source Content (extracted from shared URL)\nUse this content to understand what the original post/article is actually about. Your search query should find MORE information about these specific topics — not generic results about the platform or post type.\n\n${config.sourceContent.slice(0, 1500)}\n` : ""}${config.userContext ? `\n## User's Intent\nThe person requesting this research said: "${config.userContext.slice(0, 300)}"\nFactor this into your research angle and framing — this is what they specifically care about.\n` : ""}
+${config.sourceContent ? `\n## Source Content (extracted from shared URL)\nYou have been provided extracted content from the source URL. Use Google Search to find ADDITIONAL context, but ANALYZE this provided material as your baseline — do not discover from scratch.\n\n${config.sourceContent.slice(0, 3000)}\n` : ""}${config.userContext ? `\n## User's Intent\nThe person requesting this research said: "${config.userContext.slice(0, 500)}"\nFactor this into your research angle and framing — this is what they specifically care about.\n` : ""}
 Target Sources: ${config.maxSources || depthCfg.targetSources}+
 
 ## Instructions

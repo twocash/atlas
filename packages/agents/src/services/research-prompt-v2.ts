@@ -13,6 +13,7 @@ import type {
   EvidenceRequirements,
   POVContext,
   QualityFloor,
+  SourceContext,
 } from '../types/research-v2';
 
 // ─── Section Builders ───────────────────────────────────
@@ -139,6 +140,64 @@ function buildThesisSection(thesisHook: string, intent: string): string {
 **Research intent:** ${desc}`;
 }
 
+/**
+ * Build the Source Material section from upstream capture pipeline.
+ *
+ * ATLAS-RCI-001: This section gives Gemini analytical context from content
+ * Atlas already extracted. Gemini should ANALYZE this content and SUPPLEMENT
+ * with Google Search — not discover from scratch.
+ *
+ * ADR-003: Source material is in the system prompt, not the query.
+ * Query drives search. Source material drives analysis.
+ */
+function buildSourceMaterialSection(sc: SourceContext): string {
+  const parts: string[] = [
+    `## Source Material (upstream extraction — analyze this content)`,
+    '',
+    'You have been provided extracted content from the source URL.',
+    'Use Google Search to find ADDITIONAL context and supporting sources,',
+    'but even if search returns limited results, ANALYZE the provided material.',
+    'Your primary job is to analyze what you have, supplemented by what you find.',
+  ];
+
+  // Research angle — what Jim specifically wants explored
+  if (sc.researchAngle) {
+    parts.push('');
+    parts.push(`**Research Angle:** ${sc.researchAngle}`);
+  }
+
+  // Target audience
+  if (sc.targetAudience) {
+    parts.push(`**Target Audience:** ${sc.targetAudience}`);
+  }
+
+  // Content type
+  if (sc.contentType) {
+    parts.push(`**Source Type:** ${sc.contentType}`);
+  }
+
+  // PreReader summary — the highest-quality distillation
+  if (sc.preReaderSummary) {
+    parts.push('');
+    parts.push('### Content Summary (PreReader digest)');
+    parts.push('');
+    parts.push(sc.preReaderSummary);
+  }
+
+  // Extracted content — longer context when available
+  if (sc.extractedContent) {
+    parts.push('');
+    parts.push('### Extracted Content');
+    if (sc.wasTruncated) {
+      parts.push('(truncated for token budget — full content was longer)');
+    }
+    parts.push('');
+    parts.push(sc.extractedContent);
+  }
+
+  return parts.join('\n');
+}
+
 // ─── Main Builder ───────────────────────────────────────
 
 /**
@@ -181,8 +240,12 @@ export function buildResearchPromptV2(config: ResearchConfigV2): string {
     sections.push(buildThesisSection(config.thesisHook, config.intent || 'explore'));
   }
 
-  // 5. Source Content (same as V1 — gives Gemini the actual topic)
-  if (config.sourceContent) {
+  // 5. Source Material (ATLAS-RCI-001: structured upstream context)
+  if (config.sourceContext) {
+    // V2 path: full structured source material with PreReader + extraction + angle
+    sections.push(buildSourceMaterialSection(config.sourceContext));
+  } else if (config.sourceContent) {
+    // V1 fallback: raw sourceContent (backward compat for non-RCI callers)
     sections.push(
       `## Source Content (extracted from shared URL)\n\n` +
       `Use this content to understand what the original post/article is actually about. ` +
