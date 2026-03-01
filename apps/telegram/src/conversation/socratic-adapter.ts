@@ -23,7 +23,8 @@ import type { IntentType } from '../../../../packages/agents/src/services/prompt
 import type { TriageResult } from '@atlas/agents/src/cognitive/triage-skill';
 import { storeSocraticSession, removeSocraticSession, getSocraticSession } from '@atlas/agents/src/conversation/socratic-session';
 import { enterSocraticPhase, enterGoalClarificationPhase, returnToIdle, storeSocraticAnswer } from '@atlas/agents/src/conversation/conversation-state';
-import { createAuditTrail } from '@atlas/agents/src/conversation/audit';
+import { orchestrateResolvedContext } from '@atlas/agents/src/pipeline/orchestrator';
+import type { ResolvedContextInput } from '@atlas/agents/src/pipeline/types';
 import {
   parseGoalFromResponse,
   startGoalTracker,
@@ -39,7 +40,7 @@ import {
 import { runResearchAgentWithNotifications, sendCompletionNotification } from '../services/research-executor';
 import { routeForAnalysis } from '@atlas/agents/src/conversation/content-router';
 import { stripNonTextContent } from '@atlas/agents/src/conversation/content-extractor';
-import { buildResearchQuery, type ResearchDepth, type ResearchConfig } from '../../../../packages/agents/src/agents/research';
+import { buildResearchQuery, type ResearchDepth } from '../../../../packages/agents/src/agents/research';
 import {
   parseAnswerToRouting,
   fetchPOVContext,
@@ -376,44 +377,57 @@ async function handleResolved(
     const goalKeywords = goalTelemetry ? goalTelemetryToKeywords(goalTelemetry) : [];
     const goalMetadata = goalTelemetry ? goalTelemetryToMetadata(goalTelemetry) : undefined;
 
-    // Build a proper AuditEntry for createAuditTrail
-    const result = await createAuditTrail({
-      entry: descriptiveTitle,
+    // ─── SPRINT A: Pipeline Unification ─────────────────────
+    // Delegate audit trail, session telemetry, and provenance to orchestrator.
+    // Adapter resolves routing signals; orchestrator owns infrastructure.
+    const resolvedInput: ResolvedContextInput = {
+      resolved,
+      content,
+      contentType,
+      title: descriptiveTitle,
+      answerContext,
+      prefetchedUrlContent: prefetchedUrlContent ? {
+        success: prefetchedUrlContent.success,
+        title: prefetchedUrlContent.title,
+        bodySnippet: prefetchedUrlContent.bodySnippet,
+        fullContent: prefetchedUrlContent.fullContent,
+        preReadSummary: prefetchedUrlContent.preReadSummary,
+        preReadContentType: prefetchedUrlContent.preReadContentType,
+        error: prefetchedUrlContent.error,
+      } : undefined,
+      triageResult,
+      userId,
+      chatId,
+      username: ctx.from?.username || 'Jim',
+      messageId: ctx.message?.message_id,
+      // Pre-computed routing (adapter resolves, orchestrator consumes)
       pillar,
       requestType,
-      source: 'Telegram',
-      author: ctx.from?.username || 'Jim',
-      confidence: resolved.confidence,
       keywords: [...baseKeywords, ...goalKeywords],
-      userId,
-      messageText: content,
-      hasAttachment: false,
-      url: contentType === 'url' ? content : undefined,
-      urlTitle: descriptiveTitle,
-      contentType: contentType === 'url' ? 'url' : undefined,
-      ...(goalMetadata && {
-        analysisContent: {
-          metadata: goalMetadata,
-        },
-      }),
+      // Goal state (opaque to orchestrator)
+      goalContext: activeGoal,
+      goalTelemetry,
+      goalTracker: preResolvedTracker,
+      goalMetadata,
+    };
+
+    const result = await orchestrateResolvedContext(resolvedInput, {
+      reply: async (text, opts) => {
+        await ctx.reply(text, { parse_mode: opts?.parseMode as 'HTML' | 'Markdown' | 'MarkdownV2' | undefined });
+        return ctx.message?.message_id ?? 0;
+      },
+      setReaction: async (emoji) => {
+        try {
+          await ctx.react(emoji as Parameters<typeof ctx.react>[0]);
+        } catch { /* reaction failures are non-fatal */ }
+      },
+      sendTyping: async () => {
+        await ctx.replyWithChatAction('typing');
+      },
     });
 
-    // Log goal telemetry (observation layer for Sprint 4 pattern detector)
-    if (goalTelemetry) {
-      logger.info('Goal telemetry emitted', {
-        feedId: result?.feedId,
-        goalEndState: goalTelemetry.goalEndState,
-        initialCompleteness: goalTelemetry.initialCompleteness,
-        finalCompleteness: goalTelemetry.finalCompleteness,
-        clarificationCount: goalTelemetry.clarificationCount,
-        hadThesisHook: goalTelemetry.hadThesisHook,
-        timeToGoalResolutionMs: goalTelemetry.timeToGoalResolutionMs,
-        goalKeywords,
-      });
-    }
-
     if (!result) {
-      logger.info('Socratic resolved but createAuditTrail returned null (likely dedup)', { title });
+      // Orchestrator returned null — dedup or error (already logged + handled)
       await ctx.reply(`Duplicate detected — already captured.`);
       return;
     }

@@ -20,6 +20,8 @@ import { degradedWarning, logDegradedFallback } from "../services/degraded-conte
 import { resolveDrafterId, resolveDefaultDrafterId } from "../services/prompt-composition/composer";
 import { isResearchConfigV2 } from "../types/research-v2";
 import { buildResearchPromptV2 } from "../services/research-prompt-v2";
+import type { ProvenanceChain } from "../types/provenance";
+import { createProvenanceChain, appendPhase, setConfig, setContext, setResult, appendPath, finalizeProvenance } from "../provenance";
 
 // ==========================================
 // Research Agent Types
@@ -83,6 +85,10 @@ export interface ResearchConfig {
   /** Original URL of the shared content — included in research prompt so
    * Google Search grounding can use it for context. */
   sourceUrl?: string;
+
+  /** Provenance chain — initialized by the adapter, accumulated through execution.
+   * Sprint A: Pipeline Unification + Provenance Core. */
+  provenanceChain?: ProvenanceChain;
 }
 
 /**
@@ -1230,6 +1236,18 @@ export async function executeResearch(
   const depth = config.depth || "standard";
   const depthCfg = resolveDepthConfig(depth);
 
+  // Sprint A: Provenance chain — continue from adapter or create fresh
+  const chain = config.provenanceChain ?? createProvenanceChain('research-agent', ['research-agent']);
+  appendPath(chain, 'research');
+  setConfig(chain, {
+    source: 'notion',
+    depth,
+    pillar: config.pillar,
+  });
+  if (config.sourceUrl) {
+    setContext(chain, { sourceUrl: config.sourceUrl });
+  }
+
   try {
     // Report starting
     await registry.updateProgress(agent.id, 5, `Starting ${depth} research`);
@@ -1243,6 +1261,7 @@ export async function executeResearch(
 
     // === PHASE 1: RETRIEVE ===
     await registry.updateProgress(agent.id, 15, "Searching with Claude");
+    const phase1Start = Date.now();
     const retrievalProvider = getFallbackProvider(); // ClaudeSearchProvider (promoted to primary)
     const retrievalResult = await retrievalProvider.generate({
       query: config.query,
@@ -1250,6 +1269,12 @@ export async function executeResearch(
       maxOutputTokens: 4096,
     });
     apiCalls++;
+    appendPhase(chain, {
+      name: 'retrieve',
+      provider: 'claude-haiku',
+      tools: ['web_search'],
+      durationMs: Date.now() - phase1Start,
+    });
 
     let retrievedText = retrievalResult.text;
     let retrievedCitations = retrievalResult.citations;
@@ -1320,6 +1345,7 @@ export async function executeResearch(
       console.warn('[Research] Both retrieval attempts returned 0 citations — synthesizing from ungrounded text');
       await registry.updateProgress(agent.id, 50, "Synthesizing (ungrounded)");
 
+      const phase2UngStart = Date.now();
       const synthesis = await buildSynthesisPrompt(config, retrievedText, []);
       isDrafterMode = synthesis.isDrafterMode;
       const synthesisProvider = getSearchProvider();
@@ -1330,6 +1356,12 @@ export async function executeResearch(
         useSearchTool: false,
       });
       apiCalls++;
+      appendPhase(chain, {
+        name: 'synthesize',
+        provider: 'gemini-flash',
+        tools: [],
+        durationMs: Date.now() - phase2UngStart,
+      });
 
       searchResult = {
         text: synthesisResult.text,
@@ -1343,6 +1375,7 @@ export async function executeResearch(
       console.log(`[Research] Phase 1 complete: ${retrievedCitations.length} citations from Claude retrieval`);
       await registry.updateProgress(agent.id, 50, `Synthesizing ${depth} analysis`);
 
+      const phase2Start = Date.now();
       const synthesis = await buildSynthesisPrompt(config, retrievedText, retrievedCitations);
       isDrafterMode = synthesis.isDrafterMode; // Synthesis prompt resolves drafter independently
       const synthesisProvider = getSearchProvider(); // Gemini
@@ -1353,6 +1386,12 @@ export async function executeResearch(
         useSearchTool: false, // ADR-010: No googleSearch — pure synthesis
       });
       apiCalls++;
+      appendPhase(chain, {
+        name: 'synthesize',
+        provider: 'gemini-flash',
+        tools: [],
+        durationMs: Date.now() - phase2Start,
+      });
 
       // Build result: Phase 2 text + Phase 1 citations
       searchResult = {
@@ -1433,12 +1472,23 @@ export async function executeResearch(
       retries: 0,
     };
 
+    // Sprint A: Finalize provenance with result data
+    setResult(chain, {
+      findingCount: researchResult.findings?.length ?? 0,
+      citations: (response.citations || []).map((c: { url: string }) => c.url),
+      ragChunks: [],
+      hallucinationDetected: false,
+    });
+    chain.compute.apiCalls = apiCalls;
+    finalizeProvenance(chain);
+
     // Build agent result - include FULL raw response for lossless capture
     const result: AgentResult = {
       success: true,
       output: {
         ...researchResult,
         rawResponse: response.text, // Preserve complete Gemini output
+        provenanceChain: chain,     // Sprint A: attach provenance for delivery
       },
       summary: researchResult.summary.substring(0, 500), // Brief preview for Notes field
       artifacts: researchResult.sources,

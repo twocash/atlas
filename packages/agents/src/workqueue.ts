@@ -744,6 +744,24 @@ async function appendResearchResultsToPage(
     divider: {},
   });
 
+  // Sprint A: Append provenance section if available
+  const provenanceChain = (researchOutput as any)?.provenanceChain;
+  if (provenanceChain) {
+    const { renderProvenanceNotion } = await import("./provenance/render");
+    const provenanceMarkdown = renderProvenanceNotion(provenanceChain);
+    // Convert provenance markdown lines to paragraph blocks
+    const provenanceLines = provenanceMarkdown.split('\n').filter(l => l.trim());
+    for (const line of provenanceLines) {
+      contentBlocks.push({
+        object: "block",
+        type: "paragraph",
+        paragraph: {
+          rich_text: [{ type: "text", text: { content: truncateText(line, 2000) } }],
+        },
+      });
+    }
+  }
+
   // Combine all blocks
   const allBlocks = [...headerBlocks, ...contentBlocks];
 

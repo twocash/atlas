@@ -82,8 +82,18 @@ import type {
   PipelineSurfaceHooks,
   PipelineConfig,
   LowConfidenceRoutingData,
+  ResolvedContextInput,
 } from './types';
 import { REACTIONS } from './types';
+import {
+  createProvenanceChain,
+  appendPath,
+  setConfig as setProvenanceConfig,
+  setContext as setProvenanceContext,
+  setResult as setProvenanceResult,
+  finalizeProvenance,
+} from '../provenance';
+import type { ProvenanceChain } from '../types/provenance';
 
 // ─── Anthropic Client ───────────────────────────────────
 
@@ -1469,5 +1479,173 @@ export async function orchestrateMessage(
     reportFailure('conversation-handler', error, { userId, traceId: trace.traceId });
     await hooks.setReaction(REACTIONS.ERROR);
     await hooks.reply("Something went wrong. Please try again.");
+  }
+}
+
+
+// ─── Resolved Context Orchestration (Sprint A: Pipeline Unification) ──
+
+/**
+ * Orchestrate a pre-resolved context through the unified pipeline.
+ *
+ * Called by the Socratic adapter after it resolves intent through the
+ * Socratic engine. Runs through the SAME middleware as orchestrateMessage():
+ * session telemetry, audit trail, dispatch, error recovery, completeTurn.
+ *
+ * This eliminates the parallel dispatch path in the Socratic adapter.
+ * The adapter resolves context (its job). The orchestrator dispatches (its job).
+ *
+ * @returns AuditResult from createAuditTrail, or null if dedup
+ */
+export async function orchestrateResolvedContext(
+  input: ResolvedContextInput,
+  hooks: Pick<PipelineSurfaceHooks, 'reply' | 'setReaction' | 'sendTyping'>,
+): Promise<{ feedId: string; workQueueId: string; feedUrl: string; workQueueUrl: string } | null> {
+  const { userId, chatId, username, content, contentType, title, resolved } = input;
+
+  // Pipeline trace
+  const trace = createTrace();
+  const entryStep = addStep(trace, 'resolved-context-entry', {
+    userId,
+    resolvedVia: resolved.resolvedVia,
+    pillar: input.pillar,
+    requestType: input.requestType,
+  });
+  completeStep(entryStep);
+
+  // Session telemetry — same wiring as orchestrateMessage
+  const currentIntentHash = content ? getIntentHash(content).hash : undefined;
+  const sessionTelemetry = recordTurn(chatId, userId, currentIntentHash);
+
+  if (process.env.ATLAS_SESSION_TRACKING !== 'false') {
+    sessionManager.startTurn(
+      sessionTelemetry.sessionId,
+      content,
+      'telegram',
+      { intentHash: currentIntentHash },
+    ).catch(err => {
+      logger.warn('SessionManager.startTurn failed (resolved context, non-fatal)', { error: (err as Error).message });
+    });
+
+    // Patch turn metadata with resolved routing (Bug #1 topic, #2 intent — now covers Socratic path)
+    sessionManager.updateTurnMetadata(sessionTelemetry.sessionId, {
+      topic: title.substring(0, 100),
+      intent: input.requestType,
+      pillar: input.pillar,
+    });
+  }
+
+  // Provenance: initialize or continue chain
+  const chain = input.provenanceChain ?? createProvenanceChain(
+    'socratic-resolved',
+    ['socratic-adapter'],
+    resolved.resolvedVia === 'auto_draft' ? 'auto-dispatch' : 'socratic-answer',
+  );
+  appendPath(chain, 'orchestrator');
+
+  try {
+    // ── AUDIT TRAIL ──────────────────────────────────────
+    const auditStep = addStep(trace, 'audit-trail');
+    const auditResult = await createAuditTrail({
+      entry: title,
+      pillar: input.pillar,
+      requestType: input.requestType,
+      source: 'Telegram',
+      author: username || 'Jim',
+      confidence: resolved.confidence,
+      keywords: input.keywords,
+      userId,
+      messageText: content,
+      hasAttachment: false,
+      url: contentType === 'url' ? content : undefined,
+      urlTitle: title,
+      contentType: contentType === 'url' ? 'url' : undefined,
+      ...(input.goalMetadata && {
+        analysisContent: {
+          metadata: input.goalMetadata,
+        },
+      }),
+    }, trace);
+    completeStep(auditStep);
+
+    if (!auditResult) {
+      logger.info('Resolved context: createAuditTrail returned null (likely dedup)', { title });
+      // Session telemetry: complete turn even for dedup
+      if (process.env.ATLAS_SESSION_TRACKING !== 'false') {
+        sessionManager.completeTurn(sessionTelemetry.sessionId, {
+          responsePreview: 'Duplicate detected',
+          findings: `Dedup: ${title}`,
+        }).catch(err => {
+          logger.warn('SessionManager.completeTurn failed (dedup, non-fatal)', { error: (err as Error).message });
+        });
+      }
+      completeTrace(trace);
+      return null;
+    }
+
+    // Log goal telemetry if present (observation layer)
+    if (input.goalTelemetry) {
+      logger.info('Goal telemetry emitted (unified path)', {
+        feedId: auditResult.feedId,
+        goalEndState: input.goalTelemetry.goalEndState,
+        initialCompleteness: input.goalTelemetry.initialCompleteness,
+        finalCompleteness: input.goalTelemetry.finalCompleteness,
+        clarificationCount: input.goalTelemetry.clarificationCount,
+      });
+    }
+
+    // ── SESSION TELEMETRY: completeTurn ──────────────────
+    if (process.env.ATLAS_SESSION_TRACKING !== 'false') {
+      const findingParts: string[] = [];
+      if (title && title !== 'Message') findingParts.push(title);
+      if (input.keywords.length > 0) findingParts.push(`Keywords: ${input.keywords.join(', ')}`);
+      const findings = findingParts.length > 0 ? findingParts.join(' | ') : undefined;
+
+      const thesisHook = input.goalContext?.thesisHook
+        ? input.goalContext.thesisHook.substring(0, 200)
+        : undefined;
+
+      sessionManager.completeTurn(
+        sessionTelemetry.sessionId,
+        {
+          responsePreview: `Captured: ${title}`,
+          toolsUsed: input.requestType === 'Research' ? ['dispatch_research'] : undefined,
+          findings,
+          thesisHook,
+        },
+      ).catch(err => {
+        logger.warn('SessionManager.completeTurn failed (resolved context, non-fatal)', { error: (err as Error).message });
+      });
+    }
+
+    completeTrace(trace);
+
+    logger.info('Resolved context orchestrated', {
+      userId,
+      pillar: input.pillar,
+      requestType: input.requestType,
+      resolvedVia: resolved.resolvedVia,
+      hasGoal: !!input.goalContext,
+      hasResearchConfig: !!input.researchConfig,
+      feedId: auditResult.feedId,
+      workQueueId: auditResult.workQueueId,
+      traceId: trace.traceId,
+      traceDurationMs: trace.totalDurationMs,
+    });
+
+    return auditResult;
+
+  } catch (error) {
+    failTrace(trace, error instanceof Error ? error : String(error));
+    logger.error('Resolved context orchestration error', {
+      error: error instanceof Error ? error.message : String(error),
+      userId,
+      title,
+      traceId: trace.traceId,
+    });
+    reportFailure('resolved-context-orchestrator', error, { userId, title, traceId: trace.traceId });
+    await hooks.setReaction(REACTIONS.ERROR);
+    await hooks.reply('Failed to capture. Try again.');
+    return null;
   }
 }

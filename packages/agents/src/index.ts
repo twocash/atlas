@@ -384,3 +384,23 @@ export {
   type SearchProviderConfig,
   type EvidencePresetAssignment,
 } from "./config";
+
+// Provenance — Universal Action Trace (Sprint A: Pipeline Unification)
+export {
+  createProvenanceChain,
+  appendPhase,
+  setConfig as setProvenanceConfig,
+  setContext as setProvenanceContext,
+  setResult as setProvenanceResult,
+  appendPath,
+  finalizeProvenance,
+  type ProvenanceChain,
+  type ProvenanceRoute,
+  type ProvenanceCompute,
+  type ProvenanceContext,
+  type ProvenanceResult,
+  type ProvenanceTime,
+  type ComputePhase,
+} from "./provenance";
+export { renderProvenanceNotion } from "./provenance/render";
+export type { ProvenanceConfig } from "./types/provenance";

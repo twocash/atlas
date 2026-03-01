@@ -22,17 +22,11 @@ import {
   assessOutput,
   type AndonInput,
   orchestrateResearch,
+  type ProvenanceChain,
 } from "../../../../packages/agents/src";
-
-// ==========================================
-// Shared Registry Instance
-// ==========================================
+import { renderProvenanceTelegram } from "./provenance-render";
 
 export const registry = new AgentRegistry();
-
-// ==========================================
-// Research Execution (thin wrapper)
-// ==========================================
 
 export async function runResearchAgentWithNotifications(
   config: ResearchConfig,
@@ -86,10 +80,6 @@ export async function runResearchAgentWithNotifications(
   return { agent: orchResult.agent, result: orchResult.result };
 }
 
-// ==========================================
-// Completion Notification (delivery formatting)
-// ==========================================
-
 export async function sendCompletionNotification(
   api: Api,
   chatId: number,
@@ -135,7 +125,13 @@ export async function sendCompletionNotification(
     message += `\n📊 Confidence: ${assessment.confidence}`;
     if (notionUrl) message += `\n\n📝 Full results: ${notionUrl}`;
 
-    await api.sendMessage(chatId, message);
+    // Sprint A: Append provenance trace if available
+    const provenanceChain = (result.output as any)?.provenanceChain as ProvenanceChain | undefined;
+    if (provenanceChain) {
+      message += `\n\n${renderProvenanceTelegram(provenanceChain)}`;
+    }
+
+    await api.sendMessage(chatId, message, { parse_mode: 'HTML' });
   } else {
     let errorMessage = `❌ Research failed\n\nError: ${result.summary || agent.error || "Unknown error"}`;
     if (notionUrl) errorMessage += `\n\n📝 Details: ${notionUrl}`;

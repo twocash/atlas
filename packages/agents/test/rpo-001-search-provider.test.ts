@@ -153,18 +153,22 @@ describe('RPO-001: prompt split into systemInstruction + contents', () => {
     expect(researchSource).toContain('return { systemInstruction, contents, isDrafterMode }');
   });
 
-  it('executeResearch uses SearchProvider.generate()', async () => {
+  it('executeResearch uses SearchProvider.generate() via two-phase pipeline', async () => {
     const fs = await import('fs');
     const researchSource = fs.readFileSync(
       new URL('../src/agents/research.ts', import.meta.url),
       'utf-8'
     );
 
-    // Verify SearchProvider is used instead of GeminiClient
-    expect(researchSource).toContain('const searchProvider = getSearchProvider()');
-    expect(researchSource).toContain('searchProvider.generate({');
-    expect(researchSource).toContain('query: contents,');
-    expect(researchSource).toContain('systemInstruction,');
+    // ADR-010: Two-phase pipeline — Claude retrieves, Gemini synthesizes
+    // Phase 1: Retrieval via ClaudeSearchProvider (promoted to primary)
+    expect(researchSource).toContain('const retrievalProvider = getFallbackProvider()');
+    expect(researchSource).toContain('retrievalProvider.generate({');
+
+    // Phase 2: Synthesis via GeminiSearchProvider (no googleSearch tool)
+    expect(researchSource).toContain('const synthesisProvider = getSearchProvider()');
+    expect(researchSource).toContain('synthesisProvider.generate({');
+    expect(researchSource).toContain('useSearchTool: false');
 
     // Verify old GeminiClient is gone
     expect(researchSource).not.toContain('getGeminiClient()');

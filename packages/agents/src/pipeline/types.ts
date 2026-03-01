@@ -13,6 +13,10 @@ import type { AttachmentInfo } from '../conversation/attachments';
 import type { MediaContext, Pillar } from '../media/processor';
 import type { TriageResult } from '../cognitive/triage-skill';
 import type { EmergenceProposal } from '../emergence/types';
+import type { ResolvedContext } from '../socratic/types';
+import type { ProvenanceChain } from '../types/provenance';
+import type { GoalContext, GoalTelemetry, GoalTracker } from '../goal';
+import type { RequestType } from '../conversation/types';
 
 // ─── Re-exports from Phase 6 modules ────────────────────
 
@@ -167,6 +171,79 @@ export interface PipelineSurfaceHooks {
 
   // Emergence delivery → surface adapter
   deliverEmergenceProposal(proposal: EmergenceProposal): Promise<number>;
+}
+
+// ─── Resolved Context Input (Sprint A: Pipeline Unification) ────
+
+/**
+ * Input for orchestrateResolvedContext() — the unified entry point for
+ * post-Socratic-resolution dispatch. Contains everything the orchestrator
+ * needs to create audit trails, dispatch research, and manage session telemetry.
+ *
+ * The Socratic adapter produces this; the orchestrator consumes it.
+ * Goal state is opaque to the orchestrator — it carries but doesn't interpret.
+ */
+export interface ResolvedContextInput {
+  /** Socratic engine's resolution output */
+  resolved: ResolvedContext;
+  /** Original content (URL string, text, etc.) */
+  content: string;
+  /** Content type */
+  contentType: 'url' | 'text' | 'media';
+  /** Descriptive title (from triage, Socratic contentTopic, or prefetch — already resolved) */
+  title: string;
+  /** Jim's answer to the Socratic question */
+  answerContext?: string;
+  /** Pre-fetched URL content (title, body, summary) */
+  prefetchedUrlContent?: {
+    success: boolean;
+    title?: string;
+    bodySnippet?: string;
+    fullContent?: string;
+    preReadSummary?: string;
+    preReadContentType?: string;
+    error?: string;
+  };
+  /** Triage result from pre-flight classification */
+  triageResult?: TriageResult;
+  /** Telegram user ID */
+  userId: number;
+  /** Telegram chat ID */
+  chatId: number;
+  /** Telegram username */
+  username: string;
+  /** Telegram message ID */
+  messageId?: number;
+
+  // ─── Pre-computed routing (adapter resolves, orchestrator consumes) ─────
+
+  /** Pillar (already resolved from goal/Socratic/triage) */
+  pillar: Pillar;
+  /** Request type (already resolved from goal/Socratic/triage) */
+  requestType: RequestType;
+  /** Keywords for Feed 2.0 + Work Queue */
+  keywords: string[];
+
+  // ─── Goal state (opaque to orchestrator — carried through) ─────
+
+  /** Goal context from Socratic goal parsing */
+  goalContext?: GoalContext;
+  /** Goal telemetry (timing, clarification counts) */
+  goalTelemetry?: GoalTelemetry;
+  /** Goal tracker (survives across clarification rounds) */
+  goalTracker?: GoalTracker;
+  /** Goal metadata for audit trail (serialized goal telemetry — string values only) */
+  goalMetadata?: Record<string, string>;
+
+  // ─── Research config (pre-built by adapter when requestType=Research) ─────
+
+  /** Fully assembled ResearchConfig (V1 or V2). Only present when requestType=Research. */
+  researchConfig?: unknown;
+
+  // ─── Provenance ─────
+
+  /** Provenance chain initialized by the adapter */
+  provenanceChain?: ProvenanceChain;
 }
 
 // ─── Pipeline Config ────────────────────────────────────

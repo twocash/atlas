@@ -19,6 +19,8 @@ import { composeResearchContext } from "../services/research-context";
 import { getContentContext, getSocraticAnswer, getState } from "../conversation/conversation-state";
 import { stashAgentResult } from "../conversation/context-manager";
 import { getResearchPipelineConfig } from "../config";
+import type { ProvenanceChain } from "../types/provenance";
+import { setResult as setProvenanceResult } from "../provenance";
 
 // ==========================================
 // Types
@@ -176,6 +178,15 @@ export async function orchestrateResearch(
         noveltyScore: assessment.noveltyScore,
         keyword: assessment.telemetry.keyword,
       });
+
+      // Sprint A: Update provenance chain with Andon assessment
+      const provenanceChain = (result.output as any)?.provenanceChain as ProvenanceChain | undefined;
+      if (provenanceChain) {
+        setProvenanceResult(provenanceChain, {
+          andonGrade: assessment.confidence,        // Categorical: 'grounded' | 'informed' | 'speculative' | 'insufficient'
+          andonConfidence: assessment.noveltyScore,  // Numeric: 0-1
+        });
+      }
 
       // Stash for follow-on conversion detection (Bug A — Session Continuity)
       if (sessionId !== undefined && researchResult?.summary) {
