@@ -177,6 +177,7 @@ async function executeDispatchResearch(
         depth: depth as 'light' | 'standard' | 'deep',
         focus,
         voice: voice as 'atlas-research' | 'linkedin-punchy' | 'consulting' | 'raw-notes' | 'custom',
+        pillar: pillar as 'Personal' | 'The Grove' | 'Consulting' | 'Home/Garage',
       },
       agent,
       registry
