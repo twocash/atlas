@@ -194,14 +194,41 @@ async function executeDispatchResearch(
     // Cleanup subscription
     subscription.unsubscribe();
 
-    // Return result
-    const researchOutput = result.output as { summary?: string; findings?: any[]; sources?: string[] } | undefined;
+    // Return result with Andon Gate assessment
+    const researchOutput = result.output as { summary?: string; findings?: any[]; sources?: string[]; bibliography?: any[]; contentMode?: string; proseContent?: string } | undefined;
+
+    // Andon Gate — the CognitiveRouter MUST see the quality classification
+    const { assessOutput } = await import('../../services/andon-gate');
+    const andonInput = {
+      wasDispatched: true,
+      groundingUsed: true,
+      sourceCount: researchOutput?.sources?.length ?? 0,
+      findingCount: researchOutput?.findings?.length ?? 0,
+      bibliographyCount: researchOutput?.bibliography?.length ?? 0,
+      durationMs: result.metrics?.durationMs ?? 0,
+      summary: researchOutput?.summary ?? '',
+      originalQuery: query,
+      success: result.success,
+      hallucinationGuardPassed: true,
+      contentMode: researchOutput?.contentMode as 'prose' | 'json' | undefined,
+      hasProseContent: !!researchOutput?.proseContent,
+      source: 'dispatch_research',
+    };
+    const assessment = assessOutput(andonInput);
+
+    logger.info('Andon Gate assessment for tool result', {
+      confidence: assessment.confidence,
+      routing: assessment.routing,
+      sourceCount: andonInput.sourceCount,
+      findingCount: andonInput.findingCount,
+    });
 
     return {
       success: result.success,
       result: {
+        // Andon-calibrated message — Claude MUST use this label, not invent its own
         message: result.success
-          ? `Research complete! Found ${researchOutput?.sources?.length || 0} sources.`
+          ? `${assessment.calibration.emoji} ${assessment.calibration.label} — ${researchOutput?.sources?.length || 0} sources analyzed.`
           : `Research failed: ${result.summary}`,
         query,
         depth,
@@ -211,6 +238,12 @@ async function executeDispatchResearch(
         summary: researchOutput?.summary?.substring(0, 500),
         sourcesCount: researchOutput?.sources?.length || 0,
         findingsCount: researchOutput?.findings?.length || 0,
+        // Andon Gate classification — CognitiveRouter must honor this
+        andonConfidence: assessment.confidence,
+        andonLabel: assessment.calibration.label,
+        andonCaveat: assessment.calibration.caveat,
+        andonRouting: assessment.routing,
+        andonEmoji: assessment.calibration.emoji,
       },
     };
   } catch (error) {

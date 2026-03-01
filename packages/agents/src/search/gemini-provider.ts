@@ -20,6 +20,15 @@ import type {
 /** DRC-001a: Default retry max — overridden by Research Pipeline Config */
 const DEFAULT_GROUNDING_RETRY_MAX = 1;
 
+/**
+ * Gemini 2.0 Flash maxOutputTokens ceiling.
+ * The API silently caps at this value — any higher value is ignored without error.
+ * ADR-008: Fail loud. If configured maxTokens exceeds this, log degraded warning.
+ *
+ * Source: https://ai.google.dev/gemini-api/docs/models#gemini-2.0-flash
+ */
+const GEMINI_FLASH_MAX_OUTPUT_TOKENS = 8192;
+
 /** DRC-001a: Provider config options — resolved from Research Pipeline Config */
 export interface GeminiProviderOptions {
   model?: string;
@@ -103,6 +112,16 @@ export class GeminiSearchProvider implements SearchProvider {
       `[GeminiSearch] Query length: ${request.query.length}, systemInstruction length: ${request.systemInstruction.length}`
     );
 
+    // ADR-008: Detect and cap maxOutputTokens that exceed Gemini's ceiling
+    let effectiveMaxTokens = request.maxOutputTokens;
+    if (effectiveMaxTokens && effectiveMaxTokens > GEMINI_FLASH_MAX_OUTPUT_TOKENS) {
+      console.warn(
+        `[GeminiSearch] maxOutputTokens DEGRADED: configured ${effectiveMaxTokens} exceeds Gemini 2.0 Flash ceiling of ${GEMINI_FLASH_MAX_OUTPUT_TOKENS}. ` +
+        `Capping at ${GEMINI_FLASH_MAX_OUTPUT_TOKENS}. Update ResearchPipelineConfig depths to reflect API reality.`
+      );
+      effectiveMaxTokens = GEMINI_FLASH_MAX_OUTPUT_TOKENS;
+    }
+
     const startTime = Date.now();
 
     const response = await ai.models.generateContent({
@@ -111,7 +130,7 @@ export class GeminiSearchProvider implements SearchProvider {
       config: {
         systemInstruction: request.systemInstruction,
         tools: [{ googleSearch: {} }],
-        maxOutputTokens: request.maxOutputTokens,
+        maxOutputTokens: effectiveMaxTokens,
       },
     });
 

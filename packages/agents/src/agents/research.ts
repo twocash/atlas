@@ -1398,7 +1398,10 @@ async function parseResearchResponse(
   if (isDrafterMode) {
     console.log("[Research] Prose mode — skipping JSON extraction");
 
-    // Extract source URLs from grounding citations (deduped)
+    // Extract source URLs from grounding citations ONLY (deduped)
+    // CRITICAL: Model-generated markdown links in prose body are NOT sources.
+    // They are presentation — the model fabricates URLs that look real but aren't.
+    // Only groundingMetadata.groundingChunks citations count as evidence.
     const sources: string[] = [];
     const seenUrls = new Set<string>();
     for (const citation of citations) {
@@ -1408,14 +1411,15 @@ async function parseResearchResponse(
       }
     }
 
-    // Also extract markdown link URLs from prose body
+    // Log discrepancy between grounding citations and prose links for diagnostics
     const markdownLinkPattern = /\[[^\]]*\]\((https?:\/\/[^)]+)\)/g;
+    let proseLinksCount = 0;
     let linkMatch;
     while ((linkMatch = markdownLinkPattern.exec(text)) !== null) {
-      if (!seenUrls.has(linkMatch[1])) {
-        sources.push(linkMatch[1]);
-        seenUrls.add(linkMatch[1]);
-      }
+      if (!seenUrls.has(linkMatch[1])) proseLinksCount++;
+    }
+    if (proseLinksCount > 0) {
+      console.warn(`[Research] PROSE LINK DISCREPANCY: ${proseLinksCount} markdown links in prose body are NOT grounding citations — excluded from source count (grounding: ${citations.length}, prose-only: ${proseLinksCount})`);
     }
 
     // Hallucination check with empty findings (citation-only checks still work)
