@@ -42,6 +42,10 @@ export interface SearchRequest {
 
   /** Maximum output tokens */
   maxOutputTokens: number;
+
+  /** When false, provider skips search tools (synthesis-only mode). Default: true.
+   *  ADR-010: Decoupled Search — allows Gemini to run as pure LLM without googleSearch. */
+  useSearchTool?: boolean;
 }
 
 /** Provider-agnostic interface for search-grounded generation */

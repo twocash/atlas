@@ -118,10 +118,11 @@ describe('DRC-001a: Compiled Defaults', () => {
   });
 
   it('defaults have correct search provider settings', () => {
-    // From gemini-provider.ts
-    expect(COMPILED_DEFAULTS.searchProviders.chain).toEqual(['gemini-google-search']);
-    expect(COMPILED_DEFAULTS.searchProviders.gemini.model).toBe('gemini-2.0-flash');
-    expect(COMPILED_DEFAULTS.searchProviders.gemini.groundingRetryMax).toBe(1);
+    // ADR-010: Decoupled search — Claude retrieves, Gemini synthesizes
+    expect(COMPILED_DEFAULTS.searchProviders.chain).toBe('claude-retrieve-gemini-synthesize');
+    expect(COMPILED_DEFAULTS.searchProviders.gemini.model).toBe('gemini-2.0-flash-001');
+    expect(COMPILED_DEFAULTS.searchProviders.gemini.groundingRetryMax).toBe(2);
+    expect(COMPILED_DEFAULTS.searchProviders.claude?.model).toBe('claude-haiku-4-5-20251001');
   });
 
   it('defaults have correct evidence preset assignments', () => {

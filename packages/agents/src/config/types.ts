@@ -58,16 +58,23 @@ export interface AndonThresholds {
 // ==========================================
 
 export interface SearchProviderConfig {
-  /** Ordered fallback chain — provider names */
-  chain: string[];
+  /** Pipeline chain name — describes the provider strategy.
+   *  ADR-010: "claude-retrieve-gemini-synthesize" = Phase 1 Claude retrieval + Phase 2 Gemini synthesis */
+  chain: string;
 
-  /** Gemini-specific settings */
+  /** Gemini-specific settings (used for both search and synthesis) */
   gemini: {
-    /** Model name for search-grounded generation */
+    /** Model name for search-grounded generation / synthesis */
     model: string;
 
-    /** Max retries on grounding failure */
+    /** Max retries on grounding failure (only applies in search mode) */
     groundingRetryMax: number;
+  };
+
+  /** Claude-specific settings (used for Phase 1 retrieval). ADR-010. */
+  claude?: {
+    /** Model name for web_search retrieval */
+    model: string;
   };
 }
 
@@ -174,10 +181,13 @@ export const COMPILED_DEFAULTS: ResearchPipelineConfig = {
   },
 
   searchProviders: {
-    chain: ['gemini-google-search'],
+    chain: 'claude-retrieve-gemini-synthesize',
     gemini: {
-      model: 'gemini-2.0-flash',
-      groundingRetryMax: 1,
+      model: 'gemini-2.0-flash-001',
+      groundingRetryMax: 2,
+    },
+    claude: {
+      model: 'claude-haiku-4-5-20251001',
     },
   },
 

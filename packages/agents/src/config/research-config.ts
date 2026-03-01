@@ -146,6 +146,9 @@ function validateAndMerge(parsed: any): ResearchPipelineConfig {
       ...defaults.searchProviders.gemini,
       ...(parsed.searchProviders?.gemini ?? {}),
     },
+    claude: parsed.searchProviders?.claude
+      ? { ...defaults.searchProviders.claude, ...parsed.searchProviders.claude }
+      : defaults.searchProviders.claude,
   };
 
   const evidence: EvidencePresetAssignment = {

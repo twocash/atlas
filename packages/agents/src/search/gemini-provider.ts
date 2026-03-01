@@ -74,6 +74,12 @@ export class GeminiSearchProvider implements SearchProvider {
   async generate(request: SearchRequest): Promise<SearchResult> {
     const ai = await this.ensureClient();
 
+    // ADR-010: Synthesis mode — single call, no search tool, no grounding retry
+    if (request.useSearchTool === false) {
+      console.log("[GeminiSearch] Synthesis mode (no googleSearch tool)");
+      return this.executeCall(ai, request);
+    }
+
     let lastResult: SearchResult | null = null;
 
     for (let attempt = 0; attempt <= this.groundingRetryMax; attempt++) {
@@ -122,7 +128,8 @@ export class GeminiSearchProvider implements SearchProvider {
     ai: any,
     request: SearchRequest
   ): Promise<SearchResult> {
-    console.log("[GeminiSearch] Calling Gemini with Google Search grounding...");
+    const isSynthesisMode = request.useSearchTool === false;
+    console.log(`[GeminiSearch] ${isSynthesisMode ? 'Calling Gemini in synthesis mode (no search)...' : 'Calling Gemini with Google Search grounding...'}`);
     console.log(
       `[GeminiSearch] Query length: ${request.query.length}, systemInstruction length: ${request.systemInstruction.length}`
     );
@@ -139,14 +146,20 @@ export class GeminiSearchProvider implements SearchProvider {
 
     const startTime = Date.now();
 
+    // ADR-010: Only include googleSearch when in retrieval mode (default).
+    // Synthesis mode uses Gemini as a pure LLM — no grounding suppression possible.
+    const config: any = {
+      systemInstruction: request.systemInstruction,
+      maxOutputTokens: effectiveMaxTokens,
+    };
+    if (!isSynthesisMode) {
+      config.tools = [{ googleSearch: {} }];
+    }
+
     const response = await ai.models.generateContent({
       model: this.model,
       contents: request.query,
-      config: {
-        systemInstruction: request.systemInstruction,
-        tools: [{ googleSearch: {} }],
-        maxOutputTokens: effectiveMaxTokens,
-      },
+      config,
     });
 
     const elapsed = Date.now() - startTime;

@@ -2,8 +2,10 @@
  * Atlas Research Agent
  *
  * Autonomous agent for web research tasks.
- * Uses Gemini 2.0 Flash with Google Search grounding for
- * live web research with proper source citations.
+ * ADR-010: Decoupled two-phase pipeline:
+ *   Phase 1 — Claude Haiku + web_search retrieves URLs deterministically
+ *   Phase 2 — Gemini 2.0 Flash synthesizes from provided context (no googleSearch)
+ * Fallback: Gemini-with-googleSearch if Claude retrieval returns 0 citations.
  *
  * Research Depths:
  * - light: Quick overview (1-2k tokens, 2-3 sources)
@@ -889,6 +891,136 @@ Begin your research now.`;
   return { systemInstruction, contents, isDrafterMode };
 }
 
+/**
+ * ADR-010: Build synthesis prompt for Phase 2 (Gemini without googleSearch).
+ *
+ * Takes the retrieval output from Phase 1 (Claude web_search) and builds
+ * a prompt for Gemini to synthesize in Jim's voice/format.
+ *
+ * Parallel to buildResearchPrompt() — reuses voice, quality, drafter config
+ * but replaces search instructions with synthesis instructions.
+ */
+async function buildSynthesisPrompt(
+  config: ResearchConfig,
+  retrievedText: string,
+  citations: { url: string; title: string }[],
+): Promise<{ systemInstruction: string; contents: string; isDrafterMode: boolean }> {
+  const depth = config.depth || "standard";
+  const depthCfg = resolveDepthConfig(depth);
+
+  // Reuse same voice resolution chain as buildResearchPrompt
+  let voiceInstructions: string;
+  try {
+    voiceInstructions = await getVoiceInstructionsAsync(config);
+  } catch {
+    voiceInstructions = getVoiceInstructions(config);
+  }
+
+  // Fetch research instructions from PromptManager (same as buildResearchPrompt)
+  const notionInstructions = await getResearchInstructionsFromNotion(config);
+  let researchInstructions: string;
+  let qualityBlock: string;
+
+  if (notionInstructions) {
+    researchInstructions = notionInstructions;
+    qualityBlock = '';
+  } else {
+    const attemptedId = config.pillar && config.useCase
+      ? `research-agent.${slugify(config.pillar)}.${slugify(config.useCase)} → ${DEPTH_PROMPT_ID[depth]}`
+      : DEPTH_PROMPT_ID[depth];
+    logDegradedFallback(attemptedId, 'buildSynthesisPrompt', { depth, pillar: config.pillar, useCase: config.useCase });
+    researchInstructions = getDepthInstructions(depth) + '\n' + degradedWarning(DEPTH_PROMPT_ID[depth]);
+    qualityBlock = await getQualityGuidelinesAsync(depth);
+  }
+
+  const summaryGuidance = await getSummaryGuidanceAsync(depth);
+  const drafterTemplate = await getDrafterTemplateAsync(config);
+  const isDrafterMode = drafterTemplate !== null;
+
+  // Output section — same logic as buildResearchPrompt, but source references
+  // point to provided context, not Google Search results
+  let outputSection: string;
+
+  if (isDrafterMode) {
+    outputSection = `## Output Format
+
+${drafterTemplate}
+
+## Source Requirements
+
+- Cite sources inline using markdown links: [Source Name](URL)
+- Include a ## Sources section at the end listing all referenced URLs
+- ONLY use URLs from the Retrieved Web Research section below
+- Do NOT fabricate URLs or use placeholder URLs`;
+  } else {
+    outputSection = `## Output Format
+
+Provide your response in this exact JSON format:
+
+\`\`\`json
+{
+  "summary": "${summaryGuidance}",
+  "findings": [
+    {
+      "claim": "Specific fact or insight discovered",
+      "source": "Name of the publication or website",
+      "url": "URL from the retrieved sources"${depth === "deep" ? ',\n      "author": "Author Name if available",\n      "date": "Publication date if available"' : ""}
+    }
+  ],
+  "sources": ["url-from-retrieved-sources-1", "url-from-retrieved-sources-2", "..."]${depth === "deep" ? ',\n  "bibliography": ["Chicago-style citation 1", "Chicago-style citation 2"]' : ""}
+}
+\`\`\`
+
+## CRITICAL: Source Integrity
+
+**ONLY use URLs from the Retrieved Web Research section below.**
+- Do NOT fabricate URLs or use placeholder URLs
+- Do NOT search the web — all source material is provided below
+- If the retrieved material is insufficient, state this clearly in your summary`;
+  }
+
+  // System instruction — same voice/format, different task framing
+  const systemInstruction = `You are Atlas Research Agent, synthesizing from provided web research.
+
+## STYLE GUIDELINES (CRITICAL - ADOPT THIS VOICE THROUGHOUT)
+${voiceInstructions}
+
+## Instructions
+
+You are synthesizing from web research that has already been retrieved for you.
+Do NOT search the web. All source material is provided in the query below.
+Analyze the provided sources and produce a ${depth}-depth research output.
+${researchInstructions}
+
+${outputSection}
+
+${qualityBlock}`.trim();
+
+  // Contents — research task + retrieved context + source URLs
+  const sourceList = citations
+    .map((c) => `- [${c.title || 'Source'}](${c.url})`)
+    .join('\n');
+
+  const contents = `## Research Task
+Query: "${config.query}"
+${config.focus ? `Focus Area: ${config.focus}` : ""}
+Depth: ${depth} — ${depthCfg.description}
+${config.userContext ? `\n## User's Intent\nThe person requesting this research said: "${config.userContext.slice(0, 500)}"\nFactor this into your research angle and framing.\n` : ""}
+Target Sources: ${config.maxSources || depthCfg.targetSources}+
+
+## Retrieved Web Research
+
+${retrievedText}
+
+## Source URLs
+
+${sourceList}
+
+Synthesize these sources now.`;
+
+  return { systemInstruction, contents, isDrafterMode };
+}
+
 function getDepthInstructions(depth: ResearchDepth): string {
   switch (depth) {
     case "light":
@@ -1082,7 +1214,10 @@ async function getDrafterTemplateAsync(config: ResearchConfig): Promise<string |
 // ==========================================
 
 /**
- * Execute a research task using Gemini with Google Search grounding
+ * Execute a research task using the two-phase decoupled search pipeline (ADR-010).
+ * Phase 1: Claude Haiku + web_search for retrieval (deterministic URLs).
+ * Phase 2: Gemini without googleSearch for synthesis (no grounding suppression).
+ * Fallback: Gemini-with-googleSearch if Claude retrieval returns 0 citations.
  */
 export async function executeResearch(
   config: ResearchConfig,
@@ -1099,21 +1234,35 @@ export async function executeResearch(
     // Report starting
     await registry.updateProgress(agent.id, 5, `Starting ${depth} research`);
 
-    // RPO-001: Use SearchProvider (replaces dual-SDK GeminiClient)
-    // DRC-001a: Provider config resolved from Research Pipeline Config cache
-    const searchProvider = getSearchProvider();
-    await registry.updateProgress(agent.id, 15, "Searching with Google");
+    // ============================================================
+    // ADR-010: Decoupled Search — Two-Phase Pipeline
+    // Phase 1: RETRIEVE (Claude Haiku + web_search)
+    // Phase 2: SYNTHESIZE (Gemini without googleSearch)
+    // Fallback: Gemini-with-googleSearch if Claude retrieval fails
+    // ============================================================
 
-    // Build prompt — split into systemInstruction (behavioral) + contents (query)
-    // V2 configs get structured context composition; V1 configs use the legacy prompt builder
+    // === PHASE 1: RETRIEVE ===
+    await registry.updateProgress(agent.id, 15, "Searching with Claude");
+    const retrievalProvider = getFallbackProvider(); // ClaudeSearchProvider (promoted to primary)
+    const retrievalResult = await retrievalProvider.generate({
+      query: config.query,
+      systemInstruction: 'Search the web for current, authoritative information. Return comprehensive results with source URLs.',
+      maxOutputTokens: 4096,
+    });
+    apiCalls++;
+
+    let retrievedText = retrievalResult.text;
+    let retrievedCitations = retrievalResult.citations;
+    let usedFallback = false;
+    let isDrafterMode = false;
+
+    // Build prompt for V2 context (needed for both synthesis and Gemini fallback paths)
     let systemInstruction: string;
     let contents: string;
-    let isDrafterMode: boolean;
     if (isResearchConfigV2(config)) {
       const v2Sections = buildResearchPromptV2(config);
       const v1Result = await buildResearchPrompt(config);
       systemInstruction = v1Result.systemInstruction;
-      // V2 sections are INJECTED into contents between task context and "Begin your research now."
       contents = v1Result.contents.replace(
         'Begin your research now.',
         v2Sections + '\n\nBegin your research now.',
@@ -1132,54 +1281,98 @@ export async function executeResearch(
       isDrafterMode = result.isDrafterMode;
     }
 
-    await registry.updateProgress(agent.id, 30, `Analyzing sources (${depth})`);
-    let searchResult = await searchProvider.generate({
-      query: contents,
-      systemInstruction,
-      maxOutputTokens: depthCfg.maxTokens,
-    });
-    apiCalls++;
+    let searchResult: SearchProviderResult;
 
-    // FALLBACK CHAIN: If Gemini returned 0 citations, try Claude web_search
-    let usedFallback = false;
-    if (searchResult.citations.length === 0) {
-      console.warn('[Research] Gemini returned 0 citations — dispatching Claude web_search fallback');
-      await registry.updateProgress(agent.id, 45, 'Fallback: searching with Claude');
+    // ADR-010: If Claude retrieval returned 0 citations, retry with reformulated query.
+    // Do NOT fall back to Gemini-with-googleSearch — that's the unreliable path we decoupled from.
+    if (retrievedCitations.length === 0) {
+      console.warn('[Research] Claude retrieval returned 0 citations — retrying with reformulated query');
+      await registry.updateProgress(agent.id, 30, "Retry: reformulated search");
 
+      // Retry with a broader, reformulated query
+      const reformulated = `Find recent news, analysis, and authoritative sources about: ${config.query}`;
       try {
-        const fallback = getFallbackProvider();
-        const fallbackResult = await fallback.generate({
-          query: config.query, // Use raw query, not the drafter-templated contents
-          // TODO: ADR-001 — resolve from Notion System Prompts DB
-          systemInstruction: 'You are a research assistant. Search the web and provide comprehensive, factual answers with source URLs.',
-          maxOutputTokens: depthCfg.maxTokens,
+        const retryResult = await retrievalProvider.generate({
+          query: reformulated,
+          systemInstruction: 'Search the web thoroughly. Try multiple search queries if needed. Return comprehensive results with source URLs.',
+          maxOutputTokens: 4096,
         });
         apiCalls++;
 
-        if (fallbackResult.citations.length > 0) {
-          console.log(`[Research] Fallback succeeded: ${fallbackResult.citations.length} citations from Claude web_search`);
-          // Use fallback result wholesale — text AND citations must correspond.
-          // Gemini's ungrounded text is discarded (cosmetic grounding = ADR-008 violation).
-          searchResult = fallbackResult;
-          usedFallback = true;
-
-          // Fire-and-forget Feed 2.0 log
-          logFallbackToFeed(config.query, fallbackResult.citations.length).catch(() => {});
+        if (retryResult.citations.length > 0) {
+          console.log(`[Research] Claude retry succeeded: ${retryResult.citations.length} citations`);
+          retrievedText = retryResult.text;
+          retrievedCitations = retryResult.citations;
+          logFallbackToFeed(config.query, retryResult.citations.length).catch(() => {});
         } else {
-          console.warn('[Research] Fallback also returned 0 citations — proceeding with ungrounded result');
+          console.warn('[Research] Claude retry also returned 0 citations — proceeding with ungrounded result');
+          usedFallback = true;
         }
-      } catch (fallbackError) {
-        console.error('[Research] Fallback provider failed:', fallbackError instanceof Error ? fallbackError.message : fallbackError);
-        // Continue with original ungrounded result — don't let fallback failure kill the pipeline
+      } catch (retryError) {
+        console.error('[Research] Claude retry failed:', retryError instanceof Error ? retryError.message : retryError);
+        usedFallback = true;
       }
     }
 
-    // Convert to legacy GeminiResponse shape (after potential fallback)
+    if (retrievedCitations.length === 0) {
+      // Both Claude attempts failed — graceful degradation with ungrounded synthesis.
+      // Gemini synthesizes without search tool from whatever text Claude returned.
+      console.warn('[Research] Both retrieval attempts returned 0 citations — synthesizing from ungrounded text');
+      await registry.updateProgress(agent.id, 50, "Synthesizing (ungrounded)");
+
+      const synthesis = await buildSynthesisPrompt(config, retrievedText, []);
+      isDrafterMode = synthesis.isDrafterMode;
+      const synthesisProvider = getSearchProvider();
+      const synthesisResult = await synthesisProvider.generate({
+        query: synthesis.contents,
+        systemInstruction: synthesis.systemInstruction,
+        maxOutputTokens: depthCfg.maxTokens,
+        useSearchTool: false,
+      });
+      apiCalls++;
+
+      searchResult = {
+        text: synthesisResult.text,
+        citations: [],
+        groundingUsed: false,  // Will trigger HALLUCINATION check downstream
+        searchQueries: [],
+        groundingSupportCount: 0,
+      };
+    } else {
+      // === PHASE 2: SYNTHESIZE (only when Phase 1 succeeded) ===
+      console.log(`[Research] Phase 1 complete: ${retrievedCitations.length} citations from Claude retrieval`);
+      await registry.updateProgress(agent.id, 50, `Synthesizing ${depth} analysis`);
+
+      const synthesis = await buildSynthesisPrompt(config, retrievedText, retrievedCitations);
+      isDrafterMode = synthesis.isDrafterMode; // Synthesis prompt resolves drafter independently
+      const synthesisProvider = getSearchProvider(); // Gemini
+      const synthesisResult = await synthesisProvider.generate({
+        query: synthesis.contents,
+        systemInstruction: synthesis.systemInstruction,
+        maxOutputTokens: depthCfg.maxTokens,
+        useSearchTool: false, // ADR-010: No googleSearch — pure synthesis
+      });
+      apiCalls++;
+
+      // Build result: Phase 2 text + Phase 1 citations
+      searchResult = {
+        text: synthesisResult.text,
+        citations: retrievedCitations,       // From Phase 1
+        groundingUsed: true,                 // Phase 1 did the grounding
+        searchQueries: retrievalResult.searchQueries,
+        groundingSupportCount: retrievedCitations.length,
+      };
+    }
+
+    // Convert to legacy GeminiResponse shape
     const response = toGeminiResponse(searchResult);
 
     // DEBUG: Log raw response for troubleshooting
+    const providerChain = usedFallback
+      ? "claude-retrieve (degraded, 0 citations) → gemini-synthesize (ungrounded)"
+      : "claude-retrieve → gemini-synthesize";
     console.log("[Research] ========== RAW RESPONSE ==========");
-    console.log("[Research] Provider:", usedFallback ? "claude-web-search (fallback)" : "gemini-google-search");
+    console.log("[Research] Provider:", providerChain);
     console.log("[Research] Text length:", response.text?.length || 0);
     console.log("[Research] Text preview (first 1000 chars):", response.text?.substring(0, 1000));
     console.log("[Research] Citations count:", response.citations?.length || 0);
@@ -1199,11 +1392,12 @@ export async function executeResearch(
     await registry.updateProgress(agent.id, 75, "Synthesizing findings");
 
     // CRITICAL: Fail fast if grounding didn't work
-    // This catches the case where Gemini responds from training data instead of live search
+    // In two-phase mode, groundingUsed = true when Phase 1 returned citations.
+    // In fallback mode, this checks Gemini's own grounding.
     if (!response.groundingUsed) {
-      console.error("[Research] GROUNDING FAILURE: Google Search did not return results");
-      console.error("[Research] Gemini responded from training data - this is NOT live research");
-      throw new Error("HALLUCINATION: Grounding failure — Gemini responded from training data instead of performing live web research");
+      console.error("[Research] GROUNDING FAILURE: No search results from either provider");
+      console.error("[Research] Neither Claude retrieval nor Gemini grounding returned citations");
+      throw new Error("HALLUCINATION: Grounding failure — neither Claude retrieval nor Gemini grounding returned search results");
     }
 
     // Parse research result from response (async for URL resolution)
