@@ -374,7 +374,7 @@ export {
   getResearchPipelineConfig,
   getResearchPipelineConfigSync,
   invalidateConfigCache,
-  injectConfig,
+  injectConfig as injectResearchConfig,
   COMPILED_DEFAULTS,
   type ResearchPipelineConfig,
   type ResolvedConfig,
