@@ -45,35 +45,39 @@ async function main() {
     process.exit(1);
   }
 
-  // 3. Verify config shape matches compiled defaults (seeded with same values)
-  console.log('\n[Test 2] Config parity with compiled defaults...');
+  // 3. Verify config shape — all required fields present and typed correctly
+  // Values may differ from compiled defaults (Jim tunes them in Notion)
+  console.log('\n[Test 2] Config shape validation...');
   const cfg = resolved.config;
 
-  const checks = [
-    ['depths.light.maxTokens', cfg.depths.light.maxTokens, COMPILED_DEFAULTS.depths.light.maxTokens],
-    ['depths.standard.maxTokens', cfg.depths.standard.maxTokens, COMPILED_DEFAULTS.depths.standard.maxTokens],
-    ['depths.deep.maxTokens', cfg.depths.deep.maxTokens, COMPILED_DEFAULTS.depths.deep.maxTokens],
-    ['andonThresholds.groundedMinSources', cfg.andonThresholds.groundedMinSources, COMPILED_DEFAULTS.andonThresholds.groundedMinSources],
-    ['andonThresholds.noveltyFloor', cfg.andonThresholds.noveltyFloor, COMPILED_DEFAULTS.andonThresholds.noveltyFloor],
-    ['andonThresholds.minSummaryLength', cfg.andonThresholds.minSummaryLength, COMPILED_DEFAULTS.andonThresholds.minSummaryLength],
-    ['searchProviders.gemini.model', cfg.searchProviders.gemini.model, COMPILED_DEFAULTS.searchProviders.gemini.model],
-    ['searchProviders.gemini.groundingRetryMax', cfg.searchProviders.gemini.groundingRetryMax, COMPILED_DEFAULTS.searchProviders.gemini.groundingRetryMax],
-  ] as const;
+  const shapeChecks: [string, unknown, string][] = [
+    ['name', cfg.name, 'string'],
+    ['depths.light.maxTokens', cfg.depths.light.maxTokens, 'number'],
+    ['depths.standard.maxTokens', cfg.depths.standard.maxTokens, 'number'],
+    ['depths.deep.maxTokens', cfg.depths.deep.maxTokens, 'number'],
+    ['depths.deep.citationStyle', cfg.depths.deep.citationStyle, 'string'],
+    ['andonThresholds.groundedMinSources', cfg.andonThresholds.groundedMinSources, 'number'],
+    ['andonThresholds.noveltyFloor', cfg.andonThresholds.noveltyFloor, 'number'],
+    ['andonThresholds.minSummaryLength', cfg.andonThresholds.minSummaryLength, 'number'],
+    ['searchProviders.gemini.model', cfg.searchProviders.gemini.model, 'string'],
+    ['searchProviders.gemini.groundingRetryMax', cfg.searchProviders.gemini.groundingRetryMax, 'number'],
+    ['evidencePresets.standard', cfg.evidencePresets.standard, 'string'],
+  ];
 
-  let allMatch = true;
-  for (const [field, actual, expected] of checks) {
-    if (actual === expected) {
-      console.log(`  ✓ ${field}: ${actual}`);
+  let allValid = true;
+  for (const [field, value, expectedType] of shapeChecks) {
+    if (typeof value === expectedType && value !== null && value !== undefined) {
+      console.log(`  ✓ ${field}: ${value} (${expectedType})`);
     } else {
-      console.error(`  ✗ ${field}: expected ${expected}, got ${actual}`);
-      allMatch = false;
+      console.error(`  ✗ ${field}: expected ${expectedType}, got ${typeof value} (${value})`);
+      allValid = false;
     }
   }
 
-  if (allMatch) {
-    console.log('  ✓ PASS: All values match compiled defaults');
+  if (allValid) {
+    console.log('  ✓ PASS: Config shape valid — all fields present and correctly typed');
   } else {
-    console.error('  ✗ FAIL: Value mismatch — database may have different config');
+    console.error('  ✗ FAIL: Config shape invalid');
     process.exit(1);
   }
 

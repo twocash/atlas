@@ -34,7 +34,9 @@ const CACHE_TTL_MS = 5 * 60 * 1000;
 
 /**
  * Notion database ID for Research Pipeline Config.
- * Set via RESEARCH_PIPELINE_CONFIG_DB env var.
+ * Set via RESEARCH_PIPELINE_CONFIG_DB env var in ROOT .env (C:\github\atlas\.env).
+ * ADR-005: This is a packages/agents concern, not a surface concern.
+ * Do NOT put this in apps/telegram/.env or any surface-specific env file.
  * When empty, compiled defaults are used (expected before DB creation).
  */
 const getDatabaseId = (): string | undefined =>

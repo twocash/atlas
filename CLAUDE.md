@@ -75,6 +75,13 @@ All content flows into one of four life domains. **These are equal citizens**—
 | POV Library | `19c88251-6a7a-4f0a-ad9f-c2c468409c66` |
 | Research Pipeline Config | `9aed2e9c-f805-490f-a1fc-17e24b53e9ce` |
 
+### Env Var Placement (ADR-005)
+| Env Var | Location | Consumer |
+|---------|----------|----------|
+| `RESEARCH_PIPELINE_CONFIG_DB` | **Root `.env`** (`C:\github\atlas\.env`) | `packages/agents/src/config/` |
+
+Research Pipeline Config is a `packages/agents` concern (ADR-005: zero surface imports). The env var lives in root `.env`, NOT in `apps/telegram/.env`. Bun auto-loads root `.env`; the bridge's `dotenv` also loads it. Any surface that imports from `@atlas/agents` gets the config automatically.
+
 ### Legacy (Reference Only - DO NOT USE)
 | Database | ID | Purpose |
 |----------|-----|---------|
