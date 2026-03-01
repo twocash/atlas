@@ -76,7 +76,7 @@ const CUSTOM_CONFIG: ResearchPipelineConfig = {
     minSummaryLength: 100,    // Stricter than default (50)
   },
   searchProviders: {
-    chain: ['gemini-google-search'],
+    chain: 'claude-retrieve-gemini-synthesize',
     gemini: {
       model: 'gemini-2.5-pro',
       groundingRetryMax: 3,
@@ -120,7 +120,7 @@ describe('DRC-001a: Compiled Defaults', () => {
   it('defaults have correct search provider settings', () => {
     // ADR-010: Decoupled search — Claude retrieves, Gemini synthesizes
     expect(COMPILED_DEFAULTS.searchProviders.chain).toBe('claude-retrieve-gemini-synthesize');
-    expect(COMPILED_DEFAULTS.searchProviders.gemini.model).toBe('gemini-2.0-flash-001');
+    expect(COMPILED_DEFAULTS.searchProviders.gemini.model).toBe('gemini-2.5-flash');
     expect(COMPILED_DEFAULTS.searchProviders.gemini.groundingRetryMax).toBe(2);
     expect(COMPILED_DEFAULTS.searchProviders.claude?.model).toBe('claude-haiku-4-5-20251001');
   });

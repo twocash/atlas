@@ -183,7 +183,7 @@ export const COMPILED_DEFAULTS: ResearchPipelineConfig = {
   searchProviders: {
     chain: 'claude-retrieve-gemini-synthesize',
     gemini: {
-      model: 'gemini-2.0-flash-001',
+      model: 'gemini-2.5-flash',
       groundingRetryMax: 2,
     },
     claude: {
