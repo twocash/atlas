@@ -17,8 +17,10 @@ import type {
   Citation,
 } from "./types";
 
-/** DRC-001a: Default retry max — overridden by Research Pipeline Config */
-const DEFAULT_GROUNDING_RETRY_MAX = 1;
+/** DRC-001a: Default retry max — overridden by Research Pipeline Config.
+ *  Gemini probabilistically suppresses Google Search grounding (~20-50% of calls
+ *  with long systemInstructions). 2 retries = 3 total attempts for >95% success. */
+const DEFAULT_GROUNDING_RETRY_MAX = 2;
 
 /**
  * Gemini 2.0 Flash maxOutputTokens ceiling.
@@ -83,13 +85,26 @@ export class GeminiSearchProvider implements SearchProvider {
 
       const result = await this.executeCall(ai, request);
 
-      if (result.groundingUsed) {
+      // Check for ACTUAL search evidence, not just groundingSupports.
+      // Gemini probabilistically returns groundingSupports from training data
+      // (groundingUsed=true) without invoking Google Search (0 chunks, 0 queries).
+      // The retry must check for real citations, not phantom supports.
+      const hasRealGrounding = result.citations.length > 0 || result.searchQueries.length > 0;
+
+      if (hasRealGrounding) {
         if (attempt > 0) {
           console.log(
-            `[GeminiSearch] Grounding succeeded on retry ${attempt}`
+            `[GeminiSearch] Grounding succeeded on retry ${attempt} — ${result.citations.length} citations`
           );
         }
         return result;
+      }
+
+      // Log the phantom supports case for diagnostics
+      if (result.groundingUsed && result.citations.length === 0) {
+        console.warn(
+          `[GeminiSearch] Phantom grounding: ${result.groundingSupportCount} supports but 0 citations, 0 search queries — retrying`
+        );
       }
 
       lastResult = result;
