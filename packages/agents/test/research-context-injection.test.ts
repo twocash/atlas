@@ -418,12 +418,13 @@ describe('chain: unified state → composeResearchContext → prompt', () => {
     expect(prompt).not.toContain('Source Material');
   });
 
-  it('research-executor reads unified state and composes context', async () => {
-    const src = await Bun.file(resolve(thisDir, '../../..', 'apps/telegram/src/services/research-executor.ts')).text();
+  it('research-orchestrator reads unified state and composes context', async () => {
+    // RPO-001: Logic moved from research-executor.ts to research-orchestrator.ts
+    const src = await Bun.file(resolve(thisDir, '../src/orchestration/research-orchestrator.ts')).text();
     // Reads unified state
-    expect(src).toContain('getContentContext(chatId)');
-    expect(src).toContain('getSocraticAnswer(chatId)');
-    expect(src).toContain('getState(chatId)');
+    expect(src).toContain('getContentContext(sessionId)');
+    expect(src).toContain('getSocraticAnswer(sessionId)');
+    expect(src).toContain('getState(sessionId)');
     // Calls composition
     expect(src).toContain('composeResearchContext({');
     // Passes PreReader summary
@@ -445,9 +446,10 @@ describe('content injection telemetry', () => {
     expect(src).toContain("'rci:socratic-answer'");
   });
 
-  it('research-executor logs source context composition details', async () => {
-    const src = await Bun.file(resolve(thisDir, '../../..', 'apps/telegram/src/services/research-executor.ts')).text();
-    expect(src).toContain('ATLAS-RCI-001: Source context composed for research');
+  it('research-orchestrator logs source context composition details', async () => {
+    // RPO-001: Logic moved from research-executor.ts to research-orchestrator.ts
+    const src = await Bun.file(resolve(thisDir, '../src/orchestration/research-orchestrator.ts')).text();
+    expect(src).toContain('V2 context composed');
     expect(src).toContain('hasPreReader: sourceContext.preReaderAvailable');
     expect(src).toContain('estimatedTokens: sourceContext.estimatedTokens');
   });

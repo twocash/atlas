@@ -17,7 +17,14 @@ import type {
   Citation,
 } from "./types";
 
-const GROUNDING_RETRY_MAX = 1;
+/** DRC-001a: Default retry max — overridden by Research Pipeline Config */
+const DEFAULT_GROUNDING_RETRY_MAX = 1;
+
+/** DRC-001a: Provider config options — resolved from Research Pipeline Config */
+export interface GeminiProviderOptions {
+  model?: string;
+  groundingRetryMax?: number;
+}
 
 export class GeminiSearchProvider implements SearchProvider {
   readonly name = "gemini-google-search";
@@ -25,10 +32,19 @@ export class GeminiSearchProvider implements SearchProvider {
   private ai: any = null;
   private readonly apiKey: string;
   private readonly model: string;
+  private readonly groundingRetryMax: number;
 
-  constructor(apiKey?: string, model = "gemini-2.0-flash") {
+  constructor(apiKey?: string, options?: string | GeminiProviderOptions) {
     this.apiKey = apiKey || process.env.GEMINI_API_KEY || "";
-    this.model = model;
+
+    // Backward compat: second arg can be model string or options object
+    if (typeof options === 'string') {
+      this.model = options;
+      this.groundingRetryMax = DEFAULT_GROUNDING_RETRY_MAX;
+    } else {
+      this.model = options?.model ?? "gemini-2.0-flash";
+      this.groundingRetryMax = options?.groundingRetryMax ?? DEFAULT_GROUNDING_RETRY_MAX;
+    }
 
     if (!this.apiKey) {
       throw new Error("GEMINI_API_KEY is required for GeminiSearchProvider");
@@ -49,10 +65,10 @@ export class GeminiSearchProvider implements SearchProvider {
 
     let lastResult: SearchResult | null = null;
 
-    for (let attempt = 0; attempt <= GROUNDING_RETRY_MAX; attempt++) {
+    for (let attempt = 0; attempt <= this.groundingRetryMax; attempt++) {
       if (attempt > 0) {
         console.log(
-          `[GeminiSearch] Grounding retry ${attempt}/${GROUNDING_RETRY_MAX} — previous attempt had no grounding`
+          `[GeminiSearch] Grounding retry ${attempt}/${this.groundingRetryMax} — previous attempt had no grounding`
         );
       }
 
@@ -73,7 +89,7 @@ export class GeminiSearchProvider implements SearchProvider {
     // All attempts failed grounding — return last result with groundingUsed=false
     // Caller (research.ts) decides whether to throw HALLUCINATION
     console.warn(
-      `[GeminiSearch] Grounding failed after ${GROUNDING_RETRY_MAX + 1} attempts`
+      `[GeminiSearch] Grounding failed after ${this.groundingRetryMax + 1} attempts`
     );
     return lastResult!;
   }

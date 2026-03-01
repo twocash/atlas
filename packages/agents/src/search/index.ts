@@ -9,4 +9,4 @@ export type {
   Citation,
 } from "./types";
 
-export { GeminiSearchProvider } from "./gemini-provider";
+export { GeminiSearchProvider, type GeminiProviderOptions } from "./gemini-provider";

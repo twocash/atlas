@@ -18,6 +18,7 @@ import { isResearchConfigV2 } from "../types/research-v2";
 import { composeResearchContext } from "../services/research-context";
 import { getContentContext, getSocraticAnswer, getState } from "../conversation/conversation-state";
 import { stashAgentResult } from "../conversation/context-manager";
+import { getResearchPipelineConfig } from "../config";
 
 // ==========================================
 // Types
@@ -70,6 +71,14 @@ export async function orchestrateResearch(
   registry: AgentRegistry,
 ): Promise<OrchestratorResult> {
   const { config, workItemId, source, sessionId } = input;
+
+  // 0. Resolve Research Pipeline Config (DRC-001a)
+  // Single resolution point — populates sync cache for downstream consumers
+  const resolvedConfig = await getResearchPipelineConfig();
+  console.log('[ResearchOrchestrator] Config resolved', {
+    configSource: resolvedConfig.configSource,
+    name: resolvedConfig.config.name,
+  });
 
   // 1. Spawn agent — source embedded in name for WQ spawn comment provenance
   const agent = await registry.spawn({
@@ -159,7 +168,7 @@ export async function orchestrateResearch(
         hasProseContent: !!(researchResult as any)?.proseContent,
         source,
       };
-      assessment = assessOutput(andonInput);
+      assessment = assessOutput(andonInput, resolvedConfig.config.andonThresholds);
 
       console.log("[ResearchOrchestrator] Andon assessment", {
         confidence: assessment.confidence,

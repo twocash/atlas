@@ -368,3 +368,19 @@ export {
   type OrchestratorInput,
   type OrchestratorResult,
 } from "./orchestration";
+
+// Research Pipeline Config — Declarative Infrastructure Parameters (DRC-001a)
+export {
+  getResearchPipelineConfig,
+  getResearchPipelineConfigSync,
+  invalidateConfigCache,
+  injectConfig,
+  COMPILED_DEFAULTS,
+  type ResearchPipelineConfig,
+  type ResolvedConfig,
+  type ConfigSource,
+  type DepthProfile,
+  type AndonThresholds,
+  type SearchProviderConfig,
+  type EvidencePresetAssignment,
+} from "./config";

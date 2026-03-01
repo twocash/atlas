@@ -132,21 +132,18 @@ export interface AndonAssessment {
 }
 
 // ─── Classification Thresholds ───────────────────────────────────────────────
+// DRC-001a: Thresholds resolved from Research Pipeline Config.
+// assessOutput() accepts optional overrides via AndonThresholds parameter.
+// Compiled defaults used when no overrides provided.
 
-/** Minimum sources for Grounded classification */
-const GROUNDED_MIN_SOURCES = 3;
+import { getResearchPipelineConfigSync, type AndonThresholds } from '../config';
 
-/** Minimum sources for Informed classification */
-const INFORMED_MIN_SOURCES = 1;
-
-/** Minimum findings for substance check */
-const MIN_FINDINGS_FOR_SUBSTANCE = 1;
-
-/** Novelty score below which output is considered Mirror Anti-Pattern */
-const NOVELTY_FLOOR = 0.3;
-
-/** Minimum summary length (chars) to not be "empty" */
-const MIN_SUMMARY_LENGTH = 50;
+/** Resolve thresholds — overrides take precedence, then config cache, then compiled defaults */
+function resolveThresholds(overrides?: Partial<AndonThresholds>): AndonThresholds {
+  const { config } = getResearchPipelineConfigSync();
+  if (!overrides) return config.andonThresholds;
+  return { ...config.andonThresholds, ...overrides };
+}
 
 // ─── Core Assessment ─────────────────────────────────────────────────────────
 
@@ -156,9 +153,10 @@ const MIN_SUMMARY_LENGTH = 50;
  * This is the andon cord. It does NOT smooth over quality problems.
  * It tells the truth about what the system knows and doesn't know.
  */
-export function assessOutput(input: AndonInput): AndonAssessment {
+export function assessOutput(input: AndonInput, thresholdOverrides?: Partial<AndonThresholds>): AndonAssessment {
+  const t = resolveThresholds(thresholdOverrides);
   const noveltyScore = assessNovelty(input.summary, input.originalQuery);
-  const noveltyPassed = noveltyScore >= NOVELTY_FLOOR;
+  const noveltyPassed = noveltyScore >= t.noveltyFloor;
 
   // Determine confidence level — ordered checks, most restrictive first
   let confidence: ConfidenceLevel;
@@ -167,12 +165,12 @@ export function assessOutput(input: AndonInput): AndonAssessment {
   if (!input.success) {
     confidence = 'insufficient';
     reason = 'Execution failed';
-  } else if (!input.summary || input.summary.trim().length < MIN_SUMMARY_LENGTH) {
+  } else if (!input.summary || input.summary.trim().length < t.minSummaryLength) {
     confidence = 'insufficient';
-    reason = `Output too short (${input.summary?.trim().length ?? 0} chars, minimum ${MIN_SUMMARY_LENGTH})`;
+    reason = `Output too short (${input.summary?.trim().length ?? 0} chars, minimum ${t.minSummaryLength})`;
   } else if (!noveltyPassed) {
     confidence = 'insufficient';
-    reason = `Mirror Anti-Pattern: output restates input (novelty ${(noveltyScore * 100).toFixed(0)}%, floor ${NOVELTY_FLOOR * 100}%)`;
+    reason = `Mirror Anti-Pattern: output restates input (novelty ${(noveltyScore * 100).toFixed(0)}%, floor ${t.noveltyFloor * 100}%)`;
   } else if (!input.wasDispatched) {
     confidence = 'speculative';
     reason = 'No research agent dispatched — training-data synthesis';
@@ -183,13 +181,13 @@ export function assessOutput(input: AndonInput): AndonAssessment {
     confidence = 'insufficient';
     reason = 'Hallucination guard failed';
   } else if (
-    input.sourceCount >= GROUNDED_MIN_SOURCES &&
-    input.findingCount >= MIN_FINDINGS_FOR_SUBSTANCE &&
+    input.sourceCount >= t.groundedMinSources &&
+    input.findingCount >= t.minFindingsForSubstance &&
     noveltyPassed
   ) {
     confidence = 'grounded';
     reason = `${input.sourceCount} sources, ${input.findingCount} findings, novelty ${(noveltyScore * 100).toFixed(0)}%`;
-  } else if (input.sourceCount >= INFORMED_MIN_SOURCES) {
+  } else if (input.sourceCount >= t.informedMinSources) {
     confidence = 'informed';
     reason = `${input.sourceCount} source(s), thin grounding — supplemented with training data`;
   } else {

@@ -338,28 +338,29 @@ interface DepthConfig {
   citationStyle: "inline" | "chicago";
 }
 
+/**
+ * DRC-001a: DEPTH_CONFIG is now the compiled defaults export.
+ * Internal code uses getResearchPipelineConfigSync() for runtime resolution.
+ * The orchestrator resolves config async on entry and caches it.
+ */
+import { getResearchPipelineConfigSync } from '../config';
+
+/**
+ * Resolve depth config from the Research Pipeline Config cache.
+ * The orchestrator calls getResearchPipelineConfig() async on entry,
+ * which populates the cache. This sync accessor reads from that cache.
+ * Falls back to compiled defaults if cache is empty (pre-orchestrator paths).
+ */
+function resolveDepthConfig(depth: ResearchDepth): DepthConfig {
+  const { config } = getResearchPipelineConfigSync();
+  return config.depths[depth];
+}
+
+/** Legacy export — compiled defaults for external consumers */
 const DEPTH_CONFIG: Record<ResearchDepth, DepthConfig> = {
-  light: {
-    maxTokens: 2048,
-    targetSources: 3,
-    minSources: 2,
-    description: "Quick overview with key facts",
-    citationStyle: "inline",
-  },
-  standard: {
-    maxTokens: 8192,
-    targetSources: 6,
-    minSources: 4,
-    description: "Thorough analysis with multiple perspectives",
-    citationStyle: "inline",
-  },
-  deep: {
-    maxTokens: 65536,
-    targetSources: 12,
-    minSources: 8,
-    description: "Academic-grade research with rigorous citations",
-    citationStyle: "chicago",
-  },
+  light: { maxTokens: 2048, targetSources: 3, minSources: 2, description: "Quick overview with key facts", citationStyle: "inline" },
+  standard: { maxTokens: 8192, targetSources: 6, minSources: 4, description: "Thorough analysis with multiple perspectives", citationStyle: "inline" },
+  deep: { maxTokens: 65536, targetSources: 12, minSources: 8, description: "Academic-grade research with rigorous citations", citationStyle: "chicago" },
 };
 
 // ==========================================
@@ -510,11 +511,24 @@ interface GeminiResponse {
 
 let _searchProvider: SearchProvider | null = null;
 
+/**
+ * DRC-001a: Search provider initialized with config-resolved parameters.
+ * Re-created when config changes (cache invalidation → null provider).
+ */
 function getSearchProvider(): SearchProvider {
   if (!_searchProvider) {
-    _searchProvider = new GeminiSearchProvider();
+    const { config } = getResearchPipelineConfigSync();
+    _searchProvider = new GeminiSearchProvider(undefined, {
+      model: config.searchProviders.gemini.model,
+      groundingRetryMax: config.searchProviders.gemini.groundingRetryMax,
+    });
   }
   return _searchProvider;
+}
+
+/** Reset cached search provider (call when config changes) */
+export function resetSearchProvider(): void {
+  _searchProvider = null;
 }
 
 /** Convert SearchProviderResult to legacy GeminiResponse shape for parseResearchResponse */
@@ -731,7 +745,7 @@ async function getResearchInstructionsFromNotion(config: ResearchConfig): Promis
 
 async function buildResearchPrompt(config: ResearchConfig): Promise<{ systemInstruction: string; contents: string; isDrafterMode: boolean }> {
   const depth = config.depth || "standard";
-  const depthCfg = DEPTH_CONFIG[depth];
+  const depthCfg = resolveDepthConfig(depth);
 
   // Try async voice fetch with PromptManager, fall back to sync
   let voiceInstructions: string;
@@ -1070,13 +1084,14 @@ export async function executeResearch(
   let apiCalls = 0;
 
   const depth = config.depth || "standard";
-  const depthCfg = DEPTH_CONFIG[depth];
+  const depthCfg = resolveDepthConfig(depth);
 
   try {
     // Report starting
     await registry.updateProgress(agent.id, 5, `Starting ${depth} research`);
 
     // RPO-001: Use SearchProvider (replaces dual-SDK GeminiClient)
+    // DRC-001a: Provider config resolved from Research Pipeline Config cache
     const searchProvider = getSearchProvider();
     await registry.updateProgress(agent.id, 15, "Searching with Google");
 
