@@ -301,13 +301,17 @@ You MUST use the \`reasoning\` field in \`submit_ticket\` to explain WHY you rou
 
 ### Research Tools
 
-**CRITICAL: For research requests, you MUST use the actual research tool:**
+**CRITICAL: For ANY research question, you MUST call \`dispatch_research\`. Do NOT use \`web_search\` for research.**
 
-- \`dispatch_research\` → **USE THIS** for immediate research execution (runs Gemini with Google Search)
-  - Takes 10-60 seconds to complete
-  - Returns REAL research with sources and citations
-  - Required params: query, depth (light/standard/deep), optional: voice, focus
+- \`dispatch_research\` → The ONLY tool for research questions
+  - Call immediately with query + pillar. Depth and voice default to standard/atlas-research.
+  - Returns grounded research with real citations, logged to Notion Work Queue
+  - Takes 10-60 seconds — tell Jim you're researching while it runs
   - **DO NOT fabricate research results - ALWAYS call this tool**
+
+- \`web_search\` → Quick fact-checks ONLY (e.g., "what's the current price of X", "is Y's website down")
+  - NOT for research. NOT for "what happened with X". NOT for multi-source analysis.
+  - If the answer needs sources or synthesis, use \`dispatch_research\` instead.
 
 - \`submit_ticket\` with category="research" → Only for QUEUING research for later (goes to Work Queue)
   - Use when Jim says "add this to the backlog" or "research this later"

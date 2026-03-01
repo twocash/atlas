@@ -59,7 +59,7 @@ export { setToolHooks, getToolHooks, type ToolHooks } from './hooks';
  * 4. SELF_MOD_TOOLS - Memory/soul updates
  * 5. OPERATOR_TOOLS - Scripts, scheduling
  * 6. SUPERVISOR_TOOLS - Process management
- * 7. AGENT_TOOLS - Legacy dispatch (deprecated)
+ * 7. AGENT_TOOLS - Agent dispatch (research, transcription, draft)
  */
 const NATIVE_TOOLS: Anthropic.Tool[] = [
   ...DISPATCHER_TOOLS,  // PRIMARY: submit_ticket
@@ -69,7 +69,7 @@ const NATIVE_TOOLS: Anthropic.Tool[] = [
   ...OPERATOR_TOOLS,
   ...BROWSER_TOOLS,     // Playwright-based browser automation
   ...SUPERVISOR_TOOLS,  // Process management
-  ...AGENT_TOOLS,       // DEPRECATED: dispatch_research, etc.
+  ...AGENT_TOOLS,       // Research, transcription, draft dispatch
 ];
 
 /**

@@ -11,7 +11,8 @@ import { logger } from '../../logger';
 export const AGENT_TOOLS: Anthropic.Tool[] = [
   {
     name: 'dispatch_research',
-    description: 'Dispatch the Research Agent for deep investigation. ALWAYS ask user about depth and voice before calling unless they specified both.',
+    // TODO: ADR-001 — consider Notion-governed tool descriptions
+    description: 'Research any topic with real web sources and citations. Creates a Notion Work Queue entry with structured findings. Defaults: depth=standard, voice=atlas-research. Call immediately — do not ask about depth/voice unless user wants to customize.',
     input_schema: {
       type: 'object' as const,
       properties: {
@@ -39,7 +40,7 @@ export const AGENT_TOOLS: Anthropic.Tool[] = [
           description: 'Which pillar this research is for',
         },
       },
-      required: ['query', 'pillar', 'depth', 'voice'],
+      required: ['query', 'pillar'],
     },
   },
   {

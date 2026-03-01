@@ -248,7 +248,8 @@ export const CORE_TOOLS: Anthropic.Tool[] = [
   },
   {
     name: 'web_search',
-    description: 'Search the web for current information. Use for research, fact-checking, or finding recent news.',
+    // TODO: ADR-001 — consider Notion-governed tool descriptions
+    description: 'Quick web lookup for fact-checking or verifying a specific claim. NOT for research questions — use dispatch_research instead.',
     input_schema: {
       type: 'object' as const,
       properties: {
