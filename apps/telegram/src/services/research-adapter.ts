@@ -2,15 +2,14 @@
  * TelegramResearchAdapter — Delivery-only wrapper for research pipeline
  *
  * RPO-001: Zero business logic. All orchestration lives in packages/agents.
- * This file handles: Telegram notifications, message formatting, review cards.
+ * Sprint B P2-1: Validation moved to orchestrator. Andon assessment deduped.
  *
- * Contract: ≤150 LOC. If this file grows, business logic leaked into delivery.
+ * This file handles ONLY: Telegram notifications, message formatting, review cards.
  */
 
 import type { Api } from "grammy";
 import { logger } from "../logger";
 import { markdownToHtml } from "../formatting";
-import { validateResearchOutput, type ResearchOutput } from "../agents/validation";
 import { isFeatureEnabled } from "../config/features";
 import { createActionFeedEntry } from "../notion";
 import type { ActionDataReview } from "../types";
@@ -19,6 +18,7 @@ import {
   type Agent,
   type ResearchConfig,
   type ResearchResult,
+  type AndonAssessment,
   assessOutput,
   type AndonInput,
   orchestrateResearch,
@@ -34,7 +34,7 @@ export async function runResearchAgentWithNotifications(
   api: Api,
   workItemId?: string,
   source = 'unknown'
-): Promise<{ agent: Agent; result: any }> {
+): Promise<{ agent: Agent; result: any; assessment: AndonAssessment | null }> {
   logger.info("Research adapter — delegating to orchestrator", {
     query: config.query.substring(0, 50),
     depth: config.depth,
@@ -46,7 +46,7 @@ export async function runResearchAgentWithNotifications(
     registry,
   );
 
-  // Hallucination → Telegram notification
+  // Hallucination → Telegram notification (delivery only)
   if (orchResult.hallucinationDetected) {
     try {
       await api.sendMessage(chatId,
@@ -55,29 +55,15 @@ export async function runResearchAgentWithNotifications(
     } catch { /* notification failure must not propagate */ }
   }
 
-  // Output validation (Telegram-specific wrapper)
-  if (orchResult.result.success) {
-    const out = orchResult.result.output as any;
-    const researchOutput: ResearchOutput = {
-      findings: out?.summary || orchResult.result.summary || '',
-      confidence: out?.groundingUsed !== false ? 1.0 : 0.0,
-      toolExecutions: out?.sources?.length > 0
-        ? out.sources.map((s: string) => ({ tool: 'google_search', result: s }))
-        : [],
-      sources: out?.sources,
-    };
-    validateResearchOutput(researchOutput);
-
-    // Review card — feature-gated, fail-open
-    if (isFeatureEnabled('reviewProducer') && workItemId) {
-      try {
-        const reviewData: ActionDataReview = { wq_item_id: workItemId, wq_title: config.query.substring(0, 100) };
-        await createActionFeedEntry('Review', reviewData, 'research-agent', `Review: ${config.query.substring(0, 80)}`, ['research-review']);
-      } catch (e) { logger.warn("Review card failed (FAIL-OPEN)", { error: e }); }
-    }
+  // Review card — feature-gated, fail-open (Telegram-specific delivery)
+  if (orchResult.result.success && isFeatureEnabled('reviewProducer') && workItemId) {
+    try {
+      const reviewData: ActionDataReview = { wq_item_id: workItemId, wq_title: config.query.substring(0, 100) };
+      await createActionFeedEntry('Review', reviewData, 'research-agent', `Review: ${config.query.substring(0, 80)}`, ['research-review']);
+    } catch (e) { logger.warn("Review card failed (FAIL-OPEN)", { error: e }); }
   }
 
-  return { agent: orchResult.agent, result: orchResult.result };
+  return { agent: orchResult.agent, result: orchResult.result, assessment: orchResult.assessment };
 }
 
 export async function sendCompletionNotification(
@@ -86,21 +72,21 @@ export async function sendCompletionNotification(
   agent: Agent,
   result: any,
   notionUrl?: string,
-  source = 'unknown'
+  source = 'unknown',
+  precomputedAssessment?: AndonAssessment | null,
 ): Promise<void> {
   if (result.success) {
     const rr = result.output as ResearchResult | undefined;
 
-    // Andon Gate — calibrate delivery framing
-    const andonInput: AndonInput = {
+    // Use orchestrator's assessment if available, otherwise compute (backward compat)
+    const assessment = precomputedAssessment ?? assessOutput({
       wasDispatched: true, groundingUsed: true,
       sourceCount: rr?.sources?.length ?? 0, findingCount: rr?.findings?.length ?? 0,
       bibliographyCount: rr?.bibliography?.length ?? 0, durationMs: result.metrics?.durationMs ?? 0,
       summary: rr?.summary ?? '', originalQuery: rr?.query ?? agent.name ?? '',
       success: true, hallucinationGuardPassed: true,
       contentMode: rr?.contentMode, hasProseContent: !!(rr as any)?.proseContent, source,
-    };
-    const assessment = assessOutput(andonInput);
+    } as AndonInput);
     const { calibration } = assessment;
 
     let message = `${calibration.emoji} ${calibration.label}\n\n`;

@@ -98,6 +98,32 @@ const DEPTH_ALIASES: Record<string, DepthLevel> = {
 };
 
 // ==========================================
+// Question-Form Detection (Sprint B P0-2)
+// ==========================================
+
+/** Question-starting words that signal interrogative form */
+const QUESTION_STARTERS = /^(what|who|where|when|why|how|which|is|are|was|were|do|does|did|can|could|would|should|will|have|has|tell)\b/i;
+
+/**
+ * Detect if a user's answer is itself a question.
+ * Sprint B P0-2: Answer Disambiguation.
+ *
+ * When Jim answers a Socratic prompt with "What's the latest on Anthropic's
+ * model safety work?", the answer mapper still extracts slot values (Haiku
+ * handles this gracefully). But this flag signals that the answer may contain
+ * a DIFFERENT intent than what the Socratic engine assumed.
+ *
+ * Heuristic: ends with `?` OR starts with a question word.
+ * Button answers (short, normalized tokens) are never questions.
+ */
+export function isQuestionFormAnswer(answer: string): boolean {
+  const trimmed = answer.trim();
+  if (trimmed.length < 5) return false; // Too short to be a meaningful question
+  if (trimmed.includes('?')) return true;
+  return QUESTION_STARTERS.test(trimmed);
+}
+
+// ==========================================
 // Answer Map Parsing (Notion config)
 // ==========================================
 
@@ -317,6 +343,19 @@ export async function mapAnswer(
       break;
   }
 
+  // ── Sprint B P0-2: Question-form detection ──
+  const answerIsQuestion = isQuestionFormAnswer(answer);
+  if (answerIsQuestion) {
+    resolved.extraContext = {
+      ...resolved.extraContext,
+      answerIsQuestion: 'true',
+    };
+    console.log('[mapAnswer] Question-form answer detected', {
+      answer: answer.substring(0, 100),
+      targetSlot: question.targetSlot,
+    });
+  }
+
   // ── Estimate new confidence ──
   const slotUpdate = buildSignalUpdate(question.targetSlot, answer, signals);
   const updatedSignals: ContextSignals = {
@@ -330,6 +369,7 @@ export async function mapAnswer(
     questionSlot: question.targetSlot,
     resolved,
     newConfidence: newAssessment.overallConfidence,
+    answerIsQuestion,
   };
 }
 

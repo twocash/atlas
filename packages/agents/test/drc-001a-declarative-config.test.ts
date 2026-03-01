@@ -74,6 +74,7 @@ const CUSTOM_CONFIG: ResearchPipelineConfig = {
     minFindingsForSubstance: 2, // Stricter than default (1)
     noveltyFloor: 0.4,        // Stricter than default (0.3)
     minSummaryLength: 100,    // Stricter than default (50)
+    sourceRelevanceFloor: 0.15, // Same as default (Sprint B P1-2)
   },
   searchProviders: {
     chain: 'claude-retrieve-gemini-synthesize',

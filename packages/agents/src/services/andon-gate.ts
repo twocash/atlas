@@ -77,6 +77,10 @@ export interface AndonInput {
 
   /** Dispatch source fingerprint */
   source?: string;
+
+  /** Source titles/descriptions for relevance scoring (Sprint B P1-2).
+   *  Extracted from ResearchFinding.source + URL domain tokens. */
+  sourceTitles?: string[];
 }
 
 /**
@@ -116,6 +120,9 @@ export interface AndonAssessment {
   /** Human-readable reason for the classification */
   reason: string;
 
+  /** Source relevance score: 0 = tangential sources, 1 = perfectly relevant */
+  sourceRelevanceScore: number;
+
   /** Metadata for Feed 2.0 telemetry */
   telemetry: {
     /** Feed keyword: andon:grounded, andon:informed, etc. */
@@ -126,6 +133,8 @@ export interface AndonAssessment {
     findingCount: number;
     /** Whether novelty check passed */
     noveltyPassed: boolean;
+    /** Whether source relevance check passed */
+    sourceRelevancePassed: boolean;
     /** Duration of the assessed execution */
     durationMs: number;
   };
@@ -158,6 +167,10 @@ export function assessOutput(input: AndonInput, thresholdOverrides?: Partial<And
   const noveltyScore = assessNovelty(input.summary, input.originalQuery);
   const noveltyPassed = noveltyScore >= t.noveltyFloor;
 
+  // Sprint B P1-2: Source relevance scoring
+  const sourceRelevanceScore = computeSourceRelevance(input.originalQuery, input.sourceTitles);
+  const sourceRelevancePassed = sourceRelevanceScore >= (t.sourceRelevanceFloor ?? 0);
+
   // Determine confidence level — ordered checks, most restrictive first
   let confidence: ConfidenceLevel;
   let reason: string;
@@ -183,10 +196,15 @@ export function assessOutput(input: AndonInput, thresholdOverrides?: Partial<And
   } else if (
     input.sourceCount >= t.groundedMinSources &&
     input.findingCount >= t.minFindingsForSubstance &&
-    noveltyPassed
+    noveltyPassed &&
+    sourceRelevancePassed
   ) {
     confidence = 'grounded';
-    reason = `${input.sourceCount} sources, ${input.findingCount} findings, novelty ${(noveltyScore * 100).toFixed(0)}%`;
+    reason = `${input.sourceCount} sources, ${input.findingCount} findings, novelty ${(noveltyScore * 100).toFixed(0)}%, relevance ${(sourceRelevanceScore * 100).toFixed(0)}%`;
+  } else if (input.sourceCount >= t.groundedMinSources && !sourceRelevancePassed) {
+    // Sprint B P1-2: Sources exist but are tangential — downgrade to informed
+    confidence = 'informed';
+    reason = `${input.sourceCount} sources but low relevance (${(sourceRelevanceScore * 100).toFixed(0)}%, floor ${(t.sourceRelevanceFloor * 100).toFixed(0)}%) — sources may be tangential`;
   } else if (input.sourceCount >= t.informedMinSources) {
     confidence = 'informed';
     reason = `${input.sourceCount} source(s), thin grounding — supplemented with training data`;
@@ -203,12 +221,14 @@ export function assessOutput(input: AndonInput, thresholdOverrides?: Partial<And
     calibration,
     routing,
     noveltyScore,
+    sourceRelevanceScore,
     reason,
     telemetry: {
       keyword: `andon:${confidence}`,
       sourceCount: input.sourceCount,
       findingCount: input.findingCount,
       noveltyPassed,
+      sourceRelevancePassed,
       durationMs: input.durationMs,
     },
   };
@@ -276,6 +296,42 @@ function determineRouting(confidence: ConfidenceLevel, noveltyPassed: boolean): 
     case 'insufficient':
       return 'clarify';
   }
+}
+
+// ─── Source Relevance Assessment (Speculative Padding Detection) ─────────────
+
+/**
+ * Assess whether returned sources are actually relevant to the query.
+ * Sprint B P1-2: Speculative Padding Guard.
+ *
+ * Returns a score from 0 (completely tangential) to 1 (highly relevant).
+ *
+ * Method: Token overlap between the query and source titles/URLs.
+ * If a query about "quantum computing breakthroughs 2026" returns sources
+ * about "quantum computing history 1980s", the overlap is moderate but
+ * the missing "2026"/"breakthroughs" tokens signal tangential results.
+ *
+ * When no source titles are provided, returns 1.0 (fail open — no data to assess).
+ */
+export function computeSourceRelevance(query: string, sourceTitles?: string[]): number {
+  if (!sourceTitles || sourceTitles.length === 0) return 1.0; // Fail open: no titles = can't assess
+  if (!query || query.trim().length === 0) return 1.0;
+
+  const queryTokens = extractSignificantTokens(query);
+  if (queryTokens.size === 0) return 1.0;
+
+  // Combine all source titles into one token pool
+  const sourceText = sourceTitles.join(' ');
+  const sourceTokens = extractSignificantTokens(sourceText);
+  if (sourceTokens.size === 0) return 0;
+
+  // Measure: what fraction of query tokens appear in source titles?
+  let matchCount = 0;
+  for (const token of queryTokens) {
+    if (sourceTokens.has(token)) matchCount++;
+  }
+
+  return matchCount / queryTokens.size;
 }
 
 // ─── Novelty Assessment (Mirror Anti-Pattern Detection) ──────────────────────

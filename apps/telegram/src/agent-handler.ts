@@ -22,7 +22,10 @@ import {
   type ResearchConfig,
   type ResearchDepth,
   type ResearchConfigV2,
+  type QualityFloor,
   EVIDENCE_PRESETS,
+  inferDomainSync,
+  derivePillar,
 } from "../../../packages/agents/src";
 
 
@@ -184,14 +187,28 @@ async function handleResearchCommand(
     }
   }
 
-  // Build config
+  // Build config — V2 enriched with inferred defaults (Sprint B: Intent Normalization)
+  const trimmedQuery = query.trim();
+  const inferredDomain = inferDomainSync(trimmedQuery);
+  const inferredPillar = derivePillar(inferredDomain);
+  const qualityFloor: QualityFloor = depth === 'deep' ? 'grove_grade'
+    : depth === 'standard' ? 'primary_sources' : 'any';
+
   const config: ResearchConfigV2 = {
-    query: query.trim(),
+    // Core (from user input)
+    query: trimmedQuery,
     depth,
     focus,
     voice: voiceInstructions ? "custom" : undefined,
     voiceInstructions,
+    // V2 inferred defaults — parity with Socratic-resolved path
+    pillar: inferredPillar,
+    queryMode: 'canonical',
+    sourceType: 'command',
+    intent: 'explore',
     evidenceRequirements: EVIDENCE_PRESETS[depth],
+    qualityFloor,
+    userDirection: trimmedQuery,
   };
 
   // Depth descriptions for user feedback
@@ -211,26 +228,34 @@ async function handleResearchCommand(
 
     // Acknowledge with Notion link
     const voiceLabel = requestedVoice ? ` with <b>${requestedVoice}</b> voice` : "";
+    logger.info("Research V2 dispatch via /agent command", {
+      pillar: inferredPillar,
+      depth,
+      qualityFloor,
+      intent: 'explore',
+      queryPreview: trimmedQuery.substring(0, 60),
+    });
     await ctx.reply(
       `🔬 Starting research agent${voiceLabel}...\n\n` +
         `Query: "${config.query}"\n` +
         `Depth: ${depth} — ${depthDescriptions[depth]}\n` +
+        `Pillar: ${inferredPillar}\n` +
         `${focus ? `Focus: ${focus}\n` : ""}` +
         `\n📝 Notion: ${notionUrl}`,
       { parse_mode: "HTML" }
     );
 
-    // Spawn and run the research agent
-    const { agent, result } = await runResearchAgentWithNotifications(
+    // Spawn and run the research agent (V2 enriched config)
+    const { agent, result, assessment } = await runResearchAgentWithNotifications(
       config,
       chatId,
       ctx.api,
       workItemId,
-      'agent-command'
+      'agent-command-v2'
     );
 
     // Send completion notification with Notion link
-    await sendCompletionNotification(ctx.api, chatId, agent, result, notionUrl, 'agent-command');
+    await sendCompletionNotification(ctx.api, chatId, agent, result, notionUrl, 'agent-command-v2', assessment);
   } catch (error) {
     const errorMessage =
       error instanceof Error ? error.message : "Unknown error";
@@ -352,7 +377,7 @@ async function handleTestCommand(ctx: Context): Promise<void> {
         `📝 Notion: ${notionUrl}`
     );
 
-    const { agent, result } = await runResearchAgentWithNotifications(
+    const { agent, result, assessment } = await runResearchAgentWithNotifications(
       config,
       chatId,
       ctx.api,
@@ -360,7 +385,7 @@ async function handleTestCommand(ctx: Context): Promise<void> {
       'agent-command'
     );
 
-    await sendCompletionNotification(ctx.api, chatId, agent, result, notionUrl, 'agent-command');
+    await sendCompletionNotification(ctx.api, chatId, agent, result, notionUrl, 'agent-command', assessment);
   } catch (error) {
     const errorMessage =
       error instanceof Error ? error.message : "Unknown error";

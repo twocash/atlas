@@ -194,6 +194,10 @@ export interface MappedAnswer {
   };
   /** New confidence after incorporating this answer */
   newConfidence: number;
+  /** Sprint B P0-2: True when the answer is itself a question.
+   *  Signals potential intent mismatch — the answer may contain a
+   *  DIFFERENT research intent than the Socratic engine assumed. */
+  answerIsQuestion: boolean;
 }
 
 // ==========================================

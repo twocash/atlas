@@ -56,6 +56,98 @@ export interface OrchestratorResult {
 }
 
 // ==========================================
+// Helpers
+// ==========================================
+
+/**
+ * Extract source title signals for Andon Gate relevance scoring.
+ * Sprint B P1-2: Speculative Padding Guard.
+ *
+ * Combines finding source descriptions + domain/path tokens from source URLs.
+ * This gives the Andon Gate enough signal to detect tangential sources
+ * (e.g., query about "quantum 2026" returning sources about "quantum history").
+ */
+function extractSourceTitles(researchResult: ResearchResult | undefined): string[] {
+  if (!researchResult) return [];
+  const titles: string[] = [];
+
+  // Finding source descriptions (e.g., "TechCrunch", "Anthropic Blog")
+  if (researchResult.findings) {
+    for (const f of researchResult.findings) {
+      if (f.source) titles.push(f.source);
+    }
+  }
+
+  // URL domain + path tokens (e.g., "arxiv.org/quantum-computing" → "arxiv quantum computing")
+  if (researchResult.sources) {
+    for (const url of researchResult.sources) {
+      try {
+        const parsed = new URL(url);
+        // Domain minus common prefixes
+        const domain = parsed.hostname.replace(/^www\./, '');
+        // Path segments (strip extensions, IDs)
+        const pathTokens = parsed.pathname
+          .split('/')
+          .filter(s => s.length > 2 && !/^\d+$/.test(s) && !/\.\w{2,4}$/.test(s))
+          .join(' ');
+        titles.push(`${domain} ${pathTokens}`);
+      } catch {
+        // Invalid URL — skip
+      }
+    }
+  }
+
+  return titles;
+}
+
+// ==========================================
+// Output Validation (Sprint B P2-1: moved from adapter)
+// ==========================================
+
+/**
+ * Validate research output post-execution.
+ * Throws on hallucination indicators so the catch block handles it.
+ *
+ * Checks:
+ *   1. Tool execution — did the agent produce sources? (no sources = no grounding)
+ *   2. Notion URL fabrication — are embedded Notion URLs backed by actual sources?
+ *
+ * Moved from apps/telegram/src/agents/validation.ts (Sprint B P2-1)
+ * to make validation surface-agnostic per ADR-005.
+ */
+function validateResearchResult(output: ResearchResult | undefined): void {
+  if (!output) return; // No output to validate
+
+  // Check 1: Sources present (proxy for tool execution)
+  const hasSources = output.sources && output.sources.length > 0;
+  const hasFindings = output.findings && output.findings.length > 0;
+  if (!hasSources && !hasFindings) {
+    throw new Error(
+      'HALLUCINATION: Research completed without producing sources or findings'
+    );
+  }
+
+  // Check 2: No fabricated Notion URLs in summary
+  if (output.summary) {
+    const notionUrls = output.summary.match(
+      /https:\/\/(?:www\.)?notion\.so\/[a-zA-Z0-9\-/]+/g
+    ) || [];
+    for (const url of notionUrls) {
+      const pageIdMatch = url.match(/([a-f0-9]{32})$/i) || url.match(/([a-f0-9-]{36})$/i);
+      if (pageIdMatch) {
+        const pageId = pageIdMatch[1].replace(/-/g, '');
+        const sourcesStr = JSON.stringify(output.sources || []);
+        if (!sourcesStr.includes(pageId)) {
+          throw new Error(
+            `HALLUCINATION: Fabricated Notion URL in research output: ${url}`
+          );
+        }
+      }
+    }
+  }
+}
+
+// ==========================================
 // Orchestrator
 // ==========================================
 
@@ -142,6 +234,11 @@ export async function orchestrateResearch(
     const { executeResearch } = await import("../agents/research");
     const result = await executeResearch(config, agent, registry);
 
+    // 5b. Post-execution output validation (Sprint B P2-1: moved from adapter)
+    if (result.success) {
+      validateResearchResult(result.output as ResearchResult | undefined);
+    }
+
     // 6. Complete or fail agent
     let assessment: AndonAssessment | null = null;
 
@@ -155,6 +252,10 @@ export async function orchestrateResearch(
 
       // Andon Gate assessment — drives delivery calibration
       const researchResult = result.output as ResearchResult | undefined;
+
+      // Sprint B P1-2: Extract source titles for relevance scoring
+      const sourceTitles = extractSourceTitles(researchResult);
+
       const andonInput: AndonInput = {
         wasDispatched: true,
         groundingUsed: true, // Guaranteed: executeResearch throws on false
@@ -169,6 +270,7 @@ export async function orchestrateResearch(
         contentMode: researchResult?.contentMode,
         hasProseContent: !!(researchResult as any)?.proseContent,
         source,
+        sourceTitles,
       };
       assessment = assessOutput(andonInput, resolvedConfig.config.andonThresholds);
 
@@ -176,6 +278,7 @@ export async function orchestrateResearch(
         confidence: assessment.confidence,
         routing: assessment.routing,
         noveltyScore: assessment.noveltyScore,
+        sourceRelevanceScore: assessment.sourceRelevanceScore,
         keyword: assessment.telemetry.keyword,
       });
 

@@ -18,6 +18,9 @@ import {
   type ResearchConfig,
   EVIDENCE_PRESETS,
   type ResearchConfigV2,
+  type QualityFloor,
+  inferDomainSync,
+  derivePillar,
 } from "../../../../packages/agents/src";
 
 /**
@@ -103,29 +106,40 @@ export async function handleVoiceCallback(ctx: Context): Promise<void> {
       { parse_mode: "HTML" }
     );
 
-    // Build config with voice + V2 evidence requirements
+    // Build config — V2 enriched with inferred defaults (Sprint B: Intent Normalization)
     const voiceDepth = pending.depth || 'standard';
+    const inferredDomain = inferDomainSync(pending.query);
+    const inferredPillar = derivePillar(inferredDomain);
+    const qualityFloor: QualityFloor = voiceDepth === 'deep' ? 'grove_grade'
+      : voiceDepth === 'standard' ? 'primary_sources' : 'any';
+
     const config: ResearchConfigV2 = {
       query: pending.query,
       depth: voiceDepth,
       focus: pending.focus,
       voice: "custom",
       voiceInstructions: voiceContent,
-      // V2 fields
+      // V2 inferred defaults — parity with Socratic-resolved path
+      pillar: inferredPillar,
+      queryMode: 'canonical',
+      sourceType: 'command',
+      intent: 'explore',
       evidenceRequirements: EVIDENCE_PRESETS[voiceDepth],
+      qualityFloor,
+      userDirection: pending.query,
     };
 
-    // Execute research
-    const { agent, result } = await runResearchAgentWithNotifications(
+    // Execute research (V2 enriched config)
+    const { agent, result, assessment } = await runResearchAgentWithNotifications(
       config,
       chatId,
       ctx.api,
       workItemId,
-      'voice-research'
+      'voice-research-v2'
     );
 
     // Send completion notification
-    await sendCompletionNotification(ctx.api, chatId, agent, result, notionUrl, 'voice-research');
+    await sendCompletionNotification(ctx.api, chatId, agent, result, notionUrl, 'voice-research-v2', assessment);
   } catch (error) {
     const msg = error instanceof Error ? error.message : "Unknown error";
     logger.error("Voice callback research failed", {

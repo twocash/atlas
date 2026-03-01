@@ -51,6 +51,11 @@ export interface AndonThresholds {
 
   /** Minimum summary length (chars) to not be 'empty' */
   minSummaryLength: number;
+
+  /** Below this source relevance score, downgrade grounded → informed.
+   *  Sprint B P1-2: Speculative Padding Guard.
+   *  Score = token overlap between query and source titles/URLs, 0-1. */
+  sourceRelevanceFloor: number;
 }
 
 // ==========================================
@@ -178,6 +183,7 @@ export const COMPILED_DEFAULTS: ResearchPipelineConfig = {
     minFindingsForSubstance: 1,
     noveltyFloor: 0.3,
     minSummaryLength: 50,
+    sourceRelevanceFloor: 0.15,
   },
 
   searchProviders: {

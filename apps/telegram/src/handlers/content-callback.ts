@@ -859,8 +859,8 @@ async function handleConfirm(
             { parse_mode: 'HTML' }
           ).catch(err => logger.warn('Research start notification failed', { error: err, workQueueId }));
           runResearchAgentWithNotifications(researchConfig, chatId, ctx.api, workQueueId, 'content-confirm')
-            .then(({ agent, result: researchResult }) =>
-              sendCompletionNotification(ctx.api, chatId, agent, researchResult, notionUrl, 'content-confirm')
+            .then(({ agent, result: researchResult, assessment }) =>
+              sendCompletionNotification(ctx.api, chatId, agent, researchResult, notionUrl, 'content-confirm', assessment)
             )
             .catch(err => logger.warn('Research dispatch failed (non-fatal)', { error: err, workQueueId, source: 'content-confirm' }))
             .finally(() => _activeResearchItems.delete(workQueueId));

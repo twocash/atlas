@@ -15,6 +15,7 @@ import {
   assessOutput,
   calibrateDelivery,
   assessNovelty,
+  computeSourceRelevance,
   type AndonInput,
   type ConfidenceLevel,
 } from '../src/services/andon-gate';
@@ -423,5 +424,103 @@ describe('Andon Gate: Full Pipeline', () => {
       expect(cal.label).toBeTruthy();
       expect(cal.emoji).toBeTruthy();
     }
+  });
+
+  it('sourceRelevanceScore is between 0 and 1', () => {
+    const assessment = assessOutput(GROUNDED_INPUT);
+    expect(assessment.sourceRelevanceScore).toBeGreaterThanOrEqual(0);
+    expect(assessment.sourceRelevanceScore).toBeLessThanOrEqual(1);
+  });
+
+  it('telemetry includes sourceRelevancePassed', () => {
+    const assessment = assessOutput(GROUNDED_INPUT);
+    expect(typeof assessment.telemetry.sourceRelevancePassed).toBe('boolean');
+  });
+});
+
+// ─── Sprint B P1-2: Speculative Padding Guard ────────────────────────────────
+
+describe('Andon Gate: Source Relevance (Sprint B P1-2)', () => {
+
+  describe('computeSourceRelevance', () => {
+    it('returns 1.0 when no source titles provided (fail open)', () => {
+      expect(computeSourceRelevance('quantum computing 2026', undefined)).toBe(1.0);
+      expect(computeSourceRelevance('quantum computing 2026', [])).toBe(1.0);
+    });
+
+    it('returns 1.0 when query is empty', () => {
+      expect(computeSourceRelevance('', ['some title'])).toBe(1.0);
+    });
+
+    it('scores high when source titles match query terms', () => {
+      const score = computeSourceRelevance(
+        'Tesla Cybertruck battery updates 2026',
+        ['Tesla Cybertruck gets new 4680 battery pack', 'EV battery technology 2026 roundup']
+      );
+      expect(score).toBeGreaterThan(0.5);
+    });
+
+    it('scores low when source titles are tangential to query', () => {
+      const score = computeSourceRelevance(
+        'quantum computing breakthroughs 2026',
+        ['History of classical computing 1970s', 'Alan Turing biography', 'Mainframe architecture overview']
+      );
+      expect(score).toBeLessThan(0.3);
+    });
+
+    it('extracts useful tokens from URLs', () => {
+      const score = computeSourceRelevance(
+        'Anthropic model safety research',
+        ['anthropic.com blog model-safety', 'arxiv.org abs anthropic-safety-paper']
+      );
+      expect(score).toBeGreaterThan(0.3);
+    });
+  });
+
+  describe('confidence downgrade on low relevance', () => {
+    /** Input that would be grounded WITHOUT relevance check */
+    const GROUNDED_WITH_TITLES: AndonInput = {
+      ...GROUNDED_INPUT,
+      sourceTitles: [
+        'Tesla Cybertruck refresh with 4680 battery cells',
+        'Gigafactory Texas production update Q3 2026',
+        'Ford and Rivian EV cell technology comparison',
+      ],
+    };
+
+    /** Same source count but tangential titles */
+    const TANGENTIAL_SOURCES: AndonInput = {
+      ...GROUNDED_INPUT,
+      sourceTitles: [
+        'History of electric vehicles in the 1990s',
+        'How combustion engines work explained',
+        'Railroad transportation logistics overview',
+      ],
+    };
+
+    it('grounded when sources are relevant', () => {
+      const assessment = assessOutput(GROUNDED_WITH_TITLES);
+      expect(assessment.confidence).toBe('grounded');
+      expect(assessment.sourceRelevanceScore).toBeGreaterThan(0.15);
+    });
+
+    it('downgrades to informed when sources are tangential', () => {
+      const assessment = assessOutput(TANGENTIAL_SOURCES);
+      expect(assessment.confidence).toBe('informed');
+      expect(assessment.reason).toContain('relevance');
+      expect(assessment.sourceRelevanceScore).toBeLessThan(0.15);
+    });
+
+    it('no downgrade when sourceTitles not provided (backward compat)', () => {
+      // Original GROUNDED_INPUT has no sourceTitles — should stay grounded
+      const assessment = assessOutput(GROUNDED_INPUT);
+      expect(assessment.confidence).toBe('grounded');
+      expect(assessment.sourceRelevanceScore).toBe(1.0); // Fail-open default
+    });
+
+    it('relevance downgrade reason mentions tangential sources', () => {
+      const assessment = assessOutput(TANGENTIAL_SOURCES);
+      expect(assessment.reason).toContain('tangential');
+    });
   });
 });

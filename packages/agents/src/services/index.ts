@@ -33,6 +33,7 @@ export {
   assessOutput,
   calibrateDelivery,
   assessNovelty,
+  computeSourceRelevance,
   type ConfidenceLevel,
   type RoutingDecision,
   type AndonInput,

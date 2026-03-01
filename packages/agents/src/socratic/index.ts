@@ -22,7 +22,7 @@ export type { GapAnalysis } from './gap-analyzer';
 export { generateQuestions } from './question-generator';
 
 // Answer Mapping (V2: async, LLM-first)
-export { mapAnswer } from './answer-mapper';
+export { mapAnswer, isQuestionFormAnswer } from './answer-mapper';
 
 // Intent Interpretation (V2: pluggable interpreters)
 export {

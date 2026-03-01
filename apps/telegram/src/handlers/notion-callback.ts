@@ -176,8 +176,8 @@ async function handleProcess(
         pageInfo.pageId,
         'notion-process',
       )
-        .then(({ agent, result }) =>
-          sendCompletionNotification(ctx.api, chatId, agent, result, pageInfo.url, 'notion-process')
+        .then(({ agent, result, assessment }) =>
+          sendCompletionNotification(ctx.api, chatId, agent, result, pageInfo.url, 'notion-process', assessment)
         )
         .catch(err => {
           logger.warn('Research dispatch failed from notion process', { error: err, pageId: pageInfo.pageId, source: 'notion-process' });

@@ -592,8 +592,8 @@ async function handleResolved(
         ctx.api,
         result.workQueueId,
         'socratic-resolved',
-      ).then(({ agent, result: researchResult }) =>
-        sendCompletionNotification(ctx.api, chatId, agent, researchResult, result.workQueueUrl, 'socratic-resolved'),
+      ).then(({ agent, result: researchResult, assessment }) =>
+        sendCompletionNotification(ctx.api, chatId, agent, researchResult, result.workQueueUrl, 'socratic-resolved', assessment),
       ).catch((err: Error) => {
         logger.error('Research agent failed (Socratic path)', { error: err.message, title, source: 'socratic-resolved' });
         void ctx.api.sendMessage(chatId, `\u274C Research failed: ${err.message}`);
