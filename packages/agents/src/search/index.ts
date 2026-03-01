@@ -10,3 +10,4 @@ export type {
 } from "./types";
 
 export { GeminiSearchProvider, type GeminiProviderOptions } from "./gemini-provider";
+export { ClaudeSearchProvider } from "./claude-search-provider";

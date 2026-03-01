@@ -499,7 +499,7 @@ async function resolveAllRedirectUrls(
 // Search Provider (RPO-001: replaces dual-SDK GeminiClient)
 // ==========================================
 
-import { GeminiSearchProvider, type SearchProvider, type SearchResult as SearchProviderResult } from "../search";
+import { GeminiSearchProvider, ClaudeSearchProvider, type SearchProvider, type SearchResult as SearchProviderResult } from "../search";
 
 // Backward-compat bridge: GeminiResponse shape used by parseResearchResponse
 interface GeminiResponse {
@@ -529,6 +529,15 @@ function getSearchProvider(): SearchProvider {
 /** Reset cached search provider (call when config changes) */
 export function resetSearchProvider(): void {
   _searchProvider = null;
+}
+
+/** Lazy Claude fallback provider for when Gemini returns 0 citations */
+let _fallbackProvider: SearchProvider | null = null;
+function getFallbackProvider(): SearchProvider {
+  if (!_fallbackProvider) {
+    _fallbackProvider = new ClaudeSearchProvider();
+  }
+  return _fallbackProvider;
 }
 
 /** Convert SearchProviderResult to legacy GeminiResponse shape for parseResearchResponse */
@@ -1124,16 +1133,53 @@ export async function executeResearch(
     }
 
     await registry.updateProgress(agent.id, 30, `Analyzing sources (${depth})`);
-    const searchResult = await searchProvider.generate({
+    let searchResult = await searchProvider.generate({
       query: contents,
       systemInstruction,
       maxOutputTokens: depthCfg.maxTokens,
     });
-    const response = toGeminiResponse(searchResult);
     apiCalls++;
 
+    // FALLBACK CHAIN: If Gemini returned 0 citations, try Claude web_search
+    let usedFallback = false;
+    if (searchResult.citations.length === 0) {
+      console.warn('[Research] Gemini returned 0 citations — dispatching Claude web_search fallback');
+      await registry.updateProgress(agent.id, 45, 'Fallback: searching with Claude');
+
+      try {
+        const fallback = getFallbackProvider();
+        const fallbackResult = await fallback.generate({
+          query: config.query, // Use raw query, not the drafter-templated contents
+          // TODO: ADR-001 — resolve from Notion System Prompts DB
+          systemInstruction: 'You are a research assistant. Search the web and provide comprehensive, factual answers with source URLs.',
+          maxOutputTokens: depthCfg.maxTokens,
+        });
+        apiCalls++;
+
+        if (fallbackResult.citations.length > 0) {
+          console.log(`[Research] Fallback succeeded: ${fallbackResult.citations.length} citations from Claude web_search`);
+          // Use fallback result wholesale — text AND citations must correspond.
+          // Gemini's ungrounded text is discarded (cosmetic grounding = ADR-008 violation).
+          searchResult = fallbackResult;
+          usedFallback = true;
+
+          // Fire-and-forget Feed 2.0 log
+          logFallbackToFeed(config.query, fallbackResult.citations.length).catch(() => {});
+        } else {
+          console.warn('[Research] Fallback also returned 0 citations — proceeding with ungrounded result');
+        }
+      } catch (fallbackError) {
+        console.error('[Research] Fallback provider failed:', fallbackError instanceof Error ? fallbackError.message : fallbackError);
+        // Continue with original ungrounded result — don't let fallback failure kill the pipeline
+      }
+    }
+
+    // Convert to legacy GeminiResponse shape (after potential fallback)
+    const response = toGeminiResponse(searchResult);
+
     // DEBUG: Log raw response for troubleshooting
-    console.log("[Research] ========== GEMINI RAW RESPONSE ==========");
+    console.log("[Research] ========== RAW RESPONSE ==========");
+    console.log("[Research] Provider:", usedFallback ? "claude-web-search (fallback)" : "gemini-google-search");
     console.log("[Research] Text length:", response.text?.length || 0);
     console.log("[Research] Text preview (first 1000 chars):", response.text?.substring(0, 1000));
     console.log("[Research] Citations count:", response.citations?.length || 0);
@@ -1709,6 +1755,45 @@ async function parseResearchResponse(
     focus: config.focus,
     depth,
   };
+}
+
+// ==========================================
+// Fallback Chain — Feed 2.0 Logging
+// ==========================================
+
+/**
+ * Fire-and-forget Feed 2.0 entry when search fallback chain activates.
+ * Pattern follows error-escalation.ts: lazy client, never throws.
+ */
+async function logFallbackToFeed(query: string, citationCount: number): Promise<void> {
+  try {
+    const { Client } = await import('@notionhq/client');
+    const { NOTION_DB, ATLAS_NODE } = await import('@atlas/shared/config');
+
+    const notion = new Client({ auth: process.env.NOTION_API_KEY });
+
+    await notion.pages.create({
+      parent: { database_id: NOTION_DB.FEED },
+      properties: {
+        Entry: {
+          title: [{ text: { content: `[Search Fallback] Gemini->Claude: ${query.substring(0, 60)}` } }],
+        },
+        Source: { select: { name: `Atlas [${ATLAS_NODE}]` } },
+        'Action Type': { select: { name: 'Logged' } },
+        Status: { select: { name: 'Logged' } },
+        Keywords: {
+          multi_select: [
+            { name: 'research:search:fallback' },
+            { name: 'gemini-0-citations' },
+          ],
+        },
+      },
+    });
+
+    console.log(`[Research] Fallback logged to Feed 2.0: ${citationCount} citations from Claude`);
+  } catch (error) {
+    console.error('[Research] Failed to log fallback to Feed:', error instanceof Error ? error.message : error);
+  }
 }
 
 // ==========================================
