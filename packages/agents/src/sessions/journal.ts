@@ -36,6 +36,7 @@ function formatTurn(turn: TurnRecord): string {
   const lines: string[] = [];
   lines.push(`## Turn ${turn.turnNumber} -- ${turn.intent || 'unknown'}`);
   lines.push('');
+  lines.push(`**Timestamp:** ${turn.timestamp}`);
 
   const preview = turn.messageText.length > 200
     ? turn.messageText.substring(0, 200) + '...'
@@ -160,6 +161,7 @@ export async function parseJournal(filePath: string): Promise<SessionState | nul
     for (let i = 0; i < turnBlocks.length; i++) {
       const block = turnBlocks[i];
       const intentMatch = block.match(/^\s*--\s*(.+)/);
+      const timestampMatch = block.match(/\*\*Timestamp:\*\*\s*(.+)/);
       const messageMatch = block.match(/\*\*Message:\*\*\s*(.+)/);
       const findingsMatch = block.match(/\*\*Findings:\*\*\s*(.+)/);
       const thesisMatch = block.match(/\*\*Thesis:\*\*\s*(.+)/);
@@ -168,7 +170,7 @@ export async function parseJournal(filePath: string): Promise<SessionState | nul
 
       turns.push({
         turnNumber: i + 1,
-        timestamp: createdAt, // Best approximation from journal
+        timestamp: timestampMatch?.[1]?.trim() || createdAt,
         messageText: messageMatch?.[1]?.replace(/\.\.\.$/,'') || '',
         intent: intentMatch?.[1]?.trim(),
         findings: findingsMatch?.[1],

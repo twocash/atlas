@@ -779,6 +779,18 @@ export async function orchestrateMessage(
       };
       storeTriageInState(chatId, preflightTriage);
 
+      // Session tracking: patch turn with triage metadata (Bug #1 topic, #2 intent)
+      if (process.env.ATLAS_SESSION_TRACKING !== 'false') {
+        const triageTopic = preflightTriage.intent === 'command' && preflightTriage.command
+          ? preflightTriage.command.description.substring(0, 100)
+          : (preflightTriage.title || messageText.substring(0, 100));
+        sessionManager.updateTurnMetadata(sessionTelemetry.sessionId, {
+          topic: triageTopic,
+          intent: preflightTriage.requestType,
+          pillar: preflightTriage.pillar,
+        });
+      }
+
       // Command intent: rewrite userContent
       if (preflightTriage.intent === 'command' && preflightTriage.command) {
         const cmd = preflightTriage.command;
@@ -1402,12 +1414,30 @@ export async function orchestrateMessage(
 
     // Session tracking: completeTurn with response data (P0 SessionManager)
     if (process.env.ATLAS_SESSION_TRACKING !== 'false') {
-      const responsePreview = responseText ? responseText.substring(0, 200) : undefined;
+      const responsePreview = responseText ? responseText.substring(0, 500) : undefined;
+
+      // Extract findings: smartTitle + keywords + response excerpt
+      const findingParts: string[] = [];
+      if (smartTitle && smartTitle !== 'Message') findingParts.push(smartTitle);
+      if (classification.keywords?.length > 0) findingParts.push(`Keywords: ${classification.keywords.join(', ')}`);
+      if (responseText && responseText.length > 100) {
+        findingParts.push(responseText.substring(0, 300));
+      }
+      const findings = findingParts.length > 0 ? findingParts.join(' | ') : undefined;
+
+      // Extract thesisHook from recent agent result if available
+      const agentResult = getLastAgentResult(userId);
+      const thesisHook = agentResult?.resultSummary
+        ? agentResult.resultSummary.substring(0, 200)
+        : undefined;
+
       sessionManager.completeTurn(
         sessionTelemetry.sessionId,
         {
           responsePreview,
           toolsUsed: toolsUsed.length > 0 ? toolsUsed : undefined,
+          findings,
+          thesisHook,
         },
       ).catch(err => {
         logger.warn('SessionManager.completeTurn failed (non-fatal)', { error: (err as Error).message });

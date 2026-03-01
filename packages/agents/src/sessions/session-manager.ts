@@ -158,6 +158,49 @@ export class SessionManager {
   }
 
   /**
+   * Update the current turn with triage metadata (topic, intent, pillar).
+   * Called after triage completes — startTurn() fires before triage,
+   * so this patches the turn with classification data.
+   */
+  updateTurnMetadata(
+    sessionId: string,
+    opts: {
+      topic?: string;
+      intent?: string;
+      pillar?: string;
+    },
+  ): void {
+    const state = this.sessions.get(sessionId);
+    if (!state || state.turns.length === 0) return;
+
+    // Session-level fields (set only on first occurrence)
+    if (opts.topic && !state.topic) {
+      state.topic = opts.topic;
+    }
+    if (opts.pillar && !state.pillar) {
+      state.pillar = opts.pillar;
+    }
+
+    // Turn-level intent
+    const lastTurn = state.turns[state.turns.length - 1];
+    if (opts.intent) {
+      lastTurn.intent = opts.intent;
+      // Append to sequence if not already added by startTurn
+      if (state.intentSequence[state.intentSequence.length - 1] !== opts.intent) {
+        state.intentSequence.push(opts.intent);
+      }
+    }
+
+    // Fire-and-forget journal rewrite
+    writeJournal(state).catch(err => {
+      logger.warn('Journal write failed in updateTurnMetadata', {
+        sessionId,
+        error: (err as Error).message,
+      });
+    });
+  }
+
+  /**
    * Complete the current turn with response data.
    * Updates the last TurnRecord and rewrites the journal.
    */
