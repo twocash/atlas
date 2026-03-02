@@ -20,7 +20,7 @@ import {
   getPendingContent,
   updatePendingContent,
   removePendingContent,
-} from '@atlas/agents/src/conversation/pending-content';
+} from '@atlas/agents/src/conversation/conversation-state';
 import { createAuditTrail, type AuditEntry } from '@atlas/agents/src/conversation/audit';
 import { buildContentPayload } from '@atlas/agents/src/conversation/content-router';
 import { type Pillar as MediaPillar } from '../conversation/media';

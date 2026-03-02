@@ -24,7 +24,7 @@ import type { SocraticQuestion, ContextSignals } from '../socratic';
 import type { GoalContext, ContentAnalysis as GoalContentAnalysis, GoalTracker } from '../goal';
 import type { ResolvedContext } from '../socratic';
 import type { TriageResult } from '../cognitive/triage-skill';
-import type { UrlContent } from './types';
+import type { UrlContent, PendingContent } from './types';
 
 /**
  * Deferred execution context stored when goal needs clarification.
@@ -572,6 +572,83 @@ export function getStateCount(): number {
  */
 export function clearAllStates(): void {
   states.clear();
+  pendingContentStore.clear();
+}
+
+// ─── Pending Content (co-located, keyed by requestId) ───
+
+/**
+ * In-memory store for pending content awaiting classification/dispatch.
+ * Key: requestId (unique per confirmation flow).
+ * Migrated from pending-content.ts — same semantics, co-located store.
+ */
+const pendingContentStore = new Map<string, PendingContent>();
+
+const PENDING_CONTENT_EXPIRY_MS = 10 * 60 * 1000;
+
+/**
+ * Generate a unique request ID.
+ */
+export function generateRequestId(): string {
+  return `${Date.now()}-${Math.random().toString(36).substring(2, 8)}`;
+}
+
+/**
+ * Store pending content for confirmation.
+ */
+export function storePendingContent(content: PendingContent): void {
+  pendingContentStore.set(content.requestId, content);
+
+  setTimeout(() => {
+    if (pendingContentStore.has(content.requestId)) {
+      pendingContentStore.delete(content.requestId);
+      logger.debug('Expired pending content', { requestId: content.requestId });
+    }
+  }, PENDING_CONTENT_EXPIRY_MS);
+
+  logger.debug('Stored pending content', {
+    requestId: content.requestId,
+    pillar: content.pillar,
+    requestType: content.requestType,
+  });
+}
+
+/**
+ * Retrieve pending content by request ID.
+ */
+export function getPendingContent(requestId: string): PendingContent | undefined {
+  return pendingContentStore.get(requestId);
+}
+
+/**
+ * Update pending content (after keyboard selection or Socratic answer).
+ */
+export function updatePendingContent(requestId: string, updates: Partial<PendingContent>): boolean {
+  const existing = pendingContentStore.get(requestId);
+  if (!existing) return false;
+  pendingContentStore.set(requestId, { ...existing, ...updates });
+  return true;
+}
+
+/**
+ * Remove pending content (after confirm/skip).
+ */
+export function removePendingContent(requestId: string): boolean {
+  return pendingContentStore.delete(requestId);
+}
+
+/**
+ * Get count of pending confirmations (for debugging).
+ */
+export function getPendingCount(): number {
+  return pendingContentStore.size;
+}
+
+/**
+ * Clear all pending content (for testing/reset).
+ */
+export function clearAllPending(): void {
+  pendingContentStore.clear();
 }
 
 // ─── Internal ───────────────────────────────────────────

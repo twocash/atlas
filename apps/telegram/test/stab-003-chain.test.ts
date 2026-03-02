@@ -4,6 +4,9 @@
  * Chain tests (ADR-002 Constraint 6): prove water flows through the pipe.
  * Traces: dialogue → refinement → approval → execution.
  *
+ * STATE-PERSIST-TEARDOWN: Migrated from legacy approval-session.ts to
+ * unified ConversationState. Pure functions in approval-utils.ts.
+ *
  * Sprint: STAB-003 (Close the Cognitive Loop)
  */
 
@@ -31,22 +34,22 @@ import {
   resetThreadCounter,
 } from "../../../packages/agents/src/dialogue"
 
-// Approval session store
+// Unified conversation state (supersedes approval-session.ts)
 import {
-  storeApprovalSession,
-  getApprovalSession,
-  removeApprovalSession,
-  clearAllApprovalSessions,
+  enterApprovalPhase,
+  getState,
+  isInPhase,
+  returnToIdle,
+  clearAllStates,
+  type ApprovalState,
+} from "@atlas/agents/src/conversation/conversation-state"
+
+// Pure functions (extracted from approval-session.ts)
+import {
   isApprovalSignal,
   isRejectionSignal,
   formatProposalMessage,
-  type PendingApprovalSession,
-} from "@atlas/agents/src/conversation/approval-session"
-
-// Unified conversation state (supersedes dialogue-session.ts)
-import {
-  clearAllStates as clearAllDialogueSessions,
-} from "../../../packages/agents/src/conversation/conversation-state"
+} from "@atlas/agents/src/conversation/approval-utils"
 
 // Trace infrastructure
 import {
@@ -112,14 +115,34 @@ function createMockProvider(): CapabilityDataProvider {
   }
 }
 
+// ─── Helpers ────────────────────────────────────────────
+
+const CHAT_ID = 12345
+const USER_ID = 67890
+
+function makeApprovalState(overrides: Partial<ApprovalState> = {}): ApprovalState {
+  return {
+    proposalMessageId: 111,
+    proposal: {
+      steps: [{ description: "Research competitor pricing" }, { description: "Draft comparison" }],
+      timeEstimate: "~30 min",
+      questionForJim: "Sound right?",
+      alternativeAngles: [],
+    },
+    originalMessage: "Research competitor pricing and draft something",
+    assessment: {} as RequestAssessment,
+    assessmentContext: {},
+    ...overrides,
+  }
+}
+
 // ─── Tests ──────────────────────────────────────────────
 
 describe("STAB-003 Chain: Cognitive Loop Closure", () => {
   beforeEach(async () => {
     invalidateCache()
     resetThreadCounter()
-    clearAllApprovalSessions()
-    clearAllDialogueSessions()
+    clearAllStates()
   })
 
   // ── Chain 1: Dialogue → refinedRequest → downstream receives refined text ──
@@ -209,88 +232,47 @@ describe("STAB-003 Chain: Cognitive Loop Closure", () => {
     })
 
     it("approval signal after proposal proceeds to execution", () => {
-      // Store an approval session (simulating what handler.ts does)
-      const session: PendingApprovalSession = {
-        chatId: 12345,
-        userId: 67890,
-        proposalMessageId: 111,
-        proposal: {
-          steps: [{ description: "Research competitor pricing" }, { description: "Draft comparison" }],
-          timeEstimate: "~30 min",
-          questionForJim: "Sound right?",
-          alternativeAngles: [],
-        },
+      // Store an approval session via unified state
+      enterApprovalPhase(CHAT_ID, USER_ID, makeApprovalState({
         refinedRequest: "Compare competitor pricing models for enterprise AI",
-        originalMessage: "Research competitor pricing and draft something",
-        assessment: {} as RequestAssessment,
-        assessmentContext: {},
-        createdAt: Date.now(),
-      }
-
-      storeApprovalSession(session)
-      expect(getApprovalSession(12345)).toBeDefined()
+      }))
+      expect(isInPhase(USER_ID, 'approval')).toBe(true)
 
       // Jim says "yes"
       expect(isApprovalSignal("yes")).toBe(true)
 
-      // Handler removes session and uses refinedRequest
-      const retrieved = getApprovalSession(12345)!
-      removeApprovalSession(12345)
+      // Handler reads approval data, then clears session
+      const approval = getState(CHAT_ID)!.approval!
+      const executionMessage = approval.refinedRequest || approval.originalMessage
+      returnToIdle(CHAT_ID)
 
-      const executionMessage = retrieved.refinedRequest || retrieved.originalMessage
       expect(executionMessage).toBe("Compare competitor pricing models for enterprise AI")
-      expect(getApprovalSession(12345)).toBeUndefined()
+      expect(isInPhase(USER_ID, 'approval')).toBe(false)
     })
 
     it("rejection signal after proposal prompts for adjustment", () => {
-      storeApprovalSession({
-        chatId: 12345,
-        userId: 67890,
-        proposalMessageId: 111,
-        proposal: {
-          steps: [{ description: "Research competitor pricing" }],
-          questionForJim: "Sound right?",
-          alternativeAngles: [],
-        },
-        originalMessage: "Research competitor pricing",
-        assessment: {} as RequestAssessment,
-        assessmentContext: {},
-        createdAt: Date.now(),
-      })
+      enterApprovalPhase(CHAT_ID, USER_ID, makeApprovalState())
 
       // Jim says "no"
       expect(isRejectionSignal("no")).toBe(true)
       expect(isApprovalSignal("no")).toBe(false)
 
-      // Handler removes session
-      removeApprovalSession(12345)
-      expect(getApprovalSession(12345)).toBeUndefined()
+      // Handler clears session
+      returnToIdle(CHAT_ID)
+      expect(isInPhase(USER_ID, 'approval')).toBe(false)
     })
 
     it("ambiguous reply after proposal triggers re-assessment", () => {
-      storeApprovalSession({
-        chatId: 12345,
-        userId: 67890,
-        proposalMessageId: 111,
-        proposal: {
-          steps: [{ description: "Research competitor pricing" }],
-          questionForJim: "Sound right?",
-          alternativeAngles: [],
-        },
-        originalMessage: "Research competitor pricing",
-        assessment: {} as RequestAssessment,
-        assessmentContext: {},
-        createdAt: Date.now(),
-      })
+      enterApprovalPhase(CHAT_ID, USER_ID, makeApprovalState())
 
       // Jim says something that's neither approval nor rejection
       const reply = "Actually, focus on just the Chase account"
       expect(isApprovalSignal(reply)).toBe(false)
       expect(isRejectionSignal(reply)).toBe(false)
 
-      // Handler removes session and treats as new message
-      removeApprovalSession(12345)
-      expect(getApprovalSession(12345)).toBeUndefined()
+      // Handler clears session and treats as new message
+      returnToIdle(CHAT_ID)
+      expect(isInPhase(USER_ID, 'approval')).toBe(false)
       // The reply would then go through the full pipeline as a new message
     })
   })
@@ -353,10 +335,8 @@ describe("STAB-003 Chain: Cognitive Loop Closure", () => {
       }
     })
 
-    it("moderate approval session round-trips through store", () => {
-      const session: PendingApprovalSession = {
-        chatId: 99999,
-        userId: 88888,
+    it("moderate approval session round-trips through unified state", () => {
+      enterApprovalPhase(99999, 88888, makeApprovalState({
         proposalMessageId: 555,
         proposal: {
           steps: [
@@ -370,20 +350,17 @@ describe("STAB-003 Chain: Cognitive Loop Closure", () => {
         originalMessage: "Research Cursor/Windsurf agent modes and draft a blog post",
         assessment: { complexity: "moderate" } as RequestAssessment,
         assessmentContext: { pillar: "The Grove" },
-        createdAt: Date.now(),
-      }
+      }))
 
-      storeApprovalSession(session)
-
-      const retrieved = getApprovalSession(99999)
-      expect(retrieved).toBeDefined()
-      expect(retrieved!.assessment.complexity).toBe("moderate")
-      expect(retrieved!.proposal.steps).toHaveLength(2)
+      const state = getState(99999)
+      expect(state).toBeDefined()
+      expect(state!.approval!.assessment.complexity).toBe("moderate")
+      expect(state!.approval!.proposal.steps).toHaveLength(2)
 
       // Approval clears it
       expect(isApprovalSignal("yes")).toBe(true)
-      removeApprovalSession(99999)
-      expect(getApprovalSession(99999)).toBeUndefined()
+      returnToIdle(99999)
+      expect(isInPhase(88888, 'approval')).toBe(false)
     })
   })
 

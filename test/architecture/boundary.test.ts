@@ -149,10 +149,8 @@ describe('Moved files exist in packages/agents/', () => {
     'packages/agents/src/skills/pattern-detector.ts',
     'packages/agents/src/skills/executor.ts',
     // Phase 3 — Session stores + conversation pipeline
-    'packages/agents/src/conversation/socratic-session.ts',
-    'packages/agents/src/conversation/approval-session.ts',
     'packages/agents/src/conversation/conversation-state.ts',
-    'packages/agents/src/conversation/pending-content.ts',
+    'packages/agents/src/conversation/approval-utils.ts',
     'packages/agents/src/conversation/context.ts',
     'packages/agents/src/conversation/context-manager.ts',
     'packages/agents/src/conversation/context-enrichment.ts',

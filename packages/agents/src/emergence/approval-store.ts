@@ -13,7 +13,7 @@ import { logger } from '../logger';
 import {
   isApprovalSignal,
   isRejectionSignal,
-} from '../conversation/approval-session';
+} from '../conversation/approval-utils';
 import { approveProposal, dismissProposal } from './monitor';
 import type { EmergenceProposal } from './types';
 

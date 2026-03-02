@@ -60,8 +60,6 @@ describe('Content Pipeline Architecture', () => {
     // Files moved to packages/agents/ in Phase 2-3
     const agentsConversationFiles = [
       'content-router.ts',   // Moved Phase 3
-      'socratic-session.ts', // Moved Phase 3
-      'pending-content.ts',  // Moved Phase 3
       'types.ts',            // Moved Phase 1
     ];
 

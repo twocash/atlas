@@ -2,34 +2,45 @@
  * STAB-003 Unit Tests — Close the Cognitive Loop
  *
  * Tests for:
- *   1. Approval session store (CRUD, TTL, cleanup)
+ *   1. Approval session state (CRUD via unified ConversationState)
  *   2. Approval signal matching (positive, negative, ambiguous)
  *   3. Proposal formatting
+ *
+ * STATE-PERSIST-TEARDOWN: Migrated from legacy approval-session.ts to
+ * unified ConversationState (conversation-state.ts). Pure functions
+ * (signal detection + formatting) moved to approval-utils.ts.
  *
  * Sprint: STAB-003 (Close the Cognitive Loop)
  */
 
 import { describe, it, expect, beforeEach } from "bun:test"
 
-// Approval session store
+// Unified conversation state (supersedes approval-session.ts)
 import {
-  storeApprovalSession,
-  getApprovalSession,
-  getApprovalSessionByUserId,
-  hasApprovalSessionForUser,
-  removeApprovalSession,
-  getApprovalSessionCount,
-  clearAllApprovalSessions,
+  enterApprovalPhase,
+  getState,
+  getStateByUserId,
+  hasActiveSession,
+  isInPhase,
+  returnToIdle,
+  clearAllStates,
+  type ApprovalState,
+} from "@atlas/agents/src/conversation/conversation-state"
+
+// Pure functions (extracted from approval-session.ts)
+import {
   isApprovalSignal,
   isRejectionSignal,
   formatProposalMessage,
-  type PendingApprovalSession,
-} from "@atlas/agents/src/conversation/approval-session"
+} from "@atlas/agents/src/conversation/approval-utils"
 
 import type { RequestAssessment } from "../../../packages/agents/src/assessment/types"
 import type { ApproachProposal } from "../../../packages/agents/src/assessment/types"
 
 // ─── Test Helpers ────────────────────────────────────────
+
+const CHAT_ID = 12345
+const USER_ID = 67890
 
 function makeProposal(overrides: Partial<ApproachProposal> = {}): ApproachProposal {
   return {
@@ -65,16 +76,13 @@ function makeAssessment(overrides: Partial<RequestAssessment> = {}): RequestAsse
   }
 }
 
-function makeSession(overrides: Partial<PendingApprovalSession> = {}): PendingApprovalSession {
+function makeApprovalState(overrides: Partial<ApprovalState> = {}): ApprovalState {
   return {
-    chatId: 12345,
-    userId: 67890,
     proposalMessageId: 111,
     proposal: makeProposal(),
     originalMessage: "Research competitor pricing and draft a comparison",
     assessment: makeAssessment(),
     assessmentContext: {},
-    createdAt: Date.now(),
     ...overrides,
   }
 }
@@ -83,107 +91,67 @@ function makeSession(overrides: Partial<PendingApprovalSession> = {}): PendingAp
 
 describe("STAB-003: Close the Cognitive Loop", () => {
   beforeEach(() => {
-    clearAllApprovalSessions()
+    clearAllStates()
   })
 
-  // ── 1. Approval Session Store ──
+  // ── 1. Approval Session State (unified ConversationState) ──
 
-  describe("Approval Session Store", () => {
+  describe("Approval Session State (unified)", () => {
     it("stores and retrieves by chatId", () => {
-      const session = makeSession()
-      storeApprovalSession(session)
+      const approval = makeApprovalState()
+      enterApprovalPhase(CHAT_ID, USER_ID, approval)
 
-      const retrieved = getApprovalSession(12345)
-      expect(retrieved).toBeDefined()
-      expect(retrieved!.chatId).toBe(12345)
-      expect(retrieved!.userId).toBe(67890)
-      expect(retrieved!.proposal.steps).toHaveLength(2)
+      const state = getState(CHAT_ID)
+      expect(state).toBeDefined()
+      expect(state!.chatId).toBe(CHAT_ID)
+      expect(state!.userId).toBe(USER_ID)
+      expect(state!.approval!.proposal.steps).toHaveLength(2)
     })
 
     it("retrieves by userId", () => {
-      storeApprovalSession(makeSession())
+      enterApprovalPhase(CHAT_ID, USER_ID, makeApprovalState())
 
-      const retrieved = getApprovalSessionByUserId(67890)
-      expect(retrieved).toBeDefined()
-      expect(retrieved!.chatId).toBe(12345)
+      const state = getStateByUserId(USER_ID)
+      expect(state).toBeDefined()
+      expect(state!.chatId).toBe(CHAT_ID)
     })
 
-    it("hasApprovalSessionForUser returns true when session exists", () => {
-      storeApprovalSession(makeSession())
-      expect(hasApprovalSessionForUser(67890)).toBe(true)
+    it("isInPhase returns true when approval session exists", () => {
+      enterApprovalPhase(CHAT_ID, USER_ID, makeApprovalState())
+      expect(isInPhase(USER_ID, 'approval')).toBe(true)
     })
 
-    it("hasApprovalSessionForUser returns false when no session", () => {
-      expect(hasApprovalSessionForUser(99999)).toBe(false)
+    it("isInPhase returns false when no session", () => {
+      expect(isInPhase(99999, 'approval')).toBe(false)
     })
 
-    it("removes session", () => {
-      storeApprovalSession(makeSession())
-      expect(getApprovalSession(12345)).toBeDefined()
+    it("removes session via returnToIdle", () => {
+      enterApprovalPhase(CHAT_ID, USER_ID, makeApprovalState())
+      expect(isInPhase(USER_ID, 'approval')).toBe(true)
 
-      removeApprovalSession(12345)
-      expect(getApprovalSession(12345)).toBeUndefined()
+      returnToIdle(CHAT_ID)
+      expect(isInPhase(USER_ID, 'approval')).toBe(false)
     })
 
     it("latest session wins per chat", () => {
-      storeApprovalSession(makeSession({ proposalMessageId: 111 }))
-      storeApprovalSession(makeSession({ proposalMessageId: 222 }))
+      enterApprovalPhase(CHAT_ID, USER_ID, makeApprovalState({ proposalMessageId: 111 }))
+      enterApprovalPhase(CHAT_ID, USER_ID, makeApprovalState({ proposalMessageId: 222 }))
 
-      const retrieved = getApprovalSession(12345)
-      expect(retrieved!.proposalMessageId).toBe(222)
-    })
-
-    it("counts active sessions", () => {
-      storeApprovalSession(makeSession({ chatId: 1, userId: 1 }))
-      storeApprovalSession(makeSession({ chatId: 2, userId: 2 }))
-
-      expect(getApprovalSessionCount()).toBe(2)
+      const state = getState(CHAT_ID)
+      expect(state!.approval!.proposalMessageId).toBe(222)
     })
 
     it("clearAll removes everything", () => {
-      storeApprovalSession(makeSession({ chatId: 1, userId: 1 }))
-      storeApprovalSession(makeSession({ chatId: 2, userId: 2 }))
+      enterApprovalPhase(1, 1, makeApprovalState())
+      enterApprovalPhase(2, 2, makeApprovalState())
 
-      clearAllApprovalSessions()
-      expect(getApprovalSessionCount()).toBe(0)
+      clearAllStates()
+      expect(isInPhase(1, 'approval')).toBe(false)
+      expect(isInPhase(2, 'approval')).toBe(false)
     })
   })
 
-  // ── 2. TTL Expiry ──
-
-  describe("TTL Expiry", () => {
-    it("expired session returns undefined on get", () => {
-      const session = makeSession({ createdAt: Date.now() - 6 * 60 * 1000 }) // 6 min ago
-      storeApprovalSession(session)
-
-      expect(getApprovalSession(12345)).toBeUndefined()
-    })
-
-    it("expired session returns false on hasForUser", () => {
-      const session = makeSession({ createdAt: Date.now() - 6 * 60 * 1000 })
-      storeApprovalSession(session)
-
-      expect(hasApprovalSessionForUser(67890)).toBe(false)
-    })
-
-    it("non-expired session (4 min) still accessible", () => {
-      const session = makeSession({ createdAt: Date.now() - 4 * 60 * 1000 })
-      storeApprovalSession(session)
-
-      expect(getApprovalSession(12345)).toBeDefined()
-    })
-
-    it("storing cleans expired sessions", () => {
-      // Store an expired session
-      storeApprovalSession(makeSession({ chatId: 1, userId: 1, createdAt: Date.now() - 6 * 60 * 1000 }))
-      // Store a fresh session — should clean the expired one
-      storeApprovalSession(makeSession({ chatId: 2, userId: 2 }))
-
-      expect(getApprovalSessionCount()).toBe(1)
-    })
-  })
-
-  // ── 3. Approval Signal Matching ──
+  // ── 2. Approval Signal Matching ──
 
   describe("Approval Signal Matching", () => {
     const approvalCases = [
@@ -258,30 +226,29 @@ describe("STAB-003: Close the Cognitive Loop", () => {
     })
   })
 
-  // ── 4. Refined Request Storage ──
+  // ── 3. Refined Request Storage ──
 
   describe("Refined Request Storage", () => {
     it("stores and retrieves refinedRequest", () => {
-      const session = makeSession({
+      enterApprovalPhase(CHAT_ID, USER_ID, makeApprovalState({
         refinedRequest: "Compare competitor pricing models for enterprise AI infrastructure",
-      })
-      storeApprovalSession(session)
+      }))
 
-      const retrieved = getApprovalSession(12345)
-      expect(retrieved!.refinedRequest).toBe(
+      const state = getState(CHAT_ID)
+      expect(state!.approval!.refinedRequest).toBe(
         "Compare competitor pricing models for enterprise AI infrastructure"
       )
     })
 
     it("session without refinedRequest has undefined", () => {
-      storeApprovalSession(makeSession())
+      enterApprovalPhase(CHAT_ID, USER_ID, makeApprovalState())
 
-      const retrieved = getApprovalSession(12345)
-      expect(retrieved!.refinedRequest).toBeUndefined()
+      const state = getState(CHAT_ID)
+      expect(state!.approval!.refinedRequest).toBeUndefined()
     })
   })
 
-  // ── 5. Proposal Formatting ──
+  // ── 4. Proposal Formatting ──
 
   describe("Proposal Formatting", () => {
     it("formats proposal with steps", () => {
@@ -331,7 +298,7 @@ describe("STAB-003: Close the Cognitive Loop", () => {
     })
   })
 
-  // ── 6. Gate Widening (STAB-003a) ──
+  // ── 5. Gate Widening (STAB-003a) ──
 
   describe("Approval Gate Widening (STAB-003a)", () => {
     it("moderate + approach should trigger gate (not just complex)", () => {
@@ -385,18 +352,17 @@ describe("STAB-003: Close the Cognitive Loop", () => {
     })
 
     it("moderate session stores and retrieves correctly", () => {
-      const session = makeSession({
+      enterApprovalPhase(CHAT_ID, USER_ID, makeApprovalState({
         assessment: makeAssessment({ complexity: "moderate" }),
-      })
-      storeApprovalSession(session)
+      }))
 
-      const retrieved = getApprovalSession(12345)
-      expect(retrieved).toBeDefined()
-      expect(retrieved!.assessment.complexity).toBe("moderate")
+      const state = getState(CHAT_ID)
+      expect(state).toBeDefined()
+      expect(state!.approval!.assessment.complexity).toBe("moderate")
     })
   })
 
-  // ── 7. Approval Loop Prevention (STAB-003a hotfix) ──
+  // ── 6. Approval Loop Prevention (STAB-003a hotfix) ──
 
   describe("Approval Loop Prevention", () => {
     it("approvalGranted flag prevents re-gating after approval", () => {
@@ -416,27 +382,26 @@ describe("STAB-003: Close the Cognitive Loop", () => {
     })
 
     it("approval clears session so subsequent messages are not trapped", () => {
-      storeApprovalSession(makeSession())
-      expect(hasApprovalSessionForUser(67890)).toBe(true)
+      enterApprovalPhase(CHAT_ID, USER_ID, makeApprovalState())
+      expect(isInPhase(USER_ID, 'approval')).toBe(true)
 
       // Approval clears the session
-      removeApprovalSession(12345)
-      expect(hasApprovalSessionForUser(67890)).toBe(false)
+      returnToIdle(CHAT_ID)
+      expect(isInPhase(USER_ID, 'approval')).toBe(false)
 
       // Next message from same user should NOT hit approval check
-      expect(getApprovalSessionByUserId(67890)).toBeUndefined()
+      expect(getStateByUserId(USER_ID)?.approval).toBeUndefined()
     })
 
     it("approval with refinedRequest uses refined text for downstream", () => {
-      const session = makeSession({
+      enterApprovalPhase(CHAT_ID, USER_ID, makeApprovalState({
         refinedRequest: "Compare Cursor vs Windsurf vs Claude Code agent architectures for Grove blog",
         originalMessage: "Research what Cursor and Windsurf are doing with agent modes",
-      })
-      storeApprovalSession(session)
+      }))
 
-      const retrieved = getApprovalSession(12345)!
+      const approval = getState(CHAT_ID)!.approval!
       // Handler logic: use refinedRequest if available, else originalMessage
-      const executionText = retrieved.refinedRequest || retrieved.originalMessage
+      const executionText = approval.refinedRequest || approval.originalMessage
       expect(executionText).toBe("Compare Cursor vs Windsurf vs Claude Code agent architectures for Grove blog")
     })
   })

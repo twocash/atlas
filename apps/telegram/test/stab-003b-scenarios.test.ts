@@ -46,7 +46,7 @@ import type { TriageResult } from '@atlas/agents/src/cognitive/triage-skill';
 import {
   isApprovalSignal,
   isRejectionSignal,
-} from '@atlas/agents/src/conversation/approval-session';
+} from '@atlas/agents/src/conversation/approval-utils';
 
 // ─── Fixtures ───────────────────────────────────────────
 

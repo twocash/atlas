@@ -20,7 +20,7 @@ import { buildMediaContext, buildAnalysisContent, type Pillar } from '../media/p
 import { createAuditTrail, type AuditEntry, type AuditResult } from '../conversation/audit';
 import { getAllTools, executeTool } from '../conversation/tools';
 import { recordUsage } from '../conversation/stats';
-import { hasPendingSocraticSessionForUser, getSocraticSessionByUserId, removeSocraticSession } from '../conversation/socratic-session';
+// socratic-session.ts DELETED (STATE-PERSIST-TEARDOWN) — unified state is canonical
 import { getIntentHash } from '../skills/intent-hash';
 import { logAction } from '../skills/action-log';
 import { reportFailure } from '@atlas/shared/error-escalation';
@@ -43,15 +43,12 @@ import {
   extractKeywords,
   type DomainType,
 } from '..';
+// approval-session.ts DELETED (STATE-PERSIST-TEARDOWN) — unified state is canonical
 import {
-  hasApprovalSessionForUser,
-  getApprovalSessionByUserId,
-  storeApprovalSession,
-  removeApprovalSession,
   isApprovalSignal,
   isRejectionSignal,
   formatProposalMessage,
-} from '../conversation/approval-session';
+} from '../conversation/approval-utils';
 import {
   getStateByUserId,
   getContentContext,
@@ -478,28 +475,25 @@ export async function orchestrateMessage(
   }
 
   // ── Gate 3: Socratic Session ──
-  if (!hasAttachment && messageText && hasPendingSocraticSessionForUser(userId)) {
+  if (!hasAttachment && messageText && isInPhase(userId, 'socratic')) {
+    const socraticState = getStateByUserId(userId);
     const containsUrl = /https?:\/\/\S+/i.test(messageText);
     if (containsUrl) {
-      const staleSocSession = getSocraticSessionByUserId(userId);
-      if (staleSocSession) {
-        removeSocraticSession(staleSocSession.chatId);
-        returnToIdle(staleSocSession.chatId);
+      if (socraticState) {
+        returnToIdle(socraticState.chatId);
         logger.info('Socratic session bypassed: message contains URL (new content)', {
           userId,
-          cancelledSessionId: staleSocSession.sessionId,
+          cancelledSessionId: socraticState.socratic?.sessionId,
         });
       }
     } else if (isSocraticExitSignal(messageText)) {
       // Sprint C Bug 2: Hard exit signals — immediate Socratic abandon
-      const staleSocSession = getSocraticSessionByUserId(userId);
-      if (staleSocSession) {
-        removeSocraticSession(staleSocSession.chatId);
-        returnToIdle(staleSocSession.chatId);
+      if (socraticState) {
+        returnToIdle(socraticState.chatId);
         logger.info('Socratic session abandoned: exit signal', {
           userId,
           signal: messageText.substring(0, 30),
-          cancelledSessionId: staleSocSession.sessionId,
+          cancelledSessionId: socraticState.socratic?.sessionId,
         });
       }
       await hooks.reply('Got it — dropped. What\'s next?', {});
@@ -594,52 +588,46 @@ export async function orchestrateMessage(
     }
   }
 
-  // ── Gate 5: Approval Session (STAB-003) ──
+  // ── Gate 5: Approval Session (STAB-003) — unified state ──
   let approvalGranted = false;
-  if (!hasAttachment && messageText && hasApprovalSessionForUser(userId)) {
+  if (!hasAttachment && messageText && isInPhase(userId, 'approval')) {
     const containsUrl = /https?:\/\/\S+/i.test(messageText);
+    const approvalState = getStateByUserId(userId);
+    const approvalData = approvalState?.approval;
     if (containsUrl) {
-      const staleSession = getApprovalSessionByUserId(userId);
-      if (staleSession) {
-        removeApprovalSession(staleSession.chatId);
-        returnToIdle(staleSession.chatId);
+      if (approvalState) {
+        returnToIdle(approvalState.chatId);
         logger.info('Approval session bypassed: new URL content', { userId });
       }
-    } else {
-      const approvalSession = getApprovalSessionByUserId(userId);
-      if (approvalSession) {
-        const approvalStep = addStep(trace, 'approval-check');
-        if (isApprovalSignal(messageText)) {
-          removeApprovalSession(approvalSession.chatId);
-          if (approvalSession.refinedRequest) {
-            messageText = approvalSession.refinedRequest;
-          } else {
-            messageText = approvalSession.originalMessage;
-          }
-          approvalGranted = true;
-          returnToIdle(approvalSession.chatId);
-          approvalStep.metadata = { status: 'approved', hasRefinedRequest: !!approvalSession.refinedRequest };
-          completeStep(approvalStep);
-          logger.info('Proposal approved, proceeding with execution', { userId });
-        } else if (isRejectionSignal(messageText)) {
-          removeApprovalSession(approvalSession.chatId);
-          returnToIdle(approvalSession.chatId);
-          await hooks.reply(
-            "Got it — what would you adjust? I can rethink the approach.",
-            { parseMode: 'HTML' },
-          );
-          approvalStep.metadata = { status: 'rejected' };
-          completeStep(approvalStep);
-          completeTrace(trace);
-          logger.info('Proposal rejected', { userId });
-          return;
+    } else if (approvalData && approvalState) {
+      const approvalStep = addStep(trace, 'approval-check');
+      if (isApprovalSignal(messageText)) {
+        if (approvalData.refinedRequest) {
+          messageText = approvalData.refinedRequest;
         } else {
-          removeApprovalSession(approvalSession.chatId);
-          returnToIdle(approvalSession.chatId);
-          approvalStep.metadata = { status: 'ambiguous', treatedAsNewMessage: true };
-          completeStep(approvalStep);
-          logger.info('Ambiguous approval reply, treating as new message', { userId });
+          messageText = approvalData.originalMessage;
         }
+        approvalGranted = true;
+        returnToIdle(approvalState.chatId);
+        approvalStep.metadata = { status: 'approved', hasRefinedRequest: !!approvalData.refinedRequest };
+        completeStep(approvalStep);
+        logger.info('Proposal approved, proceeding with execution', { userId });
+      } else if (isRejectionSignal(messageText)) {
+        returnToIdle(approvalState.chatId);
+        await hooks.reply(
+          "Got it — what would you adjust? I can rethink the approach.",
+          { parseMode: 'HTML' },
+        );
+        approvalStep.metadata = { status: 'rejected' };
+        completeStep(approvalStep);
+        completeTrace(trace);
+        logger.info('Proposal rejected', { userId });
+        return;
+      } else {
+        returnToIdle(approvalState.chatId);
+        approvalStep.metadata = { status: 'ambiguous', treatedAsNewMessage: true };
+        completeStep(approvalStep);
+        logger.info('Ambiguous approval reply, treating as new message', { userId });
       }
     }
   }
@@ -703,17 +691,7 @@ export async function orchestrateMessage(
                 proposalMsg.length > 4000 ? proposalMsg.substring(0, 3997) + '...' : proposalMsg,
                 { parseMode: 'HTML' },
               );
-              storeApprovalSession({
-                chatId,
-                userId,
-                proposalMessageId: sentMsgId,
-                proposal: result.proposal,
-                refinedRequest: result.refinedRequest,
-                originalMessage: dialogueData.originalMessage,
-                assessment: dialogueData.assessment,
-                assessmentContext: dialogueData.assessmentContext,
-                createdAt: Date.now(),
-              });
+              // Unified state — canonical (legacy storeApprovalSession removed)
               enterApprovalPhase(chatId, userId, {
                 proposalMessageId: sentMsgId,
                 proposal: result.proposal,
@@ -1097,16 +1075,7 @@ export async function orchestrateMessage(
       hasContact: false,
       hasDeadline: false,
     };
-    storeApprovalSession({
-      chatId,
-      userId,
-      proposalMessageId: sentMsgId,
-      proposal: assessment.approach,
-      originalMessage: messageText,
-      assessment,
-      assessmentContext: assessCtx,
-      createdAt: Date.now(),
-    });
+    // Unified state — canonical (legacy storeApprovalSession removed)
     enterApprovalPhase(chatId, userId, {
       proposalMessageId: sentMsgId,
       proposal: assessment.approach,

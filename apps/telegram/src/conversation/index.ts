@@ -12,8 +12,8 @@ export { createAuditTrail, updateWorkQueueStatus, logReclassification } from '@a
 
 // Socratic Interview Engine (Gate 2)
 export { socraticInterview, handleSocraticAnswer } from './socratic-adapter';
-export { hasPendingSocraticSession, getSocraticSession, hasPendingSocraticSessionForUser } from '@atlas/agents/src/conversation/socratic-session';
-export { generateRequestId, storePendingContent, getPendingContent, updatePendingContent, removePendingContent } from '@atlas/agents/src/conversation/pending-content';
+export { hasActiveSession, getState, getStateByUserId, isInPhase } from '@atlas/agents/src/conversation/conversation-state';
+export { generateRequestId, storePendingContent, getPendingContent, updatePendingContent, removePendingContent } from '@atlas/agents/src/conversation/conversation-state';
 
 // Universal Content Analysis (Phase 5)
 export { maybeHandleAsContentShare, triggerContentConfirmation, detectContentShare } from './content-flow';

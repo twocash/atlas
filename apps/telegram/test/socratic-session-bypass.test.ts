@@ -12,30 +12,31 @@
  *   1. Runs outside the CONTENT_CONFIRM_ENABLED gate
  *   2. Bypasses when message contains a URL (new content share)
  *   3. Cancels stale sessions when new content is detected
+ *
+ * STATE-PERSIST-TEARDOWN: Migrated from legacy socratic-session.ts to
+ * unified ConversationState (conversation-state.ts).
  */
 
 import { describe, it, expect, beforeEach } from 'bun:test';
 import {
-  storeSocraticSession,
-  hasPendingSocraticSession,
-  hasPendingSocraticSessionForUser,
-  getSocraticSession,
-  getSocraticSessionByUserId,
-  removeSocraticSession,
-  clearAllSocraticSessions,
-  type PendingSocraticSession,
-} from '@atlas/agents/src/conversation/socratic-session';
+  enterSocraticPhase,
+  getState,
+  getStateByUserId,
+  hasActiveSession,
+  isInPhase,
+  returnToIdle,
+  clearAllStates,
+  type SocraticSessionState,
+} from '@atlas/agents/src/conversation/conversation-state';
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 
 const CHAT_ID = 12345;
 const USER_ID = 67890;
 
-function createTestSession(overrides: Partial<PendingSocraticSession> = {}): PendingSocraticSession {
+function createTestSocratic(overrides: Partial<SocraticSessionState> = {}): SocraticSessionState {
   return {
     sessionId: 'test-session-001',
-    chatId: CHAT_ID,
-    userId: USER_ID,
     questionMessageId: 999,
     questions: [{ text: "What's the play?", key: 'intent', options: [] }],
     currentQuestionIndex: 0,
@@ -43,7 +44,6 @@ function createTestSession(overrides: Partial<PendingSocraticSession> = {}): Pen
     contentType: 'url',
     title: 'Test Article',
     signals: { contentSignals: { topic: 'Test', title: 'Test', hasUrl: true, contentLength: 30 } },
-    createdAt: Date.now(),
     ...overrides,
   };
 }
@@ -55,45 +55,44 @@ function messageContainsUrl(text: string): boolean {
   return /https?:\/\/\S+/i.test(text);
 }
 
-// ─── Session state management ────────────────────────────────────────────────
+// ─── Session state management (unified ConversationState) ─────────────────────
 
-describe('Socratic session state', () => {
+describe('Socratic session state (unified)', () => {
   beforeEach(() => {
-    clearAllSocraticSessions();
+    clearAllStates();
   });
 
   it('stores and retrieves a session by chatId', () => {
-    const session = createTestSession();
-    storeSocraticSession(session);
-    expect(hasPendingSocraticSession(CHAT_ID)).toBe(true);
-    expect(getSocraticSession(CHAT_ID)).toBeTruthy();
+    const socratic = createTestSocratic();
+    enterSocraticPhase(CHAT_ID, USER_ID, socratic);
+    expect(isInPhase(USER_ID, 'socratic')).toBe(true);
+    expect(getState(CHAT_ID)?.socratic).toBeTruthy();
   });
 
   it('retrieves session by userId', () => {
-    const session = createTestSession();
-    storeSocraticSession(session);
-    expect(hasPendingSocraticSessionForUser(USER_ID)).toBe(true);
-    expect(getSocraticSessionByUserId(USER_ID)).toBeTruthy();
+    const socratic = createTestSocratic();
+    enterSocraticPhase(CHAT_ID, USER_ID, socratic);
+    expect(hasActiveSession(USER_ID)).toBe(true);
+    const state = getStateByUserId(USER_ID);
+    expect(state?.socratic).toBeTruthy();
   });
 
-  it('removes session explicitly', () => {
-    const session = createTestSession();
-    storeSocraticSession(session);
-    expect(hasPendingSocraticSession(CHAT_ID)).toBe(true);
+  it('removes session via returnToIdle', () => {
+    const socratic = createTestSocratic();
+    enterSocraticPhase(CHAT_ID, USER_ID, socratic);
+    expect(isInPhase(USER_ID, 'socratic')).toBe(true);
 
-    removeSocraticSession(CHAT_ID);
-    expect(hasPendingSocraticSession(CHAT_ID)).toBe(false);
-    expect(hasPendingSocraticSessionForUser(USER_ID)).toBe(false);
+    returnToIdle(CHAT_ID);
+    expect(isInPhase(USER_ID, 'socratic')).toBe(false);
+    expect(getState(CHAT_ID)?.socratic).toBeUndefined();
   });
 
   it('replaces session when new one is stored for same chatId', () => {
-    const session1 = createTestSession({ sessionId: 'session-001' });
-    storeSocraticSession(session1);
-    expect(getSocraticSession(CHAT_ID)?.sessionId).toBe('session-001');
+    enterSocraticPhase(CHAT_ID, USER_ID, createTestSocratic({ sessionId: 'session-001' }));
+    expect(getState(CHAT_ID)?.socratic?.sessionId).toBe('session-001');
 
-    const session2 = createTestSession({ sessionId: 'session-002' });
-    storeSocraticSession(session2);
-    expect(getSocraticSession(CHAT_ID)?.sessionId).toBe('session-002');
+    enterSocraticPhase(CHAT_ID, USER_ID, createTestSocratic({ sessionId: 'session-002' }));
+    expect(getState(CHAT_ID)?.socratic?.sessionId).toBe('session-002');
   });
 });
 
@@ -133,14 +132,13 @@ describe('URL bypass heuristic', () => {
 
 describe('Session cancellation on new content', () => {
   beforeEach(() => {
-    clearAllSocraticSessions();
+    clearAllStates();
   });
 
   it('cancels session when new URL is detected (simulated handler logic)', () => {
     // Setup: pending Socratic session exists
-    const session = createTestSession();
-    storeSocraticSession(session);
-    expect(hasPendingSocraticSessionForUser(USER_ID)).toBe(true);
+    enterSocraticPhase(CHAT_ID, USER_ID, createTestSocratic());
+    expect(isInPhase(USER_ID, 'socratic')).toBe(true);
 
     // Simulate: new message contains a URL
     const newMessage = 'https://newsite.com/different-article';
@@ -149,21 +147,20 @@ describe('Session cancellation on new content', () => {
 
     // Handler logic: bypass Socratic, cancel stale session
     if (containsUrl) {
-      const staleSession = getSocraticSessionByUserId(USER_ID);
-      if (staleSession) {
-        removeSocraticSession(staleSession.chatId);
+      const staleState = getStateByUserId(USER_ID);
+      if (staleState) {
+        returnToIdle(staleState.chatId);
       }
     }
 
     // Verify: session is gone
-    expect(hasPendingSocraticSessionForUser(USER_ID)).toBe(false);
-    expect(hasPendingSocraticSession(CHAT_ID)).toBe(false);
+    expect(isInPhase(USER_ID, 'socratic')).toBe(false);
+    expect(getState(CHAT_ID)?.socratic).toBeUndefined();
   });
 
   it('preserves session for non-URL answer text', () => {
     // Setup: pending Socratic session exists
-    const session = createTestSession();
-    storeSocraticSession(session);
+    enterSocraticPhase(CHAT_ID, USER_ID, createTestSocratic());
 
     // Simulate: non-URL answer message
     const answerMessage = 'research it deeply';
@@ -171,24 +168,22 @@ describe('Session cancellation on new content', () => {
     expect(containsUrl).toBe(false);
 
     // Handler logic: would route to handleSocraticAnswer, NOT cancel session
-    // (session only gets removed after engine processes the answer)
-    expect(hasPendingSocraticSessionForUser(USER_ID)).toBe(true);
+    expect(isInPhase(USER_ID, 'socratic')).toBe(true);
   });
 
   it('cancels session when URL+context message arrives', () => {
-    const session = createTestSession();
-    storeSocraticSession(session);
+    enterSocraticPhase(CHAT_ID, USER_ID, createTestSocratic());
 
     const newMessage = 'check this out https://example.com/new-thing pretty interesting';
     expect(messageContainsUrl(newMessage)).toBe(true);
 
     // Cancel stale session
-    const staleSession = getSocraticSessionByUserId(USER_ID);
-    if (staleSession) {
-      removeSocraticSession(staleSession.chatId);
+    const staleState = getStateByUserId(USER_ID);
+    if (staleState) {
+      returnToIdle(staleState.chatId);
     }
 
-    expect(hasPendingSocraticSessionForUser(USER_ID)).toBe(false);
+    expect(isInPhase(USER_ID, 'socratic')).toBe(false);
   });
 });
 
@@ -196,7 +191,7 @@ describe('Session cancellation on new content', () => {
 
 describe('Socratic answer routing decision', () => {
   beforeEach(() => {
-    clearAllSocraticSessions();
+    clearAllStates();
   });
 
   /**
@@ -260,7 +255,7 @@ describe('Socratic answer routing decision', () => {
 
 describe('Edge cases', () => {
   beforeEach(() => {
-    clearAllSocraticSessions();
+    clearAllStates();
   });
 
   it('handles empty message text gracefully', () => {
@@ -273,27 +268,24 @@ describe('Edge cases', () => {
 
   it('session for different user does not interfere', () => {
     const otherUserId = 99999;
-    const session = createTestSession({ userId: otherUserId });
-    storeSocraticSession(session);
+    enterSocraticPhase(CHAT_ID, otherUserId, createTestSocratic());
 
     // Our user has no pending session
-    expect(hasPendingSocraticSessionForUser(USER_ID)).toBe(false);
+    expect(isInPhase(USER_ID, 'socratic')).toBe(false);
     // Other user does
-    expect(hasPendingSocraticSessionForUser(otherUserId)).toBe(true);
+    expect(isInPhase(otherUserId, 'socratic')).toBe(true);
   });
 
   it('multiple sessions for different chats, same user — userId lookup finds one', () => {
-    const session1 = createTestSession({ chatId: 111, sessionId: 's1' });
-    const session2 = createTestSession({ chatId: 222, sessionId: 's2' });
-    storeSocraticSession(session1);
-    storeSocraticSession(session2);
+    enterSocraticPhase(111, USER_ID, createTestSocratic({ sessionId: 's1' }));
+    enterSocraticPhase(222, USER_ID, createTestSocratic({ sessionId: 's2' }));
 
     // Both exist
-    expect(hasPendingSocraticSession(111)).toBe(true);
-    expect(hasPendingSocraticSession(222)).toBe(true);
+    expect(getState(111)?.socratic).toBeTruthy();
+    expect(getState(222)?.socratic).toBeTruthy();
 
     // userId lookup returns one (iteration order)
-    const found = getSocraticSessionByUserId(USER_ID);
-    expect(found).toBeTruthy();
+    const found = getStateByUserId(USER_ID);
+    expect(found?.socratic).toBeTruthy();
   });
 });

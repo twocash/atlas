@@ -306,9 +306,16 @@ mock.module('../../src/conversation/content-flow', () => ({
   triggerInstantClassification: async () => false,
 }));
 
-// Socratic session
-mock.module('@atlas/agents/src/conversation/socratic-session', () => ({
-  hasPendingSocraticSessionForUser: () => false,
+// Socratic session (unified state — legacy socratic-session.ts deleted)
+mock.module('@atlas/agents/src/conversation/conversation-state', () => ({
+  isInPhase: () => false,
+  hasActiveSession: () => false,
+  getState: () => undefined,
+  getStateByUserId: () => undefined,
+  enterSocraticPhase: () => {},
+  returnToIdle: () => {},
+  storeSocraticAnswer: () => {},
+  clearAllStates: () => {},
 }));
 
 // Socratic adapter

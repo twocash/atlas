@@ -21,8 +21,7 @@ import {
 } from '../../../../packages/agents/src/socratic';
 import type { IntentType } from '../../../../packages/agents/src/services/prompt-composition/types';
 import type { TriageResult } from '@atlas/agents/src/cognitive/triage-skill';
-import { storeSocraticSession, removeSocraticSession, getSocraticSession } from '@atlas/agents/src/conversation/socratic-session';
-import { enterSocraticPhase, enterGoalClarificationPhase, returnToIdle, storeSocraticAnswer } from '@atlas/agents/src/conversation/conversation-state';
+import { enterSocraticPhase, enterGoalClarificationPhase, returnToIdle, storeSocraticAnswer, getState } from '@atlas/agents/src/conversation/conversation-state';
 import { orchestrateResolvedContext } from '@atlas/agents/src/pipeline/orchestrator';
 import type { ResolvedContextInput } from '@atlas/agents/src/pipeline/types';
 import {
@@ -194,23 +193,7 @@ export async function socraticInterview(
         reply_parameters: messageId ? { message_id: messageId } : undefined,
       });
 
-      // Store session for answer handling (legacy + unified state)
-      storeSocraticSession({
-        sessionId: session.id,
-        chatId,
-        userId,
-        questionMessageId: questionMsg.message_id,
-        questions: result.questions,
-        currentQuestionIndex: 0,
-        content,
-        contentType,
-        title,
-        triageResult,
-        signals,
-        createdAt: Date.now(),
-        prefetchedUrlContent,
-      });
-      // SESSION-STATE-FOUNDATION: Mirror to unified state
+      // Store session for answer handling (unified state — canonical)
       enterSocraticPhase(chatId, userId, {
         sessionId: session.id,
         questionMessageId: questionMsg.message_id,
@@ -645,7 +628,8 @@ export async function handleSocraticAnswer(
   const chatId = ctx.chat?.id;
   if (!chatId) return false;
 
-  const session = getSocraticSession(chatId);
+  const state = getState(chatId);
+  const session = state?.socratic;
   if (!session) return false;
 
   try {
@@ -656,8 +640,7 @@ export async function handleSocraticAnswer(
       session.currentQuestionIndex,
     );
 
-    // Clean up session (legacy + unified state)
-    removeSocraticSession(chatId);
+    // Clean up session
     returnToIdle(chatId);
 
     if (result.type === 'resolved') {
@@ -684,16 +667,8 @@ export async function handleSocraticAnswer(
       const questionText = formatQuestionMessage(session.title, result.questions);
       const questionMsg = await ctx.reply(questionText, { parse_mode: 'HTML' });
 
-      // Update session with new question (legacy + unified state)
-      storeSocraticSession({
-        ...session,
-        questionMessageId: questionMsg.message_id,
-        questions: result.questions,
-        currentQuestionIndex: 0,
-        createdAt: Date.now(), // Reset TTL
-      });
-      // SESSION-STATE-FOUNDATION: Mirror to unified state
-      enterSocraticPhase(session.chatId, session.userId, {
+      // Update session with new question (unified state — canonical)
+      enterSocraticPhase(state!.chatId, state!.userId, {
         sessionId: session.sessionId,
         questionMessageId: questionMsg.message_id,
         questions: result.questions,
@@ -731,7 +706,6 @@ export async function handleSocraticAnswer(
     logger.error('Socratic answer handler error', {
       error: error instanceof Error ? error.message : String(error),
     });
-    removeSocraticSession(chatId);
     returnToIdle(chatId);
     return false;
   }
