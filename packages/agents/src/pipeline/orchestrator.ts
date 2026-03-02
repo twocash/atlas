@@ -1388,24 +1388,6 @@ export async function orchestrateMessage(
     // Fix fabricated URLs
     responseText = fixHallucinatedUrls(responseText, toolContexts);
 
-    // Sprint C Bug 7+8: Grade + claim detection BEFORE audit write
-    const actionTypes = new Set(['Schedule', 'Build', 'Process', 'Triage']);
-    const nonResearchGrade = actionTypes.has(classification.requestType) ? 'grounded' : 'informed';
-    const { detectSensitiveClaims } = await import('../services/claim-detector');
-    const claims = detectSensitiveClaims(responseText);
-    if (claims.flags.length > 0) {
-      logger.info('Sensitive claims detected in conversational response', { flags: claims.flags, patterns: claims.matchedPatterns });
-    }
-    setProvenanceResult(chain, {
-      findingCount: 0,
-      citations: [],
-      ragChunks: [],
-      hallucinationDetected: false,
-      andonGrade: nonResearchGrade,
-      claimFlags: claims.flags,
-    });
-    finalizeProvenance(chain);
-
     // Build history response with tool context
     const historyResponse = toolContexts.length > 0
       ? `${responseText}\n\n${formatToolContextForHistory(toolContexts)}`
@@ -1432,6 +1414,25 @@ export async function orchestrateMessage(
       classification = auditTriage.classification;
       smartTitle = auditTriage.smartTitle;
     }
+
+    // Sprint C Bug 7+8: Grade + claim detection BEFORE audit write
+    // MUST be after classification is assigned (temporal dead zone if before)
+    const actionTypes = new Set(['Schedule', 'Build', 'Process', 'Triage']);
+    const nonResearchGrade = actionTypes.has(classification.requestType) ? 'grounded' : 'informed';
+    const { detectSensitiveClaims } = await import('../services/claim-detector');
+    const claims = detectSensitiveClaims(responseText);
+    if (claims.flags.length > 0) {
+      logger.info('Sensitive claims detected in conversational response', { flags: claims.flags, patterns: claims.matchedPatterns });
+    }
+    setProvenanceResult(chain, {
+      findingCount: 0,
+      citations: [],
+      ragChunks: [],
+      hallucinationDetected: false,
+      andonGrade: nonResearchGrade,
+      claimFlags: claims.flags,
+    });
+    finalizeProvenance(chain);
 
     // Create audit trail
     const auditPillar = (assessment?.domain
