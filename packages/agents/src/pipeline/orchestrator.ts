@@ -184,11 +184,11 @@ export function fixHallucinatedUrls(responseText: string, toolContexts: ToolCont
     const tc = toolContexts[i];
     const toolResult = tc.result as { success?: boolean; result?: unknown; error?: string } | undefined;
 
-    if (dispatchToolNames.includes(tc.name)) {
+    if (dispatchToolNames.includes(tc.toolName)) {
       if (!toolResult?.success) {
         dispatchFailed = true;
         failureError = toolResult?.error || 'Dispatch failed';
-        logger.error('DISPATCH TOOL FAILED', { tool: tc.name, error: failureError });
+        logger.error('DISPATCH TOOL FAILED', { tool: tc.toolName, error: failureError });
       }
     }
 
@@ -204,6 +204,10 @@ export function fixHallucinatedUrls(responseText: string, toolContexts: ToolCont
         actualUrls.push(result.workQueueUrl);
       }
     }
+  }
+
+  if (actualUrls.length > 0) {
+    logger.debug('fixHallucinatedUrls: collected actual URLs from tool results', { actualUrls, toolCount: toolContexts.length });
   }
 
   // CRITICAL: Dispatch failed but Claude may have fabricated a success URL
