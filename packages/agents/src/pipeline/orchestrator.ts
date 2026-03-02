@@ -281,6 +281,84 @@ export function splitMessage(text: string, maxLength: number): string[] {
   return chunks;
 }
 
+// ─── Socratic Exit / Intent-Break Detection (Sprint C) ──
+
+/** Words too common to signal topic overlap */
+const STOP_WORDS = new Set([
+  'the', 'a', 'an', 'is', 'are', 'was', 'were', 'be', 'been', 'being',
+  'have', 'has', 'had', 'do', 'does', 'did', 'will', 'would', 'could',
+  'should', 'may', 'might', 'shall', 'can', 'to', 'of', 'in', 'for',
+  'on', 'with', 'at', 'by', 'from', 'as', 'into', 'about', 'between',
+  'through', 'after', 'before', 'during', 'and', 'but', 'or', 'nor',
+  'not', 'so', 'yet', 'both', 'either', 'neither', 'each', 'every',
+  'this', 'that', 'these', 'those', 'it', 'its', 'my', 'your', 'his',
+  'her', 'our', 'their', 'what', 'which', 'who', 'whom', 'how', 'when',
+  'where', 'why', 'all', 'any', 'some', 'no', 'than', 'too', 'very',
+  'just', 'also', 'now', 'then', 'here', 'there', 'i', 'me', 'you',
+  'he', 'she', 'we', 'they', 'them', 'up', 'out', 'if',
+]);
+
+/**
+ * Extract significant tokens (>3 chars, not stop words) for overlap comparison.
+ */
+function extractTokens(text: string): string[] {
+  return text.toLowerCase()
+    .replace(/[^a-z0-9\s]/g, ' ')
+    .split(/\s+/)
+    .filter(w => w.length > 3 && !STOP_WORDS.has(w));
+}
+
+const EXIT_SIGNALS = new Set([
+  'nevermind', 'never mind', 'nvm',
+  'forget it', 'forget about it',
+  'cancel', 'stop', 'exit', 'quit',
+  'skip', 'skip it',
+  'nah', 'no thanks', 'no thank you',
+  'drop it', 'leave it',
+  'actually nevermind', 'actually never mind',
+  'actually nvm',
+]);
+
+/**
+ * Bug 2 fix: Detect hard exit signals that should immediately abandon Socratic flow.
+ * "Nevermind", "nvm", "forget it", "cancel", etc.
+ */
+function isSocraticExitSignal(text: string): boolean {
+  const normalized = text.trim().toLowerCase().replace(/[.!,?]+$/g, '');
+  return EXIT_SIGNALS.has(normalized);
+}
+
+/**
+ * Bug 3 fix: Detect when a new message's intent clearly differs from the active
+ * Socratic context. A long interrogative with no keyword overlap is a new query,
+ * not a Socratic answer.
+ */
+function isSocraticIntentBreak(
+  text: string,
+  session: { content: string; title: string } | undefined,
+): boolean {
+  if (!session) return false;
+
+  const msgTokens = extractTokens(text);
+  const sessionTokens = extractTokens(session.content + ' ' + session.title);
+
+  // Not enough signal to judge
+  if (msgTokens.length < 3) return false;
+
+  const overlap = msgTokens.filter(t => sessionTokens.includes(t)).length;
+  const overlapRatio = sessionTokens.length > 0 ? overlap / msgTokens.length : 0;
+
+  const isInterrogative = text.includes('?') && text.length > 50;
+
+  // Long question with very low topic overlap → new intent
+  if (isInterrogative && overlapRatio < 0.2) return true;
+
+  // Very long statement with zero overlap → new intent
+  if (overlapRatio === 0 && text.length > 60) return true;
+
+  return false;
+}
+
 // ─── Main Orchestrator ──────────────────────────────────
 
 /**
@@ -381,6 +459,34 @@ export async function orchestrateMessage(
           cancelledSessionId: staleSocSession.sessionId,
         });
       }
+    } else if (isSocraticExitSignal(messageText)) {
+      // Sprint C Bug 2: Hard exit signals — immediate Socratic abandon
+      const staleSocSession = getSocraticSessionByUserId(userId);
+      if (staleSocSession) {
+        removeSocraticSession(staleSocSession.chatId);
+        returnToIdle(staleSocSession.chatId);
+        logger.info('Socratic session abandoned: exit signal', {
+          userId,
+          signal: messageText.substring(0, 30),
+          cancelledSessionId: staleSocSession.sessionId,
+        });
+      }
+      await hooks.reply('Got it — dropped. What\'s next?', {});
+      await hooks.setReaction(REACTIONS.DONE);
+      return;
+    } else if (isSocraticIntentBreak(messageText, getSocraticSessionByUserId(userId))) {
+      // Sprint C Bug 3: Intent-break detection — new query overrides stale Socratic
+      const staleSocSession = getSocraticSessionByUserId(userId);
+      if (staleSocSession) {
+        removeSocraticSession(staleSocSession.chatId);
+        returnToIdle(staleSocSession.chatId);
+        logger.info('Socratic session abandoned: intent break detected', {
+          userId,
+          newMessageLength: messageText.length,
+          cancelledSessionId: staleSocSession.sessionId,
+        });
+      }
+      // Fall through — message continues to triage as fresh input
     } else {
       const handled = await hooks.handleSocraticAnswer(messageText);
       if (handled) {
@@ -1374,12 +1480,19 @@ export async function orchestrateMessage(
       toolContexts.length > 0 ? toolContexts : undefined
     );
 
-    // Sprint C: Finalize provenance chain
+    // Sprint C Bug 1: Grade finalization on ALL exit paths (not just research)
+    // Action requests (Schedule, Build, Process) are grounded — Atlas executing, not claiming.
+    // Chat/Quick/Answer are informed — Atlas answering from knowledge, no external grounding.
+    // Research/Draft get graded by Andon Gate downstream, so 'informed' is a safe default here.
+    const actionTypes = new Set(['Schedule', 'Build', 'Process', 'Triage']);
+    const nonResearchGrade = actionTypes.has(classification.requestType) ? 'grounded' : 'informed';
+
     setProvenanceResult(chain, {
       findingCount: 0,
       citations: [],
       ragChunks: [],
       hallucinationDetected: false,
+      andonGrade: nonResearchGrade,
     });
     finalizeProvenance(chain);
 
