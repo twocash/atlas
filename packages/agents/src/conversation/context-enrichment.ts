@@ -14,7 +14,8 @@
  */
 
 import { assembleContext, type AssemblyResult } from "../../../bridge/src/context"
-import type { OrchestrationRequest, SlotId, ComplexityTier, ContextSlot } from "../../../bridge/src/types/orchestration"
+import type { OrchestrationRequest, SessionContext, SlotId, ComplexityTier, ContextSlot } from "../../../bridge/src/types/orchestration"
+import { getStateByUserId } from "./conversation-state"
 import type { TriageResult } from "../cognitive/triage-skill"
 import { reportFailure } from "@atlas/shared/error-escalation"
 import { type SlotResult, type SlotName, wrapSlotResult } from "@atlas/shared/types/slot-result"
@@ -55,6 +56,8 @@ const SLOT_LABELS: Record<SlotId, string> = {
   voice: "VOICE",
   browser: "BROWSER",
   output: "OUTPUT",
+  session: "SESSION",
+  self_model: "SELF MODEL",
 }
 
 // ─── Helpers ─────────────────────────────────────────────
@@ -83,12 +86,30 @@ export async function enrichWithContextSlots(
   const start = Date.now()
 
   try {
+    // Build session context from ConversationState (Slot 7 wiring)
+    const convState = getStateByUserId(userId)
+    let sessionContext: SessionContext | undefined
+    let sessionId = `tg-${userId}-${Date.now()}`
+
+    if (convState && convState.turnCount > 0) {
+      sessionId = convState.sessionId
+      sessionContext = {
+        sessionId: convState.sessionId,
+        turnNumber: convState.turnCount,
+        priorIntentHash: convState.lastIntentHash,
+        intentSequence: [],
+        priorFindings: convState.lastSocraticAnswer,
+        topic: convState.contentContext?.title ?? convState.lastTriage?.title,
+      }
+    }
+
     const request: OrchestrationRequest = {
       messageText,
       surface: "telegram",
       browserContext: undefined,
-      sessionId: `tg-${userId}-${Date.now()}`,
+      sessionId,
       sourceConnectionId: `telegram-${userId}`,
+      sessionContext,
       timestamp: new Date().toISOString(),
     }
 
