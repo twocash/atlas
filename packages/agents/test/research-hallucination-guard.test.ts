@@ -16,7 +16,7 @@ import { describe, it, expect } from 'bun:test';
 // ─── Re-implementation of fixHallucinatedUrls (same algorithm as orchestrator.ts) ──
 
 interface ToolContext {
-  name: string;
+  toolName: string;
   input: Record<string, unknown>;
   result: { success?: boolean; result?: unknown; error?: string };
   timestamp: string;
@@ -32,7 +32,7 @@ function fixHallucinatedUrls(responseText: string, toolContexts: ToolContext[]):
     const tc = toolContexts[i];
     const toolResult = tc.result;
 
-    if (dispatchToolNames.includes(tc.name)) {
+    if (dispatchToolNames.includes(tc.toolName)) {
       if (!toolResult?.success) {
         dispatchFailed = true;
         failureError = toolResult?.error || 'Dispatch failed';
@@ -78,8 +78,20 @@ function fixHallucinatedUrls(responseText: string, toolContexts: ToolContext[]):
     return `${responseText}\n\n📎 ${actualUrls[0]}`;
   }
 
+  // Extract page IDs from URLs for robust comparison (slug-independent)
+  const extractPageId = (url: string): string | null => {
+    const m = url.match(/([0-9a-f]{32})(?:[?#]|$)/i);
+    return m ? m[1].toLowerCase() : null;
+  };
+  const actualPageIds = new Set(actualUrls.map(extractPageId).filter(Boolean) as string[]);
+
   const uniqueMatches = [...new Set(matches)];
-  const isHallucinated = uniqueMatches.some(m => !actualUrls.includes(m));
+  const isHallucinated = uniqueMatches.some(m => {
+    if (actualUrls.includes(m)) return false;
+    const pid = extractPageId(m);
+    if (pid && actualPageIds.has(pid)) return true;
+    return true;
+  });
 
   if (isHallucinated) {
     let fixedText = responseText;
@@ -100,7 +112,7 @@ describe('fixHallucinatedUrls — dispatch_research', () => {
   it('replaces fabricated URL with actual workQueueUrl', () => {
     const responseText = 'Research complete! View results: https://www.notion.so/Research-edge-AI-chips-fake123';
     const toolContexts: ToolContext[] = [{
-      name: 'dispatch_research',
+      toolName: 'dispatch_research',
       input: { query: 'edge AI chips' },
       result: {
         success: true,
@@ -121,7 +133,7 @@ describe('fixHallucinatedUrls — dispatch_research', () => {
   it('detects fabricated URL when dispatch_research fails', () => {
     const responseText = 'Here is the research: https://www.notion.so/Research-fabricated-uuid123';
     const toolContexts: ToolContext[] = [{
-      name: 'dispatch_research',
+      toolName: 'dispatch_research',
       input: { query: 'test' },
       result: {
         success: false,
@@ -140,7 +152,7 @@ describe('fixHallucinatedUrls — dispatch_research', () => {
   it('appends actual URL when Claude omits it', () => {
     const responseText = 'Research is done. Check your Work Queue for results.';
     const toolContexts: ToolContext[] = [{
-      name: 'dispatch_research',
+      toolName: 'dispatch_research',
       input: { query: 'test' },
       result: {
         success: true,
@@ -160,7 +172,7 @@ describe('fixHallucinatedUrls — dispatch_research', () => {
     const actualUrl = 'https://www.notion.so/3d679030b76b43bd92d81ac51abb4a28?p=correct-id';
     const responseText = `Research complete! ${actualUrl}`;
     const toolContexts: ToolContext[] = [{
-      name: 'dispatch_research',
+      toolName: 'dispatch_research',
       input: { query: 'test' },
       result: {
         success: true,
@@ -179,7 +191,7 @@ describe('fixHallucinatedUrls — dispatch_research', () => {
   it('collects url, feedUrl, AND workQueueUrl as actual URLs', () => {
     const responseText = 'Done. https://www.notion.so/some-fabricated-url';
     const toolContexts: ToolContext[] = [{
-      name: 'submit_ticket',
+      toolName: 'submit_ticket',
       input: {},
       result: {
         success: true,
@@ -201,13 +213,13 @@ describe('fixHallucinatedUrls — dispatch_research', () => {
     const responseText = 'Here are results: https://www.notion.so/fabricated-research-url';
     const toolContexts: ToolContext[] = [
       {
-        name: 'web_search',
+        toolName: 'web_search',
         input: { query: 'quick check' },
         result: { success: true, result: { answer: 'quick answer' } },
         timestamp: new Date().toISOString(),
       },
       {
-        name: 'dispatch_research',
+        toolName: 'dispatch_research',
         input: { query: 'deep research' },
         result: {
           success: false,
@@ -227,7 +239,7 @@ describe('fixHallucinatedUrls — dispatch_research', () => {
     // web_search failures should NOT trigger the dispatch failure detection
     const responseText = 'I found some info about edge AI.';
     const toolContexts: ToolContext[] = [{
-      name: 'web_search',
+      toolName: 'web_search',
       input: { query: 'edge AI' },
       result: { success: false, error: 'Search timeout' },
       timestamp: new Date().toISOString(),
@@ -235,6 +247,45 @@ describe('fixHallucinatedUrls — dispatch_research', () => {
 
     const fixed = fixHallucinatedUrls(responseText, toolContexts);
     expect(fixed).toBe(responseText); // No Notion URL, no dispatch tool — unchanged
+  });
+
+  it('replaces fabricated URL with different slug but same page ID', () => {
+    // This is the exact bug: Claude fabricates a long slug but uses the real page ID
+    const actualUrl = 'https://www.notion.so/Research-frontier-capabilit-317780a78eef81d6b29bdb4a6adfdc27';
+    const fabricatedUrl = 'https://www.notion.so/Research-frontier-capabilities-propagation-lag-distributed-systems-cost-arbitrage-1-100-317780a78eef81d6b29bdb4a6adfdc27';
+    const responseText = `Research dispatched! ${fabricatedUrl}`;
+    const toolContexts: ToolContext[] = [{
+      toolName: 'dispatch_research',
+      input: { query: 'frontier capabilities' },
+      result: {
+        success: true,
+        result: { workQueueUrl: actualUrl },
+      },
+      timestamp: new Date().toISOString(),
+    }];
+
+    const fixed = fixHallucinatedUrls(responseText, toolContexts);
+    expect(fixed).not.toContain('propagation-lag-distributed');
+    expect(fixed).toContain(actualUrl);
+  });
+
+  it('replaces fully fabricated URL (no matching page ID)', () => {
+    const actualUrl = 'https://www.notion.so/Research-real-abc123def456789012345678abcdef00';
+    const fabricatedUrl = 'https://www.notion.so/Research-fake-000000000000000000000000deadbeef';
+    const responseText = `Done! ${fabricatedUrl}`;
+    const toolContexts: ToolContext[] = [{
+      toolName: 'dispatch_research',
+      input: { query: 'test' },
+      result: {
+        success: true,
+        result: { workQueueUrl: actualUrl },
+      },
+      timestamp: new Date().toISOString(),
+    }];
+
+    const fixed = fixHallucinatedUrls(responseText, toolContexts);
+    expect(fixed).not.toContain('deadbeef');
+    expect(fixed).toContain(actualUrl);
   });
 });
 

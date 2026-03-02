@@ -241,8 +241,23 @@ export function fixHallucinatedUrls(responseText: string, toolContexts: ToolCont
     return `${responseText}\n\n📎 ${actualUrls[0]}`;
   }
 
+  // Extract page IDs from URLs for robust comparison (slug-independent)
+  const extractPageId = (url: string): string | null => {
+    const m = url.match(/([0-9a-f]{32})(?:[?#]|$)/i);
+    return m ? m[1].toLowerCase() : null;
+  };
+  const actualPageIds = new Set(actualUrls.map(extractPageId).filter(Boolean) as string[]);
+
   const uniqueMatches = [...new Set(matches)];
-  const isHallucinated = uniqueMatches.some(m => !actualUrls.includes(m));
+  const isHallucinated = uniqueMatches.some(m => {
+    // Exact match — URL is legit
+    if (actualUrls.includes(m)) return false;
+    // Page ID match with different slug — hallucinated slug but real page
+    const pid = extractPageId(m);
+    if (pid && actualPageIds.has(pid)) return true;
+    // No page ID match at all — fully fabricated
+    return true;
+  });
 
   if (isHallucinated) {
     logger.warn('HALLUCINATION DETECTED: Fixing fabricated Notion URLs', {
@@ -1353,7 +1368,7 @@ export async function orchestrateMessage(
         let toolResultContent: string;
         if (result.success) {
           const resultObj = result.result as Record<string, unknown> | undefined;
-          const url = resultObj?.url as string | undefined;
+          const url = (resultObj?.url ?? resultObj?.workQueueUrl) as string | undefined;
           const feedUrl = resultObj?.feedUrl as string | undefined;
 
           if (url || feedUrl) {
