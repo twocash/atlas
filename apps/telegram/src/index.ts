@@ -30,7 +30,7 @@ import { startReviewListener, stopReviewListener } from "./feed/review-listener"
 import { registerSelfModelProvider } from "../../../packages/bridge/src/context";
 import { createSelfModelProvider, setSelfModelProviderHooks } from "@atlas/agents/src/conversation/self-model-provider";
 import { setToolHooks } from "@atlas/agents/src/conversation/tools";
-import { getMcpStatus, listMcpTools, getMcpTools, isMcpTool, executeMcpTool } from "./mcp";
+import { getMcpStatus, listMcpTools, getMcpTools, isMcpTool, executeMcpTool, restartMcp } from "./mcp";
 import { existsSync, writeFileSync, unlinkSync, readFileSync } from "fs";
 import { join } from "path";
 
@@ -131,7 +131,7 @@ async function main() {
 
   // Wire MCP hooks into tool system + self-model provider
   // Must run after initMcp() so the real functions are available
-  setToolHooks({ getMcpTools, isMcpTool, executeMcpTool, getMcpStatus, listMcpTools });
+  setToolHooks({ getMcpTools, isMcpTool, executeMcpTool, getMcpStatus, restartMcp, listMcpTools });
   setSelfModelProviderHooks({ getMcpStatus, listMcpTools });
 
   // Register self-model data provider (STAB-001: Wire The Stack)
