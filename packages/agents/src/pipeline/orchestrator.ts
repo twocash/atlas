@@ -1388,6 +1388,24 @@ export async function orchestrateMessage(
     // Fix fabricated URLs
     responseText = fixHallucinatedUrls(responseText, toolContexts);
 
+    // Sprint C Bug 7+8: Grade + claim detection BEFORE audit write
+    const actionTypes = new Set(['Schedule', 'Build', 'Process', 'Triage']);
+    const nonResearchGrade = actionTypes.has(classification.requestType) ? 'grounded' : 'informed';
+    const { detectSensitiveClaims } = await import('../services/claim-detector');
+    const claims = detectSensitiveClaims(responseText);
+    if (claims.flags.length > 0) {
+      logger.info('Sensitive claims detected in conversational response', { flags: claims.flags, patterns: claims.matchedPatterns });
+    }
+    setProvenanceResult(chain, {
+      findingCount: 0,
+      citations: [],
+      ragChunks: [],
+      hallucinationDetected: false,
+      andonGrade: nonResearchGrade,
+      claimFlags: claims.flags,
+    });
+    finalizeProvenance(chain);
+
     // Build history response with tool context
     const historyResponse = toolContexts.length > 0
       ? `${responseText}\n\n${formatToolContextForHistory(toolContexts)}`
@@ -1483,21 +1501,8 @@ export async function orchestrateMessage(
       toolContexts.length > 0 ? toolContexts : undefined
     );
 
-    // Sprint C Bug 1: Grade finalization on ALL exit paths (not just research)
-    // Action requests (Schedule, Build, Process) are grounded — Atlas executing, not claiming.
-    // Chat/Quick/Answer are informed — Atlas answering from knowledge, no external grounding.
-    // Research/Draft get graded by Andon Gate downstream, so 'informed' is a safe default here.
-    const actionTypes = new Set(['Schedule', 'Build', 'Process', 'Triage']);
-    const nonResearchGrade = actionTypes.has(classification.requestType) ? 'grounded' : 'informed';
-
-    setProvenanceResult(chain, {
-      findingCount: 0,
-      citations: [],
-      ragChunks: [],
-      hallucinationDetected: false,
-      andonGrade: nonResearchGrade,
-    });
-    finalizeProvenance(chain);
+    // Sprint C Bug 7: Grade finalization moved BEFORE audit write (see line ~1389)
+    // Chain is already finalized with grade + claimFlags at that point.
 
     // Send response (handle long messages)
     const formattedResponse = hooks.formatResponse(responseText);
@@ -1699,6 +1704,26 @@ export async function orchestrateResolvedContext(
   );
   appendPath(chain, 'orchestrator');
 
+  // Sprint C Bug 7+8: Grade + claim detection BEFORE audit write
+  // Resolved context is a capture (user answered Socratic question) — grade by action type.
+  // Research/Draft dispatches get re-graded by Andon downstream; 'informed' is safe default.
+  const resolvedActionTypes = new Set(['Schedule', 'Build', 'Process', 'Triage']);
+  const resolvedGrade = resolvedActionTypes.has(input.requestType) ? 'grounded' : 'informed';
+  const { detectSensitiveClaims } = await import('../services/claim-detector');
+  const resolvedClaims = detectSensitiveClaims(content + ' ' + title);
+  if (resolvedClaims.flags.length > 0) {
+    logger.info('Sensitive claims detected in resolved context', { flags: resolvedClaims.flags, patterns: resolvedClaims.matchedPatterns });
+  }
+  setProvenanceResult(chain, {
+    findingCount: 0,
+    citations: [],
+    ragChunks: [],
+    hallucinationDetected: false,
+    andonGrade: resolvedGrade,
+    claimFlags: resolvedClaims.flags,
+  });
+  finalizeProvenance(chain);
+
   try {
     // ── AUDIT TRAIL ──────────────────────────────────────
     const auditStep = addStep(trace, 'audit-trail');
@@ -1738,7 +1763,7 @@ export async function orchestrateResolvedContext(
         });
       }
       completeTrace(trace);
-      finalizeProvenance(chain);
+      // Chain already finalized before audit write (Bug 7 fix)
       return null;
     }
 
@@ -1778,9 +1803,7 @@ export async function orchestrateResolvedContext(
     }
 
     completeTrace(trace);
-
-    // Sprint C: Finalize provenance and attach to result
-    finalizeProvenance(chain);
+    // Chain already finalized before audit write (Bug 7 fix)
 
     logger.info('Resolved context orchestrated', {
       userId,
@@ -1799,7 +1822,7 @@ export async function orchestrateResolvedContext(
 
   } catch (error) {
     failTrace(trace, error instanceof Error ? error : String(error));
-    finalizeProvenance(chain);
+    // Chain already finalized before audit write (Bug 7 fix)
     logger.error('Resolved context orchestration error', {
       error: error instanceof Error ? error.message : String(error),
       userId,
