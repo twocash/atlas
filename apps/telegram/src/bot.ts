@@ -18,6 +18,7 @@ import { getHelpText } from "./commands/help";
 import { handleHealthCommand } from "./commands/health";
 import { initWorker, runWorkerCycle, startPolling, stopPolling, formatWorkerStatus } from "./worker";
 import { handleConversation, clearConversation } from "./conversation";
+import { reportFailure } from "@atlas/shared/error-escalation";
 import { formatStatsMessage, detectPatterns } from "@atlas/agents/src/conversation/stats";
 import { handleSkillsCommand } from "./handlers/skill-callback";
 import { requestStop } from "./skills";
@@ -192,7 +193,8 @@ export function createBot(): Bot<AtlasContext> {
       await handleAgentCommand(ctx);
     } catch (error) {
       logger.error("Error handling agent command", { error });
-      await ctx.reply("Agent command failed. Check logs.");
+      reportFailure('agent-command', error, { userId: ctx.from?.id });
+      await ctx.reply("Agent command failed. I've logged it.");
     }
   });
 
@@ -202,7 +204,8 @@ export function createBot(): Bot<AtlasContext> {
       await handleHealthCommand(ctx);
     } catch (error) {
       logger.error("Error running health check", { error });
-      await ctx.reply("Health check failed. Check logs.");
+      reportFailure('health-command', error, { userId: ctx.from?.id });
+      await ctx.reply("Health check failed. I've logged it.");
     }
   });
 
@@ -232,7 +235,8 @@ export function createBot(): Bot<AtlasContext> {
       }
     } catch (error) {
       logger.error("Error handling work command", { error });
-      await ctx.reply("Work command failed. Check logs.");
+      reportFailure('work-command', error, { userId: ctx.from?.id });
+      await ctx.reply("Work command failed. I've logged it.");
     }
   });
 
@@ -255,7 +259,8 @@ export function createBot(): Bot<AtlasContext> {
       }
     } catch (error) {
       logger.error("Error generating stats", { error });
-      await ctx.reply("Stats generation failed. Check logs.");
+      reportFailure('stats-command', error, { userId: ctx.from?.id });
+      await ctx.reply("Stats generation failed. I've logged it.");
     }
   });
 
@@ -266,7 +271,8 @@ export function createBot(): Bot<AtlasContext> {
       await handleSkillsCommand(ctx);
     } catch (error) {
       logger.error("Error handling skills command", { error });
-      await ctx.reply("Skills command failed. Check logs.");
+      reportFailure('skills-command', error, { userId: ctx.from?.id });
+      await ctx.reply("Skills command failed. I've logged it.");
     }
   });
 
@@ -331,7 +337,8 @@ export function createBot(): Bot<AtlasContext> {
         await ctx.reply("✅ Briefing sent.");
       } catch (error) {
         logger.error("Failed to send manual briefing", { error });
-        await ctx.reply("Failed to send briefing. Check logs.");
+        reportFailure('briefing-command', error, { userId: ctx.from?.id });
+        await ctx.reply("Failed to send briefing. I've logged it.");
       }
     } else if (args === "status") {
       const status = briefingSystem.getStatus();
@@ -372,7 +379,10 @@ export function createBot(): Bot<AtlasContext> {
       }
     } catch (error) {
       logger.error("Error handling message", { error });
-      await ctx.reply("Something went wrong. Please try again.");
+      reportFailure('conversation-handler', error, { userId: ctx.from?.id });
+      const errMsg = error instanceof Error ? error.message : String(error);
+      const brief = errMsg.length > 80 ? errMsg.substring(0, 80) + '...' : errMsg;
+      await ctx.reply(`Hit an error processing that message: ${brief}\n\nI've logged it. You can retry or rephrase.`);
     }
   });
 
@@ -383,7 +393,8 @@ export function createBot(): Bot<AtlasContext> {
         await handleConversation(ctx);
       } catch (error) {
         logger.error("Error handling photo", { error });
-        await ctx.reply("Couldn't process that image. Try again?");
+        reportFailure('conversation-handler', error, { userId: ctx.from?.id, type: 'photo' });
+        await ctx.reply("Hit an error processing that image. I've logged it.");
       }
     });
 
@@ -392,7 +403,8 @@ export function createBot(): Bot<AtlasContext> {
         await handleConversation(ctx);
       } catch (error) {
         logger.error("Error handling document", { error });
-        await ctx.reply("Couldn't process that document. Try again?");
+        reportFailure('conversation-handler', error, { userId: ctx.from?.id, type: 'document' });
+        await ctx.reply("Hit an error processing that document. I've logged it.");
       }
     });
 
@@ -401,7 +413,8 @@ export function createBot(): Bot<AtlasContext> {
         await handleConversation(ctx);
       } catch (error) {
         logger.error("Error handling voice", { error });
-        await ctx.reply("Couldn't process that voice message. Try again?");
+        reportFailure('conversation-handler', error, { userId: ctx.from?.id, type: 'voice' });
+        await ctx.reply("Hit an error processing that voice message. I've logged it.");
       }
     });
 
@@ -410,7 +423,8 @@ export function createBot(): Bot<AtlasContext> {
         await handleConversation(ctx);
       } catch (error) {
         logger.error("Error handling video", { error });
-        await ctx.reply("Couldn't process that video. Try again?");
+        reportFailure('conversation-handler', error, { userId: ctx.from?.id, type: 'video' });
+        await ctx.reply("Hit an error processing that video. I've logged it.");
       }
     });
   }
@@ -421,6 +435,7 @@ export function createBot(): Bot<AtlasContext> {
       await routeCallback(ctx);
     } catch (error) {
       logger.error("Error handling callback", { error });
+      reportFailure('callback-handler', error, { userId: ctx.from?.id });
       // Use safe answer to handle expired callbacks gracefully
       await safeAnswerCallback(ctx, "Error processing. Try again.", {
         fallbackMessage: "⚠️ Error processing that request. Please try again."
