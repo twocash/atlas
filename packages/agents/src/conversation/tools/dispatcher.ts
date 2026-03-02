@@ -513,9 +513,10 @@ async function routeToWorkQueue(params: {
       };
     }
 
+    const isResearch = category === 'research';
     const message = requireReview
-      ? 'Ticket created in CAPTURED status. Review and update to Triaged when ready for execution.'
-      : 'Ticket created in TRIAGED status. The Active Worker will pick this up.';
+      ? `Work Queue item created in CAPTURED status. Awaiting review${isResearch ? ' — no research agent launched' : ''}.`
+      : `Work Queue item created in TRIAGED status. Queued for worker pickup${isResearch ? ' — no research agent launched. Tell Jim it is queued, NOT running' : ''}.`;
 
     return {
       success: true,
@@ -524,6 +525,7 @@ async function routeToWorkQueue(params: {
         url,
         status: initialStatus,
         type: typeMap[category],
+        dispatched: false,
         message,
       },
     };

@@ -1,37 +1,22 @@
 /**
- * socratic-exit-signals.test.ts — Sprint C: Bugs 2 & 3
+ * socratic-exit-signals.test.ts — Sprint C: Bug 2 + Gate 3 Architecture
  *
- * Tests exit signal detection and intent-break detection for the
- * Socratic loop. These are the helper functions used by Gate 3
- * in the orchestrator.
+ * Tests exit signal detection for the Socratic loop.
+ *
+ * Intent-break detection (isSocraticIntentBreak) was REMOVED in the
+ * P0 fix for session abandonment. The token-overlap heuristic was
+ * fundamentally wrong for conversational answers — Socratic answers
+ * are ACTION-oriented ("research this") not CONTENT-oriented, so they
+ * naturally have zero overlap with the original URL/title.
+ *
+ * The Socratic engine's answer() method (Haiku + regex fallback) is
+ * now the authoritative judge. handleSocraticAnswer() is the default
+ * path for all non-URL, non-exit-signal messages when a session is active.
  */
 
 import { describe, it, expect } from 'bun:test';
 
-// ─── Import the functions under test ─────────────────────
-// These are module-private in orchestrator.ts, so we test via
-// re-implementation of the same logic. This validates the algorithm.
-
-const STOP_WORDS = new Set([
-  'the', 'a', 'an', 'is', 'are', 'was', 'were', 'be', 'been', 'being',
-  'have', 'has', 'had', 'do', 'does', 'did', 'will', 'would', 'could',
-  'should', 'may', 'might', 'shall', 'can', 'to', 'of', 'in', 'for',
-  'on', 'with', 'at', 'by', 'from', 'as', 'into', 'about', 'between',
-  'through', 'after', 'before', 'during', 'and', 'but', 'or', 'nor',
-  'not', 'so', 'yet', 'both', 'either', 'neither', 'each', 'every',
-  'this', 'that', 'these', 'those', 'it', 'its', 'my', 'your', 'his',
-  'her', 'our', 'their', 'what', 'which', 'who', 'whom', 'how', 'when',
-  'where', 'why', 'all', 'any', 'some', 'no', 'than', 'too', 'very',
-  'just', 'also', 'now', 'then', 'here', 'there', 'i', 'me', 'you',
-  'he', 'she', 'we', 'they', 'them', 'up', 'out', 'if',
-]);
-
-function extractTokens(text: string): string[] {
-  return text.toLowerCase()
-    .replace(/[^a-z0-9\s]/g, ' ')
-    .split(/\s+/)
-    .filter(w => w.length > 3 && !STOP_WORDS.has(w));
-}
+// ─── Exit signal detection (re-implementation for unit testing) ───
 
 const EXIT_SIGNALS = new Set([
   'nevermind', 'never mind', 'nvm',
@@ -47,28 +32,6 @@ const EXIT_SIGNALS = new Set([
 function isSocraticExitSignal(text: string): boolean {
   const normalized = text.trim().toLowerCase().replace(/[.!,?]+$/g, '');
   return EXIT_SIGNALS.has(normalized);
-}
-
-function isSocraticIntentBreak(
-  text: string,
-  session: { content: string; title: string } | undefined,
-): boolean {
-  if (!session) return false;
-
-  const msgTokens = extractTokens(text);
-  const sessionTokens = extractTokens(session.content + ' ' + session.title);
-
-  if (msgTokens.length < 3) return false;
-
-  const overlap = msgTokens.filter(t => sessionTokens.includes(t)).length;
-  const overlapRatio = sessionTokens.length > 0 ? overlap / msgTokens.length : 0;
-
-  const isInterrogative = text.includes('?') && text.length > 50;
-
-  if (isInterrogative && overlapRatio < 0.2) return true;
-  if (overlapRatio === 0 && text.length > 60) return true;
-
-  return false;
 }
 
 // ─── Bug 2: Exit Signal Detection ────────────────────────
@@ -132,55 +95,32 @@ describe('isSocraticExitSignal', () => {
   });
 });
 
-// ─── Bug 3: Intent-Break Detection ──────────────────────
+// ─── Gate 3 Architecture: Default Path Routing ───────────
+// Intent-break was removed. These messages previously triggered
+// false intent-break detection. They should now route to the
+// Socratic answer handler (handleSocraticAnswer), not to triage.
 
-describe('isSocraticIntentBreak', () => {
-  const monarchSession = {
-    content: 'Remind me tomorrow about the monarch deck at 9 a.m.',
-    title: 'Monarch deck reminder',
-  };
-
-  it('detects completely unrelated query', () => {
-    expect(isSocraticIntentBreak(
-      "What's the current state of edge AI inference chips — who's leading?",
-      monarchSession,
-    )).toBe(true);
+describe('Gate 3: Socratic answer is the default path', () => {
+  it('action-oriented answers are NOT exit signals', () => {
+    // These are the messages that previously triggered intent-break
+    // but are legitimate Socratic answers. They should NOT be exit signals,
+    // confirming they reach the default else branch (handleSocraticAnswer).
+    expect(isSocraticExitSignal('Research the underlying data and studies mentioned in this thread')).toBe(false);
+    expect(isSocraticExitSignal('Draft a thinkpiece about this for LinkedIn')).toBe(false);
+    expect(isSocraticExitSignal('Just bookmark it for now')).toBe(false);
+    expect(isSocraticExitSignal('Summarize the key takeaways and share with the team')).toBe(false);
+    expect(isSocraticExitSignal('Deep dive into the methodology they used')).toBe(false);
   });
 
-  it('does not break on short Socratic answers', () => {
-    // Typical Socratic answers are short
-    expect(isSocraticIntentBreak('The Grove', monarchSession)).toBe(false);
-    expect(isSocraticIntentBreak('Personal', monarchSession)).toBe(false);
-    expect(isSocraticIntentBreak('Consulting', monarchSession)).toBe(false);
+  it('long unrelated queries are NOT exit signals (handled by Socratic engine)', () => {
+    // These used to trigger intent-break. Now they go to the Socratic engine
+    // which has the full context to handle them appropriately.
+    expect(isSocraticExitSignal("What's the current state of edge AI inference chips?")).toBe(false);
+    expect(isSocraticExitSignal('I need to figure out the pricing strategy for our enterprise SaaS offering')).toBe(false);
   });
 
-  it('does not break on topically related answers', () => {
-    expect(isSocraticIntentBreak(
-      'This is about the monarch deck review for tomorrow',
-      monarchSession,
-    )).toBe(false);
-  });
-
-  it('detects long unrelated statement', () => {
-    expect(isSocraticIntentBreak(
-      'I need to figure out the pricing strategy for our enterprise SaaS offering before the board meeting',
-      monarchSession,
-    )).toBe(true);
-  });
-
-  it('returns false when no session', () => {
-    expect(isSocraticIntentBreak('anything', undefined)).toBe(false);
-  });
-
-  it('returns false for very short messages (not enough signal)', () => {
-    expect(isSocraticIntentBreak('yes', monarchSession)).toBe(false);
-    expect(isSocraticIntentBreak('do it', monarchSession)).toBe(false);
-  });
-
-  it('detects interrogative with zero overlap', () => {
-    expect(isSocraticIntentBreak(
-      'How does transformer architecture handle attention in multi-head scenarios?',
-      monarchSession,
-    )).toBe(true);
+  it('URLs in messages are handled by the URL check, not exit signals', () => {
+    // URL-in-message cancels the session (separate Gate 3 check), not exit signals
+    expect(isSocraticExitSignal('https://example.com/some-article')).toBe(false);
   });
 });
