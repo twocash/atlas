@@ -96,6 +96,29 @@ import {
 } from '../provenance';
 import type { ProvenanceChain } from '../types/provenance';
 
+/**
+ * Extract RAG chunk references from enriched context.
+ * Chunks from domain-rag-slot are formatted as `[Document Title]` headers.
+ * Returns array of chunk references like `rag:Document Title`.
+ */
+function extractRagChunkRefs(enrichedContext: string | undefined, slotsUsed: string[] | undefined): string[] {
+  if (!enrichedContext || !slotsUsed?.includes('domain_rag')) return [];
+  const matches = enrichedContext.match(/\[([^\]]{3,})\]/g);
+  if (!matches) return [];
+  // Dedupe and prefix with rag: for provenance tracking
+  const seen = new Set<string>();
+  const refs: string[] = [];
+  for (const m of matches) {
+    const title = m.slice(1, -1).trim();
+    // Filter out non-document references (short labels, markdown links, etc.)
+    if (title.length > 2 && !title.startsWith('http') && !seen.has(title)) {
+      seen.add(title);
+      refs.push(`rag:${title}`);
+    }
+  }
+  return refs;
+}
+
 // ─── Anthropic Client ───────────────────────────────────
 
 const anthropic = new Anthropic({
@@ -1424,10 +1447,11 @@ export async function orchestrateMessage(
     if (claims.flags.length > 0) {
       logger.info('Sensitive claims detected in conversational response', { flags: claims.flags, patterns: claims.matchedPatterns });
     }
+    const ragChunkRefs = extractRagChunkRefs(contextEnrichment?.enrichedContext, contextEnrichment?.slotsUsed);
     setProvenanceResult(chain, {
       findingCount: 0,
       citations: [],
-      ragChunks: [],
+      ragChunks: ragChunkRefs,
       hallucinationDetected: false,
       andonGrade: nonResearchGrade,
       claimFlags: claims.flags,

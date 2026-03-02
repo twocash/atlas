@@ -406,3 +406,4 @@ export {
 } from "./provenance";
 export { renderProvenanceNotion } from "./provenance/render";
 export type { ProvenanceConfig } from "./types/provenance";
+export { updateFeedProvenance } from "./conversation/audit";

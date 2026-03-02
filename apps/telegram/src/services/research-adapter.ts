@@ -23,6 +23,7 @@ import {
   type AndonInput,
   orchestrateResearch,
   type ProvenanceChain,
+  updateFeedProvenance,
 } from "../../../../packages/agents/src";
 import { renderProvenanceTelegram } from "./provenance-render";
 
@@ -117,13 +118,11 @@ export async function sendCompletionNotification(
     if (provenanceChain) {
       message += `\n\n${renderProvenanceTelegram(provenanceChain)}`;
 
-      // Sprint C: Post-hoc Feed provenance update
+      // Sprint C: Post-hoc Feed provenance update (backfill citations + grade after research)
       if (feedId) {
-        import('../../../../packages/agents/src/conversation/audit').then(({ updateFeedProvenance }) => {
-          updateFeedProvenance(feedId, provenanceChain).catch(err =>
-            logger.warn('Feed provenance update failed (non-fatal)', { error: (err as Error).message })
-          );
-        }).catch(() => { /* dynamic import fail — non-fatal */ });
+        updateFeedProvenance(feedId, provenanceChain)
+          .then(() => logger.info('Feed provenance backfilled', { feedId, citations: provenanceChain.result.citations.length }))
+          .catch(err => logger.warn('Feed provenance update failed (non-fatal)', { feedId, error: (err as Error).message }));
       }
     }
 
