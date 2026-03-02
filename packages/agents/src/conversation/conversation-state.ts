@@ -16,7 +16,10 @@
  * Sprint: SESSION-STATE-FOUNDATION
  */
 
+import { readFileSync, writeFileSync, existsSync, mkdirSync } from 'fs';
+import { join } from 'path';
 import { logger } from '../logger';
+import { reportFailure } from '@atlas/shared/error-escalation';
 import type { RequestAssessment, AssessmentContext } from '../assessment/types';
 import type { ApproachProposal } from '../assessment/types';
 import type { DialogueState } from '../dialogue/types';
@@ -208,11 +211,137 @@ const STATE_TTL_MS = 15 * 60 * 1000;
  */
 const states = new Map<number, ConversationState>();
 
+// ─── Disk Persistence (Sprint: STATE-PERSIST) ────────────
+
+const STATE_FILE = join(process.cwd(), 'data', 'conversation-state.json');
+const SAVE_DEBOUNCE_MS = 2000;
+let saveTimer: ReturnType<typeof setTimeout> | null = null;
+let rehydrated = false;
+let lastWriteFailureAt = 0;
+const WRITE_FAILURE_COOLDOWN_MS = 5 * 60 * 1000;
+
+interface PersistedStore {
+  version: 1;
+  states: Record<string, ConversationState>;
+  pendingContent: Record<string, PendingContent>;
+  savedAt: string;
+}
+
+/**
+ * JSON replacer: strip non-serializable fields (Buffer).
+ */
+function persistReplacer(_key: string, value: unknown): unknown {
+  if (value instanceof Buffer || (value && typeof value === 'object' && (value as Record<string, unknown>).type === 'Buffer')) {
+    return undefined;
+  }
+  return value;
+}
+
+/**
+ * Schedule a debounced write to disk after any mutation.
+ * First write failure → reportFailure(). Subsequent within 5min → logger.warn().
+ */
+function scheduleSave(): void {
+  if (saveTimer) clearTimeout(saveTimer);
+  saveTimer = setTimeout(() => {
+    saveTimer = null;
+    try {
+      const dir = join(process.cwd(), 'data');
+      if (!existsSync(dir)) mkdirSync(dir, { recursive: true });
+
+      const store: PersistedStore = {
+        version: 1,
+        states: Object.fromEntries(states),
+        pendingContent: Object.fromEntries(pendingContentStore),
+        savedAt: new Date().toISOString(),
+      };
+      writeFileSync(STATE_FILE, JSON.stringify(store, persistReplacer, 2), 'utf-8');
+    } catch (error) {
+      const now = Date.now();
+      if (now - lastWriteFailureAt > WRITE_FAILURE_COOLDOWN_MS) {
+        lastWriteFailureAt = now;
+        reportFailure('conversation-state-persist', error, {
+          suggestedFix: 'Check data/ directory exists and is writable',
+        });
+      } else {
+        logger.warn('[ConversationState] Write failed (cooldown)', { error });
+      }
+    }
+  }, SAVE_DEBOUNCE_MS);
+}
+
+/**
+ * Lazy rehydration from disk on first read.
+ * Prunes expired entries, re-establishes PendingContent expiry timers.
+ */
+function rehydrateFromDisk(): void {
+  if (rehydrated) return;
+  rehydrated = true;
+
+  if (!existsSync(STATE_FILE)) return;
+
+  try {
+    const raw = readFileSync(STATE_FILE, 'utf-8');
+    const store = JSON.parse(raw) as PersistedStore;
+
+    if (store.version !== 1) {
+      logger.warn('[ConversationState] Unknown version, skipping rehydration', { version: store.version });
+      return;
+    }
+
+    const now = Date.now();
+    let loaded = 0;
+    let pruned = 0;
+
+    // Rehydrate conversation states
+    for (const [key, state] of Object.entries(store.states)) {
+      if (now - state.lastActivity > STATE_TTL_MS) {
+        pruned++;
+        continue;
+      }
+      states.set(Number(key), state);
+      loaded++;
+    }
+
+    // Rehydrate pending content + re-establish expiry timers
+    let pendingLoaded = 0;
+    for (const [key, content] of Object.entries(store.pendingContent ?? {})) {
+      const age = now - content.timestamp;
+      if (age > PENDING_CONTENT_EXPIRY_MS) continue;
+
+      // Strip mediaBuffer if it somehow survived serialization
+      const { mediaBuffer: _, ...safeContent } = content as PendingContent & { mediaBuffer?: unknown };
+      pendingContentStore.set(key, safeContent as PendingContent);
+
+      // Re-establish expiry timer for remaining TTL
+      const remainingMs = PENDING_CONTENT_EXPIRY_MS - age;
+      setTimeout(() => {
+        if (pendingContentStore.has(key)) {
+          pendingContentStore.delete(key);
+          logger.debug('Expired rehydrated pending content', { requestId: key });
+        }
+      }, remainingMs);
+      pendingLoaded++;
+    }
+
+    if (loaded > 0 || pendingLoaded > 0) {
+      logger.info('[ConversationState] Rehydrated from disk', {
+        states: loaded,
+        pruned,
+        pendingContent: pendingLoaded,
+      });
+    }
+  } catch (error) {
+    logger.warn('[ConversationState] Failed to rehydrate from disk, starting fresh', { error });
+  }
+}
+
 /**
  * Get or create a conversation state for a chat.
  * If an existing state is expired, creates a fresh one.
  */
 export function getOrCreateState(chatId: number, userId: number): ConversationState {
+  rehydrateFromDisk();
   const existing = states.get(chatId);
   if (existing && !isExpired(existing)) {
     return existing;
@@ -228,6 +357,7 @@ export function getOrCreateState(chatId: number, userId: number): ConversationSt
     lastActivity: Date.now(),
   };
   states.set(chatId, state);
+  scheduleSave();
   return state;
 }
 
@@ -235,6 +365,7 @@ export function getOrCreateState(chatId: number, userId: number): ConversationSt
  * Get a conversation state by chat ID. Returns undefined if not found or expired.
  */
 export function getState(chatId: number): ConversationState | undefined {
+  rehydrateFromDisk();
   const state = states.get(chatId);
   if (!state) return undefined;
   if (isExpired(state)) {
@@ -248,6 +379,7 @@ export function getState(chatId: number): ConversationState | undefined {
  * Get a conversation state by user ID. Searches all states.
  */
 export function getStateByUserId(userId: number): ConversationState | undefined {
+  rehydrateFromDisk();
   for (const state of states.values()) {
     if (state.userId === userId) {
       if (isExpired(state)) {
@@ -268,6 +400,7 @@ export function updateState(chatId: number, updates: Partial<ConversationState>)
   if (!state) return undefined;
 
   Object.assign(state, updates, { lastActivity: Date.now() });
+  scheduleSave();
   return state;
 }
 
@@ -293,6 +426,7 @@ export function recordTurn(chatId: number, userId: number, intentHash?: string):
     state.lastIntentHash = intentHash;
   }
   state.lastActivity = Date.now();
+  scheduleSave();
 
   return {
     sessionId: state.sessionId,
@@ -324,6 +458,7 @@ export function storeContentContext(
     hasPreRead: !!context.preReadSummary,
     hasUrlContent: !!context.prefetchedUrlContent,
   });
+  scheduleSave();
 }
 
 /**
@@ -351,6 +486,7 @@ export function storeSocraticAnswer(chatId: number, answer: string): void {
       chatId,
       answerLength: answer.length,
     });
+    scheduleSave();
   }
 }
 
@@ -373,6 +509,7 @@ export function storeTriage(chatId: number, triage: TriageResult): void {
   if (state && !isExpired(state)) {
     state.lastTriage = triage;
     state.lastActivity = Date.now();
+    scheduleSave();
   }
 }
 
@@ -390,6 +527,7 @@ export function storeAssessment(
     state.lastAssessment = assessment;
     state.lastAssessmentContext = assessmentContext;
     state.lastActivity = Date.now();
+    scheduleSave();
   }
 }
 
@@ -415,6 +553,7 @@ export function enterSocraticPhase(
     sessionId: socratic.sessionId,
     questionCount: socratic.questions.length,
   });
+  scheduleSave();
 }
 
 /**
@@ -437,6 +576,7 @@ export function enterDialoguePhase(
     terrain: dialogue.dialogueState.terrain,
     turnCount: dialogue.dialogueState.turnCount,
   });
+  scheduleSave();
 }
 
 /**
@@ -459,6 +599,7 @@ export function enterApprovalPhase(
     stepsCount: approval.proposal.steps.length,
     hasRefinedRequest: !!approval.refinedRequest,
   });
+  scheduleSave();
 }
 
 /**
@@ -495,6 +636,7 @@ export function enterGoalClarificationPhase(
     targetField,
     clarificationRound,
   });
+  scheduleSave();
 }
 
 /**
@@ -514,6 +656,7 @@ export function returnToIdle(chatId: number): void {
     state.goalDeferredExecution = undefined;
     state.goalTracker = undefined;
     state.lastActivity = Date.now();
+    scheduleSave();
   }
 }
 
@@ -542,6 +685,7 @@ export function isInPhase(userId: number, phase: ActivePhase): boolean {
  */
 export function clearState(chatId: number): void {
   states.delete(chatId);
+  scheduleSave();
 }
 
 /**
@@ -573,6 +717,7 @@ export function getStateCount(): number {
 export function clearAllStates(): void {
   states.clear();
   pendingContentStore.clear();
+  scheduleSave();
 }
 
 // ─── Pending Content (co-located, keyed by requestId) ───
@@ -611,6 +756,7 @@ export function storePendingContent(content: PendingContent): void {
     pillar: content.pillar,
     requestType: content.requestType,
   });
+  scheduleSave();
 }
 
 /**
@@ -627,6 +773,7 @@ export function updatePendingContent(requestId: string, updates: Partial<Pending
   const existing = pendingContentStore.get(requestId);
   if (!existing) return false;
   pendingContentStore.set(requestId, { ...existing, ...updates });
+  scheduleSave();
   return true;
 }
 
@@ -634,7 +781,9 @@ export function updatePendingContent(requestId: string, updates: Partial<Pending
  * Remove pending content (after confirm/skip).
  */
 export function removePendingContent(requestId: string): boolean {
-  return pendingContentStore.delete(requestId);
+  const deleted = pendingContentStore.delete(requestId);
+  if (deleted) scheduleSave();
+  return deleted;
 }
 
 /**
@@ -655,4 +804,44 @@ export function clearAllPending(): void {
 
 function isExpired(state: ConversationState): boolean {
   return Date.now() - state.lastActivity > STATE_TTL_MS;
+}
+
+// ─── Test Helpers (Sprint: STATE-PERSIST) ────────────────
+
+/** Force rehydration from disk. For testing only. */
+export function _rehydrateForTesting(): void {
+  rehydrated = false;
+  rehydrateFromDisk();
+}
+
+/** Flush pending save synchronously. For testing only. */
+export function _flushForTesting(): void {
+  if (saveTimer) {
+    clearTimeout(saveTimer);
+    saveTimer = null;
+  }
+  try {
+    const dir = join(process.cwd(), 'data');
+    if (!existsSync(dir)) mkdirSync(dir, { recursive: true });
+
+    const store: PersistedStore = {
+      version: 1,
+      states: Object.fromEntries(states),
+      pendingContent: Object.fromEntries(pendingContentStore),
+      savedAt: new Date().toISOString(),
+    };
+    writeFileSync(STATE_FILE, JSON.stringify(store, persistReplacer, 2), 'utf-8');
+  } catch (error) {
+    logger.warn('[ConversationState] Test flush failed', { error });
+  }
+}
+
+/** Reset rehydration flag. For testing only. */
+export function _resetRehydrationFlag(): void {
+  rehydrated = false;
+}
+
+/** Get the state file path. For testing only. */
+export function _getStateFilePath(): string {
+  return STATE_FILE;
 }
