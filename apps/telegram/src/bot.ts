@@ -19,6 +19,7 @@ import { handleHealthCommand } from "./commands/health";
 import { initWorker, runWorkerCycle, startPolling, stopPolling, formatWorkerStatus } from "./worker";
 import { handleConversation, clearConversation } from "./conversation";
 import { reportFailure } from "@atlas/shared/error-escalation";
+import { buildErrorReport } from "./utils/error-report";
 import { formatStatsMessage, detectPatterns } from "@atlas/agents/src/conversation/stats";
 import { handleSkillsCommand } from "./handlers/skill-callback";
 import { requestStop } from "./skills";
@@ -194,7 +195,8 @@ export function createBot(): Bot<AtlasContext> {
     } catch (error) {
       logger.error("Error handling agent command", { error });
       reportFailure('agent-command', error, { userId: ctx.from?.id });
-      await ctx.reply("Agent command failed. I've logged it.");
+      const report = buildErrorReport({ subsystem: '/agent command', error, userInput: ctx.message?.text });
+      await ctx.reply(report, { parse_mode: 'HTML' });
     }
   });
 
@@ -205,7 +207,8 @@ export function createBot(): Bot<AtlasContext> {
     } catch (error) {
       logger.error("Error running health check", { error });
       reportFailure('health-command', error, { userId: ctx.from?.id });
-      await ctx.reply("Health check failed. I've logged it.");
+      const report = buildErrorReport({ subsystem: '/health command', error });
+      await ctx.reply(report, { parse_mode: 'HTML' });
     }
   });
 
@@ -236,7 +239,8 @@ export function createBot(): Bot<AtlasContext> {
     } catch (error) {
       logger.error("Error handling work command", { error });
       reportFailure('work-command', error, { userId: ctx.from?.id });
-      await ctx.reply("Work command failed. I've logged it.");
+      const report = buildErrorReport({ subsystem: '/work command', error, userInput: ctx.message?.text });
+      await ctx.reply(report, { parse_mode: 'HTML' });
     }
   });
 
@@ -260,7 +264,8 @@ export function createBot(): Bot<AtlasContext> {
     } catch (error) {
       logger.error("Error generating stats", { error });
       reportFailure('stats-command', error, { userId: ctx.from?.id });
-      await ctx.reply("Stats generation failed. I've logged it.");
+      const report = buildErrorReport({ subsystem: '/stats command', error });
+      await ctx.reply(report, { parse_mode: 'HTML' });
     }
   });
 
@@ -272,7 +277,8 @@ export function createBot(): Bot<AtlasContext> {
     } catch (error) {
       logger.error("Error handling skills command", { error });
       reportFailure('skills-command', error, { userId: ctx.from?.id });
-      await ctx.reply("Skills command failed. I've logged it.");
+      const report = buildErrorReport({ subsystem: '/skills command', error });
+      await ctx.reply(report, { parse_mode: 'HTML' });
     }
   });
 
@@ -338,7 +344,8 @@ export function createBot(): Bot<AtlasContext> {
       } catch (error) {
         logger.error("Failed to send manual briefing", { error });
         reportFailure('briefing-command', error, { userId: ctx.from?.id });
-        await ctx.reply("Failed to send briefing. I've logged it.");
+        const report = buildErrorReport({ subsystem: '/briefing command', error });
+        await ctx.reply(report, { parse_mode: 'HTML' });
       }
     } else if (args === "status") {
       const status = briefingSystem.getStatus();
@@ -380,9 +387,13 @@ export function createBot(): Bot<AtlasContext> {
     } catch (error) {
       logger.error("Error handling message", { error });
       reportFailure('conversation-handler', error, { userId: ctx.from?.id });
-      const errMsg = error instanceof Error ? error.message : String(error);
-      const brief = errMsg.length > 80 ? errMsg.substring(0, 80) + '...' : errMsg;
-      await ctx.reply(`Hit an error processing that message: ${brief}\n\nI've logged it. You can retry or rephrase.`);
+      const report = buildErrorReport({
+        subsystem: 'Conversation handler',
+        error,
+        userInput: ctx.message?.text,
+        inputType: 'text',
+      });
+      await ctx.reply(report, { parse_mode: 'HTML' });
     }
   });
 
@@ -394,7 +405,8 @@ export function createBot(): Bot<AtlasContext> {
       } catch (error) {
         logger.error("Error handling photo", { error });
         reportFailure('conversation-handler', error, { userId: ctx.from?.id, type: 'photo' });
-        await ctx.reply("Hit an error processing that image. I've logged it.");
+        const report = buildErrorReport({ subsystem: 'Conversation handler', error, userInput: ctx.message?.caption, inputType: 'photo' });
+        await ctx.reply(report, { parse_mode: 'HTML' });
       }
     });
 
@@ -404,7 +416,8 @@ export function createBot(): Bot<AtlasContext> {
       } catch (error) {
         logger.error("Error handling document", { error });
         reportFailure('conversation-handler', error, { userId: ctx.from?.id, type: 'document' });
-        await ctx.reply("Hit an error processing that document. I've logged it.");
+        const report = buildErrorReport({ subsystem: 'Conversation handler', error, userInput: ctx.message?.caption, inputType: 'document' });
+        await ctx.reply(report, { parse_mode: 'HTML' });
       }
     });
 
@@ -414,7 +427,8 @@ export function createBot(): Bot<AtlasContext> {
       } catch (error) {
         logger.error("Error handling voice", { error });
         reportFailure('conversation-handler', error, { userId: ctx.from?.id, type: 'voice' });
-        await ctx.reply("Hit an error processing that voice message. I've logged it.");
+        const report = buildErrorReport({ subsystem: 'Conversation handler', error, inputType: 'voice' });
+        await ctx.reply(report, { parse_mode: 'HTML' });
       }
     });
 
@@ -424,7 +438,8 @@ export function createBot(): Bot<AtlasContext> {
       } catch (error) {
         logger.error("Error handling video", { error });
         reportFailure('conversation-handler', error, { userId: ctx.from?.id, type: 'video' });
-        await ctx.reply("Hit an error processing that video. I've logged it.");
+        const report = buildErrorReport({ subsystem: 'Conversation handler', error, inputType: 'video' });
+        await ctx.reply(report, { parse_mode: 'HTML' });
       }
     });
   }
