@@ -185,6 +185,9 @@ export interface AuditEntry {
 
   // Intent-First Structured Context (Phase 0)
   structuredContext?: StructuredContext;
+
+  // Provenance (Sprint C)
+  provenanceChain?: import('../types/provenance').ProvenanceChain;
 }
 
 export interface AuditResult {
@@ -192,6 +195,7 @@ export interface AuditResult {
   workQueueId: string;
   feedUrl: string;
   workQueueUrl: string;
+  provenanceChain?: import('../types/provenance').ProvenanceChain;  // Sprint C
 }
 
 /**
@@ -324,6 +328,15 @@ async function createFeedEntry(entry: AuditEntry, traceId?: string): Promise<{ i
       if (ctx.format) {
         optionalProps['Format'] = { select: { name: capitalize(ctx.format) } };
       }
+    }
+
+    // Sprint C: Provenance properties
+    if (entry.provenanceChain) {
+      const { renderProvenanceCompact, getProvenanceGrade } = await import('../provenance/render');
+      optionalProps['Provenance Grade'] = { select: { name: getProvenanceGrade(entry.provenanceChain) } };
+      optionalProps['Provenance Chain'] = {
+        rich_text: [{ text: { content: renderProvenanceCompact(entry.provenanceChain).substring(0, 2000) } }],
+      };
     }
 
     // Update with optional fields if any exist
@@ -951,6 +964,32 @@ export async function logReclassification(
     logger.info('Reclassification logged', { workQueueId, originalPillar, newPillar });
   } catch (error) {
     logger.error('Failed to log reclassification', { error, workQueueId });
+  }
+}
+
+/**
+ * Update Feed 2.0 provenance after async research completes.
+ * Sprint C: The chain created at audit time won't have research phases yet
+ * (research runs asynchronously after audit). This writes the final chain.
+ */
+export async function updateFeedProvenance(feedId: string, chain: import('../types/provenance').ProvenanceChain): Promise<void> {
+  try {
+    const { renderProvenanceCompact, getProvenanceGrade } = await import('../provenance/render');
+    await notion.pages.update({
+      page_id: feedId,
+      properties: {
+        'Provenance Grade': { select: { name: getProvenanceGrade(chain) } },
+        'Provenance Chain': {
+          rich_text: [{ text: { content: renderProvenanceCompact(chain).substring(0, 2000) } }],
+        },
+      },
+    });
+    logger.debug('Feed provenance updated', { feedId, grade: getProvenanceGrade(chain) });
+  } catch (err) {
+    logger.warn('Feed provenance update failed (non-fatal)', {
+      feedId,
+      error: err instanceof Error ? err.message : String(err),
+    });
   }
 }
 

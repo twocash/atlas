@@ -81,6 +81,9 @@ export interface AndonInput {
   /** Source titles/descriptions for relevance scoring (Sprint B P1-2).
    *  Extracted from ResearchFinding.source + URL domain tokens. */
   sourceTitles?: string[];
+
+  /** Sensitive claim categories detected by claim-detector (Sprint C) */
+  claimFlags?: string[];
 }
 
 /**
@@ -211,6 +214,12 @@ export function assessOutput(input: AndonInput, thresholdOverrides?: Partial<And
   } else {
     confidence = 'speculative';
     reason = `Dispatched but zero qualifying sources (${input.sourceCount} found)`;
+  }
+
+  // Sprint C: Sensitive claims downgrade — grounded → informed when claims detected
+  if (input.claimFlags && input.claimFlags.length > 0 && confidence === 'grounded') {
+    confidence = 'informed';
+    reason += ` | Sensitive claims detected (${input.claimFlags.join(', ')}) — downgraded from grounded`;
   }
 
   const calibration = calibrateDelivery(confidence);

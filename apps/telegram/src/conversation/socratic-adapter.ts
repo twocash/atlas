@@ -581,6 +581,8 @@ async function handleResolved(
           : goalContext?.endState === 'summarize' ? 'synthesize' as ResearchIntent
           : parsed.intent,
         userDirection: answerContext,
+        // Sprint C: Chain continuity — pass orchestrator's chain to research
+        provenanceChain: result.provenanceChain,
       };
 
       // Research launch — goal confirmation was already sent above
@@ -593,7 +595,7 @@ async function handleResolved(
         result.workQueueId,
         'socratic-resolved',
       ).then(({ agent, result: researchResult, assessment }) =>
-        sendCompletionNotification(ctx.api, chatId, agent, researchResult, result.workQueueUrl, 'socratic-resolved', assessment),
+        sendCompletionNotification(ctx.api, chatId, agent, researchResult, result.workQueueUrl, 'socratic-resolved', assessment, result.feedId),
       ).catch((err: Error) => {
         logger.error('Research agent failed (Socratic path)', { error: err.message, title, source: 'socratic-resolved' });
         void ctx.api.sendMessage(chatId, `\u274C Research failed: ${err.message}`);

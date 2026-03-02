@@ -271,6 +271,7 @@ export async function orchestrateResearch(
         hasProseContent: !!(researchResult as any)?.proseContent,
         source,
         sourceTitles,
+        claimFlags: (result.output as any)?.claimFlags,  // Sprint C
       };
       assessment = assessOutput(andonInput, resolvedConfig.config.andonThresholds);
 

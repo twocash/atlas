@@ -215,6 +215,7 @@ async function executeDispatchResearch(
       contentMode: researchOutput?.contentMode as 'prose' | 'json' | undefined,
       hasProseContent: !!researchOutput?.proseContent,
       source: 'dispatch_research',
+      claimFlags: (result.output as any)?.claimFlags,  // Sprint C
     };
     const assessment = assessOutput(andonInput);
 

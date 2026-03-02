@@ -88,6 +88,7 @@ import { REACTIONS } from './types';
 import {
   createProvenanceChain,
   appendPath,
+  appendPhase,
   setConfig as setProvenanceConfig,
   setContext as setProvenanceContext,
   setResult as setProvenanceResult,
@@ -311,6 +312,9 @@ export async function orchestrateMessage(
     textLength: messageText.length,
     traceId: trace.traceId,
   });
+
+  // Sprint C: Provenance chain — tracks the full pipeline trace
+  const chain = createProvenanceChain('orchestrator', ['message-entry'], 'user-message');
 
   // Session telemetry
   const currentIntentHash = messageText ? getIntentHash(messageText).hash : undefined;
@@ -789,6 +793,15 @@ export async function orchestrateMessage(
       };
       storeTriageInState(chatId, preflightTriage);
 
+      // Sprint C: Record triage in provenance
+      appendPhase(chain, {
+        name: 'triage',
+        provider: preflightTriage.source === 'pattern_cache' ? 'pattern-cache' : 'claude-haiku',
+        tools: [],
+        durationMs: triageStep.durationMs ?? 0,
+      });
+      setProvenanceConfig(chain, { pillar: preflightTriage.pillar as Pillar });
+
       // Session tracking: patch turn with triage metadata (Bug #1 topic, #2 intent)
       if (process.env.ATLAS_SESSION_TRACKING !== 'false') {
         const triageTopic = preflightTriage.intent === 'command' && preflightTriage.command
@@ -1088,6 +1101,14 @@ export async function orchestrateMessage(
       stopReason: response.stop_reason,
     };
 
+    // Sprint C: Record Claude API phase in provenance
+    appendPhase(chain, {
+      name: 'claude-api',
+      provider: 'claude-sonnet-4',
+      tools: [],
+      durationMs: claudeStep.durationMs ?? 0,
+    });
+
     // Tool use loop
     let iterations = 0;
     let reactedWorking = false;
@@ -1123,6 +1144,14 @@ export async function orchestrateMessage(
         );
         completeStep(toolStep);
         toolStep.metadata = { ...toolStep.metadata, success: result.success };
+
+        // Sprint C: Record tool execution in provenance
+        appendPhase(chain, {
+          name: toolUse.name,
+          provider: 'claude-sonnet-4',
+          tools: [toolUse.name],
+          durationMs: toolStep.durationMs ?? 0,
+        });
 
         // LOW-CONFIDENCE ROUTING: Intercept needsChoice response
         if (toolUse.name === 'submit_ticket' && result.needsChoice) {
@@ -1303,6 +1332,8 @@ export async function orchestrateMessage(
           auditPillar
         ),
       }),
+      // Sprint C: Attach provenance chain
+      provenanceChain: chain,
     };
 
     const AUDIT_CONFIDENCE_THRESHOLD = 0.7;
@@ -1342,6 +1373,15 @@ export async function orchestrateMessage(
       } : (toolsUsed.length > 0 ? { toolsUsed } : undefined),
       toolContexts.length > 0 ? toolContexts : undefined
     );
+
+    // Sprint C: Finalize provenance chain
+    setProvenanceResult(chain, {
+      findingCount: 0,
+      citations: [],
+      ragChunks: [],
+      hallucinationDetected: false,
+    });
+    finalizeProvenance(chain);
 
     // Send response (handle long messages)
     const formattedResponse = hooks.formatResponse(responseText);
@@ -1565,6 +1605,8 @@ export async function orchestrateResolvedContext(
           metadata: input.goalMetadata,
         },
       }),
+      // Sprint C: Attach provenance chain
+      provenanceChain: chain,
     }, trace);
     completeStep(auditStep);
 
@@ -1580,6 +1622,7 @@ export async function orchestrateResolvedContext(
         });
       }
       completeTrace(trace);
+      finalizeProvenance(chain);
       return null;
     }
 
@@ -1620,6 +1663,9 @@ export async function orchestrateResolvedContext(
 
     completeTrace(trace);
 
+    // Sprint C: Finalize provenance and attach to result
+    finalizeProvenance(chain);
+
     logger.info('Resolved context orchestrated', {
       userId,
       pillar: input.pillar,
@@ -1633,10 +1679,11 @@ export async function orchestrateResolvedContext(
       traceDurationMs: trace.totalDurationMs,
     });
 
-    return auditResult;
+    return { ...auditResult, provenanceChain: chain };
 
   } catch (error) {
     failTrace(trace, error instanceof Error ? error : String(error));
+    finalizeProvenance(chain);
     logger.error('Resolved context orchestration error', {
       error: error instanceof Error ? error.message : String(error),
       userId,

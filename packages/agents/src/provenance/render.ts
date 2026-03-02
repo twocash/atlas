@@ -99,3 +99,52 @@ export function renderProvenanceNotion(chain: ProvenanceChain): string {
 
   return lines.join('\n');
 }
+
+// ─── Compact (Feed 2.0 rich_text) ────────────────────────
+
+/**
+ * Compact single-line rendering for Feed 2.0 rich_text (2000 char limit).
+ * Sprint C: Feed persistence.
+ */
+export function renderProvenanceCompact(chain: ProvenanceChain): string {
+  const parts: string[] = [];
+  parts.push(`Route: ${chain.route.path.join(' > ')}`);
+  parts.push(`Trigger: ${chain.route.trigger}`);
+  if (chain.config.depth) parts.push(`Depth: ${chain.config.depth}`);
+  if (chain.config.pillar) parts.push(`Pillar: ${chain.config.pillar}`);
+
+  if (chain.compute.phases.length > 0) {
+    const phases = chain.compute.phases.map(p =>
+      `${p.name}(${p.provider},${(p.durationMs / 1000).toFixed(1)}s)`
+    ).join(' > ');
+    parts.push(`Phases: ${phases}`);
+  }
+
+  parts.push(`Citations: ${chain.result.citations.length} web`);
+  parts.push(`RAG: ${chain.result.ragChunks.length} chunks`);
+  if (chain.result.claimFlags.length > 0) {
+    parts.push(`Claims: ${chain.result.claimFlags.join(', ')}`);
+  }
+
+  if (chain.result.andonGrade) {
+    const conf = chain.result.andonConfidence != null
+      ? ` (${(chain.result.andonConfidence * 100).toFixed(0)}%)` : '';
+    parts.push(`Grade: ${chain.result.andonGrade}${conf}`);
+  }
+
+  if (chain.time.totalDurationMs != null) {
+    parts.push(`Duration: ${(chain.time.totalDurationMs / 1000).toFixed(1)}s`);
+  }
+
+  return parts.join(' | ');
+}
+
+/**
+ * Extract Andon grade from chain for Feed 2.0 select property.
+ * Returns capitalized grade or 'Pending' if not yet assessed.
+ */
+export function getProvenanceGrade(chain: ProvenanceChain): string {
+  return chain.result.andonGrade
+    ? chain.result.andonGrade.charAt(0).toUpperCase() + chain.result.andonGrade.slice(1)
+    : 'Pending';
+}

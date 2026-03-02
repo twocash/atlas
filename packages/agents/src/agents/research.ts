@@ -1472,12 +1472,34 @@ export async function executeResearch(
       retries: 0,
     };
 
-    // Sprint A: Finalize provenance with result data
+    // Sprint C: Populate ragChunks with honest context source references
+    const ragChunkRefs: string[] = [];
+    if ((config as any).worldviewContext?.povTitle) {
+      ragChunkRefs.push(`pov:${(config as any).worldviewContext.povTitle}`);
+    }
+    if (config.sourceContent) {
+      ragChunkRefs.push('pre-reader:extracted');
+    }
+    if ((config as any).povContext?.title) {
+      ragChunkRefs.push(`pov-library:${(config as any).povContext.title}`);
+    }
+
+    // Sprint C: Detect sensitive claims
+    const { detectSensitiveClaims } = await import('../services/claim-detector');
+    const claimsText = researchResult.summary + ' ' +
+      (researchResult.findings?.map((f: any) => f.detail || f.claim || '').join(' ') ?? '');
+    const claims = detectSensitiveClaims(claimsText);
+    if (claims.flags.length > 0) {
+      console.log('[Research] Sensitive claims detected:', claims.flags, claims.matchedPatterns);
+    }
+
+    // Sprint A+C: Finalize provenance with result data + claims + ragChunks
     setResult(chain, {
       findingCount: researchResult.findings?.length ?? 0,
       citations: (response.citations || []).map((c: { url: string }) => c.url),
-      ragChunks: [],
+      ragChunks: ragChunkRefs,
       hallucinationDetected: false,
+      claimFlags: claims.flags,
     });
     chain.compute.apiCalls = apiCalls;
     finalizeProvenance(chain);
@@ -1489,6 +1511,7 @@ export async function executeResearch(
         ...researchResult,
         rawResponse: response.text, // Preserve complete Gemini output
         provenanceChain: chain,     // Sprint A: attach provenance for delivery
+        claimFlags: claims.flags,   // Sprint C: for downstream Andon
       },
       summary: researchResult.summary.substring(0, 500), // Brief preview for Notes field
       artifacts: researchResult.sources,

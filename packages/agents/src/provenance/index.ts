@@ -60,6 +60,7 @@ export function createProvenanceChain(
       ragChunks: [],
       findingCount: 0,
       hallucinationDetected: false,
+      claimFlags: [],
     },
     time: { startedAt: new Date().toISOString() },
   };
@@ -126,6 +127,7 @@ export function setResult(
   if (result.ragChunks) chain.result.ragChunks = result.ragChunks;
   if (result.findingCount !== undefined) chain.result.findingCount = result.findingCount;
   if (result.hallucinationDetected !== undefined) chain.result.hallucinationDetected = result.hallucinationDetected;
+  if (result.claimFlags) chain.result.claimFlags = result.claimFlags;
   return chain;
 }
 

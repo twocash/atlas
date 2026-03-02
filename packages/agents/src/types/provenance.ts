@@ -95,6 +95,8 @@ export interface ProvenanceResult {
   findingCount: number;
   /** Whether hallucination was detected */
   hallucinationDetected: boolean;
+  /** Sensitive claim categories detected: 'financial' | 'medical' | 'legal' */
+  claimFlags: string[];
 }
 
 // ─── Time ──────────────────────────────────────────────

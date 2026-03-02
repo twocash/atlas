@@ -74,6 +74,7 @@ export async function sendCompletionNotification(
   notionUrl?: string,
   source = 'unknown',
   precomputedAssessment?: AndonAssessment | null,
+  feedId?: string,
 ): Promise<void> {
   if (result.success) {
     const rr = result.output as ResearchResult | undefined;
@@ -115,6 +116,15 @@ export async function sendCompletionNotification(
     const provenanceChain = (result.output as any)?.provenanceChain as ProvenanceChain | undefined;
     if (provenanceChain) {
       message += `\n\n${renderProvenanceTelegram(provenanceChain)}`;
+
+      // Sprint C: Post-hoc Feed provenance update
+      if (feedId) {
+        import('../../../../packages/agents/src/conversation/audit').then(({ updateFeedProvenance }) => {
+          updateFeedProvenance(feedId, provenanceChain).catch(err =>
+            logger.warn('Feed provenance update failed (non-fatal)', { error: (err as Error).message })
+          );
+        }).catch(() => { /* dynamic import fail — non-fatal */ });
+      }
     }
 
     await api.sendMessage(chatId, message, { parse_mode: 'HTML' });
