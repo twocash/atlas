@@ -226,19 +226,28 @@ async function executeDispatchResearch(
       findingCount: andonInput.findingCount,
     });
 
+    // Sprint C Bug 6: Enforce Andon gate — low confidence MUST be visible to user
+    const isLowConfidence = assessment.confidence === 'speculative' || assessment.confidence === 'insufficient';
+    const caveatLines = isLowConfidence
+      ? ['\n\n⚠️ MANDATORY CAVEAT:', assessment.calibration.caveat, 'Sources: ' + assessment.confidence]
+      : [];
+    const andonEnforcement = caveatLines.join('\n');
+
     return {
       success: result.success,
       result: {
         // Andon-calibrated message — Claude MUST use this label, not invent its own
         message: result.success
-          ? `${assessment.calibration.emoji} ${assessment.calibration.label} — ${researchOutput?.sources?.length || 0} sources analyzed.`
+          ? `${assessment.calibration.emoji} ${assessment.calibration.label} — ${researchOutput?.sources?.length || 0} sources analyzed.${andonEnforcement}`
           : `Research failed: ${result.summary}`,
         query,
         depth,
         voice,
         pillar,
         workQueueUrl: notionUrl,
-        summary: researchOutput?.summary?.substring(0, 500),
+        summary: isLowConfidence
+          ? `⚠️ LOW CONFIDENCE — ${assessment.calibration.caveat}\n\n${researchOutput?.summary?.substring(0, 400) || ''}`
+          : researchOutput?.summary?.substring(0, 500),
         sourcesCount: researchOutput?.sources?.length || 0,
         findingsCount: researchOutput?.findings?.length || 0,
         // Andon Gate classification — CognitiveRouter must honor this

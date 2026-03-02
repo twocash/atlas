@@ -152,7 +152,7 @@ export function formatToolContextForHistory(toolContexts: ToolContext[]): string
  * Claude often ignores EXACT_URL_FOR_USER markers and fabricates similar-looking URLs.
  */
 export function fixHallucinatedUrls(responseText: string, toolContexts: ToolContext[]): string {
-  const dispatchToolNames = ['submit_ticket', 'work_queue_create', 'mcp__pit_crew__dispatch_work'];
+  const dispatchToolNames = ['submit_ticket', 'work_queue_create', 'mcp__pit_crew__dispatch_work', 'dispatch_research'];
   let dispatchFailed = false;
   let failureError = '';
 
@@ -176,6 +176,9 @@ export function fixHallucinatedUrls(responseText: string, toolContexts: ToolCont
       }
       if (result?.feedUrl && typeof result.feedUrl === 'string') {
         actualUrls.push(result.feedUrl);
+      }
+      if (result?.workQueueUrl && typeof result.workQueueUrl === 'string') {
+        actualUrls.push(result.workQueueUrl);
       }
     }
   }

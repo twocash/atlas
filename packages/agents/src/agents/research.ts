@@ -1340,37 +1340,22 @@ export async function executeResearch(
     }
 
     if (retrievedCitations.length === 0) {
-      // Both Claude attempts failed — graceful degradation with ungrounded synthesis.
-      // Gemini synthesizes without search tool from whatever text Claude returned.
-      console.warn('[Research] Both retrieval attempts returned 0 citations — synthesizing from ungrounded text');
-      await registry.updateProgress(agent.id, 50, "Synthesizing (ungrounded)");
-
-      const phase2UngStart = Date.now();
-      const synthesis = await buildSynthesisPrompt(config, retrievedText, []);
-      isDrafterMode = synthesis.isDrafterMode;
-      const synthesisProvider = getSearchProvider();
-      const synthesisResult = await synthesisProvider.generate({
-        query: synthesis.contents,
-        systemInstruction: synthesis.systemInstruction,
-        maxOutputTokens: depthCfg.maxTokens,
-        useSearchTool: false,
-      });
-      apiCalls++;
+      // Both Claude attempts failed — no web data available.
+      // Sprint C Bug 6: Do NOT synthesize from ungrounded text. Fail fast.
+      // Previously did "graceful degradation" which produced training-data hallucinations.
+      console.error('[Research] Both retrieval attempts returned 0 citations — refusing to synthesize without sources');
       appendPhase(chain, {
-        name: 'synthesize',
-        provider: 'gemini-flash',
+        name: 'synthesize-refused',
+        provider: 'none',
         tools: [],
-        durationMs: Date.now() - phase2UngStart,
+        durationMs: 0,
       });
-
-      searchResult = {
-        text: synthesisResult.text,
-        citations: [],
-        groundingUsed: false,  // Will trigger HALLUCINATION check downstream
-        searchQueries: [],
-        groundingSupportCount: 0,
-      };
+      throw new Error("HALLUCINATION: No web sources found — both retrieval attempts returned 0 citations. Cannot produce grounded research.");
     } else {
+      // Sprint C Bug 6: Very few citations — warn and mark as thinly sourced
+      if (retrievedCitations.length < 3 && depth !== 'light') {
+        console.warn(`[Research] Only ${retrievedCitations.length} citations found — synthesis will be thinly sourced`);
+      }
       // === PHASE 2: SYNTHESIZE (only when Phase 1 succeeded) ===
       console.log(`[Research] Phase 1 complete: ${retrievedCitations.length} citations from Claude retrieval`);
       await registry.updateProgress(agent.id, 50, `Synthesizing ${depth} analysis`);
