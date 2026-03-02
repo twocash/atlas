@@ -1638,32 +1638,34 @@ export async function orchestrateMessage(
         priorIntentHash: sessionTelemetry.priorIntentHash,
       }).then(() => {
         // Feed write hook: trigger emergence check + deliver proposals
-        if (process.env.ATLAS_EMERGENCE_AWARENESS === 'true') {
+        // Feature flag from Notion Research Pipeline Config (Constraint 1: Notion governs routing)
+        import('../config').then(({ getResearchPipelineConfig }) =>
+          getResearchPipelineConfig()
+        ).then(({ config: pipelineConfig }) => {
+          if (!pipelineConfig.emergenceEnabled) return;
           // Ensure Feed subscriber is wired (idempotent)
           wireEmergenceFeedSubscriber();
-          import('../emergence/monitor').then(({ checkForEmergence }) => {
-            checkForEmergence().then(result => {
-              if (result.proposals.length > 0) {
-                // Deliver first proposal to the user (rate-limited by monitor)
-                const proposal = result.proposals[0];
-                hooks.deliverEmergenceProposal(proposal).then(messageId => {
-                  storeEmergenceProposal(chatId, messageId, proposal);
-                  logger.info('Emergence proposal delivered', {
-                    proposalId: proposal.id,
-                    skillName: proposal.suggestedSkillName,
-                    messageId,
-                  });
-                }).catch(deliverErr => {
-                  logger.warn('Emergence proposal delivery failed (non-fatal)', { error: deliverErr });
+          return import('../emergence/monitor').then(({ checkForEmergence }) =>
+            checkForEmergence()
+          ).then(result => {
+            if (result.proposals.length > 0) {
+              const proposal = result.proposals[0];
+              return hooks.deliverEmergenceProposal(proposal).then(messageId => {
+                storeEmergenceProposal(chatId, messageId, proposal);
+                logger.info('Emergence proposal delivered', {
+                  proposalId: proposal.id,
+                  skillName: proposal.suggestedSkillName,
+                  messageId,
                 });
-              }
-            }).catch(err => {
-              reportFailure('emergence-check', err, { subsystem: 'emergence' });
-            });
-          }).catch(() => {
-            // Dynamic import failed — emergence module not available
+              });
+            }
           });
-        }
+        }).catch(err => {
+          // Non-fatal: config resolution, emergence check, or delivery failure
+          if (err?.message?.includes('emergence')) {
+            reportFailure('emergence-check', err, { subsystem: 'emergence' });
+          }
+        });
       }).catch(err => {
         logger.warn('Skill action logging failed (non-fatal)', { error: err });
       });

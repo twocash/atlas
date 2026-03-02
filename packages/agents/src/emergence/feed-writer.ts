@@ -51,7 +51,7 @@ async function writeEmergenceFeedEntry(event: EmergenceEvent): Promise<void> {
       parent: { database_id: NOTION_DB.FEED },
       properties: {
         Entry: { title: [{ text: { content: title } }] },
-        Source: { rich_text: [{ text: { content: `Atlas [${ATLAS_NODE}]` } }] },
+        Source: { select: { name: `Atlas [${ATLAS_NODE}]` } },
         Status: { select: { name: 'Logged' } },
         Keywords: {
           multi_select: keywords.map(k => ({ name: k })),
@@ -95,7 +95,7 @@ export async function persistDismissedPattern(
         Entry: {
           title: [{ text: { content: `Emergence Dismissed: ${proposal.suggestedSkillName}` } }],
         },
-        Source: { rich_text: [{ text: { content: `Atlas [${ATLAS_NODE}]` } }] },
+        Source: { select: { name: `Atlas [${ATLAS_NODE}]` } },
         Status: { select: { name: 'Logged' } },
         Keywords: {
           multi_select: [

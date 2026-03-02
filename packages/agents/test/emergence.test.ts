@@ -35,7 +35,7 @@ mock.module('../src/skills/pattern-detector', () => ({
     patterns: [],
     proposals: [],
     window: { start: '', end: '', days: 14 },
-    stats: { actionsAnalyzed: 0, patternsFound: 0, proposalsGenerated: 0, skippedExisting: 0, skippedRejected: 0 },
+    stats: { actionsAnalyzed: 0, patternsFound: 0, proposalsGenerated: 0, skippedExisting: 0, skippedRejected: 0, skippedClustered: 0 },
   }),
 }));
 

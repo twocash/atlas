@@ -215,12 +215,11 @@ export interface FeatureFlags {
 
   /**
    * Emergence Awareness (CONV-ARCH-004)
-   * When enabled, monitors Feed 2.0 telemetry for recurring workflow patterns
-   * (frequency + session sequences) and surfaces skill creation proposals.
-   * Fires on Feed write hook (not timer). Rate-limited to 3 proposals/day.
-   * @default false (opt-in - enable with ATLAS_EMERGENCE_AWARENESS=true)
+   * MOVED to Research Pipeline Config (Notion-backed).
+   * See packages/agents/src/config/types.ts → emergenceEnabled.
+   * Constraint 1: Notion governs all cognitive behavior toggles.
    */
-  emergenceAwareness: boolean;
+  // emergenceAwareness — removed, now in Research Pipeline Config
 
   // === Session Tracking (Sprint: SESSION-TELEMETRY P0) ===
 
@@ -342,7 +341,7 @@ function loadFeatureFlags(): FeatureFlags {
     contentSourcesNotion: process.env.ATLAS_CONTENT_SOURCES_NOTION === 'true', // Default OFF
     // Conversational Architecture (EPIC: CONV-ARCH) — opt-in
     selfModel: process.env.ATLAS_SELF_MODEL === 'true', // Default OFF
-    emergenceAwareness: process.env.ATLAS_EMERGENCE_AWARENESS === 'true', // Default OFF
+    // emergenceAwareness — removed, now in Research Pipeline Config (Constraint 1)
     // Session Tracking (Sprint: SESSION-TELEMETRY P0) — opt-in
     sessionTracking: process.env.ATLAS_SESSION_TRACKING !== 'false', // Default ON
   };

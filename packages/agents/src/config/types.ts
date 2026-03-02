@@ -123,6 +123,17 @@ export interface ResearchPipelineConfig {
 
   /** Evidence preset assignment per depth */
   evidencePresets: EvidencePresetAssignment;
+
+  /** Emergence awareness feature toggle (default: false) */
+  emergenceEnabled?: boolean;
+
+  /** Emergence detection tuning */
+  emergenceConfig?: {
+    /** Temporal clustering threshold — patterns where 80%+ of hits fall
+     *  within this window (hours) are treated as test/batch bursts and skipped.
+     *  Default: 2 */
+    clusteringThresholdHours?: number;
+  };
 }
 
 export interface ResolvedConfig {
@@ -202,4 +213,6 @@ export const COMPILED_DEFAULTS: ResearchPipelineConfig = {
     standard: 'standard',
     deep: 'deep',
   },
+
+  emergenceEnabled: false,
 };

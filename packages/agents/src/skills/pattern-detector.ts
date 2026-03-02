@@ -148,6 +148,7 @@ export interface PatternDetectionResult {
     proposalsGenerated: number;
     skippedExisting: number;
     skippedRejected: number;
+    skippedClustered: number;
   };
 }
 
@@ -516,6 +517,44 @@ export function markPatternRejected(intentHash: string, reason: string): void {
 }
 
 // =============================================================================
+// TEMPORAL CLUSTERING FILTER
+// =============================================================================
+
+/**
+ * Detect temporally clustered patterns (likely test/batch activity).
+ *
+ * A real user workflow spreads across multiple days; test runs cluster
+ * in minutes. Uses a sliding window: if 80%+ of occurrences fit within
+ * `thresholdHours`, the pattern is treated as a burst and skipped.
+ *
+ * Bug fix: https://www.notion.so/317780a78eef81939312c00bce37994a
+ */
+export function isTemporallyClustered(
+  actions: LoggedAction[],
+  thresholdHours = 2,
+): boolean {
+  if (actions.length < 5) return false;
+
+  const timestamps = actions
+    .map(a => new Date(a.timestamp).getTime())
+    .sort((a, b) => a - b);
+
+  const windowMs = thresholdHours * 60 * 60 * 1000;
+  let maxInWindow = 0;
+
+  for (let i = 0; i < timestamps.length; i++) {
+    let count = 0;
+    for (let j = i; j < timestamps.length && timestamps[j] - timestamps[i] <= windowMs; j++) {
+      count++;
+    }
+    maxInWindow = Math.max(maxInWindow, count);
+  }
+
+  // If 80%+ of occurrences fit in a single window, it's a burst
+  return maxInWindow / actions.length >= 0.8;
+}
+
+// =============================================================================
 // MAIN DETECTOR
 // =============================================================================
 
@@ -539,6 +578,7 @@ export async function detectPatterns(): Promise<PatternDetectionResult> {
         proposalsGenerated: 0,
         skippedExisting: 0,
         skippedRejected: 0,
+        skippedClustered: 0,
       },
     };
   }
@@ -574,6 +614,7 @@ export async function detectPatterns(): Promise<PatternDetectionResult> {
         proposalsGenerated: 0,
         skippedExisting: 0,
         skippedRejected: 0,
+        skippedClustered: 0,
       },
     };
   }
@@ -585,11 +626,23 @@ export async function detectPatterns(): Promise<PatternDetectionResult> {
   const patterns: DetectedPattern[] = [];
   let skippedExisting = 0;
   let skippedRejected = 0;
+  let skippedClustered = 0;
 
   const registry = getSkillRegistry();
 
   for (const [intentHash, groupActions] of groups) {
     if (groupActions.length >= config.minFrequency) {
+      // Check temporal clustering (test/batch burst detection)
+      if (isTemporallyClustered(groupActions)) {
+        skippedClustered++;
+        logger.debug('Skipping pattern - temporally clustered (likely test/batch)', {
+          intentHash,
+          count: groupActions.length,
+          sample: groupActions[0]?.messageText?.substring(0, 50),
+        });
+        continue;
+      }
+
       // Check if skill already exists for this intent
       const existingMatch = registry.findBestMatch(groupActions[0].messageText, {
         pillar: groupActions[0].pillar,
@@ -677,6 +730,7 @@ export async function detectPatterns(): Promise<PatternDetectionResult> {
       proposalsGenerated: proposals.length,
       skippedExisting,
       skippedRejected,
+      skippedClustered,
     },
   };
 

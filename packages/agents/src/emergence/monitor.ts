@@ -33,6 +33,7 @@ import type {
   EmergenceEvent,
 } from './types';
 import { DEFAULT_EMERGENCE_CONFIG } from './types';
+import { getResearchPipelineConfig } from '../config';
 
 // =============================================================================
 // STATE
@@ -56,8 +57,14 @@ const eventListeners: Array<(event: EmergenceEvent) => void> = [];
 // FEATURE FLAG
 // =============================================================================
 
-function isEmergenceEnabled(): boolean {
-  return process.env.ATLAS_EMERGENCE_AWARENESS === 'true';
+async function isEmergenceEnabled(): Promise<boolean> {
+  try {
+    const { config } = await getResearchPipelineConfig();
+    return config.emergenceEnabled ?? false;
+  } catch {
+    // Config resolution failed — default to disabled
+    return false;
+  }
 }
 
 // =============================================================================
@@ -79,7 +86,7 @@ export async function checkForEmergence(
   const mergedConfig = { ...DEFAULT_EMERGENCE_CONFIG, ...config };
 
   // Feature flag guard
-  if (!isEmergenceEnabled()) {
+  if (!await isEmergenceEnabled()) {
     return emptyResult();
   }
 

@@ -13,6 +13,7 @@ import { Client } from '@notionhq/client';
 import { NOTION_DB } from '@atlas/shared/config';
 import { logger } from '../logger';
 import { hasSameIntent } from '../skills/intent-hash';
+import { isTemporallyClustered } from '../skills/pattern-detector';
 import type { LoggedAction } from '../skills/pattern-detector';
 import type { Pillar } from '../conversation/types';
 import { createHash } from 'crypto';
@@ -183,12 +184,24 @@ export function groupActionsBySession(actions: SessionAction[]): SessionGroup[] 
     });
   }
 
+  // Filter out temporally clustered sessions (test/batch bursts)
+  const filteredGroups = groups.filter(g => {
+    if (isTemporallyClustered(g.actions)) {
+      logger.debug('Skipping session group - temporally clustered', {
+        sessionId: g.sessionId,
+        turnCount: g.turnCount,
+      });
+      return false;
+    }
+    return true;
+  });
+
   // Sort by start time (newest first)
-  groups.sort((a, b) =>
+  filteredGroups.sort((a, b) =>
     new Date(b.startTime).getTime() - new Date(a.startTime).getTime()
   );
 
-  return groups;
+  return filteredGroups;
 }
 
 // =============================================================================
