@@ -33,7 +33,7 @@ Based on the task, load relevant context:
 |-------------|------------------|
 | Telegram bot | `apps/telegram/CLAUDE.md` |
 | MCP integration | `apps/telegram/src/mcp/index.ts` |
-| Pit Crew dispatch | `workspace/mcp-sprint/CLAUDE.md` |
+| Pit Crew dispatch | `packages/mcp-pit-crew/src/index.ts` |
 | Notion databases | Check `atlas-patterns.md` DB IDs |
 | New feature | Search codebase for similar patterns |
 

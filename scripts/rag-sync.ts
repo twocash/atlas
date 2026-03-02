@@ -37,6 +37,7 @@ const WORKSPACE_MAP: Record<string, string> = {
   "grove-technical": "grove-technical",
   "grove-vision": "grove-vision",
   "gtm-consulting": "gtm-consulting",
+  "atlas-pm": "atlas-pm",
 }
 
 const DRY_RUN = process.argv.includes("--dry-run")

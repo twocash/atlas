@@ -1,8 +1,0 @@
-{
-  "mcpServers": {
-    "atlas-browser": {
-      "command": "bun",
-      "args": ["run", "packages/bridge/src/tools/mcp-server.ts"]
-    }
-  }
-}

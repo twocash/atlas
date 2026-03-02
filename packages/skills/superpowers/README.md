@@ -19,6 +19,7 @@ Every skill produces verifiable output, enabling human verification.
 | `atlas-debug` | Root cause investigation | Any bug fix |
 | `atlas-completion` | Verification checklist | Before marking done |
 | `atlas-mcp-hunter` | Find/install MCP servers | Capability expansion |
+| `atlas-pm` | Sprint planning with RAG context | "sprint on [URL]", contract generation |
 
 ### Voice & Content (Layer 1 Knowledge Architecture)
 
