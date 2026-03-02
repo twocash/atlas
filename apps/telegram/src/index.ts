@@ -28,7 +28,9 @@ import { startHealthAlertProducer, stopHealthAlertProducer } from "./feed/alert-
 import { startApprovalListener, stopApprovalListener } from "./feed/approval-listener";
 import { startReviewListener, stopReviewListener } from "./feed/review-listener";
 import { registerSelfModelProvider } from "../../../packages/bridge/src/context";
-import { createSelfModelProvider } from "@atlas/agents/src/conversation/self-model-provider";
+import { createSelfModelProvider, setSelfModelProviderHooks } from "@atlas/agents/src/conversation/self-model-provider";
+import { setToolHooks } from "@atlas/agents/src/conversation/tools";
+import { getMcpStatus, listMcpTools, getMcpTools, isMcpTool, executeMcpTool } from "./mcp";
 import { existsSync, writeFileSync, unlinkSync, readFileSync } from "fs";
 import { join } from "path";
 
@@ -127,9 +129,15 @@ async function main() {
     logger.warn("Skill registry initialization failed (non-fatal)", { error: err.message });
   });
 
+  // Wire MCP hooks into tool system + self-model provider
+  // Must run after initMcp() so the real functions are available
+  setToolHooks({ getMcpTools, isMcpTool, executeMcpTool, getMcpStatus, listMcpTools });
+  setSelfModelProviderHooks({ getMcpStatus, listMcpTools });
+
   // Register self-model data provider (STAB-001: Wire The Stack)
+  // Default ON — kill switch: ATLAS_SELF_MODEL=false
   // Must run after MCP + skill registry init (those populate data the provider reads)
-  if (process.env.ATLAS_SELF_MODEL === 'true') {
+  if (process.env.ATLAS_SELF_MODEL !== 'false') {
     try {
       registerSelfModelProvider(createSelfModelProvider());
     } catch (err) {

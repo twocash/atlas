@@ -23,13 +23,13 @@ import { getSkillRegistry } from "../skills/registry"
 // ─── Injectable Hooks (surface-specific runtime queries) ────
 
 export interface SelfModelProviderHooks {
-  getMcpStatus: () => { connected: boolean; serverCount: number }
-  listMcpTools: () => Array<{ name: string; description?: string }>
+  getMcpStatus: () => Record<string, { status: string; toolCount: number; error?: string }>
+  listMcpTools: () => Array<{ server: string; tool: string; description?: string }>
   anythingLlmHealthCheck: () => Promise<{ ok: boolean; error?: string }>
 }
 
 let _smHooks: SelfModelProviderHooks = {
-  getMcpStatus: () => ({ connected: false, serverCount: 0 }),
+  getMcpStatus: () => ({}),
   listMcpTools: () => [],
   anythingLlmHealthCheck: async () => ({ ok: false, error: "not wired" }),
 }
@@ -102,8 +102,8 @@ class TelegramSelfModelProvider implements CapabilityDataProvider {
 
   async getKnowledgeSources(): Promise<KnowledgeSourceInfo[]> {
     try {
-      const isUp = await _smHooks.anythingLlmHealthCheck()
-      if (!isUp) {
+      const health = await _smHooks.anythingLlmHealthCheck()
+      if (!health.ok) {
         return [
           {
             source: "anythingllm",

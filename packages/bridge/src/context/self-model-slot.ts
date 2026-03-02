@@ -25,7 +25,7 @@ import type { CapabilityDataProvider, TriageLike } from "../../../../packages/ag
 // ─── Feature Gate ─────────────────────────────────────────
 
 function isSelfModelEnabled(): boolean {
-  return process.env.ATLAS_SELF_MODEL === "true"
+  return process.env.ATLAS_SELF_MODEL !== "false"
 }
 
 // ─── Data Provider ────────────────────────────────────────
