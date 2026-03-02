@@ -19,7 +19,7 @@ import {
   type ResearchConfig,
   type ResearchResult,
   type AndonAssessment,
-  assessOutput,
+  assessOutputWithDiagnostics,
   type AndonInput,
   orchestrateResearch,
   type ProvenanceChain,
@@ -81,14 +81,14 @@ export async function sendCompletionNotification(
     const rr = result.output as ResearchResult | undefined;
 
     // Use orchestrator's assessment if available, otherwise compute (backward compat)
-    const assessment = precomputedAssessment ?? assessOutput({
+    const assessment = precomputedAssessment ?? assessOutputWithDiagnostics({
       wasDispatched: true, groundingUsed: true,
       sourceCount: rr?.sources?.length ?? 0, findingCount: rr?.findings?.length ?? 0,
       bibliographyCount: rr?.bibliography?.length ?? 0, durationMs: result.metrics?.durationMs ?? 0,
       summary: rr?.summary ?? '', originalQuery: rr?.query ?? agent.name ?? '',
       success: true, hallucinationGuardPassed: true,
       contentMode: rr?.contentMode, hasProseContent: !!(rr as any)?.proseContent, source,
-    } as AndonInput);
+    } as AndonInput, undefined, { query: rr?.query ?? agent.name, source });
     const { calibration } = assessment;
 
     let message = `${calibration.emoji} ${calibration.label}\n\n`;
@@ -120,8 +120,9 @@ export async function sendCompletionNotification(
 
       // Sprint C: Post-hoc Feed provenance update (backfill citations + grade after research)
       if (feedId) {
-        updateFeedProvenance(feedId, provenanceChain)
-          .then(() => logger.info('Feed provenance backfilled', { feedId, citations: provenanceChain.result.citations.length }))
+        const andonKw = assessment ? `andon:${assessment.confidence}` : undefined;
+        updateFeedProvenance(feedId, provenanceChain, andonKw)
+          .then(() => logger.info('Feed provenance backfilled', { feedId, citations: provenanceChain.result.citations.length, andonKeyword: andonKw }))
           .catch(err => logger.warn('Feed provenance update failed (non-fatal)', { feedId, error: (err as Error).message }));
       }
     }

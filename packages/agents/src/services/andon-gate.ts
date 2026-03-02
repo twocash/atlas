@@ -149,6 +149,8 @@ export interface AndonAssessment {
 // Compiled defaults used when no overrides provided.
 
 import { getResearchPipelineConfigSync, type AndonThresholds } from '../config';
+import { logger } from '../logger';
+import { reportFailure } from '@atlas/shared/error-escalation';
 
 /** Resolve thresholds — overrides take precedence, then config cache, then compiled defaults */
 function resolveThresholds(overrides?: Partial<AndonThresholds>): AndonThresholds {
@@ -241,6 +243,163 @@ export function assessOutput(input: AndonInput, thresholdOverrides?: Partial<And
       durationMs: input.durationMs,
     },
   };
+}
+
+// ─── Diagnostics Wrapper ─────────────────────────────────────────────────────
+
+/**
+ * Context for diagnostics logging.
+ */
+export interface DiagnosticContext {
+  /** The query being assessed */
+  query?: string;
+  /** Dispatch source fingerprint */
+  source?: string;
+  /** Feed entry ID for correlation */
+  feedId?: string;
+}
+
+/**
+ * Extended assessment result with plain-language diagnostic.
+ */
+export interface DiagnosticAssessment extends AndonAssessment {
+  /** Human-readable explanation of the assessment, null when grounded */
+  diagnostic: string | null;
+}
+
+/**
+ * Wraps assessOutput() with structured logging and plain-language diagnostics.
+ *
+ * - Logs every assessment at INFO level (confidence, routing, query)
+ * - Logs WARN with diagnostic when confidence < grounded
+ * - Calls reportFailure when confidence = insufficient
+ *
+ * assessOutput() stays pure. This is the production wrapper.
+ */
+export function assessOutputWithDiagnostics(
+  input: AndonInput,
+  thresholdOverrides?: Partial<AndonThresholds>,
+  context?: DiagnosticContext,
+): DiagnosticAssessment {
+  const assessment = assessOutput(input, thresholdOverrides);
+  const diagnostic = buildPlainLanguageDiagnostic(input, assessment);
+
+  const logPayload = {
+    confidence: assessment.confidence,
+    routing: assessment.routing,
+    noveltyScore: assessment.noveltyScore,
+    sourceRelevanceScore: assessment.sourceRelevanceScore,
+    keyword: assessment.telemetry.keyword,
+    query: context?.query ?? input.originalQuery?.substring(0, 80),
+    source: context?.source ?? input.source,
+    feedId: context?.feedId,
+  };
+
+  logger.info('Andon Gate assessment', logPayload);
+
+  if (assessment.confidence !== 'grounded' && diagnostic) {
+    logger.warn('Andon Gate downgrade', { ...logPayload, diagnostic });
+  }
+
+  if (assessment.confidence === 'insufficient') {
+    reportFailure('andon-gate', new Error(diagnostic ?? assessment.reason), {
+      confidence: assessment.confidence,
+      query: context?.query ?? input.originalQuery,
+      source: context?.source ?? input.source,
+    });
+  }
+
+  return { ...assessment, diagnostic };
+}
+
+/**
+ * Translate assessment metrics into a human-readable sentence.
+ * Returns null for grounded assessments (no diagnostic needed).
+ */
+export function buildPlainLanguageDiagnostic(
+  input: AndonInput,
+  assessment: AndonAssessment,
+): string | null {
+  const query = input.originalQuery?.substring(0, 60) ?? 'unknown query';
+
+  if (assessment.confidence === 'grounded') return null;
+
+  if (assessment.confidence === 'insufficient') {
+    if (!input.success) {
+      return `Research on '${query}' failed to execute.`;
+    }
+    if (!input.hallucinationGuardPassed) {
+      return `Research on '${query}' was blocked by hallucination detection.`;
+    }
+    if (assessment.noveltyScore < 0.3) {
+      return `Research on '${query}' restated the question — no new information added.`;
+    }
+    if (!input.summary || input.summary.trim().length < 50) {
+      return `Research on '${query}' produced too little output (${input.summary?.trim().length ?? 0} chars).`;
+    }
+    return `Research on '${query}' did not meet quality thresholds: ${assessment.reason}`;
+  }
+
+  if (assessment.confidence === 'speculative') {
+    if (!input.wasDispatched) {
+      return `Response to '${query}' was synthesized from training data — no live research was performed.`;
+    }
+    if (input.sourceCount === 0) {
+      return `Research on '${query}' was dispatched but found zero qualifying sources.`;
+    }
+    return `Research on '${query}' has weak grounding: ${assessment.reason}`;
+  }
+
+  // informed
+  if (input.claimFlags && input.claimFlags.length > 0) {
+    return `Research on '${query}' contains sensitive claims (${input.claimFlags.join(', ')}) — downgraded from grounded.`;
+  }
+  if (assessment.sourceRelevanceScore < 0.5) {
+    return `Research on '${query}' found ${input.sourceCount} sources but they appear tangential to the query.`;
+  }
+  if (input.sourceCount < 3 || input.findingCount < 2) {
+    return `Research on '${query}' has limited sourcing (${input.sourceCount} sources, ${input.findingCount} findings).`;
+  }
+  return `Research on '${query}' was assessed as informed: ${assessment.reason}`;
+}
+
+// ─── Conversational Output Assessment ────────────────────────────────────────
+
+/**
+ * Assess non-research conversational output through the Andon Gate.
+ *
+ * Replaces the hardcoded `nonResearchGrade` heuristic. Builds a proper
+ * AndonInput and delegates to assessOutput() so all paths go through
+ * the same quality classification.
+ */
+export function assessConversationalOutput(input: {
+  responseText: string;
+  originalMessage: string;
+  requestType: string;
+  claimFlags?: string[];
+  hallucinationDetected?: boolean;
+  toolsUsed?: string[];
+}): AndonAssessment {
+  const actionTypes = new Set(['Schedule', 'Build', 'Process', 'Triage']);
+  const isAction = actionTypes.has(input.requestType);
+  const hasTools = input.toolsUsed && input.toolsUsed.length > 0;
+
+  const andonInput: AndonInput = {
+    wasDispatched: isAction && !!hasTools,
+    groundingUsed: !!hasTools,
+    sourceCount: hasTools ? (input.toolsUsed?.length ?? 0) : 0,
+    findingCount: hasTools ? 1 : 0,
+    bibliographyCount: 0,
+    durationMs: 0,
+    summary: input.responseText,
+    originalQuery: input.originalMessage,
+    success: true,
+    hallucinationGuardPassed: !input.hallucinationDetected,
+    source: 'conversational',
+    claimFlags: input.claimFlags,
+  };
+
+  return assessOutput(andonInput);
 }
 
 // ─── Delivery Calibration ────────────────────────────────────────────────────

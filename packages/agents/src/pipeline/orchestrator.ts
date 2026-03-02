@@ -171,10 +171,28 @@ export function formatToolContextForHistory(toolContexts: ToolContext[]): string
 }
 
 /**
+ * Structured result from URL hallucination detection and fix.
+ */
+export interface HallucinationFixResult {
+  /** The (possibly fixed) response text */
+  text: string;
+  /** Whether any URL hallucination was detected */
+  hallucinationDetected: boolean;
+  /** Whether a dispatch tool call failed */
+  dispatchFailed: boolean;
+  /** Number of fabricated URLs that were replaced */
+  fabricatedUrlCount: number;
+  /** Error message if dispatch failed */
+  failureError?: string;
+}
+
+/**
  * Fix fabricated Notion URLs in Claude's response.
  * Claude often ignores EXACT_URL_FOR_USER markers and fabricates similar-looking URLs.
+ *
+ * Returns structured result with hallucination detection metadata.
  */
-export function fixHallucinatedUrls(responseText: string, toolContexts: ToolContext[]): string {
+export function fixHallucinatedUrls(responseText: string, toolContexts: ToolContext[]): HallucinationFixResult {
   const dispatchToolNames = ['submit_ticket', 'work_queue_create', 'mcp__pit_crew__dispatch_work', 'dispatch_research'];
   let dispatchFailed = false;
   let failureError = '';
@@ -225,12 +243,20 @@ export function fixHallucinatedUrls(responseText: string, toolContexts: ToolCont
       for (const match of matches) {
         fixedText = fixedText.split(match).join('[DISPATCH FAILED]');
       }
-      return `${fixedText}\n\n⚠️ **Dispatch failed:** ${failureError}`;
+      return {
+        text: `${fixedText}\n\n⚠️ **Dispatch failed:** ${failureError}`,
+        hallucinationDetected: true,
+        dispatchFailed: true,
+        fabricatedUrlCount: matches.length,
+        failureError,
+      };
     }
+
+    return { text: responseText, hallucinationDetected: false, dispatchFailed: true, fabricatedUrlCount: 0, failureError };
   }
 
   if (actualUrls.length === 0) {
-    return responseText;
+    return { text: responseText, hallucinationDetected: false, dispatchFailed: false, fabricatedUrlCount: 0 };
   }
 
   const notionUrlPattern = /https?:\/\/(?:www\.)?notion\.so\/[^\s\)\]>]+/gi;
@@ -238,7 +264,7 @@ export function fixHallucinatedUrls(responseText: string, toolContexts: ToolCont
 
   if (!matches || matches.length === 0) {
     logger.info('URL MISSING: Claude omitted URL, appending actual', { actualUrls });
-    return `${responseText}\n\n📎 ${actualUrls[0]}`;
+    return { text: `${responseText}\n\n📎 ${actualUrls[0]}`, hallucinationDetected: false, dispatchFailed: false, fabricatedUrlCount: 0 };
   }
 
   // Extract page IDs from URLs for robust comparison (slug-independent)
@@ -249,15 +275,14 @@ export function fixHallucinatedUrls(responseText: string, toolContexts: ToolCont
   const actualPageIds = new Set(actualUrls.map(extractPageId).filter(Boolean) as string[]);
 
   const uniqueMatches = [...new Set(matches)];
-  const isHallucinated = uniqueMatches.some(m => {
-    // Exact match — URL is legit
-    if (actualUrls.includes(m)) return false;
-    // Page ID match with different slug — hallucinated slug but real page
+  let fabricatedCount = 0;
+  for (const m of uniqueMatches) {
+    if (actualUrls.includes(m)) continue;
     const pid = extractPageId(m);
-    if (pid && actualPageIds.has(pid)) return true;
-    // No page ID match at all — fully fabricated
-    return true;
-  });
+    // Either fabricated slug on real page, or fully fabricated — both count
+    fabricatedCount++;
+  }
+  const isHallucinated = fabricatedCount > 0;
 
   if (isHallucinated) {
     logger.warn('HALLUCINATION DETECTED: Fixing fabricated Notion URLs', {
@@ -271,10 +296,10 @@ export function fixHallucinatedUrls(responseText: string, toolContexts: ToolCont
         fixedText = fixedText.split(match).join(actualUrls[0]);
       }
     }
-    return fixedText;
+    return { text: fixedText, hallucinationDetected: true, dispatchFailed, fabricatedUrlCount: fabricatedCount, failureError: failureError || undefined };
   }
 
-  return responseText;
+  return { text: responseText, hallucinationDetected: false, dispatchFailed, fabricatedUrlCount: 0 };
 }
 
 /**
@@ -1428,7 +1453,16 @@ export async function orchestrateMessage(
     let responseText = textContent?.text.trim() || "Done.";
 
     // Fix fabricated URLs
-    responseText = fixHallucinatedUrls(responseText, toolContexts);
+    const hallucinationFix = fixHallucinatedUrls(responseText, toolContexts);
+    responseText = hallucinationFix.text;
+
+    // Wire reportFailure when hallucination detected
+    if (hallucinationFix.hallucinationDetected) {
+      reportFailure('url-hallucination', new Error(
+        `Claude fabricated ${hallucinationFix.fabricatedUrlCount} Notion URL(s)` +
+        (hallucinationFix.dispatchFailed ? ' after dispatch failure' : '')
+      ), { fabricatedUrlCount: hallucinationFix.fabricatedUrlCount });
+    }
 
     // Build history response with tool context
     const historyResponse = toolContexts.length > 0
@@ -1459,20 +1493,30 @@ export async function orchestrateMessage(
 
     // Sprint C Bug 7+8: Grade + claim detection BEFORE audit write
     // MUST be after classification is assigned (temporal dead zone if before)
-    const actionTypes = new Set(['Schedule', 'Build', 'Process', 'Triage']);
-    const nonResearchGrade = actionTypes.has(classification.requestType) ? 'grounded' : 'informed';
     const { detectSensitiveClaims } = await import('../services/claim-detector');
     const claims = detectSensitiveClaims(responseText);
     if (claims.flags.length > 0) {
       logger.info('Sensitive claims detected in conversational response', { flags: claims.flags, patterns: claims.matchedPatterns });
     }
+
+    // Andon Gate: assess conversational output through the same gate as research
+    const { assessConversationalOutput } = await import('../services/andon-gate');
+    const conversationalAssessment = assessConversationalOutput({
+      responseText,
+      originalMessage: messageText,
+      requestType: classification.requestType,
+      claimFlags: claims.flags,
+      hallucinationDetected: hallucinationFix.hallucinationDetected,
+      toolsUsed,
+    });
+
     const ragChunkRefs = extractRagChunkRefs(contextEnrichment?.enrichedContext, contextEnrichment?.slotsUsed);
     setProvenanceResult(chain, {
       findingCount: 0,
       citations: [],
       ragChunks: ragChunkRefs,
-      hallucinationDetected: false,
-      andonGrade: nonResearchGrade,
+      hallucinationDetected: hallucinationFix.hallucinationDetected,
+      andonGrade: conversationalAssessment.confidence,
       claimFlags: claims.flags,
     });
     finalizeProvenance(chain);
@@ -1488,7 +1532,7 @@ export async function orchestrateMessage(
       source: 'Telegram',
       author: 'Jim',
       confidence: classification.confidence,
-      keywords: classification.keywords,
+      keywords: [...classification.keywords, conversationalAssessment.telemetry.keyword],
       workType: classification.workType,
       userId,
       messageText,

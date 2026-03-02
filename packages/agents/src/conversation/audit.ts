@@ -972,19 +972,41 @@ export async function logReclassification(
  * Sprint C: The chain created at audit time won't have research phases yet
  * (research runs asynchronously after audit). This writes the final chain.
  */
-export async function updateFeedProvenance(feedId: string, chain: import('../types/provenance').ProvenanceChain): Promise<void> {
+export async function updateFeedProvenance(
+  feedId: string,
+  chain: import('../types/provenance').ProvenanceChain,
+  andonKeyword?: string,
+): Promise<void> {
   try {
     const { renderProvenanceCompact, getProvenanceGrade } = await import('../provenance/render');
-    await notion.pages.update({
-      page_id: feedId,
-      properties: {
-        'Provenance Grade': { select: { name: getProvenanceGrade(chain) } },
-        'Provenance Chain': {
-          rich_text: [{ text: { content: renderProvenanceCompact(chain).substring(0, 2000) } }],
-        },
+    const properties: Record<string, unknown> = {
+      'Provenance Grade': { select: { name: getProvenanceGrade(chain) } },
+      'Provenance Chain': {
+        rich_text: [{ text: { content: renderProvenanceCompact(chain).substring(0, 2000) } }],
       },
-    });
-    logger.debug('Feed provenance updated', { feedId, grade: getProvenanceGrade(chain) });
+    };
+
+    // Append andon keyword to existing Keywords multi_select
+    if (andonKeyword) {
+      try {
+        const page = await notion.pages.retrieve({ page_id: feedId });
+        const existing = (page as any).properties?.['Keywords']?.multi_select ?? [];
+        const existingNames = existing.map((k: { name: string }) => k.name);
+        if (!existingNames.includes(andonKeyword)) {
+          properties['Keywords'] = {
+            multi_select: [...existing, { name: andonKeyword }],
+          };
+        }
+      } catch {
+        // If read fails, write keyword alone (best effort)
+        properties['Keywords'] = {
+          multi_select: [{ name: andonKeyword }],
+        };
+      }
+    }
+
+    await notion.pages.update({ page_id: feedId, properties: properties as any });
+    logger.debug('Feed provenance updated', { feedId, grade: getProvenanceGrade(chain), andonKeyword });
   } catch (err) {
     logger.warn('Feed provenance update failed (non-fatal)', {
       feedId,

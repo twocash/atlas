@@ -10,10 +10,10 @@
 import type { Agent, AgentResult } from "../types";
 import type { ResearchConfig, ResearchResult } from "../agents/research";
 import type { AgentRegistry } from "../registry";
-import type { AndonAssessment, AndonInput } from "../services/andon-gate";
+import type { AndonAssessment, AndonInput, DiagnosticAssessment } from "../services/andon-gate";
 import type { ResearchConfigV2 } from "../types/research-v2";
 import { wireAgentToWorkQueue, appendDispatchNotes } from "../workqueue";
-import { assessOutput } from "../services/andon-gate";
+import { assessOutputWithDiagnostics } from "../services/andon-gate";
 import { isResearchConfigV2 } from "../types/research-v2";
 import { composeResearchContext } from "../services/research-context";
 import { getContentContext, getSocraticAnswer, getState } from "../conversation/conversation-state";
@@ -21,6 +21,7 @@ import { stashAgentResult } from "../conversation/context-manager";
 import { getResearchPipelineConfig } from "../config";
 import type { ProvenanceChain } from "../types/provenance";
 import { setResult as setProvenanceResult } from "../provenance";
+import { logger } from '../logger';
 
 // ==========================================
 // Types
@@ -169,7 +170,7 @@ export async function orchestrateResearch(
   // 0. Resolve Research Pipeline Config (DRC-001a)
   // Single resolution point — populates sync cache for downstream consumers
   const resolvedConfig = await getResearchPipelineConfig();
-  console.log('[ResearchOrchestrator] Config resolved', {
+  logger.info('[ResearchOrchestrator] Config resolved', {
     configSource: resolvedConfig.configSource,
     name: resolvedConfig.config.name,
   });
@@ -188,7 +189,7 @@ export async function orchestrateResearch(
     try {
       await wireAgentToWorkQueue(agent, registry);
     } catch (error) {
-      console.warn("[ResearchOrchestrator] Work Queue wiring failed (non-blocking)", error);
+      logger.warn("[ResearchOrchestrator] Work Queue wiring failed (non-blocking)", { error: error instanceof Error ? error.message : String(error) });
     }
   }
 
@@ -217,7 +218,7 @@ export async function orchestrateResearch(
 
         if (sourceContext) {
           (config as ResearchConfigV2).sourceContext = sourceContext;
-          console.log('[ResearchOrchestrator] V2 context composed', {
+          logger.info('[ResearchOrchestrator] V2 context composed', {
             hasPreReader: sourceContext.preReaderAvailable,
             hasExtracted: !!sourceContext.extractedContent,
             contentType: sourceContext.contentType,
@@ -226,7 +227,7 @@ export async function orchestrateResearch(
         }
       } catch (contextError) {
         // Non-blocking — research proceeds without enrichment
-        console.warn('[ResearchOrchestrator] Context composition failed (non-blocking)', contextError);
+        logger.warn('[ResearchOrchestrator] Context composition failed (non-blocking)', { error: contextError instanceof Error ? contextError.message : String(contextError) });
       }
     }
 
@@ -273,14 +274,9 @@ export async function orchestrateResearch(
         sourceTitles,
         claimFlags: (result.output as any)?.claimFlags,  // Sprint C
       };
-      assessment = assessOutput(andonInput, resolvedConfig.config.andonThresholds);
-
-      console.log("[ResearchOrchestrator] Andon assessment", {
-        confidence: assessment.confidence,
-        routing: assessment.routing,
-        noveltyScore: assessment.noveltyScore,
-        sourceRelevanceScore: assessment.sourceRelevanceScore,
-        keyword: assessment.telemetry.keyword,
+      assessment = assessOutputWithDiagnostics(andonInput, resolvedConfig.config.andonThresholds, {
+        query: config.query,
+        source,
       });
 
       // Sprint A: Update provenance chain with Andon assessment
@@ -321,13 +317,13 @@ export async function orchestrateResearch(
     const isHallucination = errorMessage.includes('HALLUCINATION');
 
     if (isHallucination) {
-      console.error("[ResearchOrchestrator] Hallucination detected — research blocked", {
+      logger.error("[ResearchOrchestrator] Hallucination detected — research blocked", {
         agentId: agent.id,
         source,
         error: errorMessage,
       });
     } else {
-      console.error("[ResearchOrchestrator] Research execution failed", {
+      logger.error("[ResearchOrchestrator] Research execution failed", {
         agentId: agent.id,
         source,
         error: errorMessage,

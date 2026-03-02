@@ -131,21 +131,8 @@ async function executeDispatchResearch(
   logger.info('Dispatching research agent', { query, depth, voice, pillar });
 
   try {
-    // Import research agent components
-    const { createResearchWorkItem, wireAgentToWorkQueue } = await import(
-      '../../workqueue'
-    );
-    const { AgentRegistry } = await import(
-      '../../registry'
-    );
-    const { executeResearch } = await import(
-      '../../agents/research'
-    );
-
-    // Create registry for this research task
-    const registry = new AgentRegistry();
-
-    // Create Work Queue item
+    // 1. Create Work Queue item (still needed for URL)
+    const { createResearchWorkItem } = await import('../../workqueue');
     const { pageId: workItemId, url: notionUrl } = await createResearchWorkItem({
       query,
       depth: depth as 'light' | 'standard' | 'deep',
@@ -155,80 +142,35 @@ async function executeDispatchResearch(
 
     logger.info('Work Queue item created', { workItemId, notionUrl });
 
-    // Spawn the agent
-    const agent = await registry.spawn({
-      type: 'research',
-      name: `Research: ${query.substring(0, 50)}`,
-      instructions: JSON.stringify({ query, depth, voice, focus }),
-      priority: depth === 'deep' ? 'P1' : 'P2',
-      workItemId,
-    });
+    // 2. Delegate to canonical orchestrator (single research path)
+    const { AgentRegistry } = await import('../../registry');
+    const { orchestrateResearch } = await import('../../orchestration/research-orchestrator');
 
-    // Wire to Work Queue for status updates
-    const subscription = await wireAgentToWorkQueue(agent, registry);
-
-    // Start the agent
-    await registry.start(agent.id);
-
-    // Execute research (this does the actual Gemini call)
-    logger.info('Executing research', { agentId: agent.id, query, voice });
-    const result = await executeResearch(
+    const registry = new AgentRegistry();
+    const orchResult = await orchestrateResearch(
       {
-        query,
-        depth: depth as 'light' | 'standard' | 'deep',
-        focus,
-        voice: voice as 'atlas-research' | 'linkedin-punchy' | 'consulting' | 'raw-notes' | 'custom',
-        pillar: pillar as 'Personal' | 'The Grove' | 'Consulting' | 'Home/Garage',
+        config: {
+          query,
+          depth: depth as 'light' | 'standard' | 'deep',
+          focus,
+          voice: voice as 'atlas-research' | 'linkedin-punchy' | 'consulting' | 'raw-notes' | 'custom',
+          pillar: pillar as 'Personal' | 'The Grove' | 'Consulting' | 'Home/Garage',
+        },
+        workItemId,
+        source: 'tool-dispatch',
       },
-      agent,
-      registry
+      registry,
     );
 
-    // Complete or fail the agent
-    if (result.success) {
-      logger.info('Research completed successfully', { agentId: agent.id });
-      await registry.complete(agent.id, result);
-    } else {
-      logger.warn('Research failed', { agentId: agent.id, summary: result.summary });
-      await registry.fail(agent.id, result.summary || 'Research failed', true);
-    }
+    const { result, assessment } = orchResult;
+    const researchOutput = result.output as { summary?: string; findings?: any[]; sources?: string[]; bibliography?: any[] } | undefined;
 
-    // Cleanup subscription
-    subscription.unsubscribe();
+    // 3. Format result in the same shape (backward compat for tool loop)
+    const isLowConfidence = assessment
+      ? (assessment.confidence === 'speculative' || assessment.confidence === 'insufficient')
+      : !result.success;
 
-    // Return result with Andon Gate assessment
-    const researchOutput = result.output as { summary?: string; findings?: any[]; sources?: string[]; bibliography?: any[]; contentMode?: string; proseContent?: string } | undefined;
-
-    // Andon Gate — the CognitiveRouter MUST see the quality classification
-    const { assessOutput } = await import('../../services/andon-gate');
-    const andonInput = {
-      wasDispatched: true,
-      groundingUsed: true,
-      sourceCount: researchOutput?.sources?.length ?? 0,
-      findingCount: researchOutput?.findings?.length ?? 0,
-      bibliographyCount: researchOutput?.bibliography?.length ?? 0,
-      durationMs: result.metrics?.durationMs ?? 0,
-      summary: researchOutput?.summary ?? '',
-      originalQuery: query,
-      success: result.success,
-      hallucinationGuardPassed: true,
-      contentMode: researchOutput?.contentMode as 'prose' | 'json' | undefined,
-      hasProseContent: !!researchOutput?.proseContent,
-      source: 'dispatch_research',
-      claimFlags: (result.output as any)?.claimFlags,  // Sprint C
-    };
-    const assessment = assessOutput(andonInput);
-
-    logger.info('Andon Gate assessment for tool result', {
-      confidence: assessment.confidence,
-      routing: assessment.routing,
-      sourceCount: andonInput.sourceCount,
-      findingCount: andonInput.findingCount,
-    });
-
-    // Sprint C Bug 6: Enforce Andon gate — low confidence MUST be visible to user
-    const isLowConfidence = assessment.confidence === 'speculative' || assessment.confidence === 'insufficient';
-    const caveatLines = isLowConfidence
+    const caveatLines = isLowConfidence && assessment
       ? ['\n\n⚠️ MANDATORY CAVEAT:', assessment.calibration.caveat, 'Sources: ' + assessment.confidence]
       : [];
     const andonEnforcement = caveatLines.join('\n');
@@ -236,8 +178,7 @@ async function executeDispatchResearch(
     return {
       success: result.success,
       result: {
-        // Andon-calibrated message — Claude MUST use this label, not invent its own
-        message: result.success
+        message: result.success && assessment
           ? `${assessment.calibration.emoji} ${assessment.calibration.label} — ${researchOutput?.sources?.length || 0} sources analyzed.${andonEnforcement}`
           : `Research failed: ${result.summary}`,
         query,
@@ -245,17 +186,16 @@ async function executeDispatchResearch(
         voice,
         pillar,
         workQueueUrl: notionUrl,
-        summary: isLowConfidence
+        summary: isLowConfidence && assessment
           ? `⚠️ LOW CONFIDENCE — ${assessment.calibration.caveat}\n\n${researchOutput?.summary?.substring(0, 400) || ''}`
           : researchOutput?.summary?.substring(0, 500),
         sourcesCount: researchOutput?.sources?.length || 0,
         findingsCount: researchOutput?.findings?.length || 0,
-        // Andon Gate classification — CognitiveRouter must honor this
-        andonConfidence: assessment.confidence,
-        andonLabel: assessment.calibration.label,
-        andonCaveat: assessment.calibration.caveat,
-        andonRouting: assessment.routing,
-        andonEmoji: assessment.calibration.emoji,
+        andonConfidence: assessment?.confidence ?? 'insufficient',
+        andonLabel: assessment?.calibration.label ?? 'Research Incomplete',
+        andonCaveat: assessment?.calibration.caveat ?? null,
+        andonRouting: assessment?.routing ?? 'clarify',
+        andonEmoji: assessment?.calibration.emoji ?? '⚠️',
       },
     };
   } catch (error) {
