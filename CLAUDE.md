@@ -65,6 +65,7 @@ All content flows into one of four life domains. **These are equal citizens**—
 | **Atlas Worldview** | `39f6ddf7-8866-4523-8daf-2a7688ab0eca` | Belief system for research |
 | **POV Library** | `ea3d86b7-cdb8-403e-ba03-edc410ae6498` | High-level positions |
 | **Research Pipeline Config** | `6a03c508-1577-40e4-8da4-d55a3264c915` | DRC-001a: Research infrastructure parameters |
+| **Calendar Config** | `63a5c6ca-7848-4ff7-90d9-704663e249d7` | Google Calendar map: accounts → pillars, rules |
 
 **For Notion MCP plugin only (collection:// URLs):**
 | Database | Data Source ID |
@@ -74,6 +75,7 @@ All content flows into one of four life domains. **These are equal citizens**—
 | Atlas Worldview | `a23e83aa-c6a4-422d-a9b8-edbb3d5d8e02` |
 | POV Library | `19c88251-6a7a-4f0a-ad9f-c2c468409c66` |
 | Research Pipeline Config | `9aed2e9c-f805-490f-a1fc-17e24b53e9ce` |
+| Calendar Config | `8343ec0c-94a3-4174-a183-a5d951a68f9f` |
 
 ### Env Var Placement (ADR-005)
 | Env Var | Location | Consumer |

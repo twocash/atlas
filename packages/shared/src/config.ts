@@ -39,6 +39,7 @@ export const NOTION_DB = {
   POV_LIBRARY: 'ea3d86b7-cdb8-403e-ba03-edc410ae6498',
   SYSTEM_PROMPTS: '2fc780a7-8eef-8196-b29b-db4a6adfdc27',
   CONTENT_SOURCES: 'e09b4475-cb3c-413d-8af5-7e6d015b71e0',
+  CALENDAR_CONFIG: '63a5c6ca-7848-4ff7-90d9-704663e249d7',
 } as const;
 
 /** Which Atlas surface uses a database */
@@ -78,6 +79,7 @@ export const NOTION_DB_META: Record<keyof typeof NOTION_DB, DbMeta> = {
   POV_LIBRARY:     { label: 'POV Library',         surfaces: ['bridge'],   criticality: 'enrichment' },
   SYSTEM_PROMPTS:  { label: 'System Prompts',      surfaces: ['shared'],   criticality: 'critical' },
   CONTENT_SOURCES: { label: 'Content Sources',     surfaces: ['telegram'], criticality: 'enrichment' },
+  CALENDAR_CONFIG: { label: 'Calendar Config',     surfaces: ['shared'],   criticality: 'enrichment' },
 };
 
 /**
@@ -93,6 +95,7 @@ export const NOTION_MCP = {
   DEV_PIPELINE: '1460539c-7002-447a-a8b7-17bba06c6559',
   SYSTEM_PROMPTS: '2fc780a7-8eef-816a-ab6a-000be58429f2',
   CONTENT_SOURCES: '0541cafe-eed3-40fb-b9a3-6a9f06fdd45a',
+  CALENDAR_CONFIG: '8343ec0c-94a3-4174-a183-a5d951a68f9f',
 } as const;
 
 /** @deprecated Use NOTION_DB instead. Alias retained for backward compatibility during migration. */
