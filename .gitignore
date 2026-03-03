@@ -57,3 +57,6 @@ data/rag-sync.log
 
 # Google OAuth credentials (never commit)
 config/gcp-oauth.keys.json
+
+# MCP server config (contains API keys)
+.mcp.json
