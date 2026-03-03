@@ -56,8 +56,17 @@ servers:
     maxReconnectAttempts: 3
     disabled: true
 
-  # Example: Add more MCP servers here
-  # memory:
-  #   command: "npx"
-  #   args: ["-y", "@modelcontextprotocol/server-memory"]
-  #   timeout: 10000
+  # Google Calendar - Multi-account calendar access
+  # Accounts: jimcalhoun@gmail.com (default), jim@takeflightadvisors.com (take-flight)
+  # OAuth tokens cached at: ~/.config/google-calendar-mcp/tokens.json
+  # Auth setup: GOOGLE_OAUTH_CREDENTIALS=./config/gcp-oauth.keys.json npx @cocal/google-calendar-mcp auth [account-id]
+  # Spec: https://www.notion.so/317780a78eef81f786b5edc34bc758d9
+  google_calendar:
+    command: "npx"
+    args: ["-y", "@cocal/google-calendar-mcp"]
+    env:
+      GOOGLE_OAUTH_CREDENTIALS: "${GOOGLE_OAUTH_CREDENTIALS}"
+    timeout: 30000
+    reconnectDelay: 5000
+    maxReconnectAttempts: 3
+    disabled: false
