@@ -1,36 +1,54 @@
 # Fix AnythingLLM MCP on der-tier
 
-**Problem:** Claude Desktop on der-tier can't talk to AnythingLLM on grove-node-1. 403 auth errors.
-**Root cause:** The npm package `anythingllm-mcp-server` is broken. We have a working custom replacement in the atlas repo.
+**Problem:** Claude Desktop/Code on der-tier can't talk to AnythingLLM on grove-node-1.
+**Root cause (resolved):** Two issues stacked:
+1. The npm package `anythingllm-mcp-server` broke auth silently in an update - replaced with our custom server
+2. Docker Desktop for Windows corrupts Authorization headers on IPv4 connections - fixed with netsh portproxy
+
+**Status:** FIXED as of 2026-03-03. See ADR-003 for full architecture.
 
 ---
 
-## Prerequisites (already done)
+## How it works now
+
+```
+der-tier                         grove-node-1
+  Claude Desktop/Code              AnythingLLM (Docker)
+       |                                |
+       | http://100.80.12.118:3002      | [::1]:3001 (IPv6 loopback)
+       |-------- Tailscale ------------>| netsh portproxy: 3002 -> ::1:3001
+       |                                |
+       | Custom MCP server (bun)        | API key validated (IPv6 path works)
+```
+
+**Port 3001** = Docker's native port. IPv4 connections get 403 (Docker NAT bug).
+**Port 3002** = Windows portproxy. Forwards IPv4 to IPv6 loopback. API keys work.
+
+---
+
+## Prerequisites
 
 - [x] AnythingLLM running on grove-node-1 (Docker, port 3001)
-- [x] API key verified working: `C0P0TQA-2XY4HFJ-HWNV5E7-ZXBCHHM`
+- [x] API key: `C0P0TQA-2XY4HFJ-HWNV5E7-ZXBCHHM`
 - [x] Tailscale connects der-tier to grove-node-1 at `100.80.12.118`
-- [x] Atlas repo exists on der-tier at `C:\GitHub\atlas`
-- [x] Bun exists on der-tier at `C:\Users\jim\.bun\bin\bun.exe`
+- [x] Atlas repo on der-tier at `C:\GitHub\atlas`
+- [x] Bun on der-tier at `C:\Users\jim\.bun\bin\bun.exe`
+- [x] netsh portproxy rule on grove-node-1 (port 3002 -> ::1:3001) - survives reboots
 
 ---
 
 ## Step 1: Pull latest atlas repo
-
-Open a terminal on der-tier and run:
 
 ```powershell
 cd C:\GitHub\atlas
 git pull origin master
 ```
 
-Verify the file exists:
-
+Verify:
 ```powershell
 Test-Path "C:\GitHub\atlas\packages\bridge\src\tools\anythingllm-mcp-server.ts"
+# Must say True
 ```
-
-Must say `True`. If not, something went wrong with the pull.
 
 ---
 
@@ -41,106 +59,68 @@ cd C:\GitHub\atlas
 bun install
 ```
 
-Verify the MCP SDK installed:
-
+Verify:
 ```powershell
 Test-Path "C:\GitHub\atlas\node_modules\@modelcontextprotocol\sdk"
+# Must say True
 ```
-
-Must say `True`.
 
 ---
 
-## Step 3: Test the MCP server runs
+## Step 3: Test API connectivity (port 3002, NOT 3001)
 
 ```powershell
-$env:ANYTHINGLLM_URL = "http://100.80.12.118:3001"
-$env:ANYTHINGLLM_API_KEY = "C0P0TQA-2XY4HFJ-HWNV5E7-ZXBCHHM"
-cd C:\GitHub\atlas
-bun run packages/bridge/src/tools/anythingllm-mcp-server.ts
+curl -s http://100.80.12.118:3002/api/v1/workspaces -H "Authorization: Bearer C0P0TQA-2XY4HFJ-HWNV5E7-ZXBCHHM" --connect-timeout 5
 ```
 
-It should hang (waiting for stdio input). That means it started. Press Ctrl+C to kill it.
+Must return JSON with workspace list.
+- If timeout: Tailscale is down (`ping 100.80.12.118`)
+- If 403: portproxy rule is missing on grove-node-1 (see Troubleshooting)
+- If connection refused on 3002: portproxy rule is missing on grove-node-1
 
-If it crashes with an import error, `bun install` didn't work. Re-run it.
+**NEVER use port 3001 from der-tier.** It will always 403 due to Docker's IPv4 auth bug.
 
 ---
 
-## Step 4: Test API connectivity from der-tier
+## Step 4: Claude Desktop config
 
-```powershell
-curl -s http://100.80.12.118:3001/api/v1/workspaces -H "Authorization: Bearer C0P0TQA-2XY4HFJ-HWNV5E7-ZXBCHHM" --connect-timeout 5
-```
+File: `C:\Users\jim\AppData\Roaming\Claude\claude_desktop_config.json`
 
-Must return JSON with workspace list. If it times out, Tailscale is down. If 403, the API key is wrong (check AnythingLLM admin panel on grove-node-1).
-
----
-
-## Step 5: Edit Claude Desktop config
-
-Open this file in any editor:
-
-```
-C:\Users\jim\AppData\Roaming\Claude\claude_desktop_config.json
-```
-
-Find the `"anythingllm"` section. It currently looks like this:
-
-```json
-"anythingllm": {
-  "command": "npx",
-  "args": ["-y", "anythingllm-mcp-server"],
-  "env": {
-    "ANYTHINGLLM_BASE_URL": "http://100.80.12.118:3001",
-    "ANYTHINGLLM_API_KEY": "C0P0TQA-2XY4HFJ-HWNV5E7-ZXBCHHM"
-  }
-}
-```
-
-**Replace it with exactly this:**
+The `"anythingllm"` section should be:
 
 ```json
 "anythingllm": {
   "command": "C:/Users/jim/.bun/bin/bun.exe",
   "args": ["run", "C:/GitHub/atlas/packages/bridge/src/tools/anythingllm-mcp-server.ts"],
   "env": {
-    "ANYTHINGLLM_URL": "http://100.80.12.118:3001",
+    "ANYTHINGLLM_URL": "http://100.80.12.118:3002",
     "ANYTHINGLLM_API_KEY": "C0P0TQA-2XY4HFJ-HWNV5E7-ZXBCHHM"
   }
 }
 ```
 
-**Three things changed:**
-1. `"command"` — was `"npx"`, now full path to bun
-2. `"args"` — was `["-y", "anythingllm-mcp-server"]`, now `["run", "<path to our server>"]`
-3. `"env"` key name — was `ANYTHINGLLM_BASE_URL`, now `ANYTHINGLLM_URL` (our server reads `_URL`)
-
-**Everything else in the file stays the same.** Don't touch `filesystem` or `preferences`.
-
-Save the file.
+**Critical details:**
+- Port is **3002** (not 3001)
+- Env var is `ANYTHINGLLM_URL` (not `_BASE_URL`)
+- Command is full path to bun (not `npx`)
+- Do NOT use the npm package `anythingllm-mcp-server` - it's broken
 
 ---
 
-## Step 6: Restart Claude Desktop
+## Step 5: Restart Claude Desktop
 
-1. Fully quit Claude Desktop (right-click tray icon, Quit — not just close the window)
+1. Fully quit (right-click tray icon -> Quit, not just close window)
 2. Reopen Claude Desktop
-3. Start a new conversation
+3. Start new conversation
 4. Ask it to list AnythingLLM workspaces
 
-It should return 9 workspaces: my-workspace, grove-technical, grove-vision, monarch, take-flight, gtm-consulting, drumwave, grove-corpus, atlas-pm.
+Should return 9 workspaces: my-workspace, grove-technical, grove-vision, monarch, take-flight, gtm-consulting, drumwave, grove-corpus, atlas-pm.
 
 ---
 
-## Step 7 (optional): Fix Claude Code on der-tier too
+## Step 6 (optional): Claude Code on der-tier
 
-If you want Claude Code on der-tier to also have AnythingLLM access, create this file:
-
-```
-C:\GitHub\atlas\.mcp.json
-```
-
-With this content:
+Create `C:\GitHub\atlas\.mcp.json`:
 
 ```json
 {
@@ -149,7 +129,7 @@ With this content:
       "command": "C:/Users/jim/.bun/bin/bun.exe",
       "args": ["run", "C:/GitHub/atlas/packages/bridge/src/tools/anythingllm-mcp-server.ts"],
       "env": {
-        "ANYTHINGLLM_URL": "http://100.80.12.118:3001",
+        "ANYTHINGLLM_URL": "http://100.80.12.118:3002",
         "ANYTHINGLLM_API_KEY": "C0P0TQA-2XY4HFJ-HWNV5E7-ZXBCHHM"
       }
     }
@@ -157,13 +137,30 @@ With this content:
 }
 ```
 
-This file is gitignored so it won't be committed.
+This file is gitignored.
 
 ---
 
-## If it still doesn't work
+## Troubleshooting
 
-1. Check Tailscale: `ping 100.80.12.118` — if this fails, Tailscale is disconnected
-2. Check AnythingLLM: `curl http://100.80.12.118:3001/api/ping` — should return `{"online":true}`
-3. Check the key: on grove-node-1, run `bun -e "const {Database}=require('bun:sqlite'); const db=new Database('C:/anythingllm-storage/anythingllm.db',{readonly:true}); console.log(db.query('SELECT secret FROM api_keys LIMIT 1').get().secret)"` — must match the key above
-4. Check Claude Desktop logs: `C:\Users\jim\AppData\Roaming\Claude\logs\` — look for MCP server startup errors
+### 403 from port 3002
+The portproxy rule is missing on grove-node-1. Run (as admin):
+```
+netsh interface portproxy add v4tov6 listenport=3002 listenaddress=0.0.0.0 connectport=3001 connectaddress=::1
+```
+Verify: `netsh interface portproxy show all`
+
+### 403 from port 3001
+Expected. Port 3001 on IPv4 will ALWAYS 403. Use port 3002.
+
+### Connection refused on 3002
+AnythingLLM Docker container is down on grove-node-1. Start it: `docker start anythingllm`
+
+### MCP server won't start
+Run `bun install` in the atlas repo directory. If bun not found, use full path: `C:\Users\jim\.bun\bin\bun.exe`
+
+### API key verification
+On grove-node-1:
+```
+bun -e "const {Database}=require('bun:sqlite'); const db=new Database('C:/anythingllm-storage/anythingllm.db',{readonly:true}); console.log(db.query('SELECT secret FROM api_keys LIMIT 1').get().secret)"
+```

@@ -2,6 +2,7 @@
 
 **Status:** Accepted
 **Date:** 2026-03-03
+**Updated:** 2026-03-03 (IPv4/IPv6 port proxy fix, Claude Desktop config standardization)
 **Context:** Post-incident restoration after accidental deletion in dead-code cleanup
 
 ---
@@ -30,14 +31,56 @@ On 2026-03-01, commit `b9cfeb2` ("delete ~2,934 lines of dead MCP/workspace code
         │                     │                      │
         ▼                     ▼                      ▼
 ┌───────────────────────────────────────────────────────────────┐
-│              AnythingLLM (Docker, port 3001)                  │
-│              grove-node-1 / 100.80.12.118 (Tailscale)        │
+│              AnythingLLM (Docker, grove-node-1)               │
+│                                                               │
+│  Internal:  [::1]:3001  (IPv6 loopback - API keys work here) │
+│  Port 3001: 0.0.0.0:3001 (Docker NAT - API keys BROKEN)     │
+│  Port 3002: netsh portproxy IPv4:3002 -> [::1]:3001 (FIX)    │
+│                                                               │
+│  grove-node-1:  localhost:3001 (resolves to ::1, works)       │
+│  der-tier:      100.80.12.118:3002 (portproxy -> ::1, works)  │
 ├───────────────────────────────────────────────────────────────┤
 │  Workspaces: monarch, take-flight, drumwave, grove-corpus,   │
 │  grove-technical, grove-vision, gtm-consulting, atlas-pm     │
 │  Embeddings: Ollama snowflake-arctic-embed2 (1024 dims)      │
 └───────────────────────────────────────────────────────────────┘
 ```
+
+### Docker IPv4/IPv6 Auth Bug (CRITICAL TRAP)
+
+**Symptom:** API key returns 403 "No valid api key found" from any IPv4 address (127.0.0.1, Tailscale IP, LAN IP) but works from `localhost` (which resolves to `::1` IPv6 on Windows).
+
+**Root cause:** Docker Desktop for Windows uses a NAT proxy for IPv4 port mappings. This proxy corrupts or mishandles the `Authorization` header before it reaches the Express server inside the container. IPv6 connections bypass Docker's NAT and connect directly to the container's network namespace.
+
+**Evidence (tested 2026-03-03):**
+
+| Address | Protocol | Result |
+|---------|----------|--------|
+| `localhost:3001` | IPv6 (::1) | **200 OK** |
+| `127.0.0.1:3001` | IPv4 | **403 Forbidden** |
+| `100.80.12.118:3001` | IPv4 (Tailscale) | **403 Forbidden** |
+| `localhost:3002` (portproxy) | IPv4 -> IPv6 | **200 OK** |
+| `100.80.12.118:3002` (portproxy) | IPv4 -> IPv6 | **200 OK** |
+
+**Fix:** Windows `netsh interface portproxy` rule on grove-node-1 forwards IPv4 port 3002 to IPv6 `[::1]:3001`:
+
+```
+netsh interface portproxy add v4tov6 listenport=3002 listenaddress=0.0.0.0 connectport=3001 connectaddress=::1
+```
+
+This rule is **persistent across reboots** (stored in Windows registry). To verify:
+
+```
+netsh interface portproxy show all
+```
+
+To remove if ever needed:
+
+```
+netsh interface portproxy delete v4tov6 listenport=3002 listenaddress=0.0.0.0
+```
+
+**NEVER use port 3001 from remote machines.** Always use port 3002.
 
 ### MCP Server (v1.1.0)
 
@@ -60,9 +103,12 @@ Self-contained stdio MCP server using `@modelcontextprotocol/sdk`. No imports fr
 
 ### Configuration
 
-**Claude Code** (project-level, gitignored):
+Both Claude Desktop and Claude Code use the **same custom MCP server** (`anythingllm-mcp-server.ts`). The third-party npm package `anythingllm-mcp-server` was abandoned after it broke auth in a silent update.
+
+**grove-node-1 (localhost, IPv6 works natively):**
+
+Claude Code `.mcp.json`:
 ```json
-// .mcp.json
 {
   "mcpServers": {
     "anythingllm": {
@@ -77,10 +123,57 @@ Self-contained stdio MCP server using `@modelcontextprotocol/sdk`. No imports fr
 }
 ```
 
-**Claude Desktop** (`claude_desktop_config.json`):
-Uses the npm package `anythingllm-mcp-server` with same env var pattern.
+Claude Desktop `claude_desktop_config.json`:
+```json
+"anythingllm": {
+  "command": "C:/Users/jimca/.bun/bin/bun.exe",
+  "args": ["run", "C:/github/atlas/packages/bridge/src/tools/anythingllm-mcp-server.ts"],
+  "env": {
+    "ANYTHINGLLM_URL": "http://localhost:3001",
+    "ANYTHINGLLM_API_KEY": "<key>"
+  }
+}
+```
 
-**Multi-machine:** `ANYTHINGLLM_URL` is `http://localhost:3001` on grove-node-1, `http://100.80.12.118:3001` on der-tier (Tailscale).
+**der-tier (remote via Tailscale, must use port 3002 portproxy):**
+
+Claude Desktop `claude_desktop_config.json`:
+```json
+"anythingllm": {
+  "command": "C:/Users/jim/.bun/bin/bun.exe",
+  "args": ["run", "C:/GitHub/atlas/packages/bridge/src/tools/anythingllm-mcp-server.ts"],
+  "env": {
+    "ANYTHINGLLM_URL": "http://100.80.12.118:3002",
+    "ANYTHINGLLM_API_KEY": "<key>"
+  }
+}
+```
+
+Claude Code `.mcp.json` (in `C:\GitHub\atlas\`):
+```json
+{
+  "mcpServers": {
+    "anythingllm": {
+      "command": "C:/Users/jim/.bun/bin/bun.exe",
+      "args": ["run", "C:/GitHub/atlas/packages/bridge/src/tools/anythingllm-mcp-server.ts"],
+      "env": {
+        "ANYTHINGLLM_URL": "http://100.80.12.118:3002",
+        "ANYTHINGLLM_API_KEY": "<key>"
+      }
+    }
+  }
+}
+```
+
+**Key differences between machines:**
+| Setting | grove-node-1 | der-tier |
+|---------|-------------|----------|
+| `ANYTHINGLLM_URL` | `http://localhost:3001` | `http://100.80.12.118:3002` |
+| Bun path | `bun` (in PATH) | `C:/Users/jim/.bun/bin/bun.exe` |
+| Atlas repo path | `C:/github/atlas/` | `C:/GitHub/atlas/` |
+| Port | 3001 (IPv6 direct) | 3002 (portproxy -> IPv6) |
+
+`.mcp.json` is gitignored (contains API key). Each machine needs its own copy.
 
 ### Why the Deletion Was Wrong
 
@@ -98,3 +191,28 @@ The cleanup correctly identified `packages/shared/src/mcp/` as dead code (no act
 - Upload/embed tools enable document management directly from Claude Code/Desktop sessions
 - 15-minute embed timeout accommodates Ollama CPU embedding for large documents
 - `.mcp.json` per-machine config allows grove-node-1 (localhost) and der-tier (Tailscale IP) to reach the same AnythingLLM instance
+- Port 3002 portproxy rule on grove-node-1 works around Docker's IPv4 auth bug permanently
+- The npm package `anythingllm-mcp-server` is no longer used on any machine — replaced by our custom server on both
+
+## Troubleshooting
+
+### "No valid api key found" (403)
+
+1. **Are you using port 3002 from a remote machine?** Port 3001 only works via IPv6 (`localhost`). Remote machines MUST use port 3002.
+2. **Is the portproxy rule active?** Run `netsh interface portproxy show all` on grove-node-1. Must show `0.0.0.0:3002 -> ::1:3001`.
+3. **Is the key correct?** Verify: `bun -e "const {Database}=require('bun:sqlite'); const db=new Database('C:/anythingllm-storage/anythingllm.db',{readonly:true}); console.log(db.query('SELECT secret FROM api_keys LIMIT 1').get().secret)"`
+4. **Is AnythingLLM running?** `curl http://localhost:3001/api/ping` should return `{"online":true}`.
+5. **Is Tailscale up?** `ping 100.80.12.118` from der-tier.
+
+### MCP server won't start
+
+1. **Module not found:** Run `bun install` in the atlas repo directory.
+2. **Bun not found:** Use full path to bun executable (see config table above).
+3. **File not found:** Run `git pull origin master` to get latest.
+
+### Adding the portproxy rule (if lost)
+
+Requires admin. On grove-node-1:
+```
+netsh interface portproxy add v4tov6 listenport=3002 listenaddress=0.0.0.0 connectport=3001 connectaddress=::1
+```
