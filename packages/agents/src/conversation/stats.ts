@@ -39,6 +39,7 @@ interface DailyStats {
     output: number;
     total: number;
   };
+  toolDefinitionTokens: number;
   byPillar: Record<string, number>;
   byRequestType: Record<string, number>;
   estimatedCost: number;
@@ -86,6 +87,7 @@ export async function recordUsage(params: {
   pillar: string;
   requestType: string;
   model?: string;
+  toolDefinitionTokens?: number;
 }): Promise<void> {
   const stats = await loadStats();
   const today = new Date().toISOString().split('T')[0];
@@ -95,6 +97,7 @@ export async function recordUsage(params: {
       date: today,
       requests: 0,
       tokens: { input: 0, output: 0, total: 0 },
+      toolDefinitionTokens: 0,
       byPillar: {},
       byRequestType: {},
       estimatedCost: 0,
@@ -106,6 +109,11 @@ export async function recordUsage(params: {
   daily.tokens.input += params.inputTokens;
   daily.tokens.output += params.outputTokens;
   daily.tokens.total += params.inputTokens + params.outputTokens;
+
+  // Track tool definition overhead (these tokens are part of input but worth tracking separately)
+  if (params.toolDefinitionTokens) {
+    daily.toolDefinitionTokens = (daily.toolDefinitionTokens || 0) + params.toolDefinitionTokens;
+  }
 
   daily.byPillar[params.pillar] = (daily.byPillar[params.pillar] || 0) + 1;
   daily.byRequestType[params.requestType] = (daily.byRequestType[params.requestType] || 0) + 1;
@@ -126,6 +134,7 @@ export async function getStats(days: number = 7): Promise<{
   totalRequests: number;
   totalTokens: number;
   totalCost: number;
+  totalToolDefinitionTokens: number;
   byPillar: Record<string, number>;
   byRequestType: Record<string, number>;
   dailyBreakdown: DailyStats[];
@@ -138,6 +147,7 @@ export async function getStats(days: number = 7): Promise<{
   let totalRequests = 0;
   let totalTokens = 0;
   let totalCost = 0;
+  let totalToolDefinitionTokens = 0;
   const byPillar: Record<string, number> = {};
   const byRequestType: Record<string, number> = {};
   const dailyBreakdown: DailyStats[] = [];
@@ -147,6 +157,7 @@ export async function getStats(days: number = 7): Promise<{
       totalRequests += daily.requests;
       totalTokens += daily.tokens.total;
       totalCost += daily.estimatedCost;
+      totalToolDefinitionTokens += daily.toolDefinitionTokens || 0;
 
       for (const [pillar, count] of Object.entries(daily.byPillar)) {
         byPillar[pillar] = (byPillar[pillar] || 0) + count;
@@ -165,6 +176,7 @@ export async function getStats(days: number = 7): Promise<{
     totalRequests,
     totalTokens,
     totalCost,
+    totalToolDefinitionTokens,
     byPillar,
     byRequestType,
     dailyBreakdown,
@@ -328,6 +340,9 @@ export async function formatStatsMessage(days: number = 7): Promise<string> {
   // Token usage
   message += `💰 Token Usage:\n`;
   message += `   • Total: ${(usageStats.totalTokens / 1000).toFixed(1)}K tokens\n`;
+  if (usageStats.totalToolDefinitionTokens > 0) {
+    message += `   • Tool defs: ~${(usageStats.totalToolDefinitionTokens / 1000).toFixed(1)}K tokens (overhead per call)\n`;
+  }
   message += `   • Est. cost: $${usageStats.totalCost.toFixed(2)}\n`;
 
   return message;

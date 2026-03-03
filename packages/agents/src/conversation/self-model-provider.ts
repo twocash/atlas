@@ -172,6 +172,15 @@ class TelegramSelfModelProvider implements CapabilityDataProvider {
         })
       }
 
+      if (process.env.GOOGLE_OAUTH_CREDENTIALS) {
+        integrations.push({
+          service: "google-calendar",
+          capabilities: ["calendar-read", "calendar-write", "event-management", "multi-account"],
+          status: "ok",
+          message: "OAuth credentials configured",
+        })
+      }
+
       return integrations
     } catch (err) {
       console.warn("[self-model-provider] getIntegrationHealth failed:", (err as Error).message)

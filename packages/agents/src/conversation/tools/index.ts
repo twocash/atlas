@@ -72,17 +72,40 @@ const NATIVE_TOOLS: Anthropic.Tool[] = [
   ...AGENT_TOOLS,       // Research, transcription, draft dispatch
 ];
 
+/** Rough token estimate: ~4 chars per token for JSON schemas */
+function estimateToolTokens(tools: Anthropic.Tool[]): number {
+  const json = JSON.stringify(tools);
+  return Math.ceil(json.length / 4);
+}
+
 /**
  * All available tools for Claude (native + MCP)
  * MCP tools are fetched dynamically from connected servers
  */
 export function getAllTools(): Anthropic.Tool[] {
   const mcpTools = getToolHooks().getMcpTools();
-  console.error(`[Tools] Native: ${NATIVE_TOOLS.length}, MCP: ${mcpTools.length}`);
+  const allTools = [...NATIVE_TOOLS, ...mcpTools];
+
+  const nativeTokens = estimateToolTokens(NATIVE_TOOLS);
+  const mcpTokens = estimateToolTokens(mcpTools);
+  const totalTokens = nativeTokens + mcpTokens;
+
+  console.error(`[Tools] Native: ${NATIVE_TOOLS.length} (~${nativeTokens} tokens), MCP: ${mcpTools.length} (~${mcpTokens} tokens), Total: ${allTools.length} (~${totalTokens} tokens)`);
   if (mcpTools.length > 0) {
-    console.error(`[Tools] MCP tools available: ${mcpTools.map((t: any) => t.name).join(', ')}`);
+    console.error(`[Tools] MCP tools: ${mcpTools.map((t: any) => t.name).join(', ')}`);
   }
-  return [...NATIVE_TOOLS, ...mcpTools];
+  return allTools;
+}
+
+/**
+ * Get tool definition token cost breakdown.
+ * Useful for monitoring context budget consumption per API call.
+ */
+export function getToolTokenCost(): { native: number; mcp: number; total: number; toolCount: number } {
+  const mcpTools = getToolHooks().getMcpTools();
+  const native = estimateToolTokens(NATIVE_TOOLS);
+  const mcp = estimateToolTokens(mcpTools);
+  return { native, mcp, total: native + mcp, toolCount: NATIVE_TOOLS.length + mcpTools.length };
 }
 
 /**

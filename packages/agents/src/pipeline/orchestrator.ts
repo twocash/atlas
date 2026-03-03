@@ -18,7 +18,7 @@ import { buildSystemPrompt } from '../conversation/prompt';
 import { detectAttachment, buildAttachmentPrompt } from '../conversation/attachments';
 import { buildMediaContext, buildAnalysisContent, type Pillar } from '../media/processor';
 import { createAuditTrail, type AuditEntry, type AuditResult } from '../conversation/audit';
-import { getAllTools, executeTool } from '../conversation/tools';
+import { getAllTools, executeTool, getToolTokenCost } from '../conversation/tools';
 import { recordUsage } from '../conversation/stats';
 // socratic-session.ts DELETED (STATE-PERSIST-TEARDOWN) — unified state is canonical
 import { getIntentHash } from '../skills/intent-hash';
@@ -1523,13 +1523,15 @@ export async function orchestrateMessage(
     }
     completeStep(sendStep);
 
-    // Record usage for stats
+    // Record usage for stats (including tool definition overhead)
+    const toolCost = getToolTokenCost();
     await recordUsage({
       inputTokens: Math.floor(totalTokens * 0.7),
       outputTokens: Math.floor(totalTokens * 0.3),
       pillar: auditPillar,
       requestType: classification.requestType,
       model: 'claude-sonnet-4',
+      toolDefinitionTokens: toolCost.total,
     });
 
     // Final reaction
