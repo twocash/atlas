@@ -54,3 +54,6 @@ apps/telegram/scripts/*.json
 # RAG sync operational state
 data/rag-manifest.json
 data/rag-sync.log
+
+# Google OAuth credentials (never commit)
+config/gcp-oauth.keys.json
