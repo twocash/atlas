@@ -103,6 +103,23 @@ async function main() {
   // Run health checks (exits if critical failures)
   await healthCheckOrDie();
 
+  // Autonomaton Awakening: validate cognitive infrastructure paths
+  const { runAwakeningValidation, formatAwakeningReport } = await import('@atlas/shared/awakening');
+  const awakeningReport = runAwakeningValidation('telegram');
+  console.log(formatAwakeningReport(awakeningReport));
+
+  if (!awakeningReport.canAwaken) {
+    logger.error('STARTUP ABORTED: Cognitive infrastructure validation failed');
+    process.exit(1);
+  }
+  if (awakeningReport.summary.warned > 0) {
+    const { reportFailure } = await import('@atlas/shared/error-escalation');
+    reportFailure('awakening-validator',
+      new Error(`${awakeningReport.summary.warned} advisory issue(s) at boot`),
+      { surface: 'telegram', issues: awakeningReport.checks.filter(c => c.status === 'warn').map(c => c.message) }
+    );
+  }
+
   // Verify database schema integrity (exits if corrupted)
   const isSystemHealthy = await verifySystemIntegrity();
   if (!isSystemHealthy) {

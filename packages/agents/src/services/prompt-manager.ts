@@ -144,10 +144,10 @@ export interface ComposedPrompt {
 /** Cache TTL in milliseconds (5 minutes) */
 const CACHE_TTL_MS = 5 * 60 * 1000;
 
-/** Path to local fallback prompts */
+/** Path to local fallback prompts (canonical copy in packages/agents/data/) */
 const FALLBACK_PROMPTS_PATH = path.join(
   __dirname,
-  '../../../../apps/telegram/data/migrations/prompts-v1.json'
+  '../../../data/migrations/prompts-v1.json'
 );
 
 // ==========================================

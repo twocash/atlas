@@ -45,6 +45,10 @@
     "./types/slot-result": {
       "types": "./dist/types/slot-result.d.ts",
       "import": "./dist/types/slot-result.js"
+    },
+    "./awakening": {
+      "types": "./dist/awakening/index.d.ts",
+      "import": "./dist/awakening/index.js"
     }
   },
   "scripts": {

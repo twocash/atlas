@@ -190,6 +190,8 @@ interface CookieRefreshResult {
   cookies: Record<string, CookieEntry[]>
 }
 
+// Cross-boundary exemption: cookies are shared with Telegram surface intentionally.
+// The bot reads these for authenticated web scraping. Do not move to packages/bridge/data/.
 const COOKIE_DIR = resolve(
   dirname(fileURLToPath(import.meta.url)),
   "../../../../apps/telegram/data/cookies",

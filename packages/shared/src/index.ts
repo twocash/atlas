@@ -11,3 +11,6 @@ export * from './config';
 // Context Transparency (SlotResult + degraded indicators)
 export * from './types/slot-result';
 export * from './context-transparency';
+
+// Awakening Validator (boot-time cognitive infrastructure checks)
+export * from './awakening';

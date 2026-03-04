@@ -20,11 +20,13 @@ Read `packages/skills/superpowers/atlas-patterns.md` completely.
 This contains the laws of physics for this codebase.
 
 ### Step 3: Load Memory
-Read `apps/telegram/data/MEMORY.md` for recent learnings and corrections.
-These are hard-won lessons - do not repeat past mistakes.
+Identity and operational doctrine are now Notion-governed via `composeAtlasIdentity()`
+and `composeOperationalDoctrine()` in `packages/agents/src/services/prompt-composition/`.
+Session memory lives in Claude Code's auto-memory (`~/.claude/projects/`).
 
 ### Step 4: Check Identity
-Read `apps/telegram/data/SOUL.md` to understand Atlas's personality and boundaries.
+Atlas identity is composed at runtime from the Notion System Prompts database.
+See `packages/agents/src/services/prompt-composition/identity.ts` for the composition engine.
 
 ### Step 5: Verify Domain Context
 Based on the task, load relevant context:

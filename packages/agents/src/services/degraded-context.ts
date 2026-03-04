@@ -38,7 +38,7 @@ export function degradedWarning(slug: string): string {
 const REMEDIATION_STEPS = [
   '1. Check NOTION_PROMPTS_DB_ID env var is set',
   '2. Verify Notion DB has entry with matching ID/slug',
-  '3. Run seed migration if DB is empty: bun run apps/telegram/data/migrations/seed-prompts.ts',
+  '3. Run seed migration if DB is empty (see packages/agents/src/services/prompt-manager.ts)',
   '4. Check network connectivity to Notion API',
 ] as const;
 

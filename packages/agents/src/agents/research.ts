@@ -568,7 +568,7 @@ function toGeminiResponse(result: SearchProviderResult): GeminiResponse {
  * Primary source is the Atlas System Prompts database in Notion.
  *
  * @see packages/agents/src/services/prompt-manager.ts
- * @see apps/telegram/data/migrations/prompts-v1.json
+ * @see packages/agents/data/migrations/prompts-v1.json
  */
 /**
  * FALLBACK_VOICE_DEFAULTS — Intentionally in Spanish (ADR-008: Fail Loud)
@@ -752,7 +752,7 @@ async function getResearchInstructionsFromNotion(config: ResearchConfig): Promis
       error: err,
       fix: [
         '1. Check NOTION_PROMPTS_DB_ID env var is set',
-        '2. Run seed migration: bun run apps/telegram/data/migrations/seed-prompts.ts',
+        '2. Run seed migration (see packages/agents/src/services/prompt-manager.ts)',
         '3. Check network connectivity to Notion API',
       ],
     });

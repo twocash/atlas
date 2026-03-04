@@ -663,6 +663,8 @@ interface CookieRefreshResult {
   cookies: Record<string, CookieEntry[]>
 }
 
+// Cross-boundary exemption: cookies are shared with Telegram surface intentionally.
+// The bot reads these for authenticated web scraping. Do not move to packages/bridge/data/.
 const COOKIE_DIR = resolve(__bridgeDir, "../../../apps/telegram/data/cookies")
 
 function writeCookieFiles(result: CookieRefreshResult): Record<string, number> {
@@ -997,6 +999,15 @@ async function hydrateBridgeIdentity(): Promise<void> {
 
 // Startup sequence: validate databases → hydrate identity → spawn Claude
 async function startBridge(): Promise<void> {
+  // 0. Autonomaton Awakening: validate cognitive infrastructure paths
+  const { runAwakeningValidation, formatAwakeningReport } = await import('@atlas/shared/awakening');
+  const awakeningReport = runAwakeningValidation('bridge');
+  console.log(formatAwakeningReport(awakeningReport));
+  if (!awakeningReport.canAwaken) {
+    console.error("[bridge] FATAL: Cognitive infrastructure validation failed");
+    process.exit(1);
+  }
+
   // 1. Validate database access (ADR-008: fail fast)
   const dbReport = await runBridgeHealthCheck()
   if (!dbReport.allCriticalPassed) {

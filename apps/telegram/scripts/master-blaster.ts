@@ -991,6 +991,8 @@ async function runAgentsUnitTests(cwd: string): Promise<SuiteResult> {
       'test/emergence.test.ts',         // CONV-ARCH-004: Skill Emergence (Sprint 4)
       'test/emergence-verification.test.ts', // CONV-ARCH-004 v4.0: Emergence Verification & Delivery Wiring
       'test/architecture-boundary.test.ts', // CPE boundary scanner (5 rules)
+      'test/awakening-drift-scanner.test.ts', // Autonomaton Awakening: path drift prevention
+      'test/awakening-validator.test.ts', // Autonomaton Awakening: validator unit tests
       'test/intent-interpreter-regression.test.ts', // SESSION-TELEMETRY-QA: Autonomaton Loop 1 — reportFailure wiring
       'test/session-manager.test.ts',  // SESSION-TELEMETRY P0: SessionManager lifecycle
       'test/session-journal.test.ts',  // SESSION-TELEMETRY P0: Journal + artifact

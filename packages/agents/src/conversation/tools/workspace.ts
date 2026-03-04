@@ -31,7 +31,7 @@ export function setWorkspaceHooks(hooks: Partial<WorkspaceHooks>) {
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
 
-// Allowed workspace paths (relative to apps/telegram/)
+// Allowed workspace paths (relative to packages/agents/)
 const WORKSPACE_ROOT = resolve(__dirname, '../../..');
 const ALLOWED_PATHS = {
   skills: join(WORKSPACE_ROOT, 'data/skills'),
