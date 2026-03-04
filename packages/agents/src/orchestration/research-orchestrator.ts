@@ -14,7 +14,6 @@ import type { AndonAssessment, AndonInput, DiagnosticAssessment } from "../servi
 import type { ResearchConfigV2 } from "../types/research-v2";
 import { wireAgentToWorkQueue, appendDispatchNotes } from "../workqueue";
 import { assessOutputWithDiagnostics } from "../services/andon-gate";
-import { isResearchConfigV2 } from "../types/research-v2";
 import { composeResearchContext } from "../services/research-context";
 import { getContentContext, getSocraticAnswer, getState } from "../conversation/conversation-state";
 import { stashAgentResult } from "../conversation/context-manager";
@@ -197,8 +196,10 @@ export async function orchestrateResearch(
   await registry.start(agent.id);
 
   try {
-    // 4. V2 context composition from conversation state
-    if (sessionId !== undefined && isResearchConfigV2(config)) {
+    // 4. Context composition from conversation state
+    // Always attempted when sessionId is present — V1/V2 guard removed.
+    // composeResearchContext degrades gracefully when fields are missing.
+    if (sessionId !== undefined) {
       try {
         const contentCtx = getContentContext(sessionId);
         const socraticAnswer = getSocraticAnswer(sessionId);
@@ -210,7 +211,7 @@ export async function orchestrateResearch(
           extractedContent: contentCtx?.prefetchedUrlContent?.fullContent
             || contentCtx?.prefetchedUrlContent?.bodySnippet,
           socraticAnswer,
-          sourceUrl: contentCtx?.url || config.sourceUrl,
+          sourceUrl: contentCtx?.url || (config as ResearchConfigV2).sourceUrl,
           triageTitle: convState?.lastTriage?.title,
           triageConfidence: convState?.lastTriage?.confidence,
           triageKeywords: convState?.lastTriage?.keywords,
@@ -218,17 +219,21 @@ export async function orchestrateResearch(
 
         if (sourceContext) {
           (config as ResearchConfigV2).sourceContext = sourceContext;
-          logger.info('[ResearchOrchestrator] V2 context composed', {
+          logger.info('[ResearchOrchestrator] Context composed', {
             hasPreReader: sourceContext.preReaderAvailable,
             hasExtracted: !!sourceContext.extractedContent,
             contentType: sourceContext.contentType,
             estimatedTokens: sourceContext.estimatedTokens,
           });
+        } else {
+          logger.info('[ResearchOrchestrator] No upstream context available (command dispatch without prior URL/content)');
         }
       } catch (contextError) {
         // Non-blocking — research proceeds without enrichment
         logger.warn('[ResearchOrchestrator] Context composition failed (non-blocking)', { error: contextError instanceof Error ? contextError.message : String(contextError) });
       }
+    } else {
+      logger.warn('[ResearchOrchestrator] No sessionId — context composition skipped');
     }
 
     // 5. Execute research

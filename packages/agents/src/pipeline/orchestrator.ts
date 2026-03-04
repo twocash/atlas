@@ -1247,7 +1247,8 @@ export async function orchestrateMessage(
         const toolStep = addStep(trace, 'tool-execution', { toolName: toolUse.name });
         const result = await executeTool(
           toolUse.name,
-          toolUse.input as Record<string, unknown>
+          toolUse.input as Record<string, unknown>,
+          { sessionId: chatId },
         );
         completeStep(toolStep);
         toolStep.metadata = { ...toolStep.metadata, success: result.success };

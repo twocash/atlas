@@ -7,6 +7,9 @@
 import type Anthropic from '@anthropic-ai/sdk';
 import { NOTION_DB } from '@atlas/shared/config';
 import { logger } from '../../logger';
+import type { ToolExecutionContext } from './index';
+import type { ResearchConfigV2 } from '../../types/research-v2';
+import { EVIDENCE_PRESETS } from '../../types/research-v2';
 
 export const AGENT_TOOLS: Anthropic.Tool[] = [
   {
@@ -105,11 +108,12 @@ export const AGENT_TOOLS: Anthropic.Tool[] = [
  */
 export async function executeAgentTools(
   toolName: string,
-  input: Record<string, unknown>
+  input: Record<string, unknown>,
+  context?: ToolExecutionContext,
 ): Promise<{ success: boolean; result: unknown; error?: string } | null> {
   switch (toolName) {
     case 'dispatch_research':
-      return await executeDispatchResearch(input);
+      return await executeDispatchResearch(input, context);
     case 'dispatch_transcription':
       return await executeDispatchTranscription(input);
     case 'dispatch_draft':
@@ -120,44 +124,52 @@ export async function executeAgentTools(
 }
 
 async function executeDispatchResearch(
-  input: Record<string, unknown>
+  input: Record<string, unknown>,
+  context?: ToolExecutionContext,
 ): Promise<{ success: boolean; result: unknown; error?: string }> {
   const query = input.query as string;
-  const depth = (input.depth as string) || 'standard';
-  const voice = (input.voice as string) || 'atlas-research';
+  const depth = (input.depth as string || 'standard') as 'light' | 'standard' | 'deep';
+  const voice = (input.voice as string || 'atlas-research') as 'atlas-research' | 'linkedin-punchy' | 'consulting' | 'raw-notes' | 'custom';
   const focus = input.focus as string | undefined;
-  const pillar = input.pillar as string;
+  const pillar = input.pillar as string as 'Personal' | 'The Grove' | 'Consulting' | 'Home/Garage';
 
-  logger.info('Dispatching research agent', { query, depth, voice, pillar });
+  logger.info('Dispatching research agent (V2)', { query, depth, voice, pillar, hasSessionId: !!context?.sessionId });
 
   try {
     // 1. Create Work Queue item (still needed for URL)
     const { createResearchWorkItem } = await import('../../workqueue');
     const { pageId: workItemId, url: notionUrl } = await createResearchWorkItem({
       query,
-      depth: depth as 'light' | 'standard' | 'deep',
+      depth,
       focus,
       priority: depth === 'deep' ? 'P1' : 'P2',
     });
 
     logger.info('Work Queue item created', { workItemId, notionUrl });
 
-    // 2. Delegate to canonical orchestrator (single research path)
+    // 2. Build V2 config — always. V1 is dead.
+    const config: ResearchConfigV2 = {
+      query,
+      depth,
+      focus,
+      voice,
+      pillar,
+      evidenceRequirements: EVIDENCE_PRESETS[depth],
+      sourceType: 'command',
+      intent: 'explore',
+    };
+
+    // 3. Delegate to canonical orchestrator with session context
     const { AgentRegistry } = await import('../../registry');
     const { orchestrateResearch } = await import('../../orchestration/research-orchestrator');
 
     const registry = new AgentRegistry();
     const orchResult = await orchestrateResearch(
       {
-        config: {
-          query,
-          depth: depth as 'light' | 'standard' | 'deep',
-          focus,
-          voice: voice as 'atlas-research' | 'linkedin-punchy' | 'consulting' | 'raw-notes' | 'custom',
-          pillar: pillar as 'Personal' | 'The Grove' | 'Consulting' | 'Home/Garage',
-        },
+        config,
         workItemId,
         source: 'tool-dispatch',
+        sessionId: context?.sessionId,
       },
       registry,
     );

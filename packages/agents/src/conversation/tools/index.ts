@@ -114,6 +114,12 @@ export function getToolTokenCost(): { native: number; mcp: number; total: number
  */
 export const ALL_TOOLS: Anthropic.Tool[] = NATIVE_TOOLS;
 
+/** Execution context threaded to tool handlers that need session state */
+export interface ToolExecutionContext {
+  /** Chat/session ID — maps to conversation state for context composition */
+  sessionId?: number;
+}
+
 /**
  * Execute a tool call and return the result
  * Handles both native Atlas tools and MCP tools
@@ -124,7 +130,8 @@ export const ALL_TOOLS: Anthropic.Tool[] = NATIVE_TOOLS;
  */
 export async function executeTool(
   toolName: string,
-  input: Record<string, unknown>
+  input: Record<string, unknown>,
+  context?: ToolExecutionContext,
 ): Promise<{ success: boolean; result: unknown; error?: string; needsChoice?: boolean }> {
   // Check if this is an MCP tool (format: mcp__{serverId}__{toolName})
   if (getToolHooks().isMcpTool(toolName)) {
@@ -156,8 +163,8 @@ export async function executeTool(
   const supervisorResult = await executeSupervisorTools(toolName, input);
   if (supervisorResult !== null) return supervisorResult;
 
-  // Legacy agent tools (deprecated but still functional)
-  const agentResult = await executeAgentTools(toolName, input);
+  // Agent dispatch tools (research, transcription, draft)
+  const agentResult = await executeAgentTools(toolName, input, context);
   if (agentResult !== null) return agentResult;
 
   return {
