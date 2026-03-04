@@ -956,8 +956,20 @@ export async function orchestrateMessage(
     }
   }
 
+  // COMMAND BYPASS: Direct commands skip assessment/dialogue/approval — go straight to Claude with tool_choice: any.
+  // "log this as a P0 bug", "create a task for X", "mark Y done" — triage already parsed the intent.
+  // Without this gate, assessRequest sees ambiguous raw text ("this"), scores it rough, and enters dialogue.
+  const isCommandBypass = preflightTriage?.intent === 'command' && !!preflightTriage.command;
+  if (isCommandBypass) {
+    logger.info('Command bypass: skipping assessment/dialogue/approval', {
+      verb: preflightTriage.command!.verb,
+      target: preflightTriage.command!.target,
+      priority: preflightTriage.command!.priority,
+    });
+  }
+
   // REQUEST ASSESSMENT
-  if (!approvalGranted && config.selfModelEnabled && preflightTriage) {
+  if (!isCommandBypass && !approvalGranted && config.selfModelEnabled && preflightTriage) {
     const assessStep = addStep(trace, 'request-assessment');
     try {
       const model = getCachedModel();
@@ -1005,7 +1017,8 @@ export async function orchestrateMessage(
   }
 
   // DIALOGUE ROUTING: If rough terrain, enter collaborative exploration
-  if (assessment && assessmentNeedsDialogue(assessment)) {
+  // Command bypass: commands never enter dialogue (triage already resolved intent)
+  if (!isCommandBypass && assessment && assessmentNeedsDialogue(assessment)) {
     const dialogueStep = addStep(trace, 'dialogue-entry');
     try {
       const model = getCachedModel();
@@ -1060,7 +1073,8 @@ export async function orchestrateMessage(
   }
 
   // APPROVAL GATE: Moderate+ terrain with multi-step proposal
-  if (assessment && assessment.approach && assessment.approach.steps.length >= 2 && assessment.complexity !== 'simple' && !approvalGranted) {
+  // Command bypass: commands execute immediately (no proposal needed)
+  if (!isCommandBypass && assessment && assessment.approach && assessment.approach.steps.length >= 2 && assessment.complexity !== 'simple' && !approvalGranted) {
     const approvalStep = addStep(trace, 'approval-gate');
     const proposalMsg = formatProposalMessage(assessment.approach, assessment.complexity);
     const sentMsgId = await hooks.reply(
