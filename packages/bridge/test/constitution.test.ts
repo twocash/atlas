@@ -73,9 +73,9 @@ describe('constitution fetch in composeBridgePrompt()', () => {
     expect(src).toMatch(/components:\s*\{[^}]*constitution:\s*true/s);
   });
 
-  it('includes constitution in BridgePromptResult type', async () => {
+  it('includes constitution in AtlasIdentityResult type', async () => {
     const src = await readAgents('src/services/prompt-composition/bridge.ts');
-    expect(src).toMatch(/interface BridgePromptResult[\s\S]*?constitution:\s*boolean/);
+    expect(src).toMatch(/interface AtlasIdentityResult[\s\S]*?constitution:\s*boolean/);
   });
 
   it('token ceiling raised to 8000 for constitution + existing content', async () => {
@@ -126,9 +126,9 @@ describe('constitution chain integrity', () => {
     // 2. Constitution is first in sections array
     expect(bridge).toContain('## Atlas Constitution');
 
-    // 3. server.ts calls composeBridgePrompt and hydrates
+    // 3. server.ts calls composeAtlasIdentity and hydrates
     const server = await readBridge('src/server.ts');
-    expect(server).toContain('composeBridgePrompt()');
+    expect(server).toContain("composeAtlasIdentity('bridge')");
     expect(server).toContain('hydrateSystemPreamble(result.prompt)');
 
     // 4. prompt-constructor uses hydrated preamble (unchanged from before)
@@ -136,22 +136,24 @@ describe('constitution chain integrity', () => {
     expect(pc).toContain('sections: string[] = [systemPreamble]');
   });
 
-  it('resolves all five documents in parallel (not sequential)', async () => {
+  it('resolves all identity documents in parallel (not sequential)', async () => {
     const src = await readAgents('src/services/prompt-composition/bridge.ts');
-    // All five must be in the same Promise.all
+    // All documents must be in the same Promise.all
     const promiseAllMatch = src.match(/Promise\.all\(\[([\s\S]*?)\]\)/);
     expect(promiseAllMatch).toBeTruthy();
     const promiseAllBody = promiseAllMatch![1];
     expect(promiseAllBody).toContain('CONSTITUTION_ID');
-    expect(promiseAllBody).toContain('BRIDGE_SOUL_ID');
+    expect(promiseAllBody).toContain('SOUL_ID');
     expect(promiseAllBody).toContain('USER_ID');
-    expect(promiseAllBody).toContain('BRIDGE_MEMORY_ID');
-    expect(promiseAllBody).toContain('BRIDGE_GOALS_ID');
+    expect(promiseAllBody).toContain('MEMORY_ID');
+    expect(promiseAllBody).toContain('GOALS_ID');
+    expect(promiseAllBody).toContain('JIDOKA_ID');
   });
 
   it('is exported from the prompt-composition index', async () => {
     const idx = await readAgents('src/services/prompt-composition/index.ts');
-    expect(idx).toContain("export { composeBridgePrompt");
-    expect(idx).toContain("type BridgePromptResult");
+    expect(idx).toContain("composeAtlasIdentity");
+    expect(idx).toContain("composeBridgePrompt");
+    expect(idx).toContain("AtlasIdentityResult");
   });
 });

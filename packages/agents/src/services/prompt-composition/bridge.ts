@@ -6,11 +6,12 @@
  * this single composition function.
  *
  * Components resolved:
- *   - atlas.constitution → Foundational governance (planning, verification, self-improvement)
- *   - atlas.soul         → Who Atlas is (persona, voice, cognitive approach)
- *   - atlas.user         → Who Jim is (clients, pillars, projects, preferences)
- *   - atlas.memory       → What Atlas has learned (corrections, patterns, preferences)
- *   - atlas.goals        → What Jim is working toward (active projects, priorities)
+ *   - atlas.constitution          → Foundational governance (planning, verification, self-improvement)
+ *   - atlas.soul                  → Who Atlas is (persona, voice, cognitive approach)
+ *   - atlas.user                  → Who Jim is (clients, pillars, projects, preferences)
+ *   - atlas.memory                → What Atlas has learned (corrections, patterns, preferences)
+ *   - atlas.goals                 → What Jim is working toward (active projects, priorities)
+ *   - atlas.operations.jidoka     → Autonomous self-repair protocol (Digital Jidoka)
  *
  * Follows ADR-001 (Notion as source of truth) and ADR-008 (fail fast, fail loud).
  * Identity resolution failure is a hard error — Atlas does not start
@@ -27,6 +28,7 @@ const SOUL_ID = 'atlas.soul';
 const MEMORY_ID = 'atlas.memory';
 const GOALS_ID = 'atlas.goals';
 const USER_ID = 'atlas.user';
+const JIDOKA_ID = 'atlas.operations.jidoka';
 
 /** Token budget ceiling for full Slot 0 assembly (CONSTITUTION + SOUL + USER + MEMORY + GOALS) */
 const SLOT_0_TOKEN_CEILING = 8000;
@@ -70,6 +72,7 @@ export interface AtlasIdentityResult {
     user: boolean;
     memory: boolean;
     goals: boolean;
+    jidoka: boolean;
   };
   /** Warnings (e.g. token budget approached) */
   warnings: string[];
@@ -96,13 +99,14 @@ export async function composeAtlasIdentity(surface: string = 'bridge'): Promise<
   const pm = getPromptManager();
   const warnings: string[] = [];
 
-  // Resolve all five identity documents in parallel
-  const [constitution, soul, user, memory, goals] = await Promise.all([
+  // Resolve all identity documents in parallel
+  const [constitution, soul, user, memory, goals, jidoka] = await Promise.all([
     pm.getPromptById(CONSTITUTION_ID),
     pm.getPromptById(SOUL_ID),
     pm.getPromptById(USER_ID),
     pm.getPromptById(MEMORY_ID),
     pm.getPromptById(GOALS_ID),
+    pm.getPromptById(JIDOKA_ID),
   ]);
 
   // ADR-008: Hard-fail if constitution resolution returns null
@@ -163,6 +167,13 @@ export async function composeAtlasIdentity(surface: string = 'bridge'): Promise<
     );
   }
 
+  // Jidoka (Digital Jidoka — autonomous self-repair protocol)
+  if (jidoka) {
+    sections.push(`---\n\n${jidoka}`);
+  } else {
+    warnings.push(`JIDOKA unavailable — Atlas [${surface}] operating without autonomous self-repair directive`);
+  }
+
   // Append canonical database reference
   sections.push(`---\n\n## Canonical Database IDs\n` +
     `| Database | SDK ID |\n` +
@@ -193,6 +204,7 @@ export async function composeAtlasIdentity(surface: string = 'bridge'): Promise<
       user: !!user,
       memory: !!memory,
       goals: !!goals,
+      jidoka: !!jidoka,
     },
     warnings,
   };
