@@ -126,3 +126,15 @@ export {
 // ==========================================
 
 export { composeAtlasIdentity, composeBridgePrompt, type AtlasIdentityResult, type BridgePromptResult } from './bridge';
+
+// ==========================================
+// Operational Doctrine Composition
+// ==========================================
+
+export { composeOperationalDoctrine, type OperationalDoctrineResult } from './operations';
+
+// ==========================================
+// Cache
+// ==========================================
+
+export { promptCache, PromptCache } from './cache';
