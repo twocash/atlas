@@ -998,6 +998,7 @@ async function runAgentsUnitTests(cwd: string): Promise<SuiteResult> {
       'test/andon-gate.test.ts', // ATLAS-AG-001: Andon Gate epistemic honesty for research output
       'test/rpo-001-search-provider.test.ts', // ATLAS-RPO-001: SearchProvider + prompt split + orchestrator
       'test/drc-001a-declarative-config.test.ts', // ATLAS-DRC-001a: Declarative Research Config
+      'test/operational-doctrine.test.ts', // NOTION-OPS: Operational doctrine composition + cache + wiring
     ],
     agentsCwd,
     60000
