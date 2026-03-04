@@ -1133,6 +1133,13 @@ export async function orchestrateMessage(
   const baseSystemPrompt = await buildSystemPrompt(conversation);
 
   let systemPrompt = baseSystemPrompt;
+
+  // Inject current timestamp so Claude always knows "now" without a tool call.
+  // Prevents temporal reasoning errors (e.g., listing a 9 AM event as "next up" at 8 PM).
+  const now = new Date();
+  const timeStr = now.toLocaleString('en-US', { timeZone: 'America/New_York', weekday: 'long', year: 'numeric', month: 'long', day: 'numeric', hour: 'numeric', minute: '2-digit', hour12: true });
+  systemPrompt += `\n\n**Current date/time:** ${timeStr} (Eastern). When referencing calendar events or deadlines, use this as the reference point. Past events should not be shown as "next up."`;
+
   if (contextEnrichment) {
     systemPrompt += `\n\n---\n\n## Cognitive Context\n\n${contextEnrichment.enrichedContext}`;
     if (contextEnrichment.degradedContextNote) {
