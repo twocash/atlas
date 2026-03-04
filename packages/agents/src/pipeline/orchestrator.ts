@@ -227,7 +227,7 @@ export function fixHallucinatedUrls(responseText: string, toolContexts: ToolCont
 
   // CRITICAL: Dispatch failed but Claude may have fabricated a success URL
   if (dispatchFailed && actualUrls.length === 0) {
-    const notionUrlPattern = /https?:\/\/(?:www\.)?notion\.so\/[^\s\)\]>]+/gi;
+    const notionUrlPattern = /https?:\/\/(?:www\.)?notion\.so\/[^\s\)\]>"]+/gi;
     const matches = responseText.match(notionUrlPattern);
 
     if (matches && matches.length > 0) {
@@ -272,7 +272,8 @@ export function fixHallucinatedUrls(responseText: string, toolContexts: ToolCont
     return { text: responseText, hallucinationDetected: false, dispatchFailed: false, fabricatedUrlCount: 0 };
   }
 
-  const notionUrlPattern = /https?:\/\/(?:www\.)?notion\.so\/[^\s\)\]>]+/gi;
+  // Bug fix (2026-03-03): regex now excludes " to prevent capturing trailing quotes from markdown links
+  const notionUrlPattern = /https?:\/\/(?:www\.)?notion\.so\/[^\s\)\]>"]+/gi;
   const matches = responseText.match(notionUrlPattern);
 
   if (!matches || matches.length === 0) {
@@ -281,18 +282,27 @@ export function fixHallucinatedUrls(responseText: string, toolContexts: ToolCont
   }
 
   // Extract page IDs from URLs for robust comparison (slug-independent)
+  // Tolerates trailing punctuation — strips non-hex before matching
   const extractPageId = (url: string): string | null => {
-    const m = url.match(/([0-9a-f]{32})(?:[?#]|$)/i);
+    const cleaned = url.replace(/[^a-f0-9]+$/i, ''); // strip trailing non-hex chars
+    const m = cleaned.match(/([0-9a-f]{32})/i);
     return m ? m[1].toLowerCase() : null;
   };
   const actualPageIds = new Set(actualUrls.map(extractPageId).filter(Boolean) as string[]);
 
+  // Normalize URLs for comparison — strip trailing punctuation that regex might capture
+  const normalizeUrl = (url: string): string => url.replace(/[.,;:!?"')\]]+$/, '');
+
   const uniqueMatches = [...new Set(matches)];
   let fabricatedCount = 0;
   for (const m of uniqueMatches) {
-    if (actualUrls.includes(m)) continue;
+    const normalized = normalizeUrl(m);
+    // Check 1: exact URL match (normalized)
+    if (actualUrls.some(a => normalizeUrl(a) === normalized)) continue;
+    // Check 2: page ID match — same page, different slug is NOT fabricated
     const pid = extractPageId(m);
-    // Either fabricated slug on real page, or fully fabricated — both count
+    if (pid && actualPageIds.has(pid)) continue;
+    // Neither URL nor page ID matched — genuinely fabricated
     fabricatedCount++;
   }
   const isHallucinated = fabricatedCount > 0;
@@ -305,7 +315,10 @@ export function fixHallucinatedUrls(responseText: string, toolContexts: ToolCont
 
     let fixedText = responseText;
     for (const match of uniqueMatches) {
-      if (!actualUrls.includes(match)) {
+      const normalized = normalizeUrl(match);
+      const isReal = actualUrls.some(a => normalizeUrl(a) === normalized)
+        || (extractPageId(match) && actualPageIds.has(extractPageId(match)!));
+      if (!isReal) {
         fixedText = fixedText.split(match).join(actualUrls[0]);
       }
     }

@@ -55,7 +55,7 @@ function fixHallucinatedUrls(responseText: string, toolContexts: ToolContext[]):
 
   // CRITICAL: Dispatch failed but Claude may have fabricated a success URL
   if (dispatchFailed && actualUrls.length === 0) {
-    const notionUrlPattern = /https?:\/\/(?:www\.)?notion\.so\/[^\s\)\]>]+/gi;
+    const notionUrlPattern = /https?:\/\/(?:www\.)?notion\.so\/[^\s\)\]>"]+/gi;
     const matches = responseText.match(notionUrlPattern);
 
     if (matches && matches.length > 0) {
@@ -71,7 +71,8 @@ function fixHallucinatedUrls(responseText: string, toolContexts: ToolContext[]):
     return responseText;
   }
 
-  const notionUrlPattern = /https?:\/\/(?:www\.)?notion\.so\/[^\s\)\]>]+/gi;
+  // Bug fix (2026-03-03): regex now excludes " to prevent capturing trailing quotes from markdown links
+  const notionUrlPattern = /https?:\/\/(?:www\.)?notion\.so\/[^\s\)\]>"]+/gi;
   const matches = responseText.match(notionUrlPattern);
 
   if (!matches || matches.length === 0) {
@@ -79,24 +80,33 @@ function fixHallucinatedUrls(responseText: string, toolContexts: ToolContext[]):
   }
 
   // Extract page IDs from URLs for robust comparison (slug-independent)
+  // Tolerates trailing punctuation — strips non-hex before matching
   const extractPageId = (url: string): string | null => {
-    const m = url.match(/([0-9a-f]{32})(?:[?#]|$)/i);
+    const cleaned = url.replace(/[^a-f0-9]+$/i, ''); // strip trailing non-hex chars
+    const m = cleaned.match(/([0-9a-f]{32})/i);
     return m ? m[1].toLowerCase() : null;
   };
   const actualPageIds = new Set(actualUrls.map(extractPageId).filter(Boolean) as string[]);
 
+  // Normalize URLs for comparison — strip trailing punctuation that regex might capture
+  const normalizeUrl = (url: string): string => url.replace(/[.,;:!?"')\]]+$/, '');
+
   const uniqueMatches = [...new Set(matches)];
   const isHallucinated = uniqueMatches.some(m => {
-    if (actualUrls.includes(m)) return false;
+    const normalized = normalizeUrl(m);
+    if (actualUrls.some(a => normalizeUrl(a) === normalized)) return false;
     const pid = extractPageId(m);
-    if (pid && actualPageIds.has(pid)) return true;
+    if (pid && actualPageIds.has(pid)) return false;
     return true;
   });
 
   if (isHallucinated) {
     let fixedText = responseText;
     for (const match of uniqueMatches) {
-      if (!actualUrls.includes(match)) {
+      const normalized = normalizeUrl(match);
+      const isReal = actualUrls.some(a => normalizeUrl(a) === normalized)
+        || (extractPageId(match) && actualPageIds.has(extractPageId(match)!));
+      if (!isReal) {
         fixedText = fixedText.split(match).join(actualUrls[0]);
       }
     }
@@ -249,11 +259,12 @@ describe('fixHallucinatedUrls — dispatch_research', () => {
     expect(fixed).toBe(responseText); // No Notion URL, no dispatch tool — unchanged
   });
 
-  it('replaces fabricated URL with different slug but same page ID', () => {
-    // This is the exact bug: Claude fabricates a long slug but uses the real page ID
+  it('allows URL with different slug but same page ID (Notion resolves by ID)', () => {
+    // Same page ID, different slug — Notion resolves by page ID so this is a WORKING link.
+    // Bug fix (2026-03-03): previously this was flagged as fabricated, breaking valid links.
     const actualUrl = 'https://www.notion.so/Research-frontier-capabilit-317780a78eef81d6b29bdb4a6adfdc27';
-    const fabricatedUrl = 'https://www.notion.so/Research-frontier-capabilities-propagation-lag-distributed-systems-cost-arbitrage-1-100-317780a78eef81d6b29bdb4a6adfdc27';
-    const responseText = `Research dispatched! ${fabricatedUrl}`;
+    const fabricatedSlugUrl = 'https://www.notion.so/Research-frontier-capabilities-propagation-lag-distributed-systems-cost-arbitrage-1-100-317780a78eef81d6b29bdb4a6adfdc27';
+    const responseText = `Research dispatched! ${fabricatedSlugUrl}`;
     const toolContexts: ToolContext[] = [{
       toolName: 'dispatch_research',
       input: { query: 'frontier capabilities' },
@@ -265,8 +276,8 @@ describe('fixHallucinatedUrls — dispatch_research', () => {
     }];
 
     const fixed = fixHallucinatedUrls(responseText, toolContexts);
-    expect(fixed).not.toContain('propagation-lag-distributed');
-    expect(fixed).toContain(actualUrl);
+    // Same page ID = not fabricated, URL passes through unchanged
+    expect(fixed).toBe(responseText);
   });
 
   it('replaces fully fabricated URL (no matching page ID)', () => {
@@ -286,6 +297,46 @@ describe('fixHallucinatedUrls — dispatch_research', () => {
     const fixed = fixHallucinatedUrls(responseText, toolContexts);
     expect(fixed).not.toContain('deadbeef');
     expect(fixed).toContain(actualUrl);
+  });
+
+  // Regression: 2026-03-03 production false positive
+  // Claude's markdown link syntax embeds URL in quotes → regex captured trailing "
+  // which broke string comparison → flagged real URL as fabricated
+  it('does NOT false-positive on URL inside markdown link syntax', () => {
+    const actualUrl = 'https://www.notion.so/3d679030b76b43bd92d81ac51abb4a28?p=317780a78eef81d6b29bdb4a6adfdc27';
+    // Markdown link: [text](url) — the URL appears without trailing quote after regex fix
+    const responseText = `Research complete!\n\n[→ Full Research Analysis](${actualUrl})`;
+    const toolContexts: ToolContext[] = [{
+      toolName: 'dispatch_research',
+      input: { query: 'quantum error correction' },
+      result: {
+        success: true,
+        result: { workQueueUrl: actualUrl, summary: 'QEC findings', sourcesCount: 10 },
+      },
+      timestamp: new Date().toISOString(),
+    }];
+
+    const fixed = fixHallucinatedUrls(responseText, toolContexts);
+    // The actual URL must pass through unchanged — NOT replaced
+    expect(fixed).toBe(responseText);
+  });
+
+  it('does NOT false-positive on URL followed by trailing punctuation', () => {
+    const actualUrl = 'https://www.notion.so/Research-quantum-317780a78eef81d6b29bdb4a6adfdc27';
+    // URL at end of sentence with period
+    const responseText = `Check results at ${actualUrl}.`;
+    const toolContexts: ToolContext[] = [{
+      toolName: 'dispatch_research',
+      input: { query: 'quantum' },
+      result: {
+        success: true,
+        result: { workQueueUrl: actualUrl },
+      },
+      timestamp: new Date().toISOString(),
+    }];
+
+    const fixed = fixHallucinatedUrls(responseText, toolContexts);
+    expect(fixed).toBe(responseText);
   });
 });
 
