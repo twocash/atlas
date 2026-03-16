@@ -34,7 +34,7 @@ import {
 
 const ANYTHINGLLM_URL = (process.env.ANYTHINGLLM_URL || "http://localhost:3001").replace(/\/$/, "")
 const ANYTHINGLLM_API_KEY = process.env.ANYTHINGLLM_API_KEY || ""
-const TIMEOUT_MS = 30_000
+const TIMEOUT_MS = 120_000
 const EMBED_TIMEOUT_MS = 900_000 // Ollama CPU embedding can take 10-15 min for large docs
 const UPLOAD_TIMEOUT_MS = 120_000
 const VERSION = "1.1.0"
