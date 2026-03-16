@@ -85,6 +85,21 @@ interface PendingRequest {
 
 const pendingRequests = new Map<string, PendingRequest>()
 
+// ─── Pending Message Relay Requests ──────────────────────────
+// Maps a relay ID → resolver. When Telegram POSTs to /message,
+// we hold the HTTP request open, send to Claude via WebSocket, and
+// collect response text blocks until Claude signals turn_end.
+
+interface PendingMessageRelay {
+  resolve: (response: { text: string; screenshots: string[] }) => void
+  textParts: string[]
+  screenshots: string[]
+  timer: ReturnType<typeof setTimeout>
+}
+
+const pendingMessageRelays = new Map<string, PendingMessageRelay>()
+let activeRelayId: string | null = null
+
 // ─── Claude Process Management ───────────────────────────────
 
 let claudeProcess: Subprocess | null = null
@@ -347,6 +362,42 @@ function handleClaudeLine(msg: any): void {
 
   // Log all message types for diagnostics
   console.log(`[bridge] Claude → type=${msg.type}${msg.subtype ? ` subtype=${msg.subtype}` : ""}`)
+
+  // ─── Message Relay Collection ─────────────────────────────
+  // When a Telegram relay is active, collect Claude's text output
+  if (activeRelayId && pendingMessageRelays.has(activeRelayId)) {
+    const relay = pendingMessageRelays.get(activeRelayId)!
+
+    // Collect text from assistant message content blocks
+    if (msg.type === "assistant" && msg.message?.content) {
+      for (const block of msg.message.content) {
+        if (block.type === "text" && block.text) {
+          relay.textParts.push(block.text)
+        }
+      }
+    }
+
+    // Collect text from content_block_delta (streaming)
+    if (msg.type === "content_block_delta" && msg.delta?.type === "text_delta") {
+      relay.textParts.push(msg.delta.text)
+    }
+
+    // Collect final result text
+    if (msg.type === "result" && msg.result) {
+      relay.textParts.push(typeof msg.result === "string" ? msg.result : JSON.stringify(msg.result))
+    }
+
+    // Turn complete — resolve the relay
+    if (msg.type === "result" || (msg.type === "system" && msg.subtype === "turn_end")) {
+      clearTimeout(relay.timer)
+      pendingMessageRelays.delete(activeRelayId)
+      activeRelayId = null
+      relay.resolve({
+        text: relay.textParts.join(""),
+        screenshots: relay.screenshots,
+      })
+    }
+  }
 
   // Route through handler chain (response router can observe/intercept)
   const envelope: BridgeEnvelope = {
@@ -690,6 +741,72 @@ function writeCookieFiles(result: CookieRefreshResult): Record<string, number> {
   return written
 }
 
+// ─── Message Relay Handler ──────────────────────────────────
+// Receives a message from Telegram, sends to Claude, collects response.
+
+async function handleMessageRelay(req: Request): Promise<Response> {
+  const headers = {
+    "Content-Type": "application/json",
+    "Access-Control-Allow-Origin": "*",
+  }
+
+  if (!isClaudeConnected()) {
+    return new Response(
+      JSON.stringify({ ok: false, error: "Claude Code not connected to Bridge" }),
+      { status: 503, headers },
+    )
+  }
+
+  let body: { text: string; userId?: number; chatId?: number; username?: string; surface?: string }
+  try {
+    body = await req.json() as typeof body
+  } catch {
+    return new Response(
+      JSON.stringify({ ok: false, error: "Invalid JSON body" }),
+      { status: 400, headers },
+    )
+  }
+
+  if (!body.text) {
+    return new Response(
+      JSON.stringify({ ok: false, error: "Missing 'text' field" }),
+      { status: 400, headers },
+    )
+  }
+
+  const relayId = `relay-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`
+  const RELAY_TIMEOUT = 120_000 // 2 minutes
+
+  console.log(`[bridge] Message relay ${relayId}: "${body.text.slice(0, 80)}..." from ${body.username || "unknown"}`)
+
+  const result = await new Promise<{ text: string; screenshots: string[] }>((resolve) => {
+    const timer = setTimeout(() => {
+      pendingMessageRelays.delete(relayId)
+      if (activeRelayId === relayId) activeRelayId = null
+      resolve({ text: "Request timed out after 2 minutes. The operation may still be running.", screenshots: [] })
+    }, RELAY_TIMEOUT)
+
+    pendingMessageRelays.set(relayId, {
+      resolve,
+      textParts: [],
+      screenshots: [],
+      timer,
+    })
+    activeRelayId = relayId
+
+    // Send to Claude as a user message
+    sendToClaude({
+      type: "user_message",
+      content: [{ type: "text", text: body.text }],
+    })
+  })
+
+  return new Response(
+    JSON.stringify({ ok: true, text: result.text, screenshots: result.screenshots }),
+    { headers },
+  )
+}
+
 async function handleCookieRefresh(req: Request): Promise<Response> {
   const headers = {
     "Content-Type": "application/json",
@@ -871,6 +988,11 @@ async function handleHttpRequest(req: Request, server: any): Promise<Response | 
   // POST /dispatch — Autonomous dispatch: WQ item → Claude Code session
   if (url.pathname === "/dispatch" && req.method === "POST") {
     return await handleDispatch(req)
+  }
+
+  // POST /message — Telegram relay: receive message, route through Claude, return response
+  if (url.pathname === "/message" && req.method === "POST") {
+    return await handleMessageRelay(req)
   }
 
   // CORS preflight

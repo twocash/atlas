@@ -190,12 +190,142 @@ export const TOOL_SCHEMAS: ToolSchema[] = [
 
   BRIDGE_MEMORY_TOOL_SCHEMA as ToolSchema,
   BRIDGE_GOALS_TOOL_SCHEMA as ToolSchema,
+
+  // ─── Headed Browser Tools (Playwright, bridge-local) ──────────────────────
+
+  {
+    name: "atlas_headed_launch",
+    description:
+      "Launch a visible (headed) browser page at the given URL. Jim can see " +
+      "and interact with the window for authentication. Returns a pageId for " +
+      "subsequent operations. Saved login sessions are restored automatically.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        url: {
+          type: "string",
+          description: "The URL to open in the headed browser.",
+        },
+      },
+      required: ["url"],
+    },
+  },
+
+  {
+    name: "atlas_headed_auth_wait",
+    description:
+      "Wait for Jim to complete manual authentication in the headed browser. " +
+      "Polls until the URL changes away from a login page, a specific URL " +
+      "pattern appears, or a CSS selector becomes visible. Saves session " +
+      "state (cookies, localStorage) to disk when auth completes.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        pageId: {
+          type: "string",
+          description: "The page ID from atlas_headed_launch.",
+        },
+        urlPattern: {
+          type: "string",
+          description: "URL substring that signals auth is complete (e.g., 'mail.google.com/mail').",
+        },
+        selector: {
+          type: "string",
+          description: "CSS selector that signals auth is complete (e.g., 'div[role=\"main\"]').",
+        },
+        timeout: {
+          type: "number",
+          description: "Max wait time in milliseconds. Defaults to 120000 (2 minutes).",
+        },
+      },
+      required: ["pageId"],
+    },
+  },
+
+  {
+    name: "atlas_headed_interact",
+    description:
+      "Interact with elements in the headed browser: click, type text, " +
+      "select options, or press keys. Use for form filling, button clicks, " +
+      "search queries, and navigation after authentication.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        pageId: {
+          type: "string",
+          description: "The page ID from atlas_headed_launch.",
+        },
+        action: {
+          type: "string",
+          enum: ["click", "type", "select", "press"],
+          description: "The interaction type.",
+        },
+        selector: {
+          type: "string",
+          description: "CSS selector for the target element.",
+        },
+        value: {
+          type: "string",
+          description: "Text to type (for 'type') or option value (for 'select').",
+        },
+        key: {
+          type: "string",
+          description: "Key to press (for 'press'). e.g., 'Enter', 'Tab', 'Escape'.",
+        },
+      },
+      required: ["pageId", "action"],
+    },
+  },
+
+  {
+    name: "atlas_headed_content",
+    description:
+      "Get text content from the headed browser page. Returns the full page " +
+      "text or text from a specific CSS selector. Content is truncated to 50KB.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        pageId: {
+          type: "string",
+          description: "The page ID from atlas_headed_launch.",
+        },
+        selector: {
+          type: "string",
+          description: "Optional CSS selector to extract text from a specific element.",
+        },
+      },
+      required: ["pageId"],
+    },
+  },
+
+  {
+    name: "atlas_headed_screenshot",
+    description:
+      "Capture a screenshot of the headed browser page. Returns base64-encoded " +
+      "PNG data. Use to verify page state, show Jim what the browser sees, or " +
+      "debug automation issues.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        pageId: {
+          type: "string",
+          description: "The page ID from atlas_headed_launch.",
+        },
+      },
+      required: ["pageId"],
+    },
+  },
 ]
 
 /** Tools that are handled locally by the MCP server (not dispatched to the browser). */
 export const LOCAL_TOOL_NAMES = new Set([
   BRIDGE_MEMORY_TOOL_SCHEMA.name,
   BRIDGE_GOALS_TOOL_SCHEMA.name,
+  "atlas_headed_launch",
+  "atlas_headed_auth_wait",
+  "atlas_headed_interact",
+  "atlas_headed_content",
+  "atlas_headed_screenshot",
 ])
 
 // ─── Lookup Helper ───────────────────────────────────────────

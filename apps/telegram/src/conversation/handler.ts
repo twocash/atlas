@@ -12,7 +12,7 @@
  * Formerly: 1,608 LOC God Object → now packages/agents/src/pipeline/orchestrator.ts
  */
 
-import type { Context } from 'grammy';
+import { InputFile, type Context } from 'grammy';
 import { logger } from '../logger';
 import { formatMessage } from '../formatting';
 import { orchestrateMessage } from '@atlas/agents/src/pipeline/orchestrator';
@@ -40,8 +40,11 @@ import type { EmergenceProposal } from '@atlas/agents/src/emergence/types';
 // Feature flags — resolved once at module load from env vars
 const CONTENT_CONFIRM_ENABLED = process.env.ATLAS_CONTENT_CONFIRM !== 'false';
 const DOMAIN_AUDIENCE_ENABLED = process.env.ATLAS_DOMAIN_AUDIENCE === 'true';
+const BRIDGE_RELAY_ENABLED = process.env.ATLAS_BRIDGE_RELAY === 'true';
+const BRIDGE_URL = process.env.BRIDGE_URL || 'http://localhost:3848';
 
 logger.info('Content confirmation keyboard', { enabled: CONTENT_CONFIRM_ENABLED });
+logger.info('Bridge relay mode', { enabled: BRIDGE_RELAY_ENABLED, url: BRIDGE_URL });
 
 // ─── Input Extraction ────────────────────────────────────
 
@@ -211,14 +214,118 @@ function buildConfig(): PipelineConfig {
 /**
  * Handle incoming message — Grammy surface adapter
  *
- * Extracts input from Grammy Context, creates surface hooks,
- * and delegates ALL cognitive processing to the orchestrator.
+ * When ATLAS_BRIDGE_RELAY=true, messages route through the Bridge server
+ * which runs Claude Code with full MCP tools (including headed browser).
+ * When off, delegates to the orchestrator directly (legacy path).
  */
 export async function handleConversation(ctx: Context): Promise<void> {
+  if (BRIDGE_RELAY_ENABLED) {
+    await handleViaBridgeRelay(ctx);
+    return;
+  }
+
   const input = extractInput(ctx);
   const hooks = buildHooks(ctx);
   const config = buildConfig();
   await orchestrateMessage(input, hooks, config);
+}
+
+/**
+ * Bridge relay — sends message to Bridge server, returns response to Telegram.
+ * Bridge runs Claude Code with full MCP tools (browser automation, RAG, etc.).
+ */
+async function handleViaBridgeRelay(ctx: Context): Promise<void> {
+  const input = extractInput(ctx);
+
+  // Show typing while Bridge processes
+  await ctx.replyWithChatAction('typing');
+
+  try {
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 120_000); // 2 min max
+
+    // Keep typing indicator alive during long operations
+    const typingInterval = setInterval(async () => {
+      try { await ctx.replyWithChatAction('typing'); } catch {}
+    }, 4_000);
+
+    const res = await fetch(`${BRIDGE_URL}/message`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        text: input.text,
+        userId: input.userId,
+        chatId: input.chatId,
+        username: input.username,
+        surface: 'telegram',
+      }),
+      signal: controller.signal,
+    });
+
+    clearTimeout(timeout);
+    clearInterval(typingInterval);
+
+    if (!res.ok) {
+      const errText = await res.text().catch(() => '');
+      logger.error('Bridge relay failed', { status: res.status, error: errText });
+      await ctx.reply(`Bridge error (${res.status}). Falling back to direct mode.`);
+      // Fallback to direct orchestrator
+      const hooks = buildHooks(ctx);
+      const config = buildConfig();
+      await orchestrateMessage(input, hooks, config);
+      return;
+    }
+
+    const result = await res.json() as { text?: string; screenshots?: string[] };
+
+    // Send text response (chunked for Telegram's 4096 char limit)
+    if (result.text) {
+      const formatted = formatMessage(result.text);
+      const chunks = chunkText(formatted, 4000);
+      for (const chunk of chunks) {
+        await ctx.reply(chunk, { parse_mode: 'HTML' });
+      }
+    }
+
+    // Send screenshots as photos
+    if (result.screenshots?.length) {
+      for (const b64 of result.screenshots) {
+        const buffer = Buffer.from(b64, 'base64');
+        await ctx.replyWithPhoto(new InputFile(buffer, 'screenshot.png'));
+      }
+    }
+  } catch (err: any) {
+    if (err.name === 'AbortError') {
+      logger.error('Bridge relay timed out');
+      await ctx.reply('Bridge request timed out (120s). The operation may still be running on grove-node-1.');
+    } else {
+      logger.error('Bridge relay error', { error: err.message });
+      await ctx.reply(`Bridge unreachable: ${err.message}. Falling back to direct mode.`);
+      // Fallback to direct orchestrator
+      const hooks = buildHooks(ctx);
+      const config = buildConfig();
+      await orchestrateMessage(input, hooks, config);
+    }
+  }
+}
+
+/** Split text into chunks respecting Telegram's message size limit. */
+function chunkText(text: string, maxLen: number): string[] {
+  if (text.length <= maxLen) return [text];
+  const chunks: string[] = [];
+  let remaining = text;
+  while (remaining.length > 0) {
+    if (remaining.length <= maxLen) {
+      chunks.push(remaining);
+      break;
+    }
+    // Find last newline within limit
+    let splitAt = remaining.lastIndexOf('\n', maxLen);
+    if (splitAt <= 0) splitAt = maxLen;
+    chunks.push(remaining.slice(0, splitAt));
+    remaining = remaining.slice(splitAt);
+  }
+  return chunks;
 }
 
 /**

@@ -35,6 +35,8 @@ import { mkdirSync, writeFileSync } from "fs"
 import { TOOL_SCHEMAS, TOOL_NAMES, LOCAL_TOOL_NAMES } from "./schemas"
 import { handleBridgeMemoryTool } from "./bridge-memory"
 import { handleBridgeGoalsTool } from "./bridge-goals"
+import { getPlaywrightManager } from "../browser/playwright-manager"
+import type { InteractAction } from "../browser/types"
 import {
   MCP_SERVER_NAME,
   TOOL_TIMEOUT_MS,
@@ -87,6 +89,95 @@ async function dispatchTool(
   }
 }
 
+// ─── Headed Browser Tool Handler ─────────────────────────────
+
+async function handleHeadedBrowserTool(
+  name: string,
+  args: Record<string, unknown>,
+): Promise<{ content: Array<{ type: "text"; text: string } | { type: "image"; data: string; mimeType: string }>; isError?: boolean }> {
+  const mgr = getPlaywrightManager()
+
+  try {
+    switch (name) {
+      case "atlas_headed_launch": {
+        const { url } = args as { url: string }
+        const page = await mgr.launch(url)
+
+        // Check if auth is needed
+        const needsAuth = mgr.isLoginPage(page.url)
+        return {
+          content: [{
+            type: "text" as const,
+            text: JSON.stringify({
+              pageId: page.id,
+              url: page.url,
+              title: page.title,
+              needsAuth,
+              message: needsAuth
+                ? `Opened ${url} — login page detected. Jim needs to authenticate on grove-node-1.`
+                : `Opened ${url} — session restored, ready for automation.`,
+            }, null, 2),
+          }],
+        }
+      }
+
+      case "atlas_headed_auth_wait": {
+        const { pageId, urlPattern, selector, timeout } = args as {
+          pageId: string; urlPattern?: string; selector?: string; timeout?: number
+        }
+        const result = await mgr.waitForAuth(pageId, { urlPattern, selector, timeout })
+        return {
+          content: [{
+            type: "text" as const,
+            text: JSON.stringify(result, null, 2),
+          }],
+        }
+      }
+
+      case "atlas_headed_interact": {
+        const { pageId, action, selector, value, key } = args as {
+          pageId: string; action: string; selector?: string; value?: string; key?: string
+        }
+        const result = await mgr.interact(pageId, {
+          type: action as InteractAction["type"],
+          selector,
+          value,
+          key,
+        })
+        return { content: [{ type: "text" as const, text: result }] }
+      }
+
+      case "atlas_headed_content": {
+        const { pageId, selector } = args as { pageId: string; selector?: string }
+        const content = await mgr.getContent(pageId, selector)
+        return { content: [{ type: "text" as const, text: content }] }
+      }
+
+      case "atlas_headed_screenshot": {
+        const { pageId } = args as { pageId: string }
+        const screenshot = await mgr.screenshot(pageId)
+        return {
+          content: [
+            { type: "image" as const, data: screenshot.data, mimeType: "image/png" },
+            { type: "text" as const, text: `Screenshot captured (${screenshot.width}x${screenshot.height})` },
+          ],
+        }
+      }
+
+      default:
+        return {
+          content: [{ type: "text" as const, text: `Unknown headed browser tool: ${name}` }],
+          isError: true,
+        }
+    }
+  } catch (err: any) {
+    return {
+      content: [{ type: "text" as const, text: `Headed browser error: ${err.message}` }],
+      isError: true,
+    }
+  }
+}
+
 // ─── MCP Server Setup ────────────────────────────────────────
 
 const server = new Server(
@@ -123,6 +214,12 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
       if (name === "bridge_update_goals") {
         return await handleBridgeGoalsTool((args ?? {}) as Record<string, unknown>)
       }
+
+      // ─── Headed Browser Tools ─────────────────────────────
+      if (name.startsWith("atlas_headed_")) {
+        return await handleHeadedBrowserTool(name, (args ?? {}) as Record<string, unknown>)
+      }
+
       return {
         content: [{ type: "text" as const, text: `Local tool '${name}' has no handler` }],
         isError: true,
