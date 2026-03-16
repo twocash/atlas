@@ -368,11 +368,24 @@ function handleClaudeLine(msg: any): void {
   if (activeRelayId && pendingMessageRelays.has(activeRelayId)) {
     const relay = pendingMessageRelays.get(activeRelayId)!
 
+    // Debug: log every message type seen during relay
+    const msgPreview = msg.type === "assistant"
+      ? ` content=${JSON.stringify(msg.message?.content?.map((b: any) => ({ type: b.type, textLen: b.text?.length })) || "none").slice(0, 200)}`
+      : msg.type === "result"
+        ? ` subtype=${msg.subtype} resultKeys=${Object.keys(msg).join(",")}`
+        : ""
+    console.log(`[relay:${activeRelayId.slice(-8)}] msg type=${msg.type}${msgPreview}`)
+
     // Collect text from assistant message content blocks
-    if (msg.type === "assistant" && msg.message?.content) {
-      for (const block of msg.message.content) {
-        if (block.type === "text" && block.text) {
-          relay.textParts.push(block.text)
+    if (msg.type === "assistant") {
+      // Content may be in msg.message.content (SDK format) or msg.content (direct)
+      const content = msg.message?.content || msg.content
+      if (Array.isArray(content)) {
+        for (const block of content) {
+          if (block.type === "text" && block.text) {
+            console.log(`[relay:${activeRelayId.slice(-8)}] collected ${block.text.length} chars from assistant block`)
+            relay.textParts.push(block.text)
+          }
         }
       }
     }
@@ -382,20 +395,38 @@ function handleClaudeLine(msg: any): void {
       relay.textParts.push(msg.delta.text)
     }
 
-    // Collect final result text
-    if (msg.type === "result" && msg.result) {
-      relay.textParts.push(typeof msg.result === "string" ? msg.result : JSON.stringify(msg.result))
-    }
+    // Collect final result text — only if we didn't already get text from assistant blocks
+    if (msg.type === "result") {
+      if (relay.textParts.length === 0) {
+        const resultText = msg.result || msg.text || msg.message
+        if (resultText && typeof resultText === "string") {
+          relay.textParts.push(resultText)
+        }
+      }
+      console.log(`[relay:${activeRelayId.slice(-8)}] result received, subtype=${msg.subtype}, collected=${relay.textParts.length} parts, total=${relay.textParts.join("").length} chars`)
 
-    // Turn complete — resolve the relay
-    if (msg.type === "result" || (msg.type === "system" && msg.subtype === "turn_end")) {
+      // Turn complete — resolve the relay
       clearTimeout(relay.timer)
       pendingMessageRelays.delete(activeRelayId)
       activeRelayId = null
       relay.resolve({
-        text: relay.textParts.join(""),
+        text: relay.textParts.join("") || "(No text response from Claude)",
         screenshots: relay.screenshots,
       })
+    }
+
+    // Also resolve on turn_end if result never came
+    if (msg.type === "system" && msg.subtype === "turn_end") {
+      if (activeRelayId && pendingMessageRelays.has(activeRelayId)) {
+        console.log(`[relay:${activeRelayId.slice(-8)}] turn_end without result, resolving with ${relay.textParts.length} parts`)
+        clearTimeout(relay.timer)
+        pendingMessageRelays.delete(activeRelayId)
+        activeRelayId = null
+        relay.resolve({
+          text: relay.textParts.join("") || "(Claude completed without text response)",
+          screenshots: relay.screenshots,
+        })
+      }
     }
   }
 
