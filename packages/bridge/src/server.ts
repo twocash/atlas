@@ -642,19 +642,36 @@ function configureMcpServers(): void {
   const thisDir = dirname(fileURLToPath(import.meta.url))
   const repoRoot = resolve(thisDir, "../../../")
 
+  const servers: Record<string, { type: string; command: string; args: string[]; env?: Record<string, string> }> = {
+    "atlas-browser": {
+      type: "stdio",
+      command: "bun",
+      args: ["run", resolve(repoRoot, "packages/bridge/src/tools/mcp-server.ts")],
+    },
+    "anythingllm": {
+      type: "stdio",
+      command: "bun",
+      args: ["run", resolve(repoRoot, "packages/bridge/src/tools/anythingllm-mcp-server.ts")],
+      env: {
+        ANYTHINGLLM_URL: process.env.ANYTHINGLLM_URL || "http://localhost:3001",
+        ANYTHINGLLM_API_KEY: process.env.ANYTHINGLLM_API_KEY || "",
+      },
+    },
+  }
+
+  if (!process.env.ANYTHINGLLM_API_KEY) {
+    console.warn("[bridge] ANYTHINGLLM_API_KEY not set — AnythingLLM MCP server will not authenticate")
+  }
+
+  console.log(`[bridge] MCP servers registered: ${Object.keys(servers).join(", ")}`)
+
   mcpRequestId = randomUUID()
   sendRawToCli({
     type: "control_request",
     request_id: mcpRequestId,
     request: {
       subtype: "mcp_set_servers",
-      servers: {
-        "atlas-browser": {
-          type: "stdio",
-          command: "bun",
-          args: ["run", resolve(repoRoot, "packages/bridge/src/tools/mcp-server.ts")],
-        },
-      },
+      servers,
     },
   })
 }
