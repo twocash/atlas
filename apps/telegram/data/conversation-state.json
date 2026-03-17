@@ -1,0 +1,29 @@
+{
+  "version": 1,
+  "states": {
+    "12345": {
+      "chatId": 12345,
+      "userId": 67890,
+      "phase": "idle",
+      "sessionId": "e454a1d5-1afd-4981-9a25-aaa353f3131d",
+      "turnCount": 0,
+      "createdAt": 1773719298410,
+      "lastActivity": 1773719298410,
+      "lastTriage": {
+        "intent": "capture",
+        "pillar": "The Grove",
+        "confidence": 0.85,
+        "requestType": "Research",
+        "keywords": [
+          "AI",
+          "research"
+        ],
+        "source": "haiku",
+        "title": "AI Research Article",
+        "complexityTier": "moderate"
+      }
+    }
+  },
+  "pendingContent": {},
+  "savedAt": "2026-03-17T03:48:20.400Z"
+}

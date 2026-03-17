@@ -10,7 +10,7 @@
  */
 
 import { classifyTool, invalidateZoneCache, type Zone, type ClassifyResult } from "./tool-zone-classifier"
-import { logAction } from "../skills/action-log"
+import { logToolEvent } from "./telemetry"
 
 // ─── Types ───────────────────────────────────────────────
 
@@ -45,9 +45,7 @@ export async function evaluateToolCall(toolName: string): Promise<CircuitDecisio
   const decision = routeByZone(toolName, classification)
 
   // Telemetry — log every tool call to Feed 2.0 (fire and forget)
-  logToolEvent(toolName, decision).catch((err) => {
-    console.warn("[tool-circuit] Telemetry log failed:", (err as Error).message)
-  })
+  logCircuitDecision(toolName, decision)
 
   console.log(`[tool-circuit] ${toolName} → ${decision.zone} → ${decision.action}${decision.matched ? ` (pattern: ${decision.toolPattern})` : " (default)"}`)
 
@@ -104,24 +102,19 @@ function routeByZone(toolName: string, classification: ClassifyResult): CircuitD
 
 // ─── Telemetry ───────────────────────────────────────────
 
-async function logToolEvent(toolName: string, decision: CircuitDecision): Promise<void> {
-  try {
-    await logAction({
-      actionType: "tool",
-      description: `Tool call: ${toolName} → ${decision.zone}/${decision.action}`,
-      pillar: "The Grove",
-      requestType: "Quick",
-      metadata: {
-        toolName,
-        zone: decision.zone,
-        action: decision.action,
-        matched: decision.matched,
-        toolPattern: decision.toolPattern || "default",
-      },
-    })
-  } catch {
-    // Telemetry failure is non-fatal — ADR-008 applies to tool blocking, not logging
-  }
+function logCircuitDecision(toolName: string, decision: CircuitDecision): void {
+  const actionLabel = decision.action === "approve" ? "auto-approved"
+    : decision.action === "hold" ? "held"
+    : "blocked"
+
+  logToolEvent({
+    toolName,
+    zone: decision.zone,
+    action: actionLabel,
+    toolPattern: decision.toolPattern,
+  }).catch((err) => {
+    console.warn("[tool-circuit] Telemetry log failed:", (err as Error).message)
+  })
 }
 
 // ─── Approval Outcome Logging ───────────────────────────
@@ -137,24 +130,13 @@ export async function logApprovalOutcome(
   outcome: ApprovalOutcome,
   toolPattern?: string,
 ): Promise<void> {
-  try {
-    await logAction({
-      actionType: "tool",
-      description: `Yellow approval: ${toolName} → ${outcome}${outcome === "always" ? " (promoting to Green)" : ""}`,
-      pillar: "The Grove",
-      requestType: "Quick",
-      metadata: {
-        toolName,
-        zone: "yellow",
-        action: outcome,
-        toolPattern: toolPattern || "unknown",
-        timestamp: new Date().toISOString(),
-        surface: "telegram",
-      },
-    })
-  } catch {
-    // Non-fatal
-  }
+  await logToolEvent({
+    toolName,
+    zone: "yellow",
+    action: outcome,
+    toolPattern,
+    surface: "telegram",
+  })
 }
 
 // ─── Exports for promotion ──────────────────────────────
