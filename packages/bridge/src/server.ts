@@ -110,7 +110,6 @@ let blockedToolPrefixes: string[] = []
 const TOOL_FAMILY_BLOCKS: Record<string, string[]> = {
   "headed-browser": [
     "mcp__claude_ai_Gmail__",
-    "mcp__claude_ai_Google_Calendar__",
   ],
 }
 
