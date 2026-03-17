@@ -15,6 +15,8 @@ const isSkillLoggingEnabled = () => process.env.ATLAS_SKILL_LOGGING !== 'false';
 import { generateIntentHash, type IntentHashResult } from './intent-hash';
 import type { Pillar, RequestType, StructuredContext } from '../conversation/types';
 
+const capitalizeFirst = (s: string) => s.charAt(0).toUpperCase() + s.slice(1);
+
 // Initialize Notion client
 const notion = new Client({ auth: process.env.NOTION_API_KEY });
 
@@ -129,6 +131,17 @@ export interface ActionLogInput {
    * to avoid the dual-write duplicate (Bug A fix).
    */
   existingFeedId?: string;
+
+  // Thread Identity fields (Sprint: THREAD-SPINE S1)
+
+  /** Canonical thread ID: `{surface}:{native_id}` */
+  threadId?: string;
+
+  /** Originating surface */
+  surface?: 'telegram' | 'bridge' | 'chrome' | 'api';
+
+  /** Surface-native identifier (chatId, sessionId, tabId) */
+  surfaceNativeId?: string;
 }
 
 /**
@@ -196,10 +209,10 @@ export async function logAction(input: ActionLogInput): Promise<ActionLogResult>
           select: { name: input.requestType },
         },
         'Source': {
-          select: { name: 'Telegram' },
+          select: { name: input.surface ? capitalizeFirst(input.surface) : 'Telegram' },
         },
         'Author': {
-          select: { name: 'Atlas [Telegram]' },
+          select: { name: input.surface === 'bridge' ? 'Atlas [grove-node-1]' : 'Atlas [Telegram]' },
         },
         'Confidence': {
           number: input.confidence,
@@ -352,6 +365,25 @@ export async function logAction(input: ActionLogInput): Promise<ActionLogResult>
     if (input.priorIntentHash) {
       patternProps['Prior Intent Hash'] = {
         rich_text: [{ text: { content: input.priorIntentHash } }],
+      };
+    }
+
+    // Thread Identity fields (THREAD-SPINE S1)
+    if (input.threadId) {
+      patternProps['Thread ID'] = {
+        rich_text: [{ text: { content: input.threadId } }],
+      };
+    }
+
+    if (input.surface) {
+      patternProps['Surface'] = {
+        select: { name: input.surface },
+      };
+    }
+
+    if (input.surfaceNativeId) {
+      patternProps['Surface Native ID'] = {
+        rich_text: [{ text: { content: input.surfaceNativeId } }],
       };
     }
 
