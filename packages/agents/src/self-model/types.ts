@@ -140,7 +140,7 @@ export interface KnowledgeCapability {
  */
 export interface ExecutionCapability {
   /** Execution type identifier */
-  type: "agent_spawn" | "bridge_dispatch" | "research_pipeline" | "socratic_engine" | "prompt_composition"
+  type: "agent_spawn" | "bridge_dispatch" | "research_pipeline" | "socratic_engine" | "prompt_composition" | "headed_browser"
   /** Human-readable name */
   name: string
   /** Whether this execution mode is currently available */

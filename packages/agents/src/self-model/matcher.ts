@@ -78,6 +78,9 @@ export function matchCapabilities(
   // Strategy 4: Knowledge source relevance
   candidates.push(...matchKnowledge(triage, model))
 
+  // Strategy 5: Headed browser for authenticated web services
+  candidates.push(...matchHeadedBrowser(messageText, model))
+
   // Sort by confidence descending
   candidates.sort((a, b) => b.confidence - a.confidence)
 
@@ -305,6 +308,37 @@ function matchKnowledge(triage: TriageLike, model: CapabilityModel): CapabilityM
   }
 
   return matches
+}
+
+// ─── Strategy 5: Headed Browser Matching ─────────────────
+
+const BROWSER_KEYWORDS = [
+  "gmail", "email", "inbox", "search my email", "my email",
+  "linkedin", "my linkedin", "connections",
+  "calendar", "my calendar", "schedule", "invitation",
+  "login", "authenticate", "sign in", "log in",
+  "open browser", "open website", "browse to",
+  "client portal", "dashboard",
+]
+
+function matchHeadedBrowser(messageText: string, model: CapabilityModel): CapabilityMatch[] {
+  const headedBrowser = model.execution.find((e) => e.type === "headed_browser")
+  if (!headedBrowser?.available) return []
+
+  const msgLower = messageText.toLowerCase()
+  const matched = BROWSER_KEYWORDS.find((kw) => msgLower.includes(kw))
+
+  if (matched) {
+    return [{
+      capabilityId: "headed_browser",
+      layer: "execution",
+      confidence: 0.85,
+      matchReason: `Authenticated web service keyword: "${matched}"`,
+      alternatives: [],
+    }]
+  }
+
+  return []
 }
 
 // ─── Strengths & Limitations ──────────────────────────────

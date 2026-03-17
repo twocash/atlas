@@ -193,6 +193,18 @@ function assembleExecution(flags: Record<string, boolean>): ExecutionCapability[
       available: true,
       constraints: ["Requires Notion system prompts to be hydrated"],
     },
+    {
+      type: "headed_browser",
+      name: "Headed Browser Automation",
+      available: flags["BRIDGE_RELAY"] ?? false,
+      constraints: [
+        "Launches visible Chromium on grove-node-1 — Jim authenticates manually, Atlas takes programmatic control",
+        "Use for: Gmail, LinkedIn, Calendar, client portals, any authenticated web service",
+        "Session cookies persist to disk — auth is one-time per service, future requests reuse saved sessions",
+        "Tools: atlas_headed_launch → atlas_headed_auth_wait → atlas_headed_interact / atlas_headed_content / atlas_headed_screenshot",
+      ],
+      requiredFlags: ["BRIDGE_RELAY"],
+    },
   ]
 }
 
