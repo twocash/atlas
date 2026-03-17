@@ -497,46 +497,117 @@ function handleControlRequest(msg: any): void {
   if (subtype === "can_use_tool") {
     const toolName = msg.request?.tool_name || "unknown"
 
-    // Intercept AskUserQuestion — no terminal in relay mode.
-    // Hold the can_use_tool response. Send question to Telegram via relay.
-    // When Jim replies, deny can_use_tool with reply in reason. CC continues.
-    if (toolName === "AskUserQuestion" && activeRelayId) {
-      const question = lastAskUserQuestion || "(Claude wants to ask a clarifying question)"
-      const questionId = `q-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`
-      console.log(`[bridge] Intercepting AskUserQuestion [${questionId}] — holding can_use_tool, forwarding to Telegram: "${question.slice(0, 100)}"`)
-
-      // Hold the can_use_tool — DON'T respond yet
-      pendingAskUserQuestions.set(questionId, {
-        controlRequestId: msg.request_id,
-        question,
-        timestamp: Date.now(),
+    // Run through Autonomaton tool circuit (async — fire and handle)
+    handleToolCircuit(toolName, msg.request_id).catch((err) => {
+      console.error(`[bridge] Tool circuit error for ${toolName}:`, err)
+      // Fail open on circuit error — approve so CC doesn't hang
+      sendRawToCli({
+        type: "control_response",
+        request_id: msg.request_id,
+        response: { approved: true },
       })
-
-      // Resolve the relay with the question so Telegram shows it to Jim
-      const relay = pendingMessageRelays.get(activeRelayId)
-      if (relay) {
-        clearTimeout(relay.timer)
-        pendingMessageRelays.delete(activeRelayId)
-        activeRelayId = null
-        const preamble = relay.textParts.join("")
-        const fullText = preamble ? `${preamble}\n\n${question}` : question
-        relay.resolve({ text: fullText, screenshots: relay.screenshots, isQuestion: true, questionId })
-      }
-
-      lastAskUserQuestion = null
-      return
-    }
-
-    console.log(`[bridge] Auto-approving tool: ${toolName}`)
-    sendRawToCli({
-      type: "control_response",
-      request_id: msg.request_id,
-      response: { approved: true },
     })
     return
   }
 
   console.log(`[bridge] Unhandled control request: ${subtype}`)
+}
+
+/**
+ * Autonomaton tool circuit — thin Bridge hook.
+ *
+ * Calls into packages/agents/tool-circuit for zone classification.
+ * Bridge only acts on the decision: approve, hold (Yellow), or block (Red).
+ * Zero classification logic here — ADR-005.
+ */
+async function handleToolCircuit(toolName: string, requestId: string): Promise<void> {
+  const { evaluateToolCall } = await import("../../agents/src/tool-circuit/tool-circuit")
+  const decision = await evaluateToolCall(toolName)
+
+  switch (decision.action) {
+    case "approve":
+      sendRawToCli({
+        type: "control_response",
+        request_id: requestId,
+        response: { approved: true },
+      })
+      return
+
+    case "hold": {
+      // Yellow zone — route to surface for approval.
+      // AskUserQuestion has its own handler (conversational loop).
+      // All other Yellow tools use the same infrastructure.
+      if (toolName === "AskUserQuestion" && activeRelayId) {
+        // AskUserQuestion: extract question text, hold can_use_tool, resolve relay with question
+        const question = lastAskUserQuestion || "(Claude wants to ask a clarifying question)"
+        const questionId = `q-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`
+        console.log(`[bridge] Yellow/AskUserQuestion [${questionId}] — holding, forwarding to Telegram: "${question.slice(0, 100)}"`)
+
+        pendingAskUserQuestions.set(questionId, {
+          controlRequestId: requestId,
+          question,
+          timestamp: Date.now(),
+        })
+
+        const relay = pendingMessageRelays.get(activeRelayId)
+        if (relay) {
+          clearTimeout(relay.timer)
+          pendingMessageRelays.delete(activeRelayId)
+          activeRelayId = null
+          const preamble = relay.textParts.join("")
+          const fullText = preamble ? `${preamble}\n\n${question}` : question
+          relay.resolve({ text: fullText, screenshots: relay.screenshots, isQuestion: true, questionId })
+        }
+
+        lastAskUserQuestion = null
+        return
+      }
+
+      // Generic Yellow: hold can_use_tool, send approval request to Telegram via relay
+      if (activeRelayId) {
+        const questionId = `q-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`
+        const approvalMsg = decision.approvalMessage || `CC wants to use ${toolName}. Allow? (yes / no / always)`
+        console.log(`[bridge] Yellow/${toolName} [${questionId}] — holding, requesting approval: "${approvalMsg.slice(0, 100)}"`)
+
+        pendingAskUserQuestions.set(questionId, {
+          controlRequestId: requestId,
+          question: approvalMsg,
+          timestamp: Date.now(),
+        })
+
+        const relay = pendingMessageRelays.get(activeRelayId)
+        if (relay) {
+          clearTimeout(relay.timer)
+          pendingMessageRelays.delete(activeRelayId)
+          activeRelayId = null
+          const preamble = relay.textParts.join("")
+          const fullText = preamble ? `${preamble}\n\n${approvalMsg}` : approvalMsg
+          relay.resolve({ text: fullText, screenshots: relay.screenshots, isQuestion: true, questionId })
+        }
+        return
+      }
+
+      // No active relay (e.g., Chrome Extension path) — fall through to approve
+      console.warn(`[bridge] Yellow/${toolName} — no active relay, auto-approving`)
+      sendRawToCli({
+        type: "control_response",
+        request_id: requestId,
+        response: { approved: true },
+      })
+      return
+    }
+
+    case "block": {
+      // Red zone — deny with explanation, CC gets the block reason
+      console.log(`[bridge] Red/${toolName} — BLOCKED: ${decision.blockReason}`)
+      sendRawToCli({
+        type: "control_response",
+        request_id: requestId,
+        response: { approved: false, reason: decision.blockReason },
+      })
+      return
+    }
+  }
 }
 
 function handleControlResponse(msg: any): void {
@@ -877,8 +948,47 @@ async function handleMessageRelay(req: Request): Promise<Response> {
   if (body.questionId && pendingAskUserQuestions.has(body.questionId)) {
     const pending = pendingAskUserQuestions.get(body.questionId)!
     pendingAskUserQuestions.delete(body.questionId)
-    console.log(`[bridge] Reply to AskUserQuestion [${body.questionId}]: "${body.text.slice(0, 80)}"`)
+    const replyLower = body.text.trim().toLowerCase()
+    console.log(`[bridge] Reply to pending question [${body.questionId}]: "${body.text.slice(0, 80)}"`)
 
+    // Parse approval responses for Yellow zone tools
+    const isYes = replyLower === "yes" || replyLower === "y" || replyLower === "approve"
+    const isNo = replyLower === "no" || replyLower === "n" || replyLower === "deny"
+    const isAlways = replyLower === "always"
+
+    if (isNo) {
+      // Deny — CC gets rejection, no relay needed for continued output
+      console.log(`[bridge] Yellow DENIED by user [${body.questionId}]`)
+      import("../../agents/src/tool-circuit/tool-circuit").then(({ logApprovalOutcome }) =>
+        logApprovalOutcome(pending.question, "denied").catch(() => {})
+      )
+      sendRawToCli({
+        type: "control_response",
+        request_id: pending.controlRequestId,
+        response: { approved: false, reason: "User denied this tool use." },
+      })
+      return new Response(
+        JSON.stringify({ ok: true, text: "Denied." }),
+        { headers },
+      )
+    }
+
+    if (isAlways) {
+      // Promote pattern to Green — invalidate zone cache so next call auto-approves
+      console.log(`[bridge] Yellow → Green promotion by user [${body.questionId}]: "${pending.question.slice(0, 60)}"`)
+      import("../../agents/src/tool-circuit/tool-circuit").then(({ invalidateZoneCache, logApprovalOutcome }) => {
+        invalidateZoneCache()
+        logApprovalOutcome(pending.question, "always").catch(() => {})
+      })
+      // TODO: Write skill entry + update Notion row zone to Green (follow-on)
+    } else {
+      // "yes" — log approval
+      import("../../agents/src/tool-circuit/tool-circuit").then(({ logApprovalOutcome }) =>
+        logApprovalOutcome(pending.question, "approved").catch(() => {})
+      )
+    }
+
+    // "yes" or "always" — approve the tool, set up relay to collect CC's response
     const result = await new Promise<RelayResponse>((resolve) => {
       const timer = setTimeout(() => {
         pendingMessageRelays.delete(relayId)
@@ -895,19 +1005,16 @@ async function handleMessageRelay(req: Request): Promise<Response> {
       })
       activeRelayId = relayId
 
-      // NOW respond to the held can_use_tool — CC resumes its turn
+      // Approve the held can_use_tool — CC resumes its turn
       sendRawToCli({
         type: "control_response",
         request_id: pending.controlRequestId,
-        response: {
-          approved: false,
-          reason: `User replied via Telegram: ${body.text}`,
-        },
+        response: { approved: true },
       })
     })
 
     return new Response(
-      JSON.stringify({ ok: true, text: result.text, screenshots: result.screenshots }),
+      JSON.stringify({ ok: true, text: result.text, screenshots: result.screenshots, isQuestion: result.isQuestion, questionId: result.questionId }),
       { headers },
     )
   }
