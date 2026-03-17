@@ -47,6 +47,11 @@ const BRIDGE_URL = process.env.BRIDGE_URL || 'http://localhost:3848';
 logger.info('Content confirmation keyboard', { enabled: CONTENT_CONFIRM_ENABLED });
 logger.info('Bridge relay mode', { enabled: BRIDGE_RELAY_ENABLED, url: BRIDGE_URL });
 
+// ─── Pending AskUserQuestion replies ────────────────────
+// When CC asks a question via AskUserQuestion, Bridge returns it with
+// { isQuestion: true, questionId }. Jim's next message is the reply.
+const pendingQuestions = new Map<number, string>(); // chatId → questionId
+
 // ─── Input Extraction ────────────────────────────────────
 
 function extractInput(ctx: Context): MessageInput {
@@ -237,6 +242,14 @@ export async function handleConversation(ctx: Context): Promise<void> {
  */
 async function handleViaBridgeRelay(ctx: Context): Promise<void> {
   const input = extractInput(ctx);
+  const chatId = input.chatId;
+
+  // Check if this message is a reply to a pending AskUserQuestion
+  const questionId = chatId ? pendingQuestions.get(chatId) : undefined;
+  if (questionId && chatId) {
+    pendingQuestions.delete(chatId);
+    logger.info('Routing reply to pending AskUserQuestion', { chatId, questionId });
+  }
 
   // Show typing while Bridge processes
   await ctx.replyWithChatAction('typing');
@@ -259,6 +272,7 @@ async function handleViaBridgeRelay(ctx: Context): Promise<void> {
         chatId: input.chatId,
         username: input.username,
         surface: 'telegram',
+        ...(questionId ? { questionId } : {}),
       }),
       signal: controller.signal,
     });
@@ -271,14 +285,19 @@ async function handleViaBridgeRelay(ctx: Context): Promise<void> {
       logger.error('Bridge relay failed', { status: res.status, error: errText });
       reportFailure('bridge-relay', new Error(`HTTP ${res.status}: ${errText}`), { surface: 'telegram' });
       await ctx.reply(`Bridge error (${res.status}). Falling back to direct mode.`);
-      // Fallback to direct orchestrator
       const hooks = buildHooks(ctx);
       const config = buildConfig();
       await orchestrateMessage(input, hooks, config);
       return;
     }
 
-    const result = await res.json() as { text?: string; screenshots?: string[] };
+    const result = await res.json() as { text?: string; screenshots?: string[]; isQuestion?: boolean; questionId?: string };
+
+    // If CC asked a question, register pending reply for this chat
+    if (result.isQuestion && result.questionId && chatId) {
+      pendingQuestions.set(chatId, result.questionId);
+      logger.info('AskUserQuestion pending — awaiting reply', { chatId, questionId: result.questionId });
+    }
 
     // Send text response (chunked for Telegram's 4096 char limit)
     if (result.text) {
@@ -305,7 +324,6 @@ async function handleViaBridgeRelay(ctx: Context): Promise<void> {
       logger.error('Bridge relay error', { error: err.message });
       reportFailure('bridge-relay', err, { surface: 'telegram' });
       await ctx.reply(`Bridge unreachable: ${err.message}. Falling back to direct mode.`);
-      // Fallback to direct orchestrator
       const hooks = buildHooks(ctx);
       const config = buildConfig();
       await orchestrateMessage(input, hooks, config);

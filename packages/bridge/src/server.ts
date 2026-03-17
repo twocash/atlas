@@ -91,8 +91,15 @@ const pendingRequests = new Map<string, PendingRequest>()
 // we hold the HTTP request open, send to Claude via WebSocket, and
 // collect response text blocks until Claude signals turn_end.
 
+interface RelayResponse {
+  text: string
+  screenshots: string[]
+  isQuestion?: boolean
+  questionId?: string
+}
+
 interface PendingMessageRelay {
-  resolve: (response: { text: string; screenshots: string[] }) => void
+  resolve: (response: RelayResponse) => void
   textParts: string[]
   screenshots: string[]
   timer: ReturnType<typeof setTimeout>
@@ -102,11 +109,20 @@ const pendingMessageRelays = new Map<string, PendingMessageRelay>()
 let activeRelayId: string | null = null
 
 // ─── AskUserQuestion Intercept ──────────────────────────────
-// CC calls AskUserQuestion when it needs clarification. In relay mode
-// there's no terminal — we intercept the question, resolve the relay
-// with it, and Jim's reply comes as the next relay message.
-// CC has persistent session context, so it connects reply to question.
+// CC calls AskUserQuestion — no terminal in relay mode.
+// Bridge holds the can_use_tool response, sends question to Telegram,
+// waits for Jim's reply, then denies can_use_tool with the reply
+// embedded in the reason. CC reads the reason as the answer and continues.
+// The relay stays open for CC's final response.
 let lastAskUserQuestion: string | null = null
+
+interface PendingAskUser {
+  controlRequestId: string  // The can_use_tool request_id to respond to
+  question: string
+  timestamp: number
+}
+
+const pendingAskUserQuestions = new Map<string, PendingAskUser>() // questionId → pending
 
 // ─── Claude Process Management ───────────────────────────────
 
@@ -482,20 +498,18 @@ function handleControlRequest(msg: any): void {
     const toolName = msg.request?.tool_name || "unknown"
 
     // Intercept AskUserQuestion — no terminal in relay mode.
-    // Deny the tool and resolve the relay with the question text.
-    // CC's persistent session means Jim's reply (next relay) continues the conversation.
+    // Hold the can_use_tool response. Send question to Telegram via relay.
+    // When Jim replies, deny can_use_tool with reply in reason. CC continues.
     if (toolName === "AskUserQuestion" && activeRelayId) {
       const question = lastAskUserQuestion || "(Claude wants to ask a clarifying question)"
-      console.log(`[bridge] Intercepting AskUserQuestion — forwarding to Telegram: "${question.slice(0, 100)}"`)
+      const questionId = `q-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`
+      console.log(`[bridge] Intercepting AskUserQuestion [${questionId}] — holding can_use_tool, forwarding to Telegram: "${question.slice(0, 100)}"`)
 
-      // Deny the tool — CC will adapt
-      sendRawToCli({
-        type: "control_response",
-        request_id: msg.request_id,
-        response: {
-          approved: false,
-          reason: "AskUserQuestion is not available in relay mode. Your question has been forwarded to the user via Telegram. Their reply will arrive as your next message. Do not repeat the question — just wait.",
-        },
+      // Hold the can_use_tool — DON'T respond yet
+      pendingAskUserQuestions.set(questionId, {
+        controlRequestId: msg.request_id,
+        question,
+        timestamp: Date.now(),
       })
 
       // Resolve the relay with the question so Telegram shows it to Jim
@@ -504,10 +518,9 @@ function handleControlRequest(msg: any): void {
         clearTimeout(relay.timer)
         pendingMessageRelays.delete(activeRelayId)
         activeRelayId = null
-        // Include any text CC already produced before the question
         const preamble = relay.textParts.join("")
         const fullText = preamble ? `${preamble}\n\n${question}` : question
-        relay.resolve({ text: fullText, screenshots: relay.screenshots })
+        relay.resolve({ text: fullText, screenshots: relay.screenshots, isQuestion: true, questionId })
       }
 
       lastAskUserQuestion = null
@@ -835,7 +848,7 @@ async function handleMessageRelay(req: Request): Promise<Response> {
     )
   }
 
-  let body: { text: string; userId?: number; chatId?: number; username?: string; surface?: string }
+  let body: { text: string; userId?: number; chatId?: number; username?: string; surface?: string; questionId?: string }
   try {
     body = await req.json() as typeof body
   } catch {
@@ -856,9 +869,53 @@ async function handleMessageRelay(req: Request): Promise<Response> {
   const RELAY_TIMEOUT = 120_000 // 2 minutes
   const surface = body.surface || "telegram"
 
+  // ─── Reply to pending AskUserQuestion ─────────────────────
+  // If this message is a reply to a question CC asked, feed the answer
+  // back by denying can_use_tool with the reply in the reason.
+  // CC reads the reason as the user's answer and continues its turn.
+  // The relay collects CC's continued output.
+  if (body.questionId && pendingAskUserQuestions.has(body.questionId)) {
+    const pending = pendingAskUserQuestions.get(body.questionId)!
+    pendingAskUserQuestions.delete(body.questionId)
+    console.log(`[bridge] Reply to AskUserQuestion [${body.questionId}]: "${body.text.slice(0, 80)}"`)
+
+    const result = await new Promise<RelayResponse>((resolve) => {
+      const timer = setTimeout(() => {
+        pendingMessageRelays.delete(relayId)
+        if (activeRelayId === relayId) activeRelayId = null
+        reportFailure("bridge-relay", new Error(`Relay timeout after ${RELAY_TIMEOUT}ms`), { relayId, text: body.text?.slice(0, 100) })
+        resolve({ text: "Request timed out after 2 minutes. The operation may still be running.", screenshots: [] })
+      }, RELAY_TIMEOUT)
+
+      pendingMessageRelays.set(relayId, {
+        resolve,
+        textParts: [],
+        screenshots: [],
+        timer,
+      })
+      activeRelayId = relayId
+
+      // NOW respond to the held can_use_tool — CC resumes its turn
+      sendRawToCli({
+        type: "control_response",
+        request_id: pending.controlRequestId,
+        response: {
+          approved: false,
+          reason: `User replied via Telegram: ${body.text}`,
+        },
+      })
+    })
+
+    return new Response(
+      JSON.stringify({ ok: true, text: result.text, screenshots: result.screenshots }),
+      { headers },
+    )
+  }
+
+  // ─── Normal relay: new message to CC ──────────────────────
   console.log(`[bridge] Message relay ${relayId}: "${body.text.slice(0, 80)}..." from ${body.username || "unknown"} (${surface})`)
 
-  const result = await new Promise<{ text: string; screenshots: string[] }>((resolve) => {
+  const result = await new Promise<RelayResponse>((resolve) => {
     const timer = setTimeout(() => {
       pendingMessageRelays.delete(relayId)
       if (activeRelayId === relayId) activeRelayId = null
@@ -882,7 +939,7 @@ async function handleMessageRelay(req: Request): Promise<Response> {
   })
 
   return new Response(
-    JSON.stringify({ ok: true, text: result.text, screenshots: result.screenshots }),
+    JSON.stringify({ ok: true, text: result.text, screenshots: result.screenshots, isQuestion: result.isQuestion, questionId: result.questionId }),
     { headers },
   )
 }
