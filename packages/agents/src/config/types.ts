@@ -56,6 +56,11 @@ export interface AndonThresholds {
    *  Sprint B P1-2: Speculative Padding Guard.
    *  Score = token overlap between query and source titles/URLs, 0-1. */
   sourceRelevanceFloor: number;
+
+  /** Below this fidelity score, throw HALLUCINATION:FIDELITY.
+   *  Fidelity = token overlap between Phase 1 retrieval text and Phase 2 synthesis text.
+   *  Catches Gemini ignoring retrieval and hallucinating from training data. */
+  fidelityFloor?: number;
 }
 
 // ==========================================
@@ -195,6 +200,7 @@ export const COMPILED_DEFAULTS: ResearchPipelineConfig = {
     noveltyFloor: 0.3,
     minSummaryLength: 50,
     sourceRelevanceFloor: 0.15,
+    fidelityFloor: 0.15,
   },
 
   searchProviders: {

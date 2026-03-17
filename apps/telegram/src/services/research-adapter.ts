@@ -47,12 +47,29 @@ export async function runResearchAgentWithNotifications(
     registry,
   );
 
-  // Hallucination → Telegram notification (delivery only)
+  // Hallucination → Telegram notification with Kaizen proposal
   if (orchResult.hallucinationDetected) {
     try {
-      await api.sendMessage(chatId,
-        '⚠️ Research blocked: hallucination detected. No fabricated results were delivered. Auto-logged to Dev Pipeline.'
-      );
+      const kaizen = (orchResult.result?.output as any)?.kaizen;
+      if (kaizen?.type === 'fidelity') {
+        const topics = kaizen.phase1Topics?.length > 0
+          ? kaizen.phase1Topics.slice(0, 6).join(', ')
+          : 'unknown';
+        await api.sendMessage(chatId,
+          `⚠️ Research blocked — synthesis was disconnected from sources\n\n` +
+          `The search found real sources, but the analysis didn't use them ` +
+          `(fidelity: ${kaizen.fidelityScore ?? 'very low'}).\n\n` +
+          `🔍 What the search actually found: ${topics}\n\n` +
+          `🔧 Kaizen options:\n` +
+          `1. Share more context — what specifically interests you?\n` +
+          `2. Try a more specific query\n` +
+          `3. Skip research — just capture as-is`
+        );
+      } else {
+        await api.sendMessage(chatId,
+          '⚠️ Research blocked: hallucination detected. No fabricated results were delivered. Auto-logged to Dev Pipeline.'
+        );
+      }
     } catch { /* notification failure must not propagate */ }
   }
 

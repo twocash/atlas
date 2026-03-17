@@ -17,6 +17,7 @@ import type { AgentRegistry } from "../registry";
 import type { Agent, AgentResult, AgentMetrics, Pillar } from "../types";
 import { getPromptManager, type PromptPillar } from "../services/prompt-manager";
 import { degradedWarning, logDegradedFallback } from "../services/degraded-context";
+import { extractSignificantTokens } from "../services/andon-gate";
 import { resolveDrafterId, resolveDefaultDrafterId } from "../services/prompt-composition/composer";
 import { isResearchConfigV2 } from "../types/research-v2";
 import { buildResearchPromptV2 } from "../services/research-prompt-v2";
@@ -1370,6 +1371,36 @@ export async function executeResearch(
         durationMs: Date.now() - phase2Start,
       });
 
+      // ── FIDELITY GATE: Verify synthesis is grounded in retrieval ──
+      const fidelityScore = computeFidelity(retrievedText, synthesisResult.text);
+      const { config: pipelineConfig } = getResearchPipelineConfigSync();
+      const fidelityFloor = pipelineConfig.andonThresholds.fidelityFloor ?? 0.15;
+
+      console.log('[Research] Fidelity check', {
+        fidelityScore: (fidelityScore * 100).toFixed(1) + '%',
+        fidelityFloor: (fidelityFloor * 100).toFixed(1) + '%',
+        retrievedTextLength: retrievedText.length,
+        synthesisTextLength: synthesisResult.text.length,
+        passed: fidelityScore >= fidelityFloor,
+      });
+
+      if (fidelityScore < fidelityFloor) {
+        const phase1Topics = extractPhase1Topics(retrievedText);
+        appendPhase(chain, {
+          name: 'fidelity-gate-failed',
+          provider: 'none',
+          tools: [],
+          durationMs: 0,
+        });
+        throw new Error(
+          `HALLUCINATION:FIDELITY: Synthesis disconnected from retrieval ` +
+          `(fidelity ${(fidelityScore * 100).toFixed(0)}%, floor ${(fidelityFloor * 100).toFixed(0)}%). ` +
+          `Phase 2 output does not reflect Phase 1 sources. ` +
+          `Phase 1 topics: ${phase1Topics.join(', ')}`
+        );
+      }
+      // ── END FIDELITY GATE ──
+
       // Build result: Phase 2 text + Phase 1 citations
       searchResult = {
         text: synthesisResult.text,
@@ -1377,6 +1408,7 @@ export async function executeResearch(
         groundingUsed: true,                 // Phase 1 did the grounding
         searchQueries: retrievalResult.searchQueries,
         groundingSupportCount: retrievedCitations.length,
+        fidelityScore,                       // Telemetry: passes through to provenance
       };
     }
 
@@ -1517,6 +1549,75 @@ export async function executeResearch(
     };
   }
 }
+
+/**
+ * Retrieval-Synthesis Fidelity Score
+ *
+ * Measures how much of Phase 2's synthesis is traceable to Phase 1's retrieval.
+ * Catches the failure mode where Gemini ignores retrieved web content and
+ * hallucinates from training data, while 30 real Phase 1 URLs get blindly
+ * merged as "sources".
+ *
+ * @returns 0 (synthesis invented everything) to 1 (synthesis only uses retrieved content)
+ */
+export function computeFidelity(retrievedText: string, synthesisText: string): number {
+  if (!retrievedText || retrievedText.trim().length === 0) return 0;
+  if (!synthesisText || synthesisText.trim().length === 0) return 0;
+
+  const retrievalTokens = extractSignificantTokens(retrievedText);
+  const synthesisTokens = extractSignificantTokens(synthesisText);
+
+  if (synthesisTokens.size === 0) return 0;
+  if (retrievalTokens.size === 0) return 0;
+
+  let overlapCount = 0;
+  for (const token of synthesisTokens) {
+    if (retrievalTokens.has(token)) overlapCount++;
+  }
+
+  return overlapCount / synthesisTokens.size;
+}
+
+/**
+ * Extract top topics from retrieved text for Kaizen proposals.
+ * Returns the most frequent significant tokens from Phase 1.
+ */
+function extractPhase1Topics(retrievedText: string, topN = 8): string[] {
+  if (!retrievedText) return [];
+  const tokens = retrievedText
+    .toLowerCase()
+    .replace(/[^a-z0-9\s]/g, ' ')
+    .split(/\s+/)
+    .filter(t => t.length > 3 && !FIDELITY_STOP_WORDS.has(t));
+
+  const freq = new Map<string, number>();
+  for (const t of tokens) {
+    freq.set(t, (freq.get(t) || 0) + 1);
+  }
+
+  return [...freq.entries()]
+    .sort((a, b) => b[1] - a[1])
+    .slice(0, topN)
+    .map(([word]) => word);
+}
+
+// Stop words for fidelity — reuse from andon-gate + add research-specific terms
+const FIDELITY_STOP_WORDS = new Set([
+  'the', 'a', 'an', 'is', 'are', 'was', 'were', 'be', 'been', 'being',
+  'have', 'has', 'had', 'do', 'does', 'did', 'will', 'would', 'could',
+  'should', 'may', 'might', 'shall', 'can', 'to', 'of', 'in', 'for',
+  'on', 'with', 'at', 'by', 'from', 'as', 'into', 'through', 'during',
+  'before', 'after', 'above', 'below', 'between', 'under', 'and', 'but',
+  'or', 'not', 'no', 'nor', 'so', 'yet', 'both', 'either', 'neither',
+  'each', 'every', 'all', 'any', 'few', 'more', 'most', 'other', 'some',
+  'such', 'than', 'too', 'very', 'just', 'about', 'this', 'that', 'these',
+  'those', 'it', 'its', 'i', 'me', 'my', 'we', 'our', 'you', 'your',
+  'he', 'him', 'his', 'she', 'her', 'they', 'them', 'their', 'what',
+  'which', 'who', 'whom', 'how', 'when', 'where', 'why', 'if', 'then',
+  'here', 'there', 'also', 'only', 'well', 'back', 'even', 'still',
+  'http', 'https', 'www', 'com', 'org', 'html', 'source', 'search',
+  'result', 'found', 'information', 'based', 'according', 'like',
+]);
 
 /**
  * Validate that sources are real URLs, not template placeholders

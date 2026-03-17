@@ -438,3 +438,27 @@ describe('Andon gate enforcement on research output', () => {
     expect(outputSummary).not.toContain('⚠️');
   });
 });
+
+// ─── Fidelity Gate Tests ─────────────────────────────────────────────────────
+
+import { computeFidelity } from '../src/agents/research';
+
+describe('Fidelity gate: HALLUCINATION:FIDELITY detection', () => {
+  it('scores below 0.15 when synthesis is disconnected from retrieval', () => {
+    const retrieved = 'Threads post by shikeb about social media trends and content creation.';
+    const synthesis = 'Enterprise AI automation for small businesses enables lead generation with custom Claude skills and Grok verification.';
+    const score = computeFidelity(retrieved, synthesis);
+    expect(score).toBeLessThan(0.15);
+  });
+
+  it('scores above 0.15 when synthesis is grounded in retrieval', () => {
+    const retrieved = 'Quantum computing error correction advances from Google and IBM in 2026.';
+    const synthesis = 'Google and IBM have made significant quantum computing error correction advances this year.';
+    const score = computeFidelity(retrieved, synthesis);
+    expect(score).toBeGreaterThan(0.15);
+  });
+
+  it('returns 0 when retrieval is empty (no grounding possible)', () => {
+    expect(computeFidelity('', 'Any synthesis text here')).toBe(0);
+  });
+});

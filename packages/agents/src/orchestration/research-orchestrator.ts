@@ -320,12 +320,14 @@ export async function orchestrateResearch(
   } catch (error) {
     const errorMessage = error instanceof Error ? error.message : "Unknown error";
     const isHallucination = errorMessage.includes('HALLUCINATION');
+    const isFidelityFailure = errorMessage.includes('HALLUCINATION:FIDELITY');
 
     if (isHallucination) {
       logger.error("[ResearchOrchestrator] Hallucination detected — research blocked", {
         agentId: agent.id,
         source,
         error: errorMessage,
+        fidelityFailure: isFidelityFailure,
       });
     } else {
       logger.error("[ResearchOrchestrator] Research execution failed", {
@@ -337,12 +339,24 @@ export async function orchestrateResearch(
 
     await registry.fail(agent.id, errorMessage, true);
 
+    // Extract Kaizen context for fidelity failures
+    let kaizen: { type: string; phase1Topics: string[]; fidelityScore?: string } | undefined;
+    if (isFidelityFailure) {
+      const topicsMatch = errorMessage.match(/Phase 1 topics: (.+)$/);
+      const scoreMatch = errorMessage.match(/fidelity (\d+)%/);
+      kaizen = {
+        type: 'fidelity',
+        phase1Topics: topicsMatch ? topicsMatch[1].split(', ') : [],
+        fidelityScore: scoreMatch ? scoreMatch[1] + '%' : undefined,
+      };
+    }
+
     const finalAgent = await registry.status(agent.id);
     return {
       agent: finalAgent || agent,
       result: {
         success: false,
-        output: { error: errorMessage },
+        output: { error: errorMessage, kaizen },
         summary: `Research failed: ${errorMessage}`,
       } as AgentResult,
       assessment: null,

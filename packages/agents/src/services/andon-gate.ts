@@ -557,7 +557,7 @@ const STOP_WORDS = new Set([
   'research', 'deep', 'dive', 'analysis', 'find', 'look', 'want',
 ]);
 
-function extractSignificantTokens(text: string): Set<string> {
+export function extractSignificantTokens(text: string): Set<string> {
   return new Set(
     text
       .toLowerCase()

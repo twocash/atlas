@@ -24,6 +24,10 @@ export interface SearchResult {
 
   /** Number of grounding support segments */
   groundingSupportCount: number;
+
+  /** Retrieval-synthesis fidelity score (0-1). Set after Phase 2 fidelity check.
+   *  Only present in two-phase pipeline results. */
+  fidelityScore?: number;
 }
 
 /** A citation from search grounding */
