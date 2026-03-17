@@ -86,7 +86,7 @@ async function querySelfImprovementEntries(): Promise<FeedEntry[]> {
           {
             property: 'Status',
             select: {
-              does_not_equal: 'Resolved',
+              does_not_equal: 'Done',
             },
           },
           {
