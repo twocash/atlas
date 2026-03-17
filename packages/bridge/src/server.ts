@@ -66,7 +66,6 @@ import { detectStaleness } from "./staleness"
 import { runBridgeHealthCheck } from "./health"
 import { handleDispatch } from "./handlers/dispatch"
 import { getDispatchStats } from "./dispatch/spawner"
-import { assembleToolHintSlot } from "./context/tool-hint-slot"
 
 // ─── Config ──────────────────────────────────────────────────
 
@@ -101,17 +100,6 @@ interface PendingMessageRelay {
 
 const pendingMessageRelays = new Map<string, PendingMessageRelay>()
 let activeRelayId: string | null = null
-
-// ─── Tool Hint Blocking ────────────────────────────────────
-// When a tool hint fires for headed browser, block the MCP tools it replaces.
-// Reset after each relay completes.
-let blockedToolPrefixes: string[] = []
-
-const TOOL_FAMILY_BLOCKS: Record<string, string[]> = {
-  "headed-browser": [
-    "mcp__claude_ai_Gmail__",
-  ],
-}
 
 // ─── Claude Process Management ───────────────────────────────
 
@@ -480,19 +468,6 @@ function handleControlRequest(msg: any): void {
 
   if (subtype === "can_use_tool") {
     const toolName = msg.request?.tool_name || "unknown"
-
-    // Check if tool is blocked by active tool hint (e.g., browser hint blocks Gmail MCP)
-    const isBlocked = blockedToolPrefixes.some((prefix) => toolName.startsWith(prefix))
-    if (isBlocked) {
-      console.log(`[bridge] BLOCKING tool (headed browser override): ${toolName}`)
-      sendRawToCli({
-        type: "control_response",
-        request_id: msg.request_id,
-        response: { approved: false, reason: "Use atlas_headed_launch instead — this service requires authenticated browser access." },
-      })
-      return
-    }
-
     console.log(`[bridge] Auto-approving tool: ${toolName}`)
     sendRawToCli({
       type: "control_response",
@@ -837,29 +812,10 @@ async function handleMessageRelay(req: Request): Promise<Response> {
 
   console.log(`[bridge] Message relay ${relayId}: "${body.text.slice(0, 80)}..." from ${body.username || "unknown"} (${surface})`)
 
-  // Thin client: assemble tool hint (Notion-driven, cached) and prepend to raw message
-  const toolHintSlot = await assembleToolHintSlot(body.text)
-  const messageText = toolHintSlot.populated
-    ? `${toolHintSlot.content}\n\n${body.text}`
-    : body.text
-
-  // Set tool blocks based on matched tool family (e.g., headed-browser blocks Gmail MCP)
-  blockedToolPrefixes = []
-  if (toolHintSlot.populated && toolHintSlot.source) {
-    // source is "tool-routing-headed-browser" → extract family name
-    const family = toolHintSlot.source.replace("tool-routing-", "")
-    const blocks = TOOL_FAMILY_BLOCKS[family]
-    if (blocks) {
-      blockedToolPrefixes = blocks
-      console.log(`[bridge] Tool blocking active for family "${family}": ${blocks.join(", ")}`)
-    }
-  }
-
   const result = await new Promise<{ text: string; screenshots: string[] }>((resolve) => {
     const timer = setTimeout(() => {
       pendingMessageRelays.delete(relayId)
       if (activeRelayId === relayId) activeRelayId = null
-      blockedToolPrefixes = []
       reportFailure("bridge-relay", new Error(`Relay timeout after ${RELAY_TIMEOUT}ms`), { relayId, text: body.text?.slice(0, 100) })
       resolve({ text: "Request timed out after 2 minutes. The operation may still be running.", screenshots: [] })
     }, RELAY_TIMEOUT)
@@ -875,12 +831,9 @@ async function handleMessageRelay(req: Request): Promise<Response> {
     // Send directly to Claude Code — Telegram is a thin relay, not the Chrome Extension pipeline
     sendToClaude({
       type: "user_message",
-      content: [{ type: "text", text: messageText }],
+      content: [{ type: "text", text: body.text }],
     })
   })
-
-  // Clear tool blocks after relay completes
-  blockedToolPrefixes = []
 
   return new Response(
     JSON.stringify({ ok: true, text: result.text, screenshots: result.screenshots }),
