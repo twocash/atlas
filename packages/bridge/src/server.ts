@@ -101,6 +101,13 @@ interface PendingMessageRelay {
 const pendingMessageRelays = new Map<string, PendingMessageRelay>()
 let activeRelayId: string | null = null
 
+// ─── AskUserQuestion Intercept ──────────────────────────────
+// CC calls AskUserQuestion when it needs clarification. In relay mode
+// there's no terminal — we intercept the question, resolve the relay
+// with it, and Jim's reply comes as the next relay message.
+// CC has persistent session context, so it connects reply to question.
+let lastAskUserQuestion: string | null = null
+
 // ─── Claude Process Management ───────────────────────────────
 
 let claudeProcess: Subprocess | null = null
@@ -387,6 +394,11 @@ function handleClaudeLine(msg: any): void {
             console.log(`[relay:${activeRelayId.slice(-8)}] collected ${block.text.length} chars from assistant block`)
             relay.textParts.push(block.text)
           }
+          // Capture AskUserQuestion input for intercept
+          if (block.type === "tool_use" && block.name === "AskUserQuestion") {
+            lastAskUserQuestion = block.input?.question || block.input?.text || block.input?.content || ""
+            console.log(`[relay:${activeRelayId.slice(-8)}] captured AskUserQuestion: "${lastAskUserQuestion.slice(0, 100)}"`)
+          }
         }
       }
     }
@@ -468,6 +480,40 @@ function handleControlRequest(msg: any): void {
 
   if (subtype === "can_use_tool") {
     const toolName = msg.request?.tool_name || "unknown"
+
+    // Intercept AskUserQuestion — no terminal in relay mode.
+    // Deny the tool and resolve the relay with the question text.
+    // CC's persistent session means Jim's reply (next relay) continues the conversation.
+    if (toolName === "AskUserQuestion" && activeRelayId) {
+      const question = lastAskUserQuestion || "(Claude wants to ask a clarifying question)"
+      console.log(`[bridge] Intercepting AskUserQuestion — forwarding to Telegram: "${question.slice(0, 100)}"`)
+
+      // Deny the tool — CC will adapt
+      sendRawToCli({
+        type: "control_response",
+        request_id: msg.request_id,
+        response: {
+          approved: false,
+          reason: "AskUserQuestion is not available in relay mode. Your question has been forwarded to the user via Telegram. Their reply will arrive as your next message. Do not repeat the question — just wait.",
+        },
+      })
+
+      // Resolve the relay with the question so Telegram shows it to Jim
+      const relay = pendingMessageRelays.get(activeRelayId)
+      if (relay) {
+        clearTimeout(relay.timer)
+        pendingMessageRelays.delete(activeRelayId)
+        activeRelayId = null
+        // Include any text CC already produced before the question
+        const preamble = relay.textParts.join("")
+        const fullText = preamble ? `${preamble}\n\n${question}` : question
+        relay.resolve({ text: fullText, screenshots: relay.screenshots })
+      }
+
+      lastAskUserQuestion = null
+      return
+    }
+
     console.log(`[bridge] Auto-approving tool: ${toolName}`)
     sendRawToCli({
       type: "control_response",
