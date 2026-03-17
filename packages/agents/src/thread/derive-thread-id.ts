@@ -18,7 +18,8 @@
  * derivation point — all callers use it.
  */
 
-export type Surface = "telegram" | "bridge" | "chrome" | "api"
+export const VALID_SURFACES = ["telegram", "bridge", "chrome", "api"] as const
+export type Surface = (typeof VALID_SURFACES)[number]
 
 export interface ThreadIdentity {
   /** Canonical thread ID: `{surface}:{native_id}` */
@@ -62,7 +63,7 @@ export function parseThreadId(threadId: string): ThreadIdentity | null {
   const surfaceNativeId = threadId.slice(colonIdx + 1)
 
   if (!surfaceNativeId) return null
-  if (!["telegram", "bridge", "chrome", "api"].includes(surface)) return null
+  if (!(VALID_SURFACES as readonly string[]).includes(surface)) return null
 
   return { threadId, surface, surfaceNativeId }
 }

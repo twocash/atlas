@@ -21,6 +21,7 @@ import { reportFailure } from "@atlas/shared/error-escalation"
 import { type SlotResult, type SlotName, wrapSlotResult } from "@atlas/shared/types/slot-result"
 import { buildDegradedContextNote } from "@atlas/shared/context-transparency"
 import { logger } from "../logger"
+import { hydrateThread } from "../thread"
 
 // ─── Types ───────────────────────────────────────────────
 
@@ -101,6 +102,49 @@ export async function enrichWithContextSlots(
         priorFindings: convState.lastSocraticAnswer,
         topic: convState.contentContext?.title ?? convState.lastTriage?.title,
       }
+    }
+
+    // Thread hydration: query Feed 2.0 for conversation history (Compilation stage)
+    // This enriches session context with persistent thread history beyond
+    // what ConversationState holds in ephemeral memory.
+    const threadId = `telegram:${userId}`
+    try {
+      const hydration = await hydrateThread(threadId)
+      if (hydration.status === "success" && hydration.turns.length > 0) {
+        const threadSummary = hydration.turns
+          .slice(0, 5)
+          .map((t) => `[${t.timestamp}] ${t.entry}`)
+          .join("\n")
+
+        if (!sessionContext) {
+          sessionContext = {
+            sessionId,
+            turnNumber: 1,
+            intentSequence: [],
+          }
+        }
+        // Inject thread history as prior findings for context assembly
+        sessionContext.priorFindings = sessionContext.priorFindings
+          ? `${sessionContext.priorFindings}\n\n--- Thread History ---\n${threadSummary}`
+          : `--- Thread History ---\n${threadSummary}`
+
+        logger.info("[context-enrichment] Thread hydration injected", {
+          threadId,
+          turns: hydration.returned,
+          latencyMs: hydration.latencyMs,
+        })
+      } else if (hydration.status === "degraded") {
+        logger.warn("[context-enrichment] Thread hydration degraded", {
+          threadId,
+          error: hydration.error,
+        })
+      }
+    } catch (err) {
+      // Non-fatal: thread hydration is enrichment, not critical path
+      logger.warn("[context-enrichment] Thread hydration failed", {
+        threadId,
+        error: (err as Error).message,
+      })
     }
 
     const request: OrchestrationRequest = {
