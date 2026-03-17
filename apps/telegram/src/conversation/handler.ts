@@ -15,6 +15,7 @@
 import { InputFile, type Context } from 'grammy';
 import { logger } from '../logger';
 import { formatMessage } from '../formatting';
+import { reportFailure } from '@atlas/shared/error-escalation';
 import { orchestrateMessage } from '@atlas/agents/src/pipeline/orchestrator';
 import type {
   MessageInput,
@@ -268,6 +269,7 @@ async function handleViaBridgeRelay(ctx: Context): Promise<void> {
     if (!res.ok) {
       const errText = await res.text().catch(() => '');
       logger.error('Bridge relay failed', { status: res.status, error: errText });
+      reportFailure('bridge-relay', new Error(`HTTP ${res.status}: ${errText}`), { surface: 'telegram' });
       await ctx.reply(`Bridge error (${res.status}). Falling back to direct mode.`);
       // Fallback to direct orchestrator
       const hooks = buildHooks(ctx);
@@ -297,9 +299,11 @@ async function handleViaBridgeRelay(ctx: Context): Promise<void> {
   } catch (err: any) {
     if (err.name === 'AbortError') {
       logger.error('Bridge relay timed out');
+      reportFailure('bridge-relay', new Error('Relay timeout (120s)'), { surface: 'telegram', text: input.text?.slice(0, 100) });
       await ctx.reply('Bridge request timed out (120s). The operation may still be running on grove-node-1.');
     } else {
       logger.error('Bridge relay error', { error: err.message });
+      reportFailure('bridge-relay', err, { surface: 'telegram' });
       await ctx.reply(`Bridge unreachable: ${err.message}. Falling back to direct mode.`);
       // Fallback to direct orchestrator
       const hooks = buildHooks(ctx);

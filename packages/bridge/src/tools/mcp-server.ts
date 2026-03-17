@@ -37,6 +37,7 @@ import { handleBridgeMemoryTool } from "./bridge-memory"
 import { handleBridgeGoalsTool } from "./bridge-goals"
 import { getPlaywrightManager } from "../browser/playwright-manager"
 import type { InteractAction } from "../browser/types"
+import { reportFailure } from "@atlas/shared/error-escalation"
 import {
   MCP_SERVER_NAME,
   TOOL_TIMEOUT_MS,
@@ -171,6 +172,7 @@ async function handleHeadedBrowserTool(
         }
     }
   } catch (err: any) {
+    reportFailure("headed-browser", err, { tool: name, args })
     return {
       content: [{ type: "text" as const, text: `Headed browser error: ${err.message}` }],
       isError: true,

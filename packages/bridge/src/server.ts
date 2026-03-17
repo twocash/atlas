@@ -33,6 +33,7 @@ import { mkdirSync, writeFileSync } from "fs"
 // start-bridge.ps1 also loads these, but dotenv here is defense-in-depth for `bun run dev`
 // and stale shell environments. dotenv won't overwrite existing vars.
 import { config } from "dotenv"
+import { reportFailure } from "@atlas/shared/error-escalation"
 const __bridgeDir = dirname(fileURLToPath(import.meta.url))
 const __repoRoot = resolve(__bridgeDir, "../../..")
 config({ path: resolve(__repoRoot, ".env") })
@@ -814,6 +815,7 @@ async function handleMessageRelay(req: Request): Promise<Response> {
     const timer = setTimeout(() => {
       pendingMessageRelays.delete(relayId)
       if (activeRelayId === relayId) activeRelayId = null
+      reportFailure("bridge-relay", new Error(`Relay timeout after ${RELAY_TIMEOUT}ms`), { relayId, text: body.text?.slice(0, 100) })
       resolve({ text: "Request timed out after 2 minutes. The operation may still be running.", screenshots: [] })
     }, RELAY_TIMEOUT)
 

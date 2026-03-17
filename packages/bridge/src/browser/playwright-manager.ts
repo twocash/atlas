@@ -19,6 +19,7 @@
 import { resolve, dirname } from "path"
 import { fileURLToPath } from "url"
 import { existsSync, mkdirSync } from "fs"
+import { reportFailure } from "@atlas/shared/error-escalation"
 import type {
   PageHandle,
   BrowserSessionConfig,
