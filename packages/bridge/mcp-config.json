@@ -3,6 +3,14 @@
     "atlas-browser": {
       "command": "bun",
       "args": ["run", "packages/bridge/src/tools/mcp-server.ts"]
+    },
+    "anythingllm": {
+      "command": "bun",
+      "args": ["run", "packages/bridge/src/tools/anythingllm-mcp-server.ts"],
+      "env": {
+        "ANYTHINGLLM_URL": "${ANYTHINGLLM_URL}",
+        "ANYTHINGLLM_API_KEY": "${ANYTHINGLLM_API_KEY}"
+      }
     }
   }
 }
