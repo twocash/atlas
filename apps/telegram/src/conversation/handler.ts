@@ -37,7 +37,8 @@ import type { MediaContext, Pillar } from '@atlas/agents/src/media/processor';
 import type { TriageResult } from '@atlas/agents/src/cognitive/triage-skill';
 import { formatProposalText } from '@atlas/agents/src/emergence/proposal-generator';
 import type { EmergenceProposal } from '@atlas/agents/src/emergence/types';
-import { detectContentShare } from '@atlas/agents/src/conversation/content-detection';
+// detectContentShare available for future per-message routing if needed
+// import { detectContentShare } from '@atlas/agents/src/conversation/content-detection';
 
 // Feature flags — resolved once at module load from env vars
 const CONTENT_CONFIRM_ENABLED = process.env.ATLAS_CONTENT_CONFIRM !== 'false';
@@ -221,36 +222,19 @@ function buildConfig(): PipelineConfig {
 /**
  * Handle incoming message — Grammy surface adapter
  *
- * Routing:
- *   URL shares → always through orchestrator (research pipeline)
- *   Non-URL + BRIDGE_RELAY=true → CC relay (thin client)
- *   Non-URL + BRIDGE_RELAY=false → orchestrator (legacy path)
+ * ALL messages flow through the orchestrator pipeline. No bypass.
+ * The orchestrator handles: triage, Socratic questions, research dispatch,
+ * content capture, tool execution. CC receives only tasks the orchestrator
+ * explicitly escalates post-triage — never raw input.
  *
- * ADR-005: URLs are content shares, not CC tasks. They flow through
- * the surface-agnostic pipeline in packages/agents/ regardless of
- * which surface delivered them.
+ * ADR-005: Surfaces produce StructuredContext; they don't bypass the pipeline.
+ * ADR-009: Compute belongs to the desk (orchestrator), not the phone line (relay).
+ *
+ * BRIDGE_RELAY_ENABLED is preserved for the Bridge relay infrastructure
+ * (AskUserQuestion loop, tool circuit) but no longer gates message routing.
  */
 export async function handleConversation(ctx: Context): Promise<void> {
   const input = extractInput(ctx);
-  const messageText = input.text || '';
-
-  // URL shares always go through the orchestrator pipeline — never raw to CC.
-  // The orchestrator handles: triage, Socratic question, research dispatch.
-  const urlDetection = detectContentShare(messageText);
-  if (urlDetection.isContentShare) {
-    logger.info('URL detected — routing through orchestrator pipeline', { url: urlDetection.urls?.[0]?.slice(0, 80) });
-    const hooks = buildHooks(ctx);
-    const config = buildConfig();
-    await orchestrateMessage(input, hooks, config);
-    return;
-  }
-
-  // Non-URL messages: relay to CC if enabled, else orchestrator
-  if (BRIDGE_RELAY_ENABLED) {
-    await handleViaBridgeRelay(ctx);
-    return;
-  }
-
   const hooks = buildHooks(ctx);
   const config = buildConfig();
   await orchestrateMessage(input, hooks, config);
