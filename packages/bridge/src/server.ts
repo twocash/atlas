@@ -951,10 +951,10 @@ async function handleMessageRelay(req: Request): Promise<Response> {
     const replyLower = body.text.trim().toLowerCase()
     console.log(`[bridge] Reply to pending question [${body.questionId}]: "${body.text.slice(0, 80)}"`)
 
-    // Parse approval responses for Yellow zone tools
-    const isYes = replyLower === "yes" || replyLower === "y" || replyLower === "approve"
-    const isNo = replyLower === "no" || replyLower === "n" || replyLower === "deny"
-    const isAlways = replyLower === "always"
+    // Parse approval responses — numbered options (1/2/3) or words
+    const isYes = replyLower === "yes" || replyLower === "y" || replyLower === "1" || replyLower === "approve"
+    const isNo = replyLower === "no" || replyLower === "n" || replyLower === "2" || replyLower === "deny"
+    const isAlways = replyLower === "always" || replyLower === "3"
 
     if (isNo) {
       // Deny — CC gets rejection, no relay needed for continued output

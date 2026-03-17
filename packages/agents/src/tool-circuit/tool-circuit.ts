@@ -70,10 +70,13 @@ function routeByZone(toolName: string, classification: ClassifyResult): CircuitD
 
     case "yellow": {
       // Build approval message from template or default
-      let approvalMessage = config?.approvalMessageTemplate || `CC wants to use ${toolName}. Allow? (yes / no / always)`
-      // Replace {query} placeholder with tool name for now
-      // (full input extraction is a follow-on — requires parsing tool_use input)
-      approvalMessage = approvalMessage.replace("{query}", toolName)
+      let reason = config?.approvalMessageTemplate || `CC wants to use ${toolName}.`
+      reason = reason.replace("{query}", toolName)
+      // Strip any legacy "(yes / no / always)" suffix — we format with numbered options
+      reason = reason.replace(/\s*\(yes\s*\/\s*no\s*\/\s*always\)\s*$/, "")
+
+      // Jidoka: clear reason + Kaizen: numbered options
+      const approvalMessage = `${reason}\n\n1. Yes\n2. No\n3. Always (auto-approve this pattern)`
 
       return {
         action: "hold",
@@ -85,7 +88,9 @@ function routeByZone(toolName: string, classification: ClassifyResult): CircuitD
     }
 
     case "red": {
-      const blockReason = config?.blockMessageTemplate || `Tool "${toolName}" is blocked. This action requires human decision.`
+      // Jidoka: clear reason why blocked
+      const reason = config?.blockMessageTemplate || `Tool "${toolName}" is blocked. This action requires human decision.`
+      const blockReason = reason
       return {
         action: "block",
         zone,
