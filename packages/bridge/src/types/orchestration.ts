@@ -41,7 +41,7 @@ export const TIER_ROUTES: Record<ComplexityTier, TierRoute> = {
  * Slot 7: Session — multi-turn session context (WIRED)
  * Slot 9: Self-Model — runtime capability awareness (WIRED)
  */
-export type SlotId = "intent" | "domain_rag" | "pov" | "voice" | "browser" | "output" | "session" | "self_model"
+export type SlotId = "intent" | "domain_rag" | "pov" | "voice" | "browser" | "output" | "session" | "self_model" | "tool_hint"
 
 export interface ContextSlot {
   /** Which slot this represents */
@@ -76,6 +76,7 @@ export const SLOT_TOKEN_BUDGETS: Record<SlotId, number> = {
   output: 500,
   session: TOTAL_CONTEXT_BUDGET,
   self_model: 500,
+  tool_hint: 300,
 }
 
 /** Trim priority ordering — higher number = trim last (keep) */
@@ -88,6 +89,7 @@ export const SLOT_PRIORITIES: Record<SlotId, number> = {
   pov: 30,        // Nice-to-have — epistemic stance
   domain_rag: 20, // Nice-to-have — corpus knowledge
   session: 10,    // Trimmed first — multi-turn context
+  tool_hint: 80,  // High priority — guides Claude's tool selection
 }
 
 // ─── Orchestration Request / Response ────────────────────────

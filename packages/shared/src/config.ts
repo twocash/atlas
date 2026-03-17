@@ -40,6 +40,7 @@ export const NOTION_DB = {
   SYSTEM_PROMPTS: '2fc780a7-8eef-8196-b29b-db4a6adfdc27',
   CONTENT_SOURCES: 'e09b4475-cb3c-413d-8af5-7e6d015b71e0',
   CALENDAR_CONFIG: '63a5c6ca-7848-4ff7-90d9-704663e249d7',
+  TOOL_ROUTING_CONFIG: '6e44b8d8-2e5a-4290-9eff-b177b18455d3',
 } as const;
 
 /** Which Atlas surface uses a database */
@@ -80,6 +81,7 @@ export const NOTION_DB_META: Record<keyof typeof NOTION_DB, DbMeta> = {
   SYSTEM_PROMPTS:  { label: 'System Prompts',      surfaces: ['shared'],   criticality: 'critical' },
   CONTENT_SOURCES: { label: 'Content Sources',     surfaces: ['telegram'], criticality: 'enrichment' },
   CALENDAR_CONFIG: { label: 'Calendar Config',     surfaces: ['shared'],   criticality: 'enrichment' },
+  TOOL_ROUTING_CONFIG: { label: 'Tool Routing Config', surfaces: ['bridge'], criticality: 'enrichment' },
 };
 
 /**

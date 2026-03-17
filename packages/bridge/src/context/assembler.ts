@@ -9,6 +9,7 @@
  * Slot 6: Output — landing surface + format instructions  (WIRED)
  * Slot 7: Session — multi-turn session context            (WIRED)
  * Slot 9: Self-Model — runtime capability awareness       (WIRED)
+ * Slot 10: Tool Hint — declarative tool routing hints     (WIRED)
  */
 
 import { triageMessage, type TriageResult } from "@atlas/agents/src/cognitive/triage-skill"
@@ -35,6 +36,7 @@ import {
 import { assembleDomainRagSlot } from "./domain-rag-slot"
 import { assemblePovSlot } from "./pov-slot"
 import { assembleSelfModelSlot, type SelfModelProvider } from "./self-model-slot"
+import { assembleToolHintSlot } from "./tool-hint-slot"
 import { reportFailure } from "@atlas/shared/error-escalation"
 import { sessionManager } from "@atlas/agents/src/sessions/session-manager"
 
@@ -364,12 +366,13 @@ export async function assembleContext(
   const route = TIER_ROUTES[tier]
 
   // Step 2-5: Assemble remaining slots in parallel
-  const [voiceSlot, browserSlot, domainRagSlot, povSlot, selfModelSlot] = await Promise.all([
+  const [voiceSlot, browserSlot, domainRagSlot, povSlot, selfModelSlot, toolHintSlot] = await Promise.all([
     assembleVoiceSlot(triage, request.messageText),
     Promise.resolve(assembleBrowserSlot(request.browserContext)),
     assembleDomainRagSlot(triage, request.messageText),
     assemblePovSlot(triage),
     assembleSelfModelSlot(triage, request.messageText),
+    assembleToolHintSlot(request.messageText),
   ])
 
   const landingSurface = determineLandingSurface(triage, request.surface)
@@ -395,6 +398,7 @@ export async function assembleContext(
     browserSlot,
     sessionSlot,
     selfModelSlot,
+    toolHintSlot,
     outputSlot,
   ]
 

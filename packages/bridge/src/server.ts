@@ -808,8 +808,9 @@ async function handleMessageRelay(req: Request): Promise<Response> {
 
   const relayId = `relay-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`
   const RELAY_TIMEOUT = 120_000 // 2 minutes
+  const surface = body.surface || "telegram"
 
-  console.log(`[bridge] Message relay ${relayId}: "${body.text.slice(0, 80)}..." from ${body.username || "unknown"}`)
+  console.log(`[bridge] Message relay ${relayId}: "${body.text.slice(0, 80)}..." from ${body.username || "unknown"} (${surface})`)
 
   const result = await new Promise<{ text: string; screenshots: string[] }>((resolve) => {
     const timer = setTimeout(() => {
@@ -827,10 +828,42 @@ async function handleMessageRelay(req: Request): Promise<Response> {
     })
     activeRelayId = relayId
 
-    // Send to Claude as a user message
-    sendToClaude({
-      type: "user_message",
-      content: [{ type: "text", text: body.text }],
+    // Route through handler chain (triage → context assembly → relay)
+    // Same path Chrome Extension messages take — gives Claude all 9 context slots
+    const envelope: BridgeEnvelope = {
+      message: {
+        type: "user_message",
+        content: [{ type: "text", text: body.text }],
+      } as any,
+      surface,
+      sessionId: claudeSessionId || `session-${Date.now()}`,
+      timestamp: new Date().toISOString(),
+      direction: "client_to_claude",
+      sourceConnectionId: `relay-${relayId}`,
+    }
+
+    const handlerContext: HandlerContext = {
+      sendToClaude: (msg) => sendToClaude(msg),
+      sendToClient: (_connId, _msg) => {
+        // Relay responses come through handleClaudeLine, not sendToClient.
+        // Local responses (Tier 0-1) from triage go here — resolve the relay.
+        const text = (_msg as any)?.message?.content || (_msg as any)?.data?.message || ""
+        if (text) {
+          clearTimeout(timer)
+          pendingMessageRelays.delete(relayId)
+          if (activeRelayId === relayId) activeRelayId = null
+          resolve({ text, screenshots: [] })
+        }
+      },
+      broadcastToClients: (_msg) => {
+        // No-op for relay — Telegram doesn't receive broadcasts
+      },
+      isClaudeConnected: () => isClaudeConnected(),
+    }
+
+    processEnvelope(envelope, handlerContext).catch((err) => {
+      console.error(`[bridge] Relay handler chain error for ${relayId}:`, err)
+      // Don't resolve here — timeout will catch it, or Claude response will
     })
   })
 

@@ -414,7 +414,7 @@ describe("assembler slot wiring", () => {
     )
     expect(source).toContain("assembleDomainRagSlot(triage, request.messageText)")
     expect(source).toContain("assemblePovSlot(triage)")
-    // All 4 slots in one Promise.all
-    expect(source).toContain("const [voiceSlot, browserSlot, domainRagSlot, povSlot]")
+    // All slots in one Promise.all
+    expect(source).toContain("const [voiceSlot, browserSlot, domainRagSlot, povSlot, selfModelSlot, toolHintSlot]")
   })
 })
