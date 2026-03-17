@@ -17,6 +17,7 @@
 import { Client } from "@notionhq/client"
 import { NOTION_DB } from "@atlas/shared/config"
 import { logger } from "../logger"
+import { reportFailure } from "@atlas/shared/error-escalation"
 
 // ─── Types ───────────────────────────────────────────────
 
@@ -109,6 +110,9 @@ async function getMaxHydrationTurns(): Promise<number> {
   } catch (err) {
     logger.warn("[thread-hydrator] Failed to resolve MAX_HYDRATION_TURNS from Notion", {
       error: (err as Error).message,
+    })
+    reportFailure("thread-hydrator-config", err, {
+      suggestedFix: "Check TOOL_ROUTING_CONFIG_DB env var and Notion connectivity. Falling back to default (10 turns).",
     })
   }
 

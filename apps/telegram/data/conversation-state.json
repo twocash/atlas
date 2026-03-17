@@ -1,29 +1,71 @@
 {
   "version": 1,
   "states": {
-    "12345": {
-      "chatId": 12345,
+    "111": {
+      "chatId": 111,
       "userId": 67890,
-      "phase": "idle",
-      "sessionId": "e454a1d5-1afd-4981-9a25-aaa353f3131d",
+      "phase": "socratic",
+      "sessionId": "ed5648b9-8ed9-45e3-af6e-6ea441a6519a",
       "turnCount": 0,
-      "createdAt": 1773719298410,
-      "lastActivity": 1773719298410,
-      "lastTriage": {
-        "intent": "capture",
-        "pillar": "The Grove",
-        "confidence": 0.85,
-        "requestType": "Research",
-        "keywords": [
-          "AI",
-          "research"
+      "createdAt": 1773759667350,
+      "lastActivity": 1773759667350,
+      "socratic": {
+        "sessionId": "s1",
+        "questionMessageId": 999,
+        "questions": [
+          {
+            "text": "What's the play?",
+            "key": "intent",
+            "options": []
+          }
         ],
-        "source": "haiku",
-        "title": "AI Research Article",
-        "complexityTier": "moderate"
+        "currentQuestionIndex": 0,
+        "content": "https://example.com/article",
+        "contentType": "url",
+        "title": "Test Article",
+        "signals": {
+          "contentSignals": {
+            "topic": "Test",
+            "title": "Test",
+            "hasUrl": true,
+            "contentLength": 30
+          }
+        }
+      }
+    },
+    "222": {
+      "chatId": 222,
+      "userId": 67890,
+      "phase": "socratic",
+      "sessionId": "4e11ed87-aeff-476e-aa0e-ce88c3b4679c",
+      "turnCount": 0,
+      "createdAt": 1773759667350,
+      "lastActivity": 1773759667350,
+      "socratic": {
+        "sessionId": "s2",
+        "questionMessageId": 999,
+        "questions": [
+          {
+            "text": "What's the play?",
+            "key": "intent",
+            "options": []
+          }
+        ],
+        "currentQuestionIndex": 0,
+        "content": "https://example.com/article",
+        "contentType": "url",
+        "title": "Test Article",
+        "signals": {
+          "contentSignals": {
+            "topic": "Test",
+            "title": "Test",
+            "hasUrl": true,
+            "contentLength": 30
+          }
+        }
       }
     }
   },
   "pendingContent": {},
-  "savedAt": "2026-03-17T03:48:20.400Z"
+  "savedAt": "2026-03-17T15:01:09.368Z"
 }

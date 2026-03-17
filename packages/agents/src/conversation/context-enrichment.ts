@@ -21,7 +21,7 @@ import { reportFailure } from "@atlas/shared/error-escalation"
 import { type SlotResult, type SlotName, wrapSlotResult } from "@atlas/shared/types/slot-result"
 import { buildDegradedContextNote } from "@atlas/shared/context-transparency"
 import { logger } from "../logger"
-import { hydrateThread } from "../thread"
+import { hydrateThread, deriveThreadId } from "../thread"
 
 // ─── Types ───────────────────────────────────────────────
 
@@ -107,7 +107,7 @@ export async function enrichWithContextSlots(
     // Thread hydration: query Feed 2.0 for conversation history (Compilation stage)
     // This enriches session context with persistent thread history beyond
     // what ConversationState holds in ephemeral memory.
-    const threadId = `telegram:${userId}`
+    const { threadId } = deriveThreadId("telegram", userId)
     try {
       const hydration = await hydrateThread(threadId)
       if (hydration.status === "success" && hydration.turns.length > 0) {
@@ -138,12 +138,20 @@ export async function enrichWithContextSlots(
           threadId,
           error: hydration.error,
         })
+        reportFailure("thread-hydration", new Error(hydration.error || "Hydration degraded"), {
+          threadId,
+          suggestedFix: "Check Notion API connectivity and Feed 2.0 Thread ID column.",
+        })
       }
     } catch (err) {
       // Non-fatal: thread hydration is enrichment, not critical path
       logger.warn("[context-enrichment] Thread hydration failed", {
         threadId,
         error: (err as Error).message,
+      })
+      reportFailure("thread-hydration", err, {
+        threadId,
+        suggestedFix: "Check Notion API connectivity and Feed 2.0 Thread ID column.",
       })
     }
 
