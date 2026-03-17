@@ -18,3 +18,9 @@ export {
   type HydratedTurn,
   type HydrationResult,
 } from "./thread-hydrator"
+
+export {
+  resumeByNativeId,
+  resumeByThreadId,
+  type ResumeResult,
+} from "./resume"

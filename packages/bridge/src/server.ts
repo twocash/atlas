@@ -936,7 +936,7 @@ async function handleMessageRelay(req: Request): Promise<Response> {
     )
   }
 
-  let body: { text: string; userId?: number; chatId?: number; username?: string; surface?: string; questionId?: string }
+  let body: { text: string; userId?: number; chatId?: number; username?: string; surface?: string; questionId?: string; threadId?: string }
   try {
     body = await req.json() as typeof body
   } catch {
@@ -1037,7 +1037,7 @@ async function handleMessageRelay(req: Request): Promise<Response> {
   }
 
   // ─── Normal relay: new message to CC ──────────────────────
-  console.log(`[bridge] Message relay ${relayId}: "${body.text.slice(0, 80)}..." from ${body.username || "unknown"} (${surface})`)
+  console.log(`[bridge] Message relay ${relayId}: "${body.text.slice(0, 80)}..." from ${body.username || "unknown"} (${surface})${body.threadId ? ` thread=${body.threadId}` : ""}`)
 
   const result = await new Promise<RelayResponse>((resolve) => {
     const timer = setTimeout(() => {

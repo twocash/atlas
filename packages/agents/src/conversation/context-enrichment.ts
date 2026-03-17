@@ -21,7 +21,7 @@ import { reportFailure } from "@atlas/shared/error-escalation"
 import { type SlotResult, type SlotName, wrapSlotResult } from "@atlas/shared/types/slot-result"
 import { buildDegradedContextNote } from "@atlas/shared/context-transparency"
 import { logger } from "../logger"
-import { hydrateThread, deriveThreadId } from "../thread"
+import { deriveThreadId, resumeByNativeId } from "../thread"
 
 // ─── Types ───────────────────────────────────────────────
 
@@ -107,15 +107,13 @@ export async function enrichWithContextSlots(
     // Thread hydration: query Feed 2.0 for conversation history (Compilation stage)
     // This enriches session context with persistent thread history beyond
     // what ConversationState holds in ephemeral memory.
-    const { threadId } = deriveThreadId("telegram", userId)
+    // Thread resume: hydrate conversation history from Feed 2.0.
+    // Cold start = no ConversationState for this user (first message or expired session).
+    // Warm = ConversationState exists but Feed 2.0 provides persistent history.
+    const isColdStart = !convState || convState.turnCount === 0
     try {
-      const hydration = await hydrateThread(threadId)
-      if (hydration.status === "success" && hydration.turns.length > 0) {
-        const threadSummary = hydration.turns
-          .slice(0, 5)
-          .map((t) => `[${t.timestamp}] ${t.entry}`)
-          .join("\n")
-
+      const resume = await resumeByNativeId("telegram", userId, isColdStart)
+      if (resume.contextBlock.length > 0) {
         if (!sessionContext) {
           sessionContext = {
             sessionId,
@@ -123,34 +121,28 @@ export async function enrichWithContextSlots(
             intentSequence: [],
           }
         }
-        // Inject thread history as prior findings for context assembly
         sessionContext.priorFindings = sessionContext.priorFindings
-          ? `${sessionContext.priorFindings}\n\n--- Thread History ---\n${threadSummary}`
-          : `--- Thread History ---\n${threadSummary}`
+          ? `${sessionContext.priorFindings}\n\n${resume.contextBlock}`
+          : resume.contextBlock
 
-        logger.info("[context-enrichment] Thread hydration injected", {
-          threadId,
-          turns: hydration.returned,
-          latencyMs: hydration.latencyMs,
+        logger.info("[context-enrichment] Thread resume injected", {
+          threadId: resume.thread.threadId,
+          coldStart: resume.coldStart,
+          turns: resume.hydration.returned,
+          latencyMs: resume.hydration.latencyMs,
         })
-      } else if (hydration.status === "degraded") {
-        logger.warn("[context-enrichment] Thread hydration degraded", {
-          threadId,
-          error: hydration.error,
-        })
-        reportFailure("thread-hydration", new Error(hydration.error || "Hydration degraded"), {
-          threadId,
+      }
+      if (resume.hydration.status === "degraded") {
+        reportFailure("thread-hydration", new Error(resume.hydration.error || "Hydration degraded"), {
+          threadId: resume.thread.threadId,
           suggestedFix: "Check Notion API connectivity and Feed 2.0 Thread ID column.",
         })
       }
     } catch (err) {
-      // Non-fatal: thread hydration is enrichment, not critical path
-      logger.warn("[context-enrichment] Thread hydration failed", {
-        threadId,
+      logger.warn("[context-enrichment] Thread resume failed", {
         error: (err as Error).message,
       })
       reportFailure("thread-hydration", err, {
-        threadId,
         suggestedFix: "Check Notion API connectivity and Feed 2.0 Thread ID column.",
       })
     }
