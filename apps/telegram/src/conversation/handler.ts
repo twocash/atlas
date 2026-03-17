@@ -37,6 +37,7 @@ import type { MediaContext, Pillar } from '@atlas/agents/src/media/processor';
 import type { TriageResult } from '@atlas/agents/src/cognitive/triage-skill';
 import { formatProposalText } from '@atlas/agents/src/emergence/proposal-generator';
 import type { EmergenceProposal } from '@atlas/agents/src/emergence/types';
+import { detectContentShare } from '@atlas/agents/src/conversation/content-detection';
 
 // Feature flags — resolved once at module load from env vars
 const CONTENT_CONFIRM_ENABLED = process.env.ATLAS_CONTENT_CONFIRM !== 'false';
@@ -220,17 +221,36 @@ function buildConfig(): PipelineConfig {
 /**
  * Handle incoming message — Grammy surface adapter
  *
- * When ATLAS_BRIDGE_RELAY=true, messages route through the Bridge server
- * which runs Claude Code with full MCP tools (including headed browser).
- * When off, delegates to the orchestrator directly (legacy path).
+ * Routing:
+ *   URL shares → always through orchestrator (research pipeline)
+ *   Non-URL + BRIDGE_RELAY=true → CC relay (thin client)
+ *   Non-URL + BRIDGE_RELAY=false → orchestrator (legacy path)
+ *
+ * ADR-005: URLs are content shares, not CC tasks. They flow through
+ * the surface-agnostic pipeline in packages/agents/ regardless of
+ * which surface delivered them.
  */
 export async function handleConversation(ctx: Context): Promise<void> {
+  const input = extractInput(ctx);
+  const messageText = input.text || '';
+
+  // URL shares always go through the orchestrator pipeline — never raw to CC.
+  // The orchestrator handles: triage, Socratic question, research dispatch.
+  const urlDetection = detectContentShare(messageText);
+  if (urlDetection.isContentShare) {
+    logger.info('URL detected — routing through orchestrator pipeline', { url: urlDetection.urls?.[0]?.slice(0, 80) });
+    const hooks = buildHooks(ctx);
+    const config = buildConfig();
+    await orchestrateMessage(input, hooks, config);
+    return;
+  }
+
+  // Non-URL messages: relay to CC if enabled, else orchestrator
   if (BRIDGE_RELAY_ENABLED) {
     await handleViaBridgeRelay(ctx);
     return;
   }
 
-  const input = extractInput(ctx);
   const hooks = buildHooks(ctx);
   const config = buildConfig();
   await orchestrateMessage(input, hooks, config);
