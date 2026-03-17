@@ -487,14 +487,15 @@ async function handleResolved(
         return;
       }
 
-      // If Jim provided a topic, use it as the research basis when extraction failed
+      // If Jim provided a topic and extraction failed, log it but do NOT
+      // assign answer as extractedContent. Jim's answer flows correctly into
+      // userDirection (line 566), userContext (line 553), and sourceContext.researchAngle.
+      // Setting it as extractedContent conflates intent signal with webpage data.
       if (needsBrowser && !hasSubstantiveContent && jimProvidedTopic) {
-        logger.info('ATLAS-CEX-001: Using Jim\'s Socratic answer as research basis (SPA extraction failed)', {
+        logger.info('ATLAS-CEX-001: SPA extraction failed but Jim provided topic via Socratic answer', {
           url: content,
           answerLength: answerContext!.trim().length,
         });
-        // Use Jim's answer as extractedContent for research
-        extractedContent = answerContext!.trim();
       }
 
       const researchQuery = buildResearchQuery({

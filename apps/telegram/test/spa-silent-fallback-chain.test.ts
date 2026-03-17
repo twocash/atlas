@@ -255,7 +255,7 @@ describe('SPA Silent Fallback Chain', () => {
       expect(shouldBlock).toBe(true);
     });
 
-    it('should use Jim answer as extractedContent when extraction failed', () => {
+    it('should NOT use Jim answer as extractedContent — answer flows to userDirection instead', () => {
       let extractedContent: string | undefined = undefined;
       const answerContext = 'Peter Yang discusses how sovereign AI infrastructure enables competitive advantages for nations';
       const needsBrowser = true;
@@ -263,13 +263,11 @@ describe('SPA Silent Fallback Chain', () => {
       const hasSubstantiveContent = extractedContent && stripNonTextContent(extractedContent).length >= 50;
       const jimProvidedTopic = answerContext?.trim() && answerContext.trim().length >= 10;
 
-      // Simulate the fix: reassign extractedContent
-      if (needsBrowser && !hasSubstantiveContent && jimProvidedTopic) {
-        extractedContent = answerContext.trim();
-      }
-
-      expect(extractedContent).toBe(answerContext.trim());
-      expect(extractedContent!.length).toBeGreaterThan(50);
+      // The guard still passes (Jim provided topic), but extractedContent stays undefined.
+      // Jim's answer flows into userDirection, NOT extractedContent.
+      const guardPasses = needsBrowser && !hasSubstantiveContent && jimProvidedTopic;
+      expect(guardPasses).toBe(true);
+      expect(extractedContent).toBeUndefined();
     });
   });
 
@@ -307,32 +305,29 @@ describe('SPA Silent Fallback Chain', () => {
       expect(triageResult.title).toBe('Peter Yang on AI infrastructure');
     });
 
-    // Test 9: Jim topic + worldview → ResearchConfig has BOTH
-    it('should populate ResearchConfig with both userContext and sourceContent from Jim answer', () => {
+    // Test 9: Jim topic + worldview → ResearchConfig has userContext but NOT sourceContent from answer
+    it('should populate ResearchConfig with userContext but NOT sourceContent from Jim answer', () => {
       const answerContext = 'Peter Yang argues that sovereign AI infrastructure is a competitive moat for nations building their own compute capacity';
       let extractedContent: string | undefined = undefined;
       const needsBrowser = true;
 
-      // Simulate CEX-001 guard relaxation
+      // Guard passes but extractedContent stays undefined (answer is NOT webpage data)
       const hasSubstantiveContent = extractedContent && stripNonTextContent(extractedContent).length >= 50;
       const jimProvidedTopic = answerContext?.trim() && answerContext.trim().length >= 10;
+      expect(needsBrowser && !hasSubstantiveContent && jimProvidedTopic).toBe(true);
 
-      if (needsBrowser && !hasSubstantiveContent && jimProvidedTopic) {
-        extractedContent = answerContext.trim();
-      }
-
-      // Build ResearchConfig (simulating the real code path)
+      // Build ResearchConfig — sourceContent is undefined (extraction failed),
+      // Jim's answer goes to userContext/userDirection only
       const researchConfig = {
         query: 'Peter Yang AI infrastructure',
         depth: 'standard',
         pillar: 'The Grove',
-        sourceContent: extractedContent,
-        userContext: answerContext,
+        sourceContent: extractedContent,  // undefined — extraction failed
+        userContext: answerContext,         // Jim's answer lives here
         sourceUrl: 'https://www.threads.net/@simplpear/post/test123',
       };
 
-      // ResearchConfig has BOTH Jim's answer as sourceContent AND userContext
-      expect(researchConfig.sourceContent).toBe(answerContext.trim());
+      expect(researchConfig.sourceContent).toBeUndefined();
       expect(researchConfig.userContext).toBe(answerContext);
       expect(researchConfig.sourceUrl).toBeTruthy();
     });

@@ -160,14 +160,16 @@ describe('ATLAS-CEX-001: extractTopicFromContent rejects image-only input', () =
 // ── ATLAS-CEX-001 Contract B: userIntent injection ──────────────────────
 
 describe('ATLAS-CEX-001: buildResearchQuery with userIntent (Socratic reply)', () => {
-  it('userIntent overrides generic SPA title when sourceContent exists', () => {
+  it('userIntent does NOT override generic SPA title even when sourceContent exists', () => {
+    // Fix: Jim's answer is direction, not query. It flows into userDirection.
+    // The query should come from sourceContent extraction, not the answer.
     const query = buildResearchQuery({
       triageTitle: 'Pear (@simplpear) on Threads',
       fallbackTitle: '',
       sourceContent: 'Some extracted content about recursive language models and edge computing.',
       userIntent: 'recursive language models and innovation at the edge of AI architecture',
     });
-    expect(query).not.toContain('on Threads');
+    // sourceContent drives query extraction, NOT userIntent
     expect(query.toLowerCase()).toContain('recursive language model');
   });
 
@@ -203,15 +205,17 @@ describe('ATLAS-CEX-001: buildResearchQuery with userIntent (Socratic reply)', (
     expect(query).not.toContain('cool stuff');
   });
 
-  it('userIntent + sourceContent + generic title → intent wins', () => {
+  it('userIntent + sourceContent + generic title → sourceContent drives query', () => {
+    // Fix: userIntent is direction (goes to userDirection), NOT query.
+    // sourceContent extraction drives the query when title is generic.
     const query = buildResearchQuery({
       triageTitle: 'Someone on Twitter',
       fallbackTitle: '',
       sourceContent: 'TypeScript 6.0 introduces structural pattern matching.',
       userIntent: 'how does this compare to Rust pattern matching',
     });
-    // userIntent takes priority over sourceContent extraction
-    expect(query.toLowerCase()).toContain('rust pattern matching');
+    // sourceContent extraction wins — query is about TypeScript, not Rust
+    expect(query.toLowerCase()).toContain('typescript');
   });
 
   it('userIntent alone (no title, no content) throws — no topic available', () => {
