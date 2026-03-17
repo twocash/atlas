@@ -177,7 +177,18 @@ async function executeDispatchResearch(
     const { result, assessment } = orchResult;
     const researchOutput = result.output as { summary?: string; findings?: any[]; sources?: string[]; bibliography?: any[] } | undefined;
 
-    // 3. Format result in the same shape (backward compat for tool loop)
+    // 3. ANDON GATE ENFORCEMENT — routing gates delivery on ALL surfaces
+    const routing = assessment?.routing ?? 'clarify';
+    const blocked = routing === 'clarify' || routing === 'deepen';
+
+    if (blocked) {
+      console.warn(`[Research:tool] Andon gate BLOCKED delivery (routing=${routing})`, {
+        confidence: assessment?.confidence,
+        reason: assessment?.reason,
+        query,
+      });
+    }
+
     const isLowConfidence = assessment
       ? (assessment.confidence === 'speculative' || assessment.confidence === 'insufficient')
       : !result.success;
@@ -188,25 +199,29 @@ async function executeDispatchResearch(
     const andonEnforcement = caveatLines.join('\n');
 
     return {
-      success: result.success,
+      success: blocked ? false : result.success,
       result: {
-        message: result.success && assessment
-          ? `${assessment.calibration.emoji} ${assessment.calibration.label} — ${researchOutput?.sources?.length || 0} sources analyzed.${andonEnforcement}`
-          : `Research failed: ${result.summary}`,
+        message: blocked
+          ? `⚠️ Research blocked by Andon Gate (${routing}) — ${assessment?.reason ?? 'insufficient quality'}`
+          : result.success && assessment
+            ? `${assessment.calibration.emoji} ${assessment.calibration.label} — ${researchOutput?.sources?.length || 0} sources analyzed.${andonEnforcement}`
+            : `Research failed: ${result.summary}`,
         query,
         depth,
         voice,
         pillar,
         workQueueUrl: notionUrl,
-        summary: isLowConfidence && assessment
-          ? `⚠️ LOW CONFIDENCE — ${assessment.calibration.caveat}\n\n${researchOutput?.summary?.substring(0, 400) || ''}`
-          : researchOutput?.summary?.substring(0, 500),
+        summary: blocked
+          ? `⚠️ BLOCKED — ${assessment?.calibration.caveat ?? assessment?.reason}\n\nRaw output not delivered. See Notion for unverified content.`
+          : isLowConfidence && assessment
+            ? `⚠️ LOW CONFIDENCE — ${assessment.calibration.caveat}\n\n${researchOutput?.summary?.substring(0, 400) || ''}`
+            : researchOutput?.summary?.substring(0, 500),
         sourcesCount: researchOutput?.sources?.length || 0,
         findingsCount: researchOutput?.findings?.length || 0,
         andonConfidence: assessment?.confidence ?? 'insufficient',
         andonLabel: assessment?.calibration.label ?? 'Research Incomplete',
         andonCaveat: assessment?.calibration.caveat ?? null,
-        andonRouting: assessment?.routing ?? 'clarify',
+        andonRouting: routing,
         andonEmoji: assessment?.calibration.emoji ?? '⚠️',
       },
     };

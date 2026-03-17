@@ -89,6 +89,37 @@ export async function sendCompletionNotification(
       success: true, hallucinationGuardPassed: true,
       contentMode: rr?.contentMode, hasProseContent: !!(rr as any)?.proseContent, source,
     } as AndonInput, undefined, { query: rr?.query ?? agent.name, source });
+
+    // ── ANDON GATE ENFORCEMENT ──────────────────────────────────────────
+    // The gate computes routing. This is where routing is ENFORCED.
+    // 'clarify' = insufficient quality, do NOT deliver as findings.
+    // 'deepen' = speculative with no novelty, offer deeper research.
+    if (assessment.routing === 'clarify') {
+      logger.warn('Andon gate BLOCKED delivery (routing=clarify)', {
+        confidence: assessment.confidence,
+        reason: assessment.reason,
+        query: rr?.query ?? agent.name,
+        source,
+      });
+      const blocked = `⚠️ Research Incomplete\n\n${assessment.calibration.caveat ?? assessment.reason}`;
+      const suffix = notionUrl ? `\n\n📝 Raw output (unverified): ${notionUrl}` : '';
+      await api.sendMessage(chatId, blocked + suffix);
+      return;
+    }
+    if (assessment.routing === 'deepen') {
+      logger.warn('Andon gate BLOCKED delivery (routing=deepen)', {
+        confidence: assessment.confidence,
+        reason: assessment.reason,
+        query: rr?.query ?? agent.name,
+        source,
+      });
+      const blocked = `💭 Initial Analysis — Not Grounded\n\n${assessment.calibration.caveat ?? assessment.reason}\n\nWant me to dispatch a deeper investigation?`;
+      const suffix = notionUrl ? `\n\n📝 Raw output (unverified): ${notionUrl}` : '';
+      await api.sendMessage(chatId, blocked + suffix);
+      return;
+    }
+    // ── END ANDON GATE ENFORCEMENT ──────────────────────────────────────
+
     const { calibration } = assessment;
 
     let message = `${calibration.emoji} ${calibration.label}\n\n`;
