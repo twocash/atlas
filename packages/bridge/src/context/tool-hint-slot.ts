@@ -80,7 +80,9 @@ let _cache: CacheEntry | null = null
  * Set via TOOL_ROUTING_CONFIG_DB in root .env.
  */
 function getDatabaseId(): string | undefined {
-  return process.env.TOOL_ROUTING_CONFIG_DB || NOTION_DB.TOOL_ROUTING_CONFIG || undefined
+  const id = process.env.TOOL_ROUTING_CONFIG_DB || NOTION_DB.TOOL_ROUTING_CONFIG || undefined
+  console.log(`[tool-hint] getDatabaseId: env=${process.env.TOOL_ROUTING_CONFIG_DB}, config=${NOTION_DB.TOOL_ROUTING_CONFIG}, resolved=${id}`)
+  return id
 }
 
 /**
@@ -214,6 +216,7 @@ function matchToolKeywords(
 export async function assembleToolHintSlot(
   messageText: string,
 ): Promise<ContextSlot> {
+  console.log(`[tool-hint] assembleToolHintSlot called, enabled=${isToolHintEnabled()}, message="${messageText.slice(0, 60)}"`)
   if (!isToolHintEnabled()) {
     return createEmptySlot("tool_hint", "feature-disabled")
   }
@@ -225,11 +228,13 @@ export async function assembleToolHintSlot(
     }
 
     const matched = matchToolKeywords(messageText, tools)
+    console.log(`[tool-hint] ${tools.length} tools loaded, ${matched.length} matched`)
     if (matched.length === 0) {
       return createEmptySlot("tool_hint", "no-match")
     }
 
     const hintText = matched.map((t) => t.hintTemplate).join("\n\n")
+    console.log(`[tool-hint] Injecting hint (${hintText.length} chars) for tools: ${matched.map(t => t.toolId).join(", ")}`)
 
     return createSlot({
       id: "tool_hint",
