@@ -827,19 +827,10 @@ async function handleMessageRelay(req: Request): Promise<Response> {
     })
     activeRelayId = relayId
 
-    // Check if message involves authenticated web services → hint headed browser
-    const browserKeywords = ["gmail", "email", "inbox", "linkedin", "calendar", "invitation", "login", "sign in", "browser", "dashboard", "client portal"]
-    const msgLower = body.text.toLowerCase()
-    const needsBrowser = browserKeywords.some((kw) => msgLower.includes(kw))
-
-    const messageContent = needsBrowser
-      ? `[System capability note: You have headed browser tools available (atlas_headed_launch, atlas_headed_auth_wait, atlas_headed_interact, atlas_headed_content, atlas_headed_screenshot). Use these for authenticated web services like Gmail, LinkedIn, Calendar. Launch the browser, wait for auth if needed, then automate. Session cookies persist across launches.]\n\n${body.text}`
-      : body.text
-
     // Send to Claude as a user message
     sendToClaude({
       type: "user_message",
-      content: [{ type: "text", text: messageContent }],
+      content: [{ type: "text", text: body.text }],
     })
   })
 
