@@ -68,6 +68,7 @@ import {
   buildActionApprovalMessage,
   isActionConfirmation,
 } from '../conversation/action-approval';
+import { dispatchActionToBridge } from '../conversation/action-dispatch';
 import { recordTriageFeedback } from '../cognitive/triage-patterns';
 import { sessionManager } from '../sessions/session-manager';
 import {
@@ -501,15 +502,51 @@ export async function orchestrateMessage(
         recordTriageFeedback(pendingAction.originalMessage, triageForFeedback, null);
         returnToIdle(chatId);
 
-        logger.info('[action-intent] Approved', {
-          event: 'action-approved',
-          patternKey: pendingAction.patternKey,
-          destination: pendingAction.destination,
-          task: pendingAction.task,
-        });
+        logAction({
+          messageText: pendingAction.originalMessage,
+          actionType: 'tool',
+          pillar: 'The Grove',
+          requestType: 'Quick',
+          confidence: 1.0,
+          toolsUsed: [],
+          userId,
+          classificationConfirmed: true,
+          triageIntent: 'action',
+          entrySummary: `Action approved: ${pendingAction.destination}`,
+          sessionId: sessionTelemetry.sessionId,
+          turnNumber: sessionTelemetry.turnNumber,
+          priorIntentHash: sessionTelemetry.priorIntentHash,
+        }).catch(err => logger.warn('[action-intent] logAction(approved) failed', { error: (err as Error).message }));
 
-        // TODO (Slice 4): dispatch to headed-browser execution
-        await hooks.reply(`Heading to ${pendingAction.destination} now. (Browser execution not yet wired.)`, {});
+        await hooks.sendTyping();
+        const execResult = await dispatchActionToBridge(pendingAction.destination, pendingAction.task || '');
+        if (execResult.success) {
+          const summary = execResult.title
+            ? `**${execResult.title}**\n\n${execResult.content.slice(0, 2000)}`
+            : execResult.content.slice(0, 2000);
+          await hooks.reply(summary, {});
+        } else {
+          await hooks.reply(execResult.error!, {});
+        }
+
+        logAction({
+          messageText: pendingAction.originalMessage,
+          actionType: 'extract',
+          pillar: 'The Grove',
+          requestType: 'Quick',
+          confidence: 1.0,
+          userId,
+          toolsUsed: ['atlas_browser_open_and_read'],
+          executionTimeMs: execResult.executionTimeMs,
+          contentType: 'url',
+          contentSource: pendingAction.destination,
+          triageIntent: 'action',
+          entrySummary: `Action executed: ${pendingAction.destination}`,
+          sessionId: sessionTelemetry.sessionId,
+          turnNumber: sessionTelemetry.turnNumber,
+          priorIntentHash: sessionTelemetry.priorIntentHash,
+        }).catch(err => logger.warn('[action-intent] logAction(executed) failed', { error: (err as Error).message }));
+
         await hooks.setReaction(REACTIONS.DONE);
         return;
       } else {
@@ -531,13 +568,20 @@ export async function orchestrateMessage(
     if (earlyTriage.intent === 'action') {
       const approvalCtx = buildActionApprovalContext(messageText);
 
-      logger.info('[action-intent] Recognized', {
-        event: 'action-recognized',
-        intent: 'action',
-        destination: approvalCtx.destination,
-        task: approvalCtx.task,
+      logAction({
+        messageText,
+        actionType: 'classify',
+        pillar: 'The Grove',
+        requestType: 'Quick',
         confidence: earlyTriage.confidence,
-      });
+        toolsUsed: [],
+        userId,
+        triageIntent: 'action',
+        entrySummary: `Action: ${approvalCtx.destination} — ${approvalCtx.task || 'browse'}`,
+        sessionId: sessionTelemetry.sessionId,
+        turnNumber: sessionTelemetry.turnNumber,
+        priorIntentHash: sessionTelemetry.priorIntentHash,
+      }).catch(err => logger.warn('[action-intent] logAction(recognized) failed', { error: (err as Error).message }));
 
       if (approvalCtx.zone === 'yellow') {
         const approvalMsg = buildActionApprovalMessage(approvalCtx);
@@ -547,29 +591,71 @@ export async function orchestrateMessage(
 
         enterPendingActionPhase(chatId, userId, approvalCtx);
 
-        logger.info('[action-intent] Approval surfaced', {
-          event: 'action-approval-surfaced',
-          destination: approvalCtx.destination,
-          task: approvalCtx.task,
-          zone: approvalCtx.zone,
-          patternKey: approvalCtx.patternKey,
-        });
+        logAction({
+          messageText,
+          actionType: 'classify',
+          pillar: 'The Grove',
+          requestType: 'Quick',
+          confidence: earlyTriage.confidence,
+          toolsUsed: [],
+          userId,
+          triageIntent: 'action',
+          entrySummary: `Butler approval: ${approvalCtx.destination}`,
+          sessionId: sessionTelemetry.sessionId,
+          turnNumber: sessionTelemetry.turnNumber,
+          priorIntentHash: sessionTelemetry.priorIntentHash,
+        }).catch(err => logger.warn('[action-intent] logAction(approval-surfaced) failed', { error: (err as Error).message }));
 
         await hooks.setReaction(REACTIONS.DONE);
         return;
       }
 
       // Green zone — auto-execute
-      logger.info('[action-intent] Auto-approved (Green zone)', {
-        event: 'action-approved',
-        patternKey: approvalCtx.patternKey,
-        destination: approvalCtx.destination,
-        task: approvalCtx.task,
-        autoApproved: true,
-      });
+      logAction({
+        messageText,
+        actionType: 'tool',
+        pillar: 'The Grove',
+        requestType: 'Quick',
+        confidence: earlyTriage.confidence,
+        toolsUsed: [],
+        userId,
+        classificationConfirmed: true,
+        triageIntent: 'action',
+        entrySummary: `Action auto-approved (Green): ${approvalCtx.destination}`,
+        sessionId: sessionTelemetry.sessionId,
+        turnNumber: sessionTelemetry.turnNumber,
+        priorIntentHash: sessionTelemetry.priorIntentHash,
+      }).catch(err => logger.warn('[action-intent] logAction(auto-approved) failed', { error: (err as Error).message }));
 
-      // TODO (Slice 4): dispatch to headed-browser execution
-      await hooks.reply(`Heading to ${approvalCtx.destination} now. (Browser execution not yet wired.)`, {});
+      await hooks.sendTyping();
+      const greenExecResult = await dispatchActionToBridge(approvalCtx.destination, approvalCtx.task || '');
+      if (greenExecResult.success) {
+        const summary = greenExecResult.title
+          ? `**${greenExecResult.title}**\n\n${greenExecResult.content.slice(0, 2000)}`
+          : greenExecResult.content.slice(0, 2000);
+        await hooks.reply(summary, {});
+      } else {
+        await hooks.reply(greenExecResult.error!, {});
+      }
+
+      logAction({
+        messageText,
+        actionType: 'extract',
+        pillar: 'The Grove',
+        requestType: 'Quick',
+        confidence: earlyTriage.confidence,
+        userId,
+        toolsUsed: ['atlas_browser_open_and_read'],
+        executionTimeMs: greenExecResult.executionTimeMs,
+        contentType: 'url',
+        contentSource: approvalCtx.destination,
+        triageIntent: 'action',
+        entrySummary: `Action executed: ${approvalCtx.destination}`,
+        sessionId: sessionTelemetry.sessionId,
+        turnNumber: sessionTelemetry.turnNumber,
+        priorIntentHash: sessionTelemetry.priorIntentHash,
+      }).catch(err => logger.warn('[action-intent] logAction(green-executed) failed', { error: (err as Error).message }));
+
       await hooks.setReaction(REACTIONS.DONE);
       return;
     }

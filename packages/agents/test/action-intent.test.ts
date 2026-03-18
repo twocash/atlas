@@ -15,6 +15,7 @@ import {
   isActionConfirmation,
   resolveActionZone,
 } from '../src/conversation/action-approval';
+import { ensureProtocol } from '../src/conversation/action-dispatch';
 import { generatePatternKey } from '../src/cognitive/triage-patterns';
 import {
   resolveIntentCompositionSync,
@@ -187,5 +188,25 @@ describe('buildActionApprovalContext', () => {
     expect(ctx.patternKey).toMatch(/^url:gemini\.google\.com/);
     expect(ctx.zone).toBe('yellow'); // first encounter
     expect(ctx.originalMessage).toBe('Go to https://gemini.google.com and ask about AI');
+  });
+});
+
+// ─── Slice 4: Action Dispatch ────────────────────────────
+
+describe('ensureProtocol', () => {
+  it('prepends https:// to bare domain', () => {
+    expect(ensureProtocol('gemini.google.com')).toBe('https://gemini.google.com');
+  });
+
+  it('leaves https:// URL unchanged', () => {
+    expect(ensureProtocol('https://already.com')).toBe('https://already.com');
+  });
+
+  it('leaves http:// URL unchanged', () => {
+    expect(ensureProtocol('http://insecure.com')).toBe('http://insecure.com');
+  });
+
+  it('handles domain with path', () => {
+    expect(ensureProtocol('example.com/path/to/page')).toBe('https://example.com/path/to/page');
   });
 });

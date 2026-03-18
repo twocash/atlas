@@ -91,7 +91,7 @@ export interface ActionLogInput {
   // Triage Intelligence fields (Sprint: Triage Intelligence)
 
   /** Triage detected intent */
-  triageIntent?: 'command' | 'capture' | 'query' | 'clarify';
+  triageIntent?: 'command' | 'capture' | 'query' | 'clarify' | 'action';
 
   /** Triage complexity tier (0=cache, 1=haiku, 2=sonnet, 3=opus) */
   triageComplexityTier?: 0 | 1 | 2 | 3;
