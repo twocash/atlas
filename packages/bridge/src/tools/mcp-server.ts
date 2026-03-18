@@ -102,6 +102,34 @@ async function handleHeadedBrowserTool(
     switch (name) {
       case "atlas_headed_launch": {
         const { url } = args as { url: string }
+
+        // Site whitelist check — Notion-governed, ADR-001
+        const { classifySite } = await import("../../../agents/src/tool-circuit/tool-zone-classifier")
+        const siteResult = await classifySite(url)
+
+        if (!siteResult) {
+          // Not in whitelist — block with explanation
+          let hostname = "unknown"
+          try { hostname = new URL(url).hostname } catch {}
+          return {
+            content: [{
+              type: "text" as const,
+              text: `Site "${hostname}" is not in the browser whitelist. Add a "site:${hostname}" row to Tool Routing Config in Notion to allow access.`,
+            }],
+            isError: true,
+          }
+        }
+
+        if (siteResult.zone === "red") {
+          return {
+            content: [{
+              type: "text" as const,
+              text: siteResult.config?.blockMessageTemplate || `Site blocked (Red zone). This domain requires human-only access.`,
+            }],
+            isError: true,
+          }
+        }
+
         const page = await mgr.launch(url)
 
         // Check if auth is needed

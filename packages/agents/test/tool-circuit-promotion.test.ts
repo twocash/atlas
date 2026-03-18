@@ -42,6 +42,43 @@ const mockQuery = mock(() => Promise.resolve({
         'Active': { checkbox: true },
       },
     },
+    // Site whitelist rows
+    {
+      id: 'site-gmail',
+      properties: {
+        'Tool ID': { title: [{ plain_text: 'site:google.com' }] },
+        'Zone': { select: { name: 'Yellow' } },
+        'Description': { rich_text: [{ plain_text: 'Gmail — authenticated email access' }] },
+        'Auto Promote Threshold': { number: 3 },
+        'Approval Message Template': { rich_text: [{ plain_text: 'CC wants to open Gmail. Allow?' }] },
+        'Block Message Template': { rich_text: [{ plain_text: '' }] },
+        'Active': { checkbox: true },
+      },
+    },
+    {
+      id: 'site-threads',
+      properties: {
+        'Tool ID': { title: [{ plain_text: 'site:threads.net' }] },
+        'Zone': { select: { name: 'Green' } },
+        'Description': { rich_text: [{ plain_text: 'Threads — social feed analysis' }] },
+        'Auto Promote Threshold': { number: 3 },
+        'Approval Message Template': { rich_text: [{ plain_text: '' }] },
+        'Block Message Template': { rich_text: [{ plain_text: '' }] },
+        'Active': { checkbox: true },
+      },
+    },
+    {
+      id: 'site-blocked',
+      properties: {
+        'Tool ID': { title: [{ plain_text: 'site:evil.com' }] },
+        'Zone': { select: { name: 'Red' } },
+        'Description': { rich_text: [{ plain_text: 'Blocked domain' }] },
+        'Auto Promote Threshold': { number: 3 },
+        'Approval Message Template': { rich_text: [{ plain_text: '' }] },
+        'Block Message Template': { rich_text: [{ plain_text: 'This domain is blocked.' }] },
+        'Active': { checkbox: true },
+      },
+    },
   ],
 }));
 
@@ -65,7 +102,7 @@ process.env.TOOL_ROUTING_CONFIG_DB = '6e44b8d8-2e5a-4290-9eff-b177b18455d3';
 
 // ─── Imports (AFTER mocks) ──────────────────────────────
 
-import { findConfigByToolName, invalidateZoneCache, type ToolZoneConfig } from '../src/tool-circuit/tool-zone-classifier';
+import { findConfigByToolName, invalidateZoneCache, classifySite, type ToolZoneConfig } from '../src/tool-circuit/tool-zone-classifier';
 import { promoteToGreen } from '../src/tool-circuit/tool-circuit';
 
 // ─── Tests ──────────────────────────────────────────────
@@ -148,5 +185,54 @@ describe('Tool Circuit Promotion: promoteToGreen', () => {
       return keywords?.some((k: any) => k.name === 'promotion');
     });
     expect(promotionCalls.length).toBeGreaterThanOrEqual(1);
+  });
+});
+
+// ─── Site Whitelist Tests ──────────────────────────────────
+
+describe('Site Whitelist: classifySite', () => {
+  beforeEach(() => {
+    invalidateZoneCache();
+  });
+
+  it('classifies Gmail (subdomain match on google.com) as Yellow', async () => {
+    const result = await classifySite('https://mail.google.com/mail/u/0/#inbox');
+    expect(result).not.toBeNull();
+    expect(result!.zone).toBe('yellow');
+    expect(result!.config?.toolPattern).toBe('site:google.com');
+  });
+
+  it('classifies Threads as Green', async () => {
+    const result = await classifySite('https://www.threads.net/@shikeb/post/abc123');
+    expect(result).not.toBeNull();
+    expect(result!.zone).toBe('green');
+  });
+
+  it('classifies blocked domain as Red', async () => {
+    const result = await classifySite('https://evil.com/phishing');
+    expect(result).not.toBeNull();
+    expect(result!.zone).toBe('red');
+  });
+
+  it('returns null for unlisted domain', async () => {
+    const result = await classifySite('https://random-unknown-site.xyz/page');
+    expect(result).toBeNull();
+  });
+
+  it('handles invalid URL gracefully', async () => {
+    const result = await classifySite('not-a-url');
+    expect(result).toBeNull();
+  });
+
+  it('strips www prefix for matching', async () => {
+    const result = await classifySite('https://www.threads.net/@someone');
+    expect(result).not.toBeNull();
+    expect(result!.zone).toBe('green');
+  });
+
+  it('matches exact domain (google.com itself)', async () => {
+    const result = await classifySite('https://google.com/search?q=test');
+    expect(result).not.toBeNull();
+    expect(result!.zone).toBe('yellow');
   });
 });

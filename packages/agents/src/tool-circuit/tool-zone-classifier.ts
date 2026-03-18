@@ -162,6 +162,38 @@ export async function classifyTool(toolName: string): Promise<ClassifyResult> {
   return { zone: "green", config: null, matched: false }
 }
 
+/**
+ * Classify a site URL against the Notion whitelist.
+ *
+ * Site rows use `site:` prefix in Tool ID (e.g., "site:mail.google.com").
+ * Returns the zone + config if whitelisted, or null if not in the list.
+ * Unlisted sites are NOT auto-approved — they require explicit whitelisting.
+ */
+export async function classifySite(url: string): Promise<ClassifyResult | null> {
+  let hostname: string
+  try {
+    hostname = new URL(url).hostname.replace(/^www\./, "")
+  } catch {
+    return null
+  }
+
+  const configs = await loadConfigs()
+
+  for (const config of configs) {
+    if (!config.enabled) continue
+    if (!config.toolPattern.startsWith("site:")) continue
+
+    const sitePattern = config.toolPattern.slice(5) // strip "site:"
+    // Exact match or subdomain match (e.g., "google.com" matches "mail.google.com")
+    if (hostname === sitePattern || hostname.endsWith("." + sitePattern)) {
+      return { zone: config.zone, config, matched: true }
+    }
+  }
+
+  // Not whitelisted — return null (caller decides what to do)
+  return null
+}
+
 /** Find config row by tool name (for promotion — need pageId). */
 export async function findConfigByToolName(toolName: string): Promise<ToolZoneConfig | null> {
   const configs = await loadConfigs()
