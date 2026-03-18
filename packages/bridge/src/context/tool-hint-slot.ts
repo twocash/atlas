@@ -337,11 +337,13 @@ async function logHaikuClassification(
  * 4. Over time: frequent Haiku patterns → new keyword rules (ratchet down)
  *
  * @param messageText - The user's message
+ * @param triageIntent - Optional triage intent; when 'action', surfaces headed-browser tools
  */
 export async function assembleToolHintSlot(
   messageText: string,
+  triageIntent?: string,
 ): Promise<ContextSlot> {
-  console.log(`[tool-hint] assembleToolHintSlot called, enabled=${isToolHintEnabled()}, message="${messageText.slice(0, 60)}"`)
+  console.log(`[tool-hint] assembleToolHintSlot called, enabled=${isToolHintEnabled()}, triageIntent=${triageIntent}, message="${messageText.slice(0, 60)}"`)
   if (!isToolHintEnabled()) {
     return createEmptySlot("tool_hint", "feature-disabled")
   }
@@ -350,6 +352,22 @@ export async function assembleToolHintSlot(
     const tools = await loadToolRoutingConfig()
     if (tools.length === 0) {
       return createEmptySlot("tool_hint", "no-config")
+    }
+
+    // Action intent: surface headed-browser tools by family match (informational, no DIRECTIVE)
+    if (triageIntent === "action") {
+      const browserTools = tools.filter(
+        (t) => t.active && t.toolFamily === "headed-browser" && t.hintTemplate,
+      )
+      if (browserTools.length > 0) {
+        const hintText = browserTools.map((t) => t.hintTemplate).join("\n\n")
+        console.log(`[tool-hint] Action intent → surfacing ${browserTools.length} headed-browser tools`)
+        return createSlot({
+          id: "tool_hint",
+          source: `tool-routing-action-intent-headed-browser`,
+          content: hintText,
+        })
+      }
     }
 
     // Layer 1: Deterministic keyword match (free)

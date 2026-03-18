@@ -27,6 +27,7 @@ import type { SocraticQuestion, ContextSignals } from '../socratic';
 import type { GoalContext, ContentAnalysis as GoalContentAnalysis, GoalTracker } from '../goal';
 import type { ResolvedContext } from '../socratic';
 import type { TriageResult } from '../cognitive/triage-skill';
+import type { ActionApprovalContext } from './action-approval';
 import type { UrlContent, PendingContent } from './types';
 
 /**
@@ -129,7 +130,7 @@ export interface SocraticSessionState {
  * Which sub-state is currently active.
  * Only ONE can be active at a time — they are mutually exclusive.
  */
-export type ActivePhase = 'idle' | 'socratic' | 'dialogue' | 'approval' | 'goal-clarification';
+export type ActivePhase = 'idle' | 'socratic' | 'dialogue' | 'approval' | 'goal-clarification' | 'pending-action';
 
 /**
  * Unified conversation state for a single chat.
@@ -182,6 +183,11 @@ export interface ConversationState {
   goalDeferredExecution?: GoalDeferredExecution;
   /** Telemetry tracker — accumulates across clarification rounds */
   goalTracker?: GoalTracker;
+
+  // ── Action Approval (Sprint: ACTION-INTENT) ──
+
+  /** Pending action awaiting confirmation (when phase === 'pending-action') */
+  pendingAction?: ActionApprovalContext;
 
   // ── Session Telemetry (Sprint: SESSION-TELEMETRY) ──
 
@@ -640,6 +646,44 @@ export function enterGoalClarificationPhase(
 }
 
 /**
+ * Enter pending-action phase (awaiting butler confirmation).
+ * Sprint: ACTION-INTENT (Slice 3)
+ */
+export function enterPendingActionPhase(
+  chatId: number,
+  userId: number,
+  action: ActionApprovalContext,
+): void {
+  const state = getOrCreateState(chatId, userId);
+  state.phase = 'pending-action';
+  state.pendingAction = action;
+  state.socratic = undefined;
+  state.dialogue = undefined;
+  state.approval = undefined;
+  state.lastActivity = Date.now();
+
+  logger.debug('Entered pending-action phase', {
+    chatId,
+    destination: action.destination,
+    task: action.task,
+    zone: action.zone,
+    patternKey: action.patternKey,
+  });
+  scheduleSave();
+}
+
+/**
+ * Get pending action for a chat (if in pending-action phase).
+ */
+export function getPendingAction(chatId: number): ActionApprovalContext | undefined {
+  const state = states.get(chatId);
+  if (state && !isExpired(state) && state.phase === 'pending-action') {
+    return state.pendingAction;
+  }
+  return undefined;
+}
+
+/**
  * Return to idle phase (clears active sub-state but preserves context).
  */
 export function returnToIdle(chatId: number): void {
@@ -655,6 +699,7 @@ export function returnToIdle(chatId: number): void {
     state.goalTargetField = undefined;
     state.goalDeferredExecution = undefined;
     state.goalTracker = undefined;
+    state.pendingAction = undefined;
     state.lastActivity = Date.now();
     scheduleSave();
   }

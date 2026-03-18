@@ -44,14 +44,14 @@ export interface TriageCommand {
  * Lightweight representation of an additional intent in a multi-intent message
  */
 export interface SubIntent {
-  intent: 'command' | 'capture' | 'query' | 'clarify';
+  intent: 'command' | 'capture' | 'query' | 'clarify' | 'action';
   description: string;  // Brief description of what this sub-intent is about
   pillar?: Pillar;
   command?: TriageCommand;
 }
 
 export interface TriageResult {
-  intent: 'command' | 'capture' | 'query' | 'clarify';
+  intent: 'command' | 'capture' | 'query' | 'clarify' | 'action';
   confidence: number; // 0-1
 
   // Command-specific (only populated when intent === 'command')
@@ -90,14 +90,14 @@ const TriageCommandSchema = z.object({
 
 // Bug #6: Sub-intent schema for multi-intent parsing
 const SubIntentSchema = z.object({
-  intent: z.enum(['command', 'capture', 'query', 'clarify']),
+  intent: z.enum(['command', 'capture', 'query', 'clarify', 'action']),
   description: z.string(),
   pillar: z.string().optional(),
   command: TriageCommandSchema.optional(),
 });
 
 const TriageResultSchema = z.object({
-  intent: z.enum(['command', 'capture', 'query', 'clarify']),
+  intent: z.enum(['command', 'capture', 'query', 'clarify', 'action']),
   confidence: z.number().min(0).max(1),
   command: TriageCommandSchema.optional().nullable().default(null),
   title: z.string().max(80).optional().nullable().default(null),  // Allow slight overflow, truncate later
@@ -137,6 +137,21 @@ Examples:
 - "What's in my feed?" → query
 - "Status update?" → query
 - "How many P0s do I have?" → query
+
+**action** — User is directing Atlas to perform an operation at a specific destination.
+Examples:
+- "Go to gemini.google.com and ask it about X" → action
+- "Open the Notion page and update the status" → action
+- "Check my email" → action
+- "Pull up the DrumWave dashboard" → action
+- "Visit anthropic.com and look at their pricing" → action
+
+Classification signal: explicit action verb (go to, visit, open, navigate, check, pull up,
+look at) directed at a named destination. The user has stated what they want done and where.
+This is execution intent, not information intent. Do NOT classify as query.
+
+Distinguish from query: "What's on gemini.google.com?" is query. "Go to gemini.google.com
+and ask it X" is action — the destination is explicit and the operation is specified.
 
 **clarify** — Message is ambiguous, ask user to clarify
 Examples:
@@ -211,7 +226,7 @@ When detected:
 ## Response Format
 Return JSON only, no markdown fences. Match this structure exactly:
 {
-  "intent": "command|capture|query|clarify",
+  "intent": "command|capture|query|clarify|action",
   "confidence": 0.0-1.0,
   "command": { "verb": "...", "target": "...", "priority": "...", "description": "..." },
   "title": "...",

@@ -13,6 +13,7 @@
  */
 
 import { triageMessage, type TriageResult } from "@atlas/agents/src/cognitive/triage-skill"
+import { resolveIntentComposition } from "@atlas/agents/src/config/intent-composition"
 import { composeFromStructuredContext } from "@atlas/agents/src/services/prompt-composition"
 import type { StructuredCompositionInput } from "@atlas/agents/src/services/prompt-composition/types"
 import type {
@@ -129,7 +130,7 @@ async function assembleVoiceSlot(
 ): Promise<ContextSlot> {
   try {
     const input: StructuredCompositionInput = {
-      intent: mapTriageIntentToComposition(triage.intent),
+      intent: await resolveIntentComposition(triage.intent),
       depth: mapComplexityToDepth(triage.complexityTier),
       audience: "personal",
       source_type: "text",
@@ -163,21 +164,6 @@ async function assembleVoiceSlot(
   }
 
   return createEmptySlot("voice", "prompt-composition")
-}
-
-/** Map triage intent → composition IntentType
- *
- * Triage intents:    command, capture, query, clarify
- * Composition types: research, draft, save, analyze, capture, engage
- */
-function mapTriageIntentToComposition(intent: TriageResult["intent"]): string {
-  const map: Record<string, string> = {
-    command: "analyze",
-    capture: "capture",
-    query: "research",
-    clarify: "research",
-  }
-  return map[intent] ?? "research"
 }
 
 /** Map complexity tier → depth level */
@@ -224,8 +210,8 @@ function determineLandingSurface(
   triage: TriageResult,
   surface: string,
 ): LandingSurface {
-  // Commands and chat intents → reply in chat
-  if (triage.intent === "command" || triage.intent === "clarify") {
+  // Commands, chat intents, and actions → reply in chat
+  if (triage.intent === "command" || triage.intent === "clarify" || triage.intent === "action") {
     return "chat"
   }
 
@@ -372,7 +358,7 @@ export async function assembleContext(
     assembleDomainRagSlot(triage, request.messageText),
     assemblePovSlot(triage),
     assembleSelfModelSlot(triage, request.messageText),
-    assembleToolHintSlot(request.messageText),
+    assembleToolHintSlot(request.messageText, triage.intent),
   ])
 
   const landingSurface = determineLandingSurface(triage, request.surface)

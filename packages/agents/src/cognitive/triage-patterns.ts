@@ -88,8 +88,8 @@ let _saveTimeout: NodeJS.Timeout | null = null;
 export function generatePatternKey(messageText: string): string {
   const trimmed = messageText.trim().toLowerCase();
 
-  // Check for URL
-  const urlMatch = trimmed.match(/https?:\/\/([^\/]+)(\/[^\s]*)?/);
+  // Check for URL (domain stops at whitespace or slash)
+  const urlMatch = trimmed.match(/https?:\/\/([^\s\/]+)(\/[^\s]*)?/);
   if (urlMatch) {
     const domain = urlMatch[1];
     const path = urlMatch[2] || '/';

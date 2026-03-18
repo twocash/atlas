@@ -57,10 +57,18 @@ import {
   enterDialoguePhase,
   enterApprovalPhase,
   enterGoalClarificationPhase,
+  enterPendingActionPhase,
+  getPendingAction,
   returnToIdle,
   recordTurn,
   isInPhase,
 } from '../conversation/conversation-state';
+import {
+  buildActionApprovalContext,
+  buildActionApprovalMessage,
+  isActionConfirmation,
+} from '../conversation/action-approval';
+import { recordTriageFeedback } from '../cognitive/triage-patterns';
 import { sessionManager } from '../sessions/session-manager';
 import {
   incorporateClarification,
@@ -399,6 +407,21 @@ function isSocraticExitSignal(text: string): boolean {
   return EXIT_SIGNALS.has(normalized);
 }
 
+// ─── Action Intent Detection (Sprint: ACTION-INTENT) ────
+
+/**
+ * Quick heuristic: does this message look like it could be an action intent?
+ *
+ * This is a CHEAP pre-filter to avoid running triage on every message.
+ * False positives are fine (triage decides). False negatives mean the
+ * message falls through to Gate 1 (content share) — which is the old behavior.
+ */
+const ACTION_VERB_PATTERNS = /\b(go\s+to|visit|open|navigate\s+to|pull\s+up|check\s+(my|the)|head\s+to|look\s+at)\b/i;
+
+function looksLikeActionIntent(text: string): boolean {
+  return ACTION_VERB_PATTERNS.test(text);
+}
+
 
 // ─── Main Orchestrator ──────────────────────────────────
 
@@ -458,6 +481,100 @@ export async function orchestrateMessage(
   // Detect attachments
   const attachment = detectAttachment(input.rawMessage);
   const hasAttachment = attachment.type !== 'none';
+
+  // ── Gate 0a: Pending Action Confirmation ──
+  // If a butler approval is pending, check for confirmation reply first.
+  if (!hasAttachment && messageText) {
+    const pendingAction = getPendingAction(chatId);
+    if (pendingAction) {
+      if (isActionConfirmation(messageText)) {
+        // Confirmed — record to Flywheel, dispatch execution
+        const triageForFeedback: TriageResult = {
+          intent: 'action',
+          confidence: 1.0,
+          pillar: 'The Grove',
+          requestType: 'Quick',
+          keywords: [],
+          complexityTier: 1,
+          source: 'pattern_cache',
+        };
+        recordTriageFeedback(pendingAction.originalMessage, triageForFeedback, null);
+        returnToIdle(chatId);
+
+        logger.info('[action-intent] Approved', {
+          event: 'action-approved',
+          patternKey: pendingAction.patternKey,
+          destination: pendingAction.destination,
+          task: pendingAction.task,
+        });
+
+        // TODO (Slice 4): dispatch to headed-browser execution
+        await hooks.reply(`Heading to ${pendingAction.destination} now. (Browser execution not yet wired.)`, {});
+        await hooks.setReaction(REACTIONS.DONE);
+        return;
+      } else {
+        // Not a confirmation — clear pending action, fall through to normal pipeline
+        returnToIdle(chatId);
+        logger.info('Pending action cancelled by non-confirmation reply', {
+          userId,
+          pendingDestination: pendingAction.destination,
+        });
+      }
+    }
+  }
+
+  // ── Gate 0b: Action Intent (pre-triage URL interception) ──
+  // If message has action verb patterns + URL/destination, run triage early.
+  // This MUST run before Gate 1 (Content Share) to prevent URL→Socratic misroute.
+  if (!hasAttachment && messageText && looksLikeActionIntent(messageText)) {
+    const earlyTriage = await triageMessage(messageText);
+    if (earlyTriage.intent === 'action') {
+      const approvalCtx = buildActionApprovalContext(messageText);
+
+      logger.info('[action-intent] Recognized', {
+        event: 'action-recognized',
+        intent: 'action',
+        destination: approvalCtx.destination,
+        task: approvalCtx.task,
+        confidence: earlyTriage.confidence,
+      });
+
+      if (approvalCtx.zone === 'yellow') {
+        const approvalMsg = buildActionApprovalMessage(approvalCtx);
+        if (approvalMsg) {
+          await hooks.reply(approvalMsg, {});
+        }
+
+        enterPendingActionPhase(chatId, userId, approvalCtx);
+
+        logger.info('[action-intent] Approval surfaced', {
+          event: 'action-approval-surfaced',
+          destination: approvalCtx.destination,
+          task: approvalCtx.task,
+          zone: approvalCtx.zone,
+          patternKey: approvalCtx.patternKey,
+        });
+
+        await hooks.setReaction(REACTIONS.DONE);
+        return;
+      }
+
+      // Green zone — auto-execute
+      logger.info('[action-intent] Auto-approved (Green zone)', {
+        event: 'action-approved',
+        patternKey: approvalCtx.patternKey,
+        destination: approvalCtx.destination,
+        task: approvalCtx.task,
+        autoApproved: true,
+      });
+
+      // TODO (Slice 4): dispatch to headed-browser execution
+      await hooks.reply(`Heading to ${approvalCtx.destination} now. (Browser execution not yet wired.)`, {});
+      await hooks.setReaction(REACTIONS.DONE);
+      return;
+    }
+    // Triage returned non-action — fall through to normal pipeline
+  }
 
   // ── Gate 1: Content Share (URL) ──
   if (config.contentConfirmEnabled && !hasAttachment && messageText) {

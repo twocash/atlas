@@ -21,6 +21,7 @@ import {
 } from '../../../../packages/agents/src/socratic';
 import type { IntentType } from '../../../../packages/agents/src/services/prompt-composition/types';
 import type { TriageResult } from '@atlas/agents/src/cognitive/triage-skill';
+import { resolveIntentCompositionSync } from '@atlas/agents/src/config/intent-composition';
 import { enterSocraticPhase, enterGoalClarificationPhase, returnToIdle, storeSocraticAnswer, getState } from '@atlas/agents/src/conversation/conversation-state';
 import { orchestrateResolvedContext } from '@atlas/agents/src/pipeline/orchestrator';
 import type { ResolvedContextInput } from '@atlas/agents/src/pipeline/types';
@@ -83,26 +84,13 @@ function buildSignals(
   // Merge triage intelligence if available
   if (triageResult) {
     signals.classification = {
-      intent: mapTriageIntentToComposition(triageResult.intent),
+      intent: resolveIntentCompositionSync(triageResult.intent) as IntentType,
       pillar: triageResult.pillar,
       confidence: triageResult.confidence,
     };
   }
 
   return signals;
-}
-
-/**
- * Map triage intent to composition IntentType
- */
-function mapTriageIntentToComposition(triageIntent: TriageResult['intent']): IntentType {
-  switch (triageIntent) {
-    case 'capture': return 'capture';
-    case 'command': return 'capture';
-    case 'query': return 'research';
-    case 'clarify': return 'capture';
-    default: return 'capture';
-  }
 }
 
 /**
