@@ -182,11 +182,11 @@ async function loadToolRoutingConfig(): Promise<ToolRoutingEntry[]> {
   }
 }
 
-// ─── Keyword Matching ────────────────────────────────────
+// ─── Keyword Matching (Deterministic Layer — Free) ───────
 
 /**
  * Match P1-suggest tools against the user's message text.
- * Pure keyword match — no LLM cost.
+ * Pure keyword match — no LLM cost. This is the deterministic floor.
  */
 function matchToolKeywords(
   messageText: string,
@@ -201,15 +201,140 @@ function matchToolKeywords(
   )
 }
 
+// ─── Haiku Classification (Ratchet Layer — Cheap) ────────
+
+/**
+ * When keywords miss, Haiku classifies intent → tool family.
+ * Fractions of a cent per call. Results logged to Feed 2.0 for
+ * future ratcheting down to deterministic keywords.
+ *
+ * The Ratchet: Haiku interprets → logs standardized form → patterns
+ * compile down to keyword rules over time.
+ */
+async function haikuClassifyToolIntent(
+  messageText: string,
+  tools: ToolRoutingEntry[],
+): Promise<{ matched: ToolRoutingEntry[]; classification: string } | null> {
+  if (process.env.ATLAS_TOOL_HINT_HAIKU === "false") return null
+
+  try {
+    const Anthropic = (await import("@anthropic-ai/sdk")).default
+    const client = new Anthropic()
+
+    // Build tool family summary for Haiku
+    const families = new Map<string, string[]>()
+    for (const t of tools) {
+      if (!t.active || !t.toolFamily) continue
+      if (!families.has(t.toolFamily)) families.set(t.toolFamily, [])
+      families.get(t.toolFamily)!.push(`${t.toolId}: ${t.description}`)
+    }
+
+    const familyList = [...families.entries()]
+      .map(([family, items]) => `${family}:\n${items.join("\n")}`)
+      .join("\n\n")
+
+    const response = await client.messages.create({
+      model: "claude-haiku-4-5-20251001",
+      max_tokens: 150,
+      system: `You classify user messages into tool families. Return ONLY a JSON object: {"family":"<family-name>","confidence":<0-1>,"reasoning":"<one line>"}
+
+Available tool families:
+${familyList}
+
+If the message is asking to visit, open, go to, check, or interact with a website → "headed-browser"
+If the message is asking to research, analyze, investigate a topic → "research"
+If no tool family fits → {"family":"none","confidence":0,"reasoning":"no match"}`,
+      messages: [{ role: "user", content: messageText }],
+    })
+
+    const text = response.content[0]?.type === "text" ? response.content[0].text : ""
+    const parsed = JSON.parse(text)
+
+    if (!parsed.family || parsed.family === "none" || parsed.confidence < 0.6) {
+      console.log(`[tool-hint] Haiku: no confident match (${parsed.family}, ${parsed.confidence})`)
+      return null
+    }
+
+    console.log(`[tool-hint] Haiku classified: ${parsed.family} (${parsed.confidence}) — ${parsed.reasoning}`)
+
+    // Match tools by family
+    const matched = tools.filter(
+      (t) => t.active && t.toolFamily === parsed.family && t.hintTemplate,
+    )
+
+    // Log to Feed 2.0 for ratcheting (fire-and-forget)
+    logHaikuClassification(messageText, parsed).catch(() => {})
+
+    return matched.length > 0 ? { matched, classification: text } : null
+  } catch (err) {
+    console.warn("[tool-hint] Haiku classification failed:", (err as Error).message)
+    return null
+  }
+}
+
+/**
+ * Log Haiku classification to Feed 2.0 for future ratcheting.
+ * These logs are the training signal — when enough "check my email" → headed-browser
+ * classifications accumulate, the pattern compiles down to a keyword rule.
+ */
+async function logHaikuClassification(
+  messageText: string,
+  classification: { family: string; confidence: number; reasoning: string },
+): Promise<void> {
+  const notion = getNotionClient()
+  if (!notion) return
+
+  const dbId = process.env.FEED_DB || "90b2b33f-4b44-4b42-870f-8d62fb8cbf18"
+  const ts = new Date().toISOString()
+
+  try {
+    await notion.pages.create({
+      parent: { database_id: dbId },
+      properties: {
+        Entry: { title: [{ text: { content: `Tool hint: ${classification.family} (${classification.confidence})`.slice(0, 100) } }] },
+        Pillar: { select: { name: "The Grove" } },
+        "Request Type": { select: { name: "Quick" } },
+        Source: { select: { name: "Bridge" } },
+        Author: { select: { name: "Atlas [grove-node-1]" } },
+        Status: { select: { name: "Logged" } },
+        Date: { date: { start: ts } },
+        Keywords: {
+          multi_select: [
+            { name: "tool-hint" },
+            { name: "haiku-classify" },
+            { name: classification.family },
+          ],
+        },
+        Notes: {
+          rich_text: [{
+            text: {
+              content: JSON.stringify({
+                message: messageText.slice(0, 200),
+                family: classification.family,
+                confidence: classification.confidence,
+                reasoning: classification.reasoning,
+                timestamp: ts,
+              }, null, 2).slice(0, 2000),
+            },
+          }],
+        },
+      },
+    })
+  } catch {
+    // Non-fatal — telemetry loss is acceptable
+  }
+}
+
 // ─── Slot Assembly ───────────────────────────────────────
 
 /**
  * Assemble the tool hint context slot (Slot 10).
  *
- * Runtime flow (zero LLM cost):
- * 1. Load P1-suggest tools from Notion (cached, 5min TTL)
- * 2. Keyword match against message text
- * 3. If match: inject pre-written hint template from DB
+ * Ratchet architecture:
+ * 1. Keywords first (deterministic, free) — compiled patterns
+ * 2. Haiku fallback (cheap, ~0.001$) — interprets what keywords miss
+ * 3. Log every Haiku classification to Feed 2.0 (training signal)
+ * 4. Over time: frequent Haiku patterns → new keyword rules (ratchet down)
  *
  * @param messageText - The user's message
  */
@@ -227,18 +352,39 @@ export async function assembleToolHintSlot(
       return createEmptySlot("tool_hint", "no-config")
     }
 
-    const matched = matchToolKeywords(messageText, tools)
-    console.log(`[tool-hint] ${tools.length} tools loaded, ${matched.length} matched`)
+    // Layer 1: Deterministic keyword match (free)
+    let matched = matchToolKeywords(messageText, tools)
+    let source = "keyword"
+
+    // Layer 2: Haiku classification fallback (cheap)
+    if (matched.length === 0) {
+      console.log(`[tool-hint] No keyword match — falling back to Haiku classification`)
+      const haikuResult = await haikuClassifyToolIntent(messageText, tools)
+      if (haikuResult) {
+        matched = haikuResult.matched
+        source = "haiku"
+      }
+    }
+
+    console.log(`[tool-hint] ${tools.length} tools loaded, ${matched.length} matched (${source})`)
     if (matched.length === 0) {
       return createEmptySlot("tool_hint", "no-match")
     }
 
-    const hintText = matched.map((t) => t.hintTemplate).join("\n\n")
-    console.log(`[tool-hint] Injecting hint (${hintText.length} chars) for tools: ${matched.map(t => t.toolId).join(", ")}`)
+    const hintText = matched
+      .filter((t) => t.hintTemplate)
+      .map((t) => t.hintTemplate)
+      .join("\n\n")
+
+    if (!hintText) {
+      return createEmptySlot("tool_hint", "no-hint-template")
+    }
+
+    console.log(`[tool-hint] Injecting hint (${hintText.length} chars, ${source}) for tools: ${matched.map(t => t.toolId).join(", ")}`)
 
     return createSlot({
       id: "tool_hint",
-      source: `tool-routing-${matched.map((t) => t.toolFamily).join("+")}`,
+      source: `tool-routing-${source}-${matched.map((t) => t.toolFamily).join("+")}`,
       content: hintText,
     })
   } catch (err) {
