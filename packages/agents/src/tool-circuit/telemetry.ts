@@ -80,3 +80,55 @@ export async function logToolEvent(event: ToolEvent): Promise<void> {
     console.warn("[tool-telemetry] Feed write failed:", (err as Error).message)
   }
 }
+
+/**
+ * Log a zone promotion event to Feed 2.0.
+ * Fires when Jim replies "always" and the Notion row updates Yellow → Green.
+ */
+export async function logPromotion(toolName: string, toolPattern: string): Promise<void> {
+  const notion = getNotion()
+  if (!notion) return
+
+  const ts = new Date().toISOString()
+  const summary = `Promoted: ${toolPattern} → Green (approved by Jim)`
+
+  try {
+    await notion.pages.create({
+      parent: { database_id: NOTION_DB.FEED },
+      properties: {
+        Entry: { title: [{ text: { content: summary.slice(0, 100) } }] },
+        Pillar: { select: { name: "The Grove" } },
+        "Request Type": { select: { name: "Quick" } },
+        Source: { select: { name: "Bridge" } },
+        Author: { select: { name: "Atlas [grove-node-1]" } },
+        Status: { select: { name: "Routed" } },
+        Date: { date: { start: ts } },
+        Keywords: {
+          multi_select: [
+            { name: "tool-circuit" },
+            { name: "promotion" },
+            { name: "skill-flywheel" },
+          ],
+        },
+        Notes: {
+          rich_text: [
+            {
+              text: {
+                content: JSON.stringify({
+                  toolName,
+                  toolPattern,
+                  previousZone: "yellow",
+                  newZone: "green",
+                  promotedBy: "jim-always-reply",
+                  timestamp: ts,
+                }, null, 2).slice(0, 2000),
+              },
+            },
+          ],
+        },
+      },
+    })
+  } catch (err) {
+    console.warn("[tool-telemetry] Promotion log failed:", (err as Error).message)
+  }
+}

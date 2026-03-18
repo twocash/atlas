@@ -993,11 +993,13 @@ async function handleMessageRelay(req: Request): Promise<Response> {
     if (isAlways) {
       // Promote pattern to Green — invalidate zone cache so next call auto-approves
       console.log(`[bridge] Yellow → Green promotion by user [${body.questionId}]: "${pending.question.slice(0, 60)}"`)
-      import("../../agents/src/tool-circuit/tool-circuit").then(({ invalidateZoneCache, logApprovalOutcome }) => {
+      import("../../agents/src/tool-circuit/tool-circuit").then(({ invalidateZoneCache, logApprovalOutcome, promoteToGreen }) => {
         invalidateZoneCache()
         logApprovalOutcome(pending.question, "always").catch(() => {})
+        promoteToGreen(pending.question).catch((err) =>
+          console.error("[bridge] Zone promotion failed:", (err as Error).message)
+        )
       })
-      // TODO: Write skill entry + update Notion row zone to Green (follow-on)
     } else {
       // "yes" — log approval
       import("../../agents/src/tool-circuit/tool-circuit").then(({ logApprovalOutcome }) =>

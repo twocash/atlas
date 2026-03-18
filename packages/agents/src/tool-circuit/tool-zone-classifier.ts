@@ -16,6 +16,8 @@ import { NOTION_DB } from "@atlas/shared/config"
 export type Zone = "green" | "yellow" | "red"
 
 export interface ToolZoneConfig {
+  /** Notion page ID for this config row (needed for promotion updates) */
+  pageId: string
   /** Glob pattern (e.g., "mcp__claude_ai_Gmail__*") */
   toolPattern: string
   /** Zone classification */
@@ -81,6 +83,7 @@ function parseConfigRow(page: any): ToolZoneConfig | null {
     const enabled = props["Active"]?.checkbox ?? true
 
     return {
+      pageId: page.id,
       toolPattern,
       zone,
       description,
@@ -157,6 +160,17 @@ export async function classifyTool(toolName: string): Promise<ClassifyResult> {
 
   // Default: green (unclassified tools auto-approve)
   return { zone: "green", config: null, matched: false }
+}
+
+/** Find config row by tool name (for promotion — need pageId). */
+export async function findConfigByToolName(toolName: string): Promise<ToolZoneConfig | null> {
+  const configs = await loadConfigs()
+  for (const config of configs) {
+    if (config.enabled && globMatch(config.toolPattern, toolName)) {
+      return config
+    }
+  }
+  return null
 }
 
 /** Invalidate cache (e.g., after "always" promotes a pattern). */

@@ -9,8 +9,9 @@
  * ADR-008: Red blocks are loud. No silent tool executions.
  */
 
-import { classifyTool, invalidateZoneCache, type Zone, type ClassifyResult } from "./tool-zone-classifier"
-import { logToolEvent } from "./telemetry"
+import { classifyTool, invalidateZoneCache, findConfigByToolName, type Zone, type ClassifyResult } from "./tool-zone-classifier"
+import { logToolEvent, logPromotion } from "./telemetry"
+import { Client } from "@notionhq/client"
 
 // ─── Types ───────────────────────────────────────────────
 
@@ -139,6 +140,61 @@ export async function logApprovalOutcome(
   })
 }
 
-// ─── Exports for promotion ──────────────────────────────
+// ─── Zone Promotion ─────────────────────────────────────
+
+/**
+ * Promote a tool pattern from Yellow → Green in Notion.
+ *
+ * Called when Jim replies "always" to a Yellow approval.
+ * Updates the Notion Tool Routing Config row, invalidates cache,
+ * and logs the promotion to Feed 2.0.
+ *
+ * Returns true if promotion succeeded, false if pattern not found or update failed.
+ */
+export async function promoteToGreen(toolName: string): Promise<boolean> {
+  const config = await findConfigByToolName(toolName)
+  if (!config) {
+    console.warn(`[tool-circuit] promoteToGreen: no config found for "${toolName}"`)
+    return false
+  }
+
+  if (config.zone === "green") {
+    console.log(`[tool-circuit] "${toolName}" already Green — no promotion needed`)
+    return true
+  }
+
+  const key = process.env.NOTION_API_KEY
+  if (!key) {
+    console.error("[tool-circuit] promoteToGreen: NOTION_API_KEY missing")
+    return false
+  }
+
+  const notion = new Client({ auth: key })
+
+  try {
+    await notion.pages.update({
+      page_id: config.pageId,
+      properties: {
+        Zone: { select: { name: "Green" } },
+      },
+    })
+
+    invalidateZoneCache()
+
+    console.log(`[tool-circuit] PROMOTED: "${config.toolPattern}" Yellow → Green (page: ${config.pageId})`)
+
+    // Fire-and-forget telemetry
+    logPromotion(toolName, config.toolPattern).catch((err) =>
+      console.warn("[tool-circuit] Promotion telemetry failed:", (err as Error).message)
+    )
+
+    return true
+  } catch (err) {
+    console.error(`[tool-circuit] promoteToGreen failed for "${config.toolPattern}":`, (err as Error).message)
+    return false
+  }
+}
+
+// ─── Exports ────────────────────────────────────────────
 
 export { invalidateZoneCache }
