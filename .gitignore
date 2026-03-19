@@ -46,6 +46,10 @@ apps/telegram/data/audit/
 apps/telegram/logs/
 *.audit.json
 
+# Runtime state (written by running bot, not source code)
+apps/telegram/data/conversation-state.json
+apps/telegram/data/skills/.pending/proposals.json
+
 # Spike test outputs
 packages/agents/scripts/spike-output.md
 packages/agents/scripts/pipeline-audit.json
