@@ -19,7 +19,8 @@ import { logger } from "../logger"
 // ─── Config ──────────────────────────────────────────────
 
 const __dir = dirname(fileURLToPath(import.meta.url))
-const COOKIE_DIR = resolve(__dir, "../../data/cookies")
+const COOKIE_DIR = process.env.ATLAS_COOKIE_DIR
+  ?? resolve(__dir, "../../data/cookies")
 
 /** Max age before cookies are considered stale and should be refreshed */
 const COOKIE_MAX_AGE_MS = 24 * 60 * 60 * 1000 // 24 hours

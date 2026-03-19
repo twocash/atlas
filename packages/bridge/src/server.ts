@@ -893,9 +893,10 @@ interface CookieRefreshResult {
   cookies: Record<string, CookieEntry[]>
 }
 
-// Cross-boundary exemption: cookies are shared with Telegram surface intentionally.
-// The bot reads these for authenticated web scraping. Do not move to packages/bridge/data/.
-const COOKIE_DIR = resolve(__bridgeDir, "../../../apps/telegram/data/cookies")
+// Cookie storage: env var for operator control, fallback preserves current path.
+// Both Bridge (writes) and Telegram chrome-cookies.ts (reads) use ATLAS_COOKIE_DIR.
+const COOKIE_DIR = process.env.ATLAS_COOKIE_DIR
+  ?? resolve(__repoRoot, "apps/telegram/data/cookies")
 
 function writeCookieFiles(result: CookieRefreshResult): Record<string, number> {
   mkdirSync(COOKIE_DIR, { recursive: true })
@@ -955,7 +956,7 @@ async function handleMessageRelay(req: Request): Promise<Response> {
 
   const relayId = `relay-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`
   const RELAY_TIMEOUT = 120_000 // 2 minutes
-  const surface = body.surface || "telegram"
+  const surface = body.surface || "bridge"
 
   // ─── Reply to pending AskUserQuestion ─────────────────────
   // If this message is a reply to a question CC asked, feed the answer
