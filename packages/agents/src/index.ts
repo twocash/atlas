@@ -392,6 +392,16 @@ export {
   type EvidencePresetAssignment,
 } from "./config";
 
+// Ratchet Classification — Universal Pattern (ADR-012)
+export {
+  ratchetClassify,
+  logRatchetEvent,
+  type RatchetLayer,
+  type RatchetConfig,
+  type RatchetResult,
+  type RatchetEvent,
+} from "./ratchet"
+
 // Provenance — Universal Action Trace (Sprint A: Pipeline Unification)
 export {
   createProvenanceChain,

@@ -20,6 +20,7 @@ import type { ContextSlot } from "../types/orchestration"
 import { createSlot, createEmptySlot } from "./slots"
 import { NOTION_DB } from "@atlas/shared/config"
 import { reportFailure } from "@atlas/shared/error-escalation"
+import { ratchetClassify } from "@atlas/agents/src/ratchet"
 
 // ─── Types ───────────────────────────────────────────────
 
@@ -330,7 +331,7 @@ async function logHaikuClassification(
 /**
  * Assemble the tool hint context slot (Slot 10).
  *
- * Ratchet architecture:
+ * Uses ratchetClassify() (ADR-012) for the cascade:
  * 1. Keywords first (deterministic, free) — compiled patterns
  * 2. Haiku fallback (cheap, ~0.001$) — interprets what keywords miss
  * 3. Log every Haiku classification to Feed 2.0 (training signal)
@@ -370,22 +371,32 @@ export async function assembleToolHintSlot(
       }
     }
 
-    // Layer 1: Deterministic keyword match (free)
-    let matched = matchToolKeywords(messageText, tools)
-    let source = "keyword"
+    const { result: matched, source } = await ratchetClassify<string, ToolRoutingEntry[]>(messageText, {
+      label: 'tool-routing',
+      layers: [
+        {
+          name: 'keywords',
+          classify: (msg) => {
+            const hits = matchToolKeywords(msg, tools)
+            return hits.length > 0 ? hits : null
+          },
+        },
+        {
+          name: 'haiku',
+          classify: async (msg) => {
+            const haikuResult = await haikuClassifyToolIntent(msg, tools)
+            return haikuResult ? haikuResult.matched : null
+          },
+        },
+      ],
+      logToFeed: true,
+      escalationSubsystem: 'tool-hint',
+      inputPreview: (msg) => msg.slice(0, 200),
+      outputPreview: (entries) => entries.map(t => t.toolFamily).join('+'),
+    })
 
-    // Layer 2: Haiku classification fallback (cheap)
-    if (matched.length === 0) {
-      console.log(`[tool-hint] No keyword match — falling back to Haiku classification`)
-      const haikuResult = await haikuClassifyToolIntent(messageText, tools)
-      if (haikuResult) {
-        matched = haikuResult.matched
-        source = "haiku"
-      }
-    }
-
-    console.log(`[tool-hint] ${tools.length} tools loaded, ${matched.length} matched (${source})`)
-    if (matched.length === 0) {
+    console.log(`[tool-hint] ${tools.length} tools loaded, ${matched?.length ?? 0} matched (${source})`)
+    if (!matched || matched.length === 0) {
       return createEmptySlot("tool_hint", "no-match")
     }
 
