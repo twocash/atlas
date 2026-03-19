@@ -1002,6 +1002,8 @@ async function runAgentsUnitTests(cwd: string): Promise<SuiteResult> {
       'test/rpo-001-search-provider.test.ts', // ATLAS-RPO-001: SearchProvider + prompt split + orchestrator
       'test/drc-001a-declarative-config.test.ts', // ATLAS-DRC-001a: Declarative Research Config
       'test/operational-doctrine.test.ts', // NOTION-OPS: Operational doctrine composition + cache + wiring
+      'test/action-intent-integration.test.ts', // ACTION-INTENT: end-to-end pipeline (March 2026)
+      'test/tool-circuit-integration.test.ts',  // AUTONOMATON-TOOL-CIRCUIT: end-to-end governance (March 2026)
     ],
     agentsCwd,
     60000
