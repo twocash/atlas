@@ -896,7 +896,7 @@ interface CookieRefreshResult {
 // Cookie storage: env var for operator control, fallback preserves current path.
 // Both Bridge (writes) and Telegram chrome-cookies.ts (reads) use ATLAS_COOKIE_DIR.
 const COOKIE_DIR = process.env.ATLAS_COOKIE_DIR
-  ?? resolve(__repoRoot, "apps/telegram/data/cookies")
+  ?? resolve(__repoRoot, "data/cookies")
 
 function writeCookieFiles(result: CookieRefreshResult): Record<string, number> {
   mkdirSync(COOKIE_DIR, { recursive: true })
